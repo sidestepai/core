@@ -1,0 +1,51 @@
+{
+  "context": {
+    "dbo": {
+      "id": 3
+    }
+  },
+  "name": "mvp:dbo_getby",
+  "as": "test1",
+  "input": [
+    {
+      "name": "field_name",
+      "value": "id",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "field_value",
+      "value": "123",
+      "tag": "const:int",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "lock",
+      "value": "false",
+      "tag": "const:bool",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    }
+  ],
+  "_xsid": "f:632d4b8c-289b-495d-949f-6ec428efe3ca",
+  "@guid": "f:632d4b8c-289b-495d-949f-6ec428efe3ca",
+  "@index": [
+    "undefined"
+  ],
+  "description": "",
+  "settings_registry": [],
+  "output": {
+    "customize": false,
+    "filters": [],
+    "items": []
+  },
+  "addon": []
+}

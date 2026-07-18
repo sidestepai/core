@@ -1,0 +1,78 @@
+{
+  "context": {
+    "dbo": {
+      "id": 4
+    }
+  },
+  "name": "mvp:dbo_editby",
+  "as": "testb1",
+  "input": [
+    {
+      "name": "field_name",
+      "value": "id",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "field_value",
+      "value": "123",
+      "tag": "const:int",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "id",
+      "value": "null",
+      "tag": "const:null",
+      "filters": [],
+      "ignore": true,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "created_at",
+      "value": "now",
+      "tag": "const",
+      "filters": [],
+      "ignore": true,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "external_id",
+      "value": "test",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "@meta",
+      "value": "null",
+      "tag": "const:null",
+      "filters": [],
+      "ignore": true,
+      "expand": false,
+      "children": []
+    }
+  ],
+  "_xsid": "f:f043bec9-4265-481d-a791-0d35969af15d",
+  "@guid": "f:f043bec9-4265-481d-a791-0d35969af15d",
+  "@index": [
+    "undefined"
+  ],
+  "description": "",
+  "settings_registry": [],
+  "output": {
+    "customize": false,
+    "filters": [],
+    "items": []
+  },
+  "addon": []
+}

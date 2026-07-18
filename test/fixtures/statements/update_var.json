@@ -1,0 +1,18 @@
+{
+  "context": {
+    "name": "x1",
+    "value": "123",
+    "tag": "const:int",
+    "filters": []
+  },
+  "name": "mvp:update_var",
+  "input": [],
+  "_xsid": "f:4976a665-5eb2-481e-86b1-462491166982",
+  "@guid": "f:4976a665-5eb2-481e-86b1-462491166982",
+  "@index": [
+    "undefined"
+  ],
+  "output": {
+    "filters": []
+  }
+}

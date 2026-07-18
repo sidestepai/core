@@ -1,0 +1,51 @@
+{
+  "context": {
+    "dbo": {
+      "id": 4
+    }
+  },
+  "name": "mvp:dbo_patch",
+  "as": "testb2",
+  "input": [
+    {
+      "name": "field_name",
+      "value": "id",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "field_value",
+      "value": "123",
+      "tag": "const:int",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "item",
+      "value": "{}",
+      "tag": "const:obj",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    }
+  ],
+  "_xsid": "f:44443e7f-65ef-4bc4-98c4-6f56a2ea1e29",
+  "@guid": "f:44443e7f-65ef-4bc4-98c4-6f56a2ea1e29",
+  "@index": [
+    "undefined"
+  ],
+  "description": "",
+  "settings_registry": [],
+  "output": {
+    "customize": false,
+    "filters": [],
+    "items": []
+  },
+  "addon": []
+}

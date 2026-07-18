@@ -1,0 +1,68 @@
+{
+  "name": "mvp:switch",
+  "context": {
+      "value": {
+          "tag": "var",
+          "value": "x1",
+          "filters": []
+      },
+      "else": {
+          "run": [
+              {
+                  "name": "mvp:set_var",
+                  "as": "x2",
+                  "context": {
+                      "tag": "const",
+                      "value": "dude",
+                      "filters": []
+                  }
+              }
+          ]
+      },
+      "elif": {
+          "run": [
+              {
+                  "name": "mvp:switch_case",
+                  "context": {
+                      "value": {
+                          "tag": "const",
+                          "value": "wow",
+                          "filters": []
+                      },
+                      "if": {
+                          "run": [
+                              {
+                                  "name": "mvp:set_var",
+                                  "as": "x3",
+                                  "context": {
+                                      "tag": "const",
+                                      "value": "ok",
+                                      "filters": []
+                                  }
+                              },
+                              {
+                                  "name": "mvp:lambda",
+                                  "as": "is_equal",
+                                  "input": [
+                                      {
+                                          "name": "code",
+                                          "tag": "const",
+                                          "value": "if ($input.left \u003E $input.right) {\n    return \u0022left is greater than right\u0022;\n} else if ($input.left \u003C $input.right) {\n    return \u0022left is smaller than right\u0022;\n} else {\n    return \u0022left and right are equal\u0022;\n}",
+                                          "filters": []
+                                      },
+                                      {
+                                          "name": "timeout",
+                                          "tag": "const:int",
+                                          "value": 10,
+                                          "filters": []
+                                      }
+                                  ]
+                              }
+                          ]
+                      }
+                  }
+              }
+          ]
+      }
+  }
+}

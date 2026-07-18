@@ -1,0 +1,123 @@
+{
+  "context": {
+    "dbo": {
+      "id": 2
+    }
+  },
+  "name": "mvp:dbo_add",
+  "as": "user2",
+  "input": [
+    {
+      "name": "id",
+      "value": "null",
+      "tag": "const:null",
+      "filters": [],
+      "ignore": true,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "created_at",
+      "value": "now",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "name",
+      "value": "test",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "email",
+      "value": "test@aol.com",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "password",
+      "value": "null",
+      "tag": "const:null",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "_test",
+      "value": "abc",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "_abc",
+      "value": "abc",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "num",
+      "value": "[]",
+      "tag": "const:array",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "json",
+      "value": "{}",
+      "tag": "const:obj",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "@meta",
+      "value": "null",
+      "tag": "const:null",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "hehe",
+      "value": "abc",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    }
+  ],
+  "_xsid": "f:63e66473-bb3f-4c05-91ea-d71d9cbe3f69",
+  "@guid": "f:63e66473-bb3f-4c05-91ea-d71d9cbe3f69",
+  "@index": [
+    "undefined"
+  ],
+  "description": "",
+  "settings_registry": [],
+  "output": {
+    "customize": false,
+    "filters": [],
+    "items": []
+  },
+  "addon": []
+}

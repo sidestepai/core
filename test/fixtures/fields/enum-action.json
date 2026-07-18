@@ -1,0 +1,39 @@
+{
+  "_xsid": "i:9fd88847-ea7c-4ede-828e-97b7b451c3f4",
+  "name": "action",
+  "type": "enum",
+  "description": "",
+  "nullable": false,
+  "default": "message",
+  "merge": false,
+  "hidden": [],
+  "override": [],
+  "customize": "",
+  "required": true,
+  "values": [
+    "message",
+    "join"
+  ],
+  "mode": "",
+  "format": "",
+  "sensitive": false,
+  "access": "public",
+  "is_settings_registry": false,
+  "children": [],
+  "list": {
+    "min": "",
+    "max": ""
+  },
+  "vector": {
+    "size": 3
+  },
+  "style": {
+    "type": "single"
+  },
+  "methods": [],
+  "market_item": {
+    "id": 0,
+    "version": 0,
+    "guid": ""
+  }
+}

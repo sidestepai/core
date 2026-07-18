@@ -1,0 +1,42 @@
+{
+  "context": {
+    "as": "item",
+    "list": {
+      "value": "[1,2,3]",
+      "tag": "const",
+      "filters": [
+        {
+          "name": "json_decode",
+          "disabled": false,
+          "arg": []
+        }
+      ]
+    },
+    "run": [
+      {
+        "context": {
+          "value": "123",
+          "tag": "const:int",
+          "filters": []
+        },
+        "name": "mvp:set_var",
+        "as": "x2",
+        "input": [],
+        "_xsid": "f:de56195c-87aa-4dc8-9dfa-54d3dd4a1597",
+        "index": "7.1",
+        "@guid": "f:de56195c-87aa-4dc8-9dfa-54d3dd4a1597",
+        "@index": [
+          "7",
+          "1"
+        ]
+      }
+    ]
+  },
+  "name": "mvp:foreach",
+  "input": [],
+  "_xsid": "f:ff872a65-13ef-4c46-8ca5-888772084bfc",
+  "@guid": "f:ff872a65-13ef-4c46-8ca5-888772084bfc",
+  "@index": [
+    "undefined"
+  ]
+}

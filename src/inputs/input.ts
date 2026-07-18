@@ -1,0 +1,132 @@
+/**
+ * Input authoring + encoding. `input.text()` / `input.int()` return a small
+ * descriptor; `encodeInput(name, descriptor)` delegates to the shared field
+ * encoder (KTD-6) with the input field context.
+ */
+import type { InputXdo } from "../types/xdo.js";
+import { encodeField, INPUT_CONTEXT } from "../fields/field.js";
+import type { FieldOptions, MethodArg, ReadonlyMethods } from "../fields/field.js";
+import { f, toNestedFields } from "../fields/catalog.js";
+import type { FieldMap } from "../fields/catalog.js";
+import type { TypeBrand, BrandValue, FromFieldMap } from "../fields/value-types.js";
+import type {
+  TextMethod,
+  IntMethod,
+  DecimalMethod,
+  EmailMethod,
+  PasswordMethod,
+} from "../fields/generated/field-methods.generated.js";
+
+export type InputOptions = FieldOptions;
+
+/**
+ * {@link InputOptions} with `methods` narrowed to the input type's valid method
+ * set `N` (mirrors the field catalog's `MethodOpts`). Types with no
+ * engine-declared methods leave `N = never` (only the `{ name, arg }` escape hatch).
+ */
+export type InputOpts<N extends string> = Omit<InputOptions, "methods"> & {
+  methods?: MethodArg<N>[];
+};
+
+/** {@link InputOpts} made safe to capture under a `const` type parameter (see {@link ReadonlyMethods}). */
+export type ConstInputOpts<N extends string> = ReadonlyMethods<InputOpts<N>, N>;
+
+/** Internal descriptor carried until `encodeInput` runs. */
+export interface InputDescriptor {
+  type: string;
+  options: InputOptions;
+}
+
+function makeInput<V, N extends string = never>(type: string) {
+  return <const O extends ConstInputOpts<N> = Record<string, never>>(
+    options: O = {} as O,
+  ): InputDescriptor & TypeBrand<V, O> =>
+    ({ type, options }) as InputDescriptor & TypeBrand<V, O>;
+}
+
+/**
+ * Typed input constructors. Inputs and table columns share one engine schema, so
+ * `input.*` is a full mirror of the `f.*` catalog — every engine-legal input type
+ * (scalars, files, geo, vector, table refs, objects, lists). The file/geo/vector/
+ * tableRef constructors delegate to `f.*`: the descriptor (`{ type, options }`) is
+ * context-free — the input-vs-column difference is applied later by `encodeInput`'s
+ * `INPUT_CONTEXT` — so the same constructor is correct for both and they can't drift.
+ * `enum`/`object` take their payload positionally; the rest take plain options.
+ */
+export const input = {
+  // --- scalars ---
+  text: makeInput<string, TextMethod>("text"),
+  int: makeInput<number, IntMethod>("int"),
+  decimal: makeInput<number, DecimalMethod>("decimal"),
+  bool: makeInput<boolean>("bool"),
+  email: makeInput<string, EmailMethod>("email"),
+  password: makeInput<string, PasswordMethod>("password"),
+  uuid: makeInput<string>("uuid"),
+  date: makeInput<string>("date"),
+  /** Epoch-millisecond timestamp (stored `epochms`). */
+  timestamp: makeInput<number>("epochms"),
+  json: makeInput<unknown>("json"),
+
+  // --- file resources / geo / vector / table refs (shared with the `f.*` catalog) ---
+  /** Image file input (stored `blob_img`). */
+  image: f.image,
+  /** Video file input (stored `blob_video`). */
+  video: f.video,
+  /** Audio file input (stored `blob_audio`). */
+  audio: f.audio,
+  /** Generic file-attachment input (stored `blob`). */
+  attachment: f.attachment,
+  /** Geo inputs: `input.geo.point()`, `.polygon()`, … (six geometry types). */
+  geo: f.geo,
+  /** Vector input; `size` (>= 1) is the embedding dimensionality. */
+  vector: f.vector,
+  /** Table-reference input — see {@link f.tableRef}; pass the table handle or bare name. */
+  tableRef: f.tableRef,
+  /** Enum input; `values` is required and must be non-empty. */
+  enum<const V extends ReadonlyArray<string | number>, const O extends ConstInputOpts<never> = Record<string, never>>(
+    values: V,
+    options: O = {} as O,
+  ): InputDescriptor & TypeBrand<V[number], O> {
+    if (!values?.length) throw new Error("input.enum: at least one value is required.");
+    return { type: "enum", options: { ...options, values: [...values] } } as InputDescriptor &
+      TypeBrand<V[number], O>;
+  },
+  /**
+   * Object input (stored `obj`) with typed, named children. `children` is a
+   * field map built from the same `f.*` catalog used for columns, e.g.
+   * `input.object({ name: f.text(), age: f.int() })`.
+   */
+  object<const C extends FieldMap, const O extends ConstInputOpts<never> = Record<string, never>>(
+    children: C,
+    options: O = {} as O,
+  ): InputDescriptor & TypeBrand<FromFieldMap<C>, O> {
+    return {
+      type: "obj",
+      options: { ...options, children: toNestedFields(children) },
+    } as InputDescriptor & TypeBrand<FromFieldMap<C>, O>;
+  },
+  /**
+   * List (array) input — wraps an element constructor, mirroring `Array<T>`:
+   * `input.list(input.text())`, `input.list(input.object({ id: f.int() }))`.
+   * The element's own options (e.g. its `methods`) are kept; list-level `options`
+   * (`required`, `nullable`, `description`, …) apply to the list field and win
+   * on conflict. The element's value type is preserved as the array element.
+   */
+  list<const E extends InputDescriptor, const O extends ConstInputOpts<never> = Record<string, never>>(
+    element: E,
+    options: O = {} as O,
+  ): InputDescriptor & TypeBrand<BrandValue<E>, O & { array: true }> {
+    if (!element?.type) {
+      throw new Error("input.list: pass an element constructor, e.g. input.list(input.text()).");
+    }
+    return {
+      type: element.type,
+      options: { ...element.options, ...options, array: true },
+    } as InputDescriptor & TypeBrand<BrandValue<E>, O & { array: true }>;
+  },
+};
+
+/** Encode a named input descriptor into the full stored `InputXdo`. */
+export function encodeInput(name: string, descriptor: InputDescriptor): InputXdo {
+  return encodeField(name, descriptor.type, descriptor.options, INPUT_CONTEXT) as InputXdo;
+}

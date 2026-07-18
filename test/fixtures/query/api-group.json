@@ -1,0 +1,60 @@
+{
+  "id": 305,
+  "created_at": "2025-09-11 22:27:09+0000",
+  "updated_at": "2025-09-11 22:27:25+0000",
+  "deleted_at": null,
+  "name": "yo",
+  "description": "",
+  "canonical": "M_o9sngx",
+  "swagger": true,
+  "api_group_enabled": true,
+  "docs": "",
+  "guid": "VXV-4JxlNG-l0aEvkhl4A2pZHrg",
+  "documentation": {
+    "require_token": true,
+    "token": "hJ7ktCqMZ15NBAKmjduPhfRi8X8"
+  },
+  "workspace": {
+    "id": 27
+  },
+  "branch": {
+    "id": 0
+  },
+  "market_item": {
+    "id": 0,
+    "version": 0,
+    "guid": ""
+  },
+  "middleware": {
+    "pre_customize": false,
+    "post_customize": false,
+    "pre": [],
+    "post": []
+  },
+  "history": {
+    "inherit": true,
+    "query_enabled": true,
+    "query_limit": 100
+  },
+  "tag": [],
+  "cors": {
+    "mode": "default",
+    "allowOrigins": [],
+    "allowHeaders": [],
+    "allowCredentials": false,
+    "maxAge": 0,
+    "allowMethods": {
+      "delete": false,
+      "get": false,
+      "head": false,
+      "patch": false,
+      "post": false,
+      "put": false
+    }
+  },
+  "xanoscript": {
+    "value": "",
+    "status": "error",
+    "message": "Invalid kind for swagger - static:bool"
+  }
+}

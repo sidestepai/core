@@ -1,0 +1,42 @@
+{
+  "context": {
+    "dbo": {
+      "id": 2
+    }
+  },
+  "name": "mvp:dbo_delby",
+  "as": "user3",
+  "input": [
+    {
+      "name": "field_name",
+      "value": "id",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "field_value",
+      "value": "123",
+      "tag": "const:int",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    }
+  ],
+  "_xsid": "f:ad685d77-db58-4358-be75-20269f918569",
+  "@guid": "f:ad685d77-db58-4358-be75-20269f918569",
+  "@index": [
+    "undefined"
+  ],
+  "description": "",
+  "settings_registry": [],
+  "output": {
+    "customize": false,
+    "filters": [],
+    "items": []
+  },
+  "addon": []
+}

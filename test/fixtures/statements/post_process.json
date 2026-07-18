@@ -1,0 +1,25 @@
+{
+  "name": "mvp:post_process",
+  "context": {
+      "run": [
+          {
+              "name": "mvp:set_var",
+              "as": "x1",
+              "context": {
+                  "tag": "const:int",
+                  "value": "123",
+                  "filters": []
+              }
+          },
+          {
+              "name": "mvp:math_add",
+              "context": {
+                  "name": "x1",
+                  "tag": "const:int",
+                  "value": "321",
+                  "filters": []
+              }
+          }
+      ]
+  }
+}

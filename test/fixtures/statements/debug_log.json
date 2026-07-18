@@ -1,0 +1,14 @@
+{
+  "context": {
+    "value": "123",
+    "tag": "const:int",
+    "filters": []
+  },
+  "name": "mvp:debug_log",
+  "input": [],
+  "_xsid": "f:70404c61-b932-4886-ba80-9d7d3e8fa46c",
+  "@guid": "f:70404c61-b932-4886-ba80-9d7d3e8fa46c",
+  "@index": [
+    "undefined"
+  ]
+}

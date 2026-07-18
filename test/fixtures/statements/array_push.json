@@ -1,0 +1,18 @@
+{
+  "context": {
+    "name": "x1",
+    "value": "123",
+    "tag": "const:int",
+    "filters": []
+  },
+  "name": "mvp:array_push",
+  "input": [],
+  "_xsid": "f:01e4af79-bbc4-4da4-9cb5-94c2171f84be",
+  "@guid": "f:01e4af79-bbc4-4da4-9cb5-94c2171f84be",
+  "@index": [
+    "undefined"
+  ],
+  "output": {
+    "filters": []
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "context": {},
+  "name": "mvp:delete_file",
+  "input": [
+    {
+      "name": "pathname",
+      "value": "abc",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    }
+  ],
+  "_xsid": "f:9215ea81-88f9-4c2e-9dda-d464a1450775",
+  "@guid": "f:9215ea81-88f9-4c2e-9dda-d464a1450775",
+  "@index": [
+    "undefined"
+  ],
+  "as": "",
+  "description": "",
+  "settings_registry": [],
+  "output": {
+    "customize": false,
+    "filters": [],
+    "items": []
+  },
+  "addon": []
+}

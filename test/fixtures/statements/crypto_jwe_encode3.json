@@ -1,0 +1,48 @@
+{
+  "context": {},
+  "name": "mvp:crypto_jwe_encode3",
+  "as": "crypto4",
+  "input": [
+    {
+      "name": "headers",
+      "value": "",
+      "tag": "const:obj",
+      "filters": []
+    },
+    {
+      "name": "claims",
+      "value": "",
+      "tag": "const:obj",
+      "filters": []
+    },
+    {
+      "name": "key",
+      "value": "",
+      "tag": "const",
+      "filters": []
+    },
+    {
+      "name": "key_algorithm",
+      "value": "A256KW",
+      "tag": "const",
+      "filters": []
+    },
+    {
+      "name": "content_algorithm",
+      "value": "A256CBC-HS512",
+      "tag": "const",
+      "filters": []
+    },
+    {
+      "name": "ttl",
+      "value": 0,
+      "tag": "const:int",
+      "filters": []
+    }
+  ],
+  "_xsid": "f:c8988e71-afa6-49b0-ad38-611ffd00cb1e",
+  "@guid": "f:c8988e71-afa6-49b0-ad38-611ffd00cb1e",
+  "@index": [
+    "undefined"
+  ]
+}

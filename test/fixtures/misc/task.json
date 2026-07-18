@@ -1,0 +1,79 @@
+{
+  "id": 1,
+  "created_at": "2024-12-09 17:20:31+0000",
+  "updated_at": "2024-12-09 17:20:31+0000",
+  "name": "test",
+  "description": "",
+  "docs": "",
+  "guid": "12K4BY0oZvS_cbKlsiGI4sm8C7c",
+  "datasource": "",
+  "active": false,
+  "workspace": {
+    "id": 2
+  },
+  "branch": {
+    "id": 0
+  },
+  "middleware": {
+    "pre_customize": false,
+    "post_customize": false,
+    "pre": [],
+    "post": []
+  },
+  "market_item": {
+    "id": 0,
+    "version": 0,
+    "guid": ""
+  },
+  "tag": [],
+  "history": {
+    "inherit": true,
+    "enabled": false,
+    "limit": 100
+  },
+  "_draft": true,
+  "_xsid": "task:34fa32bb-7231-4a25-86ef-cace45bd8f76",
+  "run": [
+    {
+      "context": {
+        "value": "123",
+        "tag": "const:int",
+        "filters": []
+      },
+      "name": "mvp:set_var",
+      "as": "x1",
+      "input": [],
+      "_xsid": "f:a1ac3888-a9b4-4bf3-b389-6d9a89430407",
+      "@guid": "f:a1ac3888-a9b4-4bf3-b389-6d9a89430407",
+      "@index": [
+        "undefined"
+      ]
+    }
+  ],
+  "schedule": [
+    {
+      "starts_on": "2024-12-09T09:37:42.939-08:00",
+      "repeat": {
+        "enabled": true,
+        "ends": {
+          "enabled": true,
+          "on": "2024-12-09T09:37:42.939-08:00"
+        },
+        "freq": 86400
+      },
+      "_xsid": "s:8ebc7843-1e75-40f4-b617-c97bfdeabeb9"
+    },
+    {
+      "starts_on": "2024-12-09T15:26:55.718-08:00",
+      "repeat": {
+        "enabled": false,
+        "ends": {
+          "enabled": false,
+          "on": "2024-12-09T15:26:55.718-08:00"
+        },
+        "freq": 86400
+      },
+      "_xsid": "s:de327b75-7e0b-4ab5-a04d-deced8dfadb4"
+    }
+  ]
+}

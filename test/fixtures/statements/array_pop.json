@@ -1,0 +1,16 @@
+{
+  "context": {
+    "name": "mylist"
+  },
+  "name": "mvp:array_pop",
+  "input": [],
+  "_xsid": "f:8d5a742b-4e19-417a-8c46-f0a83210479b",
+  "@guid": "f:8d5a742b-4e19-417a-8c46-f0a83210479b",
+  "@index": [
+    "undefined"
+  ],
+  "as": "test",
+  "output": {
+    "filters": []
+  }
+}
