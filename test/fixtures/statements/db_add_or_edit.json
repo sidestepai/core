@@ -1,0 +1,99 @@
+{
+  "context": {
+    "dbo": {
+      "id": 2,
+      "as": "user"
+    }
+  },
+  "name": "mvp:dbo_addoreditby",
+  "as": "user12",
+  "input": [
+    {
+      "name": "field_name",
+      "value": "id",
+      "tag": "const",
+      "filters": []
+    },
+    {
+      "name": "field_value",
+      "value": "",
+      "tag": "const",
+      "filters": []
+    },
+    {
+      "ignore": true,
+      "name": "created_at",
+      "value": "",
+      "tag": "const",
+      "filters": []
+    },
+    {
+      "ignore": true,
+      "name": "name",
+      "value": "",
+      "tag": "const",
+      "filters": []
+    },
+    {
+      "ignore": true,
+      "name": "email",
+      "value": "null",
+      "tag": "const:null",
+      "filters": []
+    },
+    {
+      "ignore": true,
+      "name": "password",
+      "value": "null",
+      "tag": "const:null",
+      "filters": []
+    },
+    {
+      "ignore": true,
+      "name": "_test",
+      "value": "",
+      "tag": "const",
+      "filters": []
+    },
+    {
+      "ignore": true,
+      "name": "_abc",
+      "value": "",
+      "tag": "const",
+      "filters": []
+    },
+    {
+      "ignore": true,
+      "name": "num",
+      "value": "",
+      "tag": "const",
+      "filters": []
+    },
+    {
+      "ignore": true,
+      "name": "json",
+      "value": "",
+      "tag": "const",
+      "filters": []
+    },
+    {
+      "ignore": true,
+      "name": "@meta",
+      "value": "null",
+      "tag": "const:null",
+      "filters": []
+    },
+    {
+      "ignore": true,
+      "name": "hehe",
+      "value": "",
+      "tag": "const",
+      "filters": []
+    }
+  ],
+  "_xsid": "f:0a75ad61-5967-4b6a-9d97-a44d66f4097b",
+  "@guid": "f:0a75ad61-5967-4b6a-9d97-a44d66f4097b",
+  "@index": [
+    "undefined"
+  ]
+}

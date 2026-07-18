@@ -1,0 +1,216 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { get } from "node:http";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { parseArgs, run } from "../../src/emit/cli.js";
+
+describe("parseArgs — login/OAuth flags", () => {
+  it("parses `login --instance` (space form)", () => {
+    const args = parseArgs(["login", "--instance", "https://x.io"]);
+    expect(args.command).toBe("login");
+    expect(args.instance).toBe("https://x.io");
+  });
+
+  it("parses `login --instance=` (inline form) identically", () => {
+    const args = parseArgs(["login", "--instance=https://x.io"]);
+    expect(args.command).toBe("login");
+    expect(args.instance).toBe("https://x.io");
+  });
+
+  it("parses --auth-host, --auth-file, --scope in both flag forms", () => {
+    const spaced = parseArgs([
+      "login",
+      "--auth-host",
+      "https://app.xano.com",
+      "--auth-file",
+      "./.xano/auth.json",
+      "--scope",
+      "openid offline_access",
+    ]);
+    expect(spaced.authHost).toBe("https://app.xano.com");
+    expect(spaced.authFile).toBe("./.xano/auth.json");
+    expect(spaced.scope).toBe("openid offline_access");
+
+    const inline = parseArgs([
+      "login",
+      "--auth-host=https://app.xano.com",
+      "--auth-file=./.xano/auth.json",
+      "--scope=openid offline_access",
+    ]);
+    expect(inline.authHost).toBe("https://app.xano.com");
+    expect(inline.authFile).toBe("./.xano/auth.json");
+    expect(inline.scope).toBe("openid offline_access");
+  });
+
+  it("parses --port as a number (both forms)", () => {
+    expect(parseArgs(["login", "--port", "8123"]).port).toBe(8123);
+    expect(parseArgs(["login", "--port=8123"]).port).toBe(8123);
+  });
+
+  it("rejects a non-numeric or out-of-range --port", () => {
+    expect(() => parseArgs(["login", "--port", "abc"])).toThrow(/--port must be an integer/);
+    expect(() => parseArgs(["login", "--port", "70000"])).toThrow(/--port must be an integer/);
+    expect(() => parseArgs(["login", "--port"])).toThrow(/--port must be an integer/);
+  });
+
+  it("fails loudly on the removed --profile/--config flags instead of swallowing them", () => {
+    expect(() => parseArgs(["push", "./index.ts", "--profile", "staging"])).toThrow(/were removed/);
+    expect(() => parseArgs(["push", "./index.ts", "--config=./creds.yaml"])).toThrow(/were removed/);
+  });
+
+  it("does not leak the --instance value into positionals", () => {
+    const args = parseArgs(["push", "./src/index.ts", "--instance", "https://x.io"]);
+    expect(args.positionals).toEqual(["./src/index.ts"]);
+    expect(args.file).toBe("./src/index.ts");
+    expect(args.instance).toBe("https://x.io");
+  });
+
+  it("leaves login flags undefined when absent", () => {
+    const args = parseArgs(["push", "./src/index.ts"]);
+    expect(args.instance).toBeUndefined();
+    expect(args.authHost).toBeUndefined();
+    expect(args.authFile).toBeUndefined();
+    expect(args.port).toBeUndefined();
+    expect(args.scope).toBeUndefined();
+  });
+});
+
+/** Poll until `predicate()` is true or the deadline passes. */
+async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
+  const start = Date.now();
+  while (!predicate()) {
+    if (Date.now() - start > timeoutMs) throw new Error("waitFor timed out");
+    await new Promise((r) => setTimeout(r, 5));
+  }
+}
+
+/** Drive the loopback callback with a plain node:http GET (bypasses fetch mock). */
+function hitCallback(url: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const req = get(url, (res) => {
+      res.resume();
+      res.on("end", () => resolve());
+    });
+    req.on("error", reject);
+  });
+}
+
+/** Minimal unsigned JWT carrying an `aud` claim, so decodeAudience can read it. */
+function jwtWithAud(aud: string): string {
+  const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
+  return `${b64({ typ: "at+jwt" })}.${b64({ aud })}.sig`;
+}
+
+describe("sidestep login (end-to-end)", () => {
+  let dir: string;
+  let authPath: string;
+  let stderr: string[];
+
+  const DISCOVERY = {
+    authorization_endpoint: "https://app.xano.com/oauth2/authorize",
+    token_endpoint: "https://app.xano.com/api:master/oauth/token",
+    registration_endpoint: "https://app.xano.com/api:master/oauth/register",
+  };
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "sidestep-login-"));
+    mkdirSync(join(dir, ".git")); // contain ensureGitignored to this dir
+    authPath = join(dir, ".xano", "auth.json");
+    stderr = [];
+    vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+      stderr.push(typeof chunk === "string" ? chunk : chunk.toString());
+      return true;
+    });
+    process.env.XANO_NO_BROWSER = "1";
+    process.env.XANO_CLIENT_FILE = join(dir, "clients.json"); // keep DCR cache out of ~/.xano
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    rmSync(dir, { recursive: true, force: true });
+    delete process.env.XANO_NO_BROWSER;
+    delete process.env.XANO_CLIENT_FILE;
+    delete process.env.XANO_INSTANCE;
+    delete process.env.XANO_AUTH_HOST;
+  });
+
+  /** Stub the fetch sequence: discovery → DCR registration → token exchange. */
+  function stubOauthFetch(tokenBody: Record<string, unknown>) {
+    return vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify(DISCOVERY), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ client_id: "dcr-xyz" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(tokenBody), { status: 200 }));
+  }
+
+  /** Pull the authorize URL that login wrote to stderr. */
+  function authorizeUrlFromStderr(): URL {
+    const text = stderr.join("");
+    const match = text.match(/https:\/\/app\.xano\.com\/oauth2\/authorize\?\S+/);
+    if (!match) throw new Error(`no authorize URL in stderr:\n${text}`);
+    return new URL(match[0]);
+  }
+
+  it("runs the full flow (discover → register → exchange) and writes tokens + client_id + gitignore", async () => {
+    stubOauthFetch({ access_token: "acc", refresh_token: "ref", expires_in: 600 });
+
+    const p = run(["login", "--instance", "https://x8ki.xano.io", "--auth-file", authPath, "--port", "0"]);
+
+    await waitFor(() => stderr.join("").includes("/oauth2/authorize?"));
+    const authUrl = authorizeUrlFromStderr();
+    const redirectUri = authUrl.searchParams.get("redirect_uri")!;
+    const state = authUrl.searchParams.get("state")!;
+    expect(authUrl.searchParams.get("client_id")).toBe("dcr-xyz");
+    expect(authUrl.searchParams.get("resource")).toBe("https://x8ki.xano.io");
+
+    await hitCallback(`${redirectUri}?code=the-code&state=${state}`);
+    await p;
+
+    const saved = JSON.parse(readFileSync(authPath, "utf8"));
+    expect(saved.access_token).toBe("acc");
+    expect(saved.refresh_token).toBe("ref");
+    expect(saved.instance).toBe("https://x8ki.xano.io"); // non-JWT token → falls back to --instance
+    expect(saved.client_id).toBe("dcr-xyz");
+    expect(saved.expires_at).toBeGreaterThan(Date.now());
+    expect(readFileSync(join(dir, ".gitignore"), "utf8")).toContain(".xano/");
+    // The DCR client was cached globally for reuse.
+    expect(existsSync(join(dir, "clients.json"))).toBe(true);
+  });
+
+  it("without --instance, derives the instance from the token's aud and omits resource", async () => {
+    stubOauthFetch({ access_token: jwtWithAud("https://consent-picked.xano.io"), refresh_token: "ref", expires_in: 600 });
+
+    const p = run(["login", "--auth-file", authPath, "--port", "0"]);
+    await waitFor(() => stderr.join("").includes("/oauth2/authorize?"));
+    const authUrl = authorizeUrlFromStderr();
+    expect(authUrl.searchParams.has("resource")).toBe(false); // no pre-selection
+    await hitCallback(`${authUrl.searchParams.get("redirect_uri")}?code=c&state=${authUrl.searchParams.get("state")}`);
+    await p;
+
+    expect(JSON.parse(readFileSync(authPath, "utf8")).instance).toBe("https://consent-picked.xano.io");
+  });
+
+  it("errors when neither --instance nor a token aud can determine the instance", async () => {
+    stubOauthFetch({ access_token: "opaque-not-a-jwt", refresh_token: "ref", expires_in: 600 });
+    const p = run(["login", "--auth-file", authPath, "--port", "0"]);
+    const rejected = expect(p).rejects.toThrow(/Could not determine the instance/);
+    await waitFor(() => stderr.join("").includes("/oauth2/authorize?"));
+    const authUrl = authorizeUrlFromStderr();
+    await hitCallback(`${authUrl.searchParams.get("redirect_uri")}?code=c&state=${authUrl.searchParams.get("state")}`);
+    await rejected;
+  });
+
+  it("pre-selects the instance from $XANO_INSTANCE (resource param)", async () => {
+    process.env.XANO_INSTANCE = "https://env-instance.xano.io";
+    stubOauthFetch({ access_token: "acc", refresh_token: "ref", expires_in: 600 });
+
+    const p = run(["login", "--auth-file", authPath, "--port", "0"]);
+    await waitFor(() => stderr.join("").includes("/oauth2/authorize?"));
+    const authUrl = authorizeUrlFromStderr();
+    expect(authUrl.searchParams.get("resource")).toBe("https://env-instance.xano.io");
+    await hitCallback(`${authUrl.searchParams.get("redirect_uri")}?code=c&state=${authUrl.searchParams.get("state")}`);
+    await p;
+    expect(JSON.parse(readFileSync(authPath, "utf8")).instance).toBe("https://env-instance.xano.io");
+  });
+});

@@ -1,0 +1,124 @@
+{
+  "id": 3,
+  "created_at": "2024-11-13 08:10:36+0000",
+  "updated_at": "2024-11-13 08:10:36+0000",
+  "deleted_at": null,
+  "name": "auth/me",
+  "description": "Get the user record belonging to the authentication token",
+  "docs": "",
+  "guid": "B6GKzQBUWOOSDMvzcDSlPM97uWs",
+  "api_enabled": true,
+  "auth": 2,
+  "response_type": "standard",
+  "verb": "GET",
+  "disabled": false,
+  "app": {
+    "id": 1
+  },
+  "cache": {
+    "active": false,
+    "ttl": 3600,
+    "input": true,
+    "auth": true,
+    "datasource": true,
+    "ip": false,
+    "headers": [],
+    "env": []
+  },
+  "output": [],
+  "middleware": {
+    "pre_customize": false,
+    "post_customize": false,
+    "pre": [],
+    "post": []
+  },
+  "market_item": {
+    "id": 0,
+    "version": 0,
+    "guid": ""
+  },
+  "tag": [],
+  "history": {
+    "inherit": true,
+    "enabled": false,
+    "limit": 100
+  },
+  "_draft": false,
+  "_xsid": "query:5e0fe332-9bb0-4b26-9341-3ffdb006e12e",
+  "input": [],
+  "result": [
+    {
+      "_xsid": "r:3c2f9009-fc28-4975-8745-e913f047cc23",
+      "disabled": false,
+      "name": "",
+      "value": "user",
+      "tag": "var",
+      "filters": []
+    }
+  ],
+  "run": [
+    {
+      "name": "mvp:dbo_getby",
+      "as": "user",
+      "context": {
+        "dbo": {
+          "id": 2
+        }
+      },
+      "description": "",
+      "disabled": false,
+      "mocks": {},
+      "_xsid": "f:2a23bbd3-7d77-4ff3-88e9-9be1f6643d3a",
+      "input": [
+        {
+          "name": "field_name",
+          "value": "id",
+          "tag": "const",
+          "ignore": false,
+          "expand": false,
+          "children": [],
+          "filters": []
+        },
+        {
+          "name": "field_value",
+          "value": "id",
+          "tag": "auth",
+          "ignore": false,
+          "expand": false,
+          "children": [],
+          "filters": []
+        }
+      ],
+      "settings_registry": null,
+      "output": {
+        "customize": true,
+        "filters": [],
+        "items": [
+          {
+            "name": "id",
+            "children": []
+          },
+          {
+            "name": "created_at",
+            "children": []
+          },
+          {
+            "name": "name",
+            "children": []
+          },
+          {
+            "name": "email",
+            "children": []
+          }
+        ]
+      },
+      "addon": [],
+      "runtime": null,
+      "@guid": "f:2a23bbd3-7d77-4ff3-88e9-9be1f6643d3a",
+      "@index": [
+        "undefined"
+      ]
+    }
+  ],
+  "test": []
+}

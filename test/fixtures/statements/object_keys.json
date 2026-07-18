@@ -1,0 +1,26 @@
+{
+  "context": {
+    "object": {
+      "value": "{\"first_name\":\"first\",\"last_name\":\"last\"}",
+      "tag": "const",
+      "filters": [
+        {
+          "name": "json_decode",
+          "disabled": false,
+          "arg": []
+        }
+      ]
+    }
+  },
+  "name": "mvp:object_keys",
+  "as": "x2",
+  "input": [],
+  "_xsid": "f:201d3a02-d2c5-465e-95b5-b354fb8f17db",
+  "@guid": "f:201d3a02-d2c5-465e-95b5-b354fb8f17db",
+  "@index": [
+    "undefined"
+  ],
+  "output": {
+    "filters": []
+  }
+}

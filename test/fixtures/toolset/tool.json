@@ -1,0 +1,112 @@
+{
+  "id": 1,
+  "created_at": "2025-08-30 19:50:44+0000",
+  "updated_at": "2025-08-30 19:50:44+0000",
+  "name": "test_tool",
+  "description": "hello",
+  "instructions": "hey there - this is a test\n\nnice work!",
+  "docs": "",
+  "guid": "lvJb6AY_Rld5q4J53FnAWj-R-Rs",
+  "enabled": true,
+  "workspace": {
+    "id": 27
+  },
+  "branch": {
+    "id": 0
+  },
+  "output": [],
+  "market_item": {
+    "id": 0,
+    "version": 0,
+    "guid": ""
+  },
+  "middleware": {
+    "pre_customize": false,
+    "post_customize": false,
+    "pre": [],
+    "post": []
+  },
+  "tag": [
+    {
+      "tag": "test"
+    },
+    {
+      "tag": "ok"
+    }
+  ],
+  "history": {
+    "inherit": true,
+    "enabled": true,
+    "limit": 100
+  },
+  "toolset": {
+    "id": 0
+  },
+  "_draft": false,
+  "_xsid": "tool:a68026fc-5036-4680-b531-bcd13a1d6069",
+  "input": [
+    {
+      "_xsid": "i:b08f34fa-7fe4-40f9-ad1e-55291daf40ec",
+      "name": "score",
+      "type": "int",
+      "description": "",
+      "nullable": false,
+      "default": "",
+      "merge": false,
+      "hidden": [],
+      "override": [],
+      "customize": "",
+      "required": false,
+      "values": [],
+      "mode": "",
+      "format": "",
+      "sensitive": false,
+      "list": {
+        "min": "",
+        "max": ""
+      },
+      "vector": {
+        "size": 3
+      },
+      "access": "public",
+      "style": {
+        "type": "single"
+      },
+      "children": [],
+      "methods": [],
+      "market_item": {
+        "id": "",
+        "version": "",
+        "guid": ""
+      },
+      "is_settings_registry": false
+    }
+  ],
+  "result": [
+    {
+      "filters": [],
+      "name": "",
+      "tag": "var",
+      "value": "x1",
+      "_xsid": "r:b4c5fdde-1a79-4ab8-9600-6084c4bb1d5b"
+    }
+  ],
+  "run": [
+    {
+      "context": {
+        "value": "123",
+        "tag": "const:int",
+        "filters": []
+      },
+      "name": "mvp:set_var",
+      "as": "x1",
+      "input": [],
+      "_xsid": "f:cde5b0fe-622b-4855-a461-3cbc9d1fefa1",
+      "@guid": "f:cde5b0fe-622b-4855-a461-3cbc9d1fefa1",
+      "@index": [
+        "undefined"
+      ]
+    }
+  ],
+  "test": []
+}

@@ -1,0 +1,36 @@
+{
+  "context": {
+    "as": "index",
+    "cnt": {
+      "value": "10",
+      "tag": "const:int",
+      "filters": []
+    },
+    "run": [
+      {
+        "context": {
+          "value": "email",
+          "tag": "input",
+          "filters": []
+        },
+        "name": "mvp:set_var",
+        "as": "x3",
+        "input": [],
+        "_xsid": "f:57eb772f-2576-4560-a96d-4f204d87ed93",
+        "index": "8.1",
+        "@guid": "f:57eb772f-2576-4560-a96d-4f204d87ed93",
+        "@index": [
+          "8",
+          "1"
+        ]
+      }
+    ]
+  },
+  "name": "mvp:for",
+  "input": [],
+  "_xsid": "f:b0d21b5e-9a79-4bf5-9ec3-79dcb177a249",
+  "@guid": "f:b0d21b5e-9a79-4bf5-9ec3-79dcb177a249",
+  "@index": [
+    "undefined"
+  ]
+}

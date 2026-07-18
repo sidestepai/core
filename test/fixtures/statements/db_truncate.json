@@ -1,0 +1,33 @@
+{
+  "context": {
+    "dbo": {
+      "id": 4
+    }
+  },
+  "name": "mvp:dbo_truncate",
+  "as": "",
+  "input": [
+    {
+      "name": "reset",
+      "value": "false",
+      "tag": "const:bool",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    }
+  ],
+  "_xsid": "f:1340e689-3340-4acd-a890-d81f609436cd",
+  "@guid": "f:1340e689-3340-4acd-a890-d81f609436cd",
+  "@index": [
+    "undefined"
+  ],
+  "description": "",
+  "settings_registry": [],
+  "output": {
+    "customize": false,
+    "filters": [],
+    "items": []
+  },
+  "addon": []
+}

@@ -1,0 +1,448 @@
+/**
+ * CLI:
+ *   sidestep compile <file> [--out <path>]   — emit one function's JSON (U8)
+ *   sidestep export  <file> [--out <path>]   — emit the aggregate workspace
+ *                                            bundle from a default-exported
+ *                                            `Xano` registry (U12)
+ *   sidestep lock <rename|prune|adopt> …     — xano.lock maintenance (see
+ *                                            lock-commands.ts)
+ *
+ * Dynamically imports the module's default export. A `.ts`/`.mts`/`.cts` entry
+ * is loaded through `tsx` (the `tsImport` API) when it's installed, so you can
+ * point the CLI straight at a TypeScript workspace file; plain `.js`/`.mjs`
+ * goes through a normal dynamic `import`. See README.
+ *
+ * Identity locking: when a `xano.lock` sits beside the entry file (or `--lock`
+ * opts into creating one), `export` reads + validates it, seeds the guid
+ * override store BEFORE the workspace module loads (references bake guids at
+ * authoring time — see lock/store.ts), exports with the lock context, writes
+ * the merged lock back atomically, and only THEN emits the bundle — a crash
+ * between the two writes must never ship identities the lock hasn't recorded.
+ * `compile` seeds from an adjacent lock too, so single-function artifacts
+ * agree with locked bundles. The path flag is `--lock=<path>` (the `=` form
+ * only — a space-separated path would be ambiguous with the entry-file
+ * positional). `--frozen-lock` is the CI guard: fail instead of changing the
+ * lock, so canonicals minted in CI are never silently discarded.
+ */
+import { pathToFileURL } from "node:url";
+import { existsSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { emit, serializeBundle } from "./emit.js";
+import { writeArtifact } from "./write.js";
+import type { FunctionDef } from "../function/define.js";
+import { Xano } from "../workspace/xano.js";
+import {
+  createLockContext,
+  emptyLock,
+  mergeObserved,
+  serializeLock,
+  validateLockModel,
+  WORKSPACE_KEY,
+  WORKSPACE_REALTIME_KEY,
+  type LockExportContext,
+  type LockFile,
+} from "../lock/lock.js";
+import { readLockFile, writeLockFile } from "../lock/io.js";
+import { resetLockOverrides, seedLockOverrides } from "../lock/store.js";
+
+export interface ParsedArgs {
+  command: string | undefined;
+  file: string | undefined;
+  out: string | undefined;
+  /** All non-flag arguments after the command (file is positionals[0]). */
+  positionals: string[];
+  /** `--lock` / `--lock=<path>`: opt into creating a lock file. */
+  lock: boolean;
+  /** The `--lock=<path>` override (default: `xano.lock` beside the entry). */
+  lockPath: string | undefined;
+  /** `--frozen-lock`: hard-fail if the export would change the lock (CI). */
+  frozenLock: boolean;
+  /** `--yes`/`-y`: confirm destructive lock maintenance non-interactively. */
+  yes: boolean;
+  /** `push --bundle <path>`: upload an already-exported bundle instead of a file entry. */
+  bundle: string | undefined;
+  /** `--instance <origin>`: target instance origin (OAuth `resource` + push URL). Default: $XANO_INSTANCE, then the saved token's instance. */
+  instance: string | undefined;
+  /** `--auth-host <origin>`: cloud-master OAuth host. Default: $XANO_AUTH_HOST, then https://app.xano.com. */
+  authHost: string | undefined;
+  /** `--auth-file <path>`: project-local token cache. Default: $XANO_AUTH_FILE, then ./.xano/auth.json. */
+  authFile: string | undefined;
+  /** `login --port <n>`: fixed loopback callback port (default: an ephemeral port). */
+  port: number | undefined;
+  /** `login --scope "<space list>"`: OAuth scopes to request (default: the built-in xano-cli set). */
+  scope: string | undefined;
+}
+
+/** Parse a `--port` value, rejecting NaN/out-of-range so `server.listen` never gets `NaN`. */
+function parsePort(raw: string | undefined): number {
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0 || n > 65535) {
+    throw new Error(`--port must be an integer 0-65535 (got "${raw ?? ""}").`);
+  }
+  return n;
+}
+
+export function parseArgs(argv: string[]): ParsedArgs {
+  const [command, ...rest] = argv;
+  let out: string | undefined;
+  let lock = false;
+  let lockPath: string | undefined;
+  let frozenLock = false;
+  let yes = false;
+  let bundle: string | undefined;
+  let instance: string | undefined;
+  let authHost: string | undefined;
+  let authFile: string | undefined;
+  let port: number | undefined;
+  let scope: string | undefined;
+  const positionals: string[] = [];
+  for (let i = 0; i < rest.length; i++) {
+    const arg = rest[i]!;
+    if (arg === "--out" || arg === "-o") {
+      out = rest[++i];
+    } else if (arg === "--lock") {
+      lock = true;
+    } else if (arg.startsWith("--lock=")) {
+      lock = true;
+      lockPath = arg.slice("--lock=".length);
+    } else if (arg === "--frozen-lock") {
+      frozenLock = true;
+    } else if (arg === "--yes" || arg === "-y") {
+      yes = true;
+    } else if (arg === "--bundle") {
+      bundle = rest[++i];
+    } else if (arg.startsWith("--bundle=")) {
+      bundle = arg.slice("--bundle=".length);
+    } else if (arg === "--instance") {
+      instance = rest[++i];
+    } else if (arg.startsWith("--instance=")) {
+      instance = arg.slice("--instance=".length);
+    } else if (arg === "--auth-host") {
+      authHost = rest[++i];
+    } else if (arg.startsWith("--auth-host=")) {
+      authHost = arg.slice("--auth-host=".length);
+    } else if (arg === "--auth-file") {
+      authFile = rest[++i];
+    } else if (arg.startsWith("--auth-file=")) {
+      authFile = arg.slice("--auth-file=".length);
+    } else if (arg === "--port") {
+      port = parsePort(rest[++i]);
+    } else if (arg.startsWith("--port=")) {
+      port = parsePort(arg.slice("--port=".length));
+    } else if (arg === "--scope") {
+      scope = rest[++i];
+    } else if (arg.startsWith("--scope=")) {
+      scope = arg.slice("--scope=".length);
+    } else if (arg === "--profile" || arg.startsWith("--profile=") || arg === "--config" || arg.startsWith("--config=")) {
+      // Removed in the OAuth migration — fail loudly instead of letting the flag
+      // (and its value) fall through into positionals and misparse as an entry file.
+      throw new Error(
+        `\`--profile\`/\`--config\` were removed — push now authenticates via OAuth. ` +
+          `Run \`sidestep login --instance <origin>\` once (or set XANO_REFRESH_TOKEN for CI).`,
+      );
+    } else {
+      positionals.push(arg);
+    }
+  }
+  return {
+    command,
+    file: positionals[0],
+    out,
+    positionals,
+    lock,
+    lockPath,
+    frozenLock,
+    yes,
+    bundle,
+    instance,
+    authHost,
+    authFile,
+    port,
+    scope,
+  };
+}
+
+/**
+ * Load a `.ts` entry through `tsx` (when installed) for plain-Node invocations.
+ *
+ * Uses the global `register()` hook rather than the scoped `tsImport()`: the
+ * latter resolves nested `.js`→`.ts` specifiers relative to *this* module's
+ * location, so when the CLI runs from a symlinked install (`npx`, a `file:` dep)
+ * the workspace's own relative imports (e.g. `index.ts` importing
+ * `./tables/user.js`) fail to resolve. `register()` installs the loader
+ * process-wide, so the whole module graph remaps consistently; we unregister
+ * once the entry has loaded.
+ */
+async function loadViaTsx(url: string, file: string, cause?: unknown): Promise<unknown> {
+  let register: () => () => void;
+  try {
+    ({ register } = (await import("tsx/esm/api")) as { register: typeof register });
+  } catch {
+    // tsx isn't installed, so we can't recover a TS entry bare Node rejected.
+    // Chain the original loader failure so a genuine (non-loader) error in the
+    // user's module isn't masked by the "install tsx" message.
+    throw new Error(
+      `Loading a TypeScript entry ("${file}") requires \`tsx\`. ` +
+        `Install it (\`npm i -D tsx\`) or precompile the file to .js first.`,
+      cause !== undefined ? { cause } : undefined,
+    );
+  }
+  const unregister = register();
+  try {
+    const mod = (await import(url)) as { default?: unknown };
+    return mod.default;
+  } finally {
+    unregister();
+  }
+}
+
+export async function loadDefault(file: string): Promise<unknown> {
+  const url = pathToFileURL(resolve(file)).href;
+  try {
+    // A plain dynamic import works whenever a TS loader is already active
+    // (vitest, `node --import tsx`, etc.) and keeps a single module instance.
+    const mod = await import(url);
+    return mod.default;
+  } catch (err) {
+    if (!/\.[mc]?ts$/.test(file)) throw err;
+    const code = (err as NodeJS.ErrnoException | undefined)?.code;
+    // tsx can recover these two — they're loader/resolution failures, not a
+    // module-system mismatch:
+    //   • ERR_UNKNOWN_FILE_EXTENSION — older Node with no native `.ts` support.
+    //   • ERR_MODULE_NOT_FOUND — Node ≥ 22.6 strips types natively and loads the
+    //     entry, but native stripping does NOT remap a `.js` specifier to its
+    //     `.ts` source, so a workspace's own relative imports (`./tables/user.js`)
+    //     fail. tsx's resolver does the remap.
+    if (code === "ERR_UNKNOWN_FILE_EXTENSION" || code === "ERR_MODULE_NOT_FOUND") {
+      return loadViaTsx(url, file, err);
+    }
+    // The entry was pulled into a CommonJS module graph — its nearest
+    // package.json is `"type": "commonjs"` (what `npm init -y` writes) — so Node
+    // (and tsx, which respects that type) evaluate it as CJS and choke on the
+    // ESM `import`. sidestep defs are ESM-only, so no loader can bridge this: the
+    // entry itself has to be ESM. Trade the cryptic native SyntaxError for an
+    // actionable one.
+    if (err instanceof SyntaxError && /import statement outside a module/.test(err.message)) {
+      throw new Error(
+        `Cannot load "${file}": it is being evaluated as CommonJS, but sidestep ` +
+          `workspace files are ES modules. Add \`"type": "module"\` to the nearest ` +
+          `package.json, or rename the entry to \`.mts\`.`,
+        { cause: err },
+      );
+    }
+    throw err;
+  }
+}
+
+const USAGE =
+  "Usage: sidestep <compile|export> <file> [--out <path>] [--lock[=<path>]] [--frozen-lock] | " +
+  "sidestep login [--instance <origin>] [--auth-host <origin>] [--auth-file <path>] [--port <n>] | " +
+  "sidestep push <file>|--bundle <path> [--instance <origin>] [--auth-file <path>] | " +
+  "sidestep lock <rename|prune|adopt> …";
+
+/** Quote a name for a suggested shell command when it needs it. */
+function shellName(name: string): string {
+  return /[^\w.@/-]/.test(name) ? JSON.stringify(name) : name;
+}
+
+/**
+ * Orphan warnings (R6): a lock entry nothing matched is either a rename (the
+ * fix-up command keeps the engine-side object alive) or a deletion. Warnings
+ * go to STDERR only — stdout may be a piped bundle. Renames are never guessed;
+ * newcomers of the same kind are listed as candidates, no more.
+ */
+function warnOrphans(
+  orphans: string[],
+  dropped: string[],
+  cededCanonicals: string[],
+  previous: LockFile,
+  observed: Record<string, unknown>,
+): void {
+  for (const key of orphans) {
+    if (key === WORKSPACE_KEY || key === WORKSPACE_REALTIME_KEY) {
+      process.stderr.write(
+        `sidestep: xano.lock entry "${key}" matched nothing this export (no workspace canonical ` +
+          `emitted). Run \`sidestep lock prune\` if that is intentional.\n`,
+      );
+      continue;
+    }
+    const sep = key.indexOf(":");
+    const payloadKey = key.slice(0, sep);
+    const name = key.slice(sep + 1);
+    const newcomers = Object.keys(observed)
+      .filter((k) => k.startsWith(`${payloadKey}:`) && !(k in previous.objects))
+      .map((k) => k.slice(payloadKey.length + 1));
+    const hint = newcomers.length > 0 ? ` (new ${payloadKey} names this export: ${newcomers.join(", ")})` : "";
+    process.stderr.write(
+      `sidestep: xano.lock entry "${key}" matches no exported object — if this was a rename, the ` +
+        `next sync would delete+create unless the entry moves with it.\n` +
+        `  renamed? run: sidestep lock rename ${payloadKey} ${shellName(name)} <new-name>${hint}\n` +
+        `  deleted? run: sidestep lock prune\n`,
+    );
+  }
+  for (const key of dropped) {
+    process.stderr.write(
+      `sidestep: dropped stale lock entry "${key}" — its identity reappeared under a live name ` +
+        `(a reverted rename).\n`,
+    );
+  }
+  for (const key of cededCanonicals) {
+    process.stderr.write(
+      `sidestep: lock entry "${key}" kept its guid but ceded its canonical to a live object that ` +
+        `now emits it (an explicit in-code canonical). If "${key}" was renamed, run the ` +
+        `\`sidestep lock rename\` fix-up shown above.\n`,
+    );
+  }
+}
+
+export async function run(argv: string[]): Promise<void> {
+  const args = parseArgs(argv);
+  const { command, out } = args;
+
+  if (command === "lock") {
+    const { runLockCommand } = await import("./lock-commands.js");
+    return runLockCommand(args);
+  }
+  if (command === "login") {
+    // OAuth login is Node-only (node:http/node:crypto/child_process); lazily
+    // imported like `push`/`lock` so `compile`/`export`/the browser-safe bundle
+    // never pull it in.
+    const { runLoginCommand } = await import("./login-command.js");
+    return runLoginCommand(args);
+  }
+  if (command === "push") {
+    // The uploader lives in its own (Node-only) module so the bin's other
+    // commands never pay its import cost.
+    const { runPushCommand } = await import("./push-command.js");
+    return runPushCommand(args);
+  }
+  if (command !== "compile" && command !== "export") {
+    throw new Error(`Unknown command "${command ?? ""}". ${USAGE}`);
+  }
+  if (!args.file) {
+    throw new Error(`Missing input file. ${USAGE}`);
+  }
+
+  if (command === "compile") {
+    return runCompile(args);
+  }
+
+  // export
+  const json = await exportBundleJson(args);
+  if (out) {
+    writeFileSync(out, json + "\n", "utf8");
+    process.stdout.write(`Wrote ${out}\n`);
+  } else {
+    process.stdout.write(json + "\n");
+  }
+}
+
+/**
+ * Resolve the lock path for an entry file: `--lock=<path>` wins, else
+ * `xano.lock` beside the entry (matching `export`/`compile` defaults).
+ */
+function resolveLockPath(args: ParsedArgs, file: string): string {
+  return args.lockPath !== undefined
+    ? resolve(args.lockPath)
+    : join(dirname(resolve(file)), "xano.lock");
+}
+
+async function runCompile(args: ParsedArgs): Promise<void> {
+  const file = args.file!;
+  const lockPath = resolveLockPath(args, file);
+  // Always reset before (maybe) seeding: a run in a process that previously
+  // seeded a different lock must not inherit its stale overrides.
+  resetLockOverrides();
+  // Seed from an adjacent lock so a single-function artifact carries the same
+  // reference guids a locked bundle would. Compile never writes the lock.
+  if (existsSync(lockPath)) {
+    seedLockOverrides(readLockFile(lockPath));
+  }
+  const def = await loadDefault(file);
+  if (!def || typeof def !== "object" || typeof (def as FunctionDef).name !== "string") {
+    throw new Error(`Module "${file}" must default-export a FunctionDef (got: ${typeof def}).`);
+  }
+  const fn = def as FunctionDef;
+  if (args.out) {
+    writeArtifact(fn, args.out);
+    process.stdout.write(`Wrote ${args.out}\n`);
+  } else {
+    process.stdout.write(emit(fn) + "\n");
+  }
+}
+
+/**
+ * Run the full `export` pipeline (lock seed → load → export → lock merge/write)
+ * and return the serialized bundle JSON — WITHOUT writing it anywhere. `export`
+ * writes it to `--out`/stdout; `push` streams it to the sandbox endpoint. The
+ * lock is written to disk here as a side effect, exactly as `export` does, so
+ * `push <file>` freezes identities identically to an `export`.
+ */
+export async function exportBundleJson(args: ParsedArgs): Promise<string> {
+  const file = args.file!;
+  // Resolve the lock BEFORE importing the workspace module: references bake
+  // guids the moment defs are evaluated, so seeding must come first. An invalid
+  // lock is a hard error here (R11) — never degrade to a silent unlocked run.
+  const lockPath = resolveLockPath(args, file);
+  const lockExists = existsSync(lockPath);
+  // Always reset before (maybe) seeding: an unlocked run in a process that
+  // previously seeded a different lock must not inherit its stale overrides.
+  resetLockOverrides();
+
+  let lockCtx: LockExportContext | undefined;
+  let originalSerialized: string | undefined;
+  if (lockExists || args.lock) {
+    const lockModel = lockExists ? readLockFile(lockPath) : emptyLock();
+    if (lockExists) originalSerialized = serializeLock(lockModel);
+    seedLockOverrides(lockModel);
+    lockCtx = createLockContext(lockModel);
+  } else if (args.frozenLock) {
+    throw new Error(
+      `--frozen-lock: no xano.lock found at ${lockPath}. Create one with \`sidestep export --lock\` ` +
+        `and commit it.`,
+    );
+  } else {
+    process.stderr.write(
+      `sidestep: exporting without xano.lock — identities derive from names, so a rename becomes ` +
+        `delete+create on sync. Pass --lock to freeze them.\n`,
+    );
+  }
+
+  const def = await loadDefault(file);
+  if (!Xano.isXano(def)) {
+    throw new Error(`Module "${file}" must default-export a Xano registry for \`export\`.`);
+  }
+  const bundle = def.export(lockCtx ? { lock: lockCtx } : {});
+
+  if (lockCtx) {
+    const { lock: merged, orphans, dropped, cededCanonicals } = mergeObserved(
+      lockCtx.lock,
+      lockCtx.observed,
+    );
+    // Never persist a lock the next run's parseLock would reject (duplicate
+    // explicit canonicals in code, etc.) — fail the export instead.
+    validateLockModel(merged, lockPath);
+    const changed = originalSerialized === undefined || serializeLock(merged) !== originalSerialized;
+    if (args.frozenLock && changed) {
+      throw new Error(
+        `--frozen-lock: this export would ${lockExists ? "change" : "create"} ${lockPath}. ` +
+          `Run \`sidestep export\` locally, commit the updated xano.lock, and retry — a canonical ` +
+          `minted here would be discarded, permanently diverging public URLs.`,
+      );
+    }
+    // Lock lands BEFORE the bundle: never ship identities the lock hasn't
+    // durably recorded (a crash in between must not orphan minted canonicals).
+    writeLockFile(lockPath, merged);
+    warnOrphans(orphans, dropped, cededCanonicals, lockCtx.lock, lockCtx.observed);
+  }
+
+  return serializeBundle(bundle);
+}
+
+// NOTE: this module is the CLI *library* (it exports `run`/`parseArgs`/
+// `loadDefault` for programmatic and test use). The process is driven by the
+// dedicated `bin.ts` executable, which calls `run()` unconditionally. Earlier
+// this file self-invoked via an `import.meta.url === process.argv[1]` guard,
+// but the bundler code-splits shared code into a chunk — moving `import.meta.url`
+// off the bin file — so the guard was always false and the published CLI did
+// nothing. Keep execution in `bin.ts`; never reintroduce self-detection here.

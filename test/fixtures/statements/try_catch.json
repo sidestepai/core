@@ -1,0 +1,44 @@
+{
+  "name": "mvp:try_catch",
+  "context": {
+      "if": {
+          "run": [
+              {
+                  "name": "mvp:set_var",
+                  "as": "x1",
+                  "context": {
+                      "tag": "const:int",
+                      "value": 1,
+                      "filters": []
+                  }
+              }
+          ]
+      },
+      "else": {
+          "run": [
+              {
+                  "name": "mvp:set_var",
+                  "as": "x1",
+                  "context": {
+                      "tag": "const:int",
+                      "value": 2,
+                      "filters": []
+                  }
+              }
+          ]
+      },
+      "then": {
+          "run": [
+              {
+                  "name": "mvp:set_var",
+                  "as": "x1",
+                  "context": {
+                      "tag": "const:int",
+                      "value": 31,
+                      "filters": []
+                  }
+              }
+          ]
+      }
+  }
+}

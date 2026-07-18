@@ -1,0 +1,33 @@
+{
+  "context": {
+    "dbo": {
+      "id": 4
+    }
+  },
+  "name": "mvp:dbo_get_schema",
+  "as": "testb3",
+  "input": [
+    {
+      "name": "path",
+      "value": "id",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    }
+  ],
+  "_xsid": "f:f26f178c-ad8c-40d9-9db6-486ec64a7ce9",
+  "@guid": "f:f26f178c-ad8c-40d9-9db6-486ec64a7ce9",
+  "@index": [
+    "undefined"
+  ],
+  "description": "",
+  "settings_registry": [],
+  "output": {
+    "customize": false,
+    "filters": [],
+    "items": []
+  },
+  "addon": []
+}

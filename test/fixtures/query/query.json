@@ -1,0 +1,112 @@
+{
+  "id": 20,
+  "created_at": "2024-12-03 15:31:03+0000",
+  "updated_at": "2024-12-03 15:31:03+0000",
+  "name": "test",
+  "description": "",
+  "docs": "",
+  "guid": "S9eIZh9AbxiIyzkUaFZ9W7a99XA",
+  "api_enabled": true,
+  "auth": false,
+  "response_type": "standard",
+  "verb": "POST",
+  "disabled": false,
+  "app": {
+    "id": 4
+  },
+  "cache": {
+    "active": false,
+    "ttl": 3600,
+    "input": true,
+    "auth": true,
+    "datasource": true,
+    "ip": false,
+    "headers": [],
+    "env": []
+  },
+  "output": [],
+  "middleware": {
+    "pre_customize": false,
+    "post_customize": false,
+    "pre": [],
+    "post": []
+  },
+  "market_item": {
+    "id": 0,
+    "version": 0,
+    "guid": ""
+  },
+  "tag": [],
+  "history": {
+    "inherit": true,
+    "enabled": false,
+    "limit": 100
+  },
+  "_draft": true,
+  "_xsid": "query:8aa9e8bc-3ced-46ca-bd59-48253ddfd2c6",
+  "input": [
+    {
+      "_xsid": "i:b2e0b3f2-df5f-4287-93da-18b324484583",
+      "name": "score",
+      "type": "int",
+      "description": "",
+      "nullable": false,
+      "default": "",
+      "merge": false,
+      "hidden": [],
+      "override": [],
+      "customize": "",
+      "required": false,
+      "values": [],
+      "mode": "",
+      "format": "",
+      "sensitive": false,
+      "list": {
+        "min": "",
+        "max": ""
+      },
+      "vector": {
+        "size": 3
+      },
+      "access": "public",
+      "style": {
+        "type": "single"
+      },
+      "children": [],
+      "methods": [],
+      "market_item": {
+        "id": "",
+        "version": "",
+        "guid": ""
+      },
+      "is_settings_registry": false
+    }
+  ],
+  "result": [
+    {
+      "filters": [],
+      "name": "",
+      "tag": "var",
+      "value": "x1",
+      "_xsid": "r:1325c350-3542-4ed5-a873-838776a1c98e"
+    }
+  ],
+  "run": [
+    {
+      "context": {
+        "value": "123",
+        "tag": "const:int",
+        "filters": []
+      },
+      "name": "mvp:set_var",
+      "as": "x1",
+      "input": [],
+      "_xsid": "f:887c4683-22cf-4321-b7cb-5328e52d447a",
+      "@guid": "f:887c4683-22cf-4321-b7cb-5328e52d447a",
+      "@index": [
+        "undefined"
+      ]
+    }
+  ],
+  "test": []
+}

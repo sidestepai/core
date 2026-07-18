@@ -1,0 +1,17 @@
+{
+  "name": "mvp:function",
+  "context": {
+      "function": {
+          "id": 1
+      }
+  },
+  "as": "func1",
+  "input": [
+      {
+          "name": "score",
+          "value": "10",
+          "tag": "const:int",
+          "filters": []
+      }
+  ]
+}

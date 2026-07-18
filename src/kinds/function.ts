@@ -1,0 +1,56 @@
+/**
+ * The `function` object kind (KTD-2). This is the MVP's `compile()` envelope
+ * logic, re-homed as the first registered kind. Behavior is unchanged — the
+ * MVP golden test is the regression guard.
+ */
+import type { FunctionXdo } from "../types/xdo.js";
+import type { FunctionDef } from "../function/define.js";
+import { encodeInput } from "../inputs/input.js";
+import { encodeStatement } from "../statements/statement.js";
+import { encodeResponse } from "../responses/response.js";
+import { registerKind } from "./kind.js";
+import type { ObjectKind } from "./kind.js";
+import { defaultHistory, encodeTags } from "./common.js";
+
+/** Encode a `FunctionDef` into the flattened importable function `xdo`. */
+export function encodeFunction(fn: FunctionDef): FunctionXdo {
+  if (!fn.name) {
+    throw new Error("function kind: `name` is required.");
+  }
+  return {
+    name: fn.name,
+    description: fn.description ?? "",
+    docs: fn.docs ?? "",
+    workspace: { id: fn.workspace ?? 0 },
+    branch: { id: 0 },
+    cache: {
+      active: false,
+      ttl: 3600,
+      input: true,
+      auth: true,
+      datasource: true,
+      ip: false,
+      headers: [],
+      env: [],
+    },
+    history: defaultHistory("function"),
+    middleware: { pre_customize: false, post_customize: false, pre: [], post: [] },
+    tag: encodeTags(fn.tags),
+    input: Object.entries(fn.input ?? {}).map(([name, descriptor]) =>
+      encodeInput(name, descriptor),
+    ),
+    result: encodeResponse(fn.response),
+    run: (fn.stack ?? []).map(encodeStatement),
+    test: [],
+    market_item: { id: 0, version: 0, guid: "" },
+    shared_workspace: { is_shared: false },
+  };
+}
+
+export const functionKind: ObjectKind<FunctionDef, FunctionXdo> = {
+  name: "function",
+  payloadKey: "function",
+  encode: encodeFunction,
+};
+
+registerKind(functionKind);

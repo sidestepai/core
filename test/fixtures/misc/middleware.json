@@ -1,0 +1,198 @@
+{
+  "id": 13,
+  "created_at": "2025-09-25 20:24:29+0000",
+  "updated_at": "2025-09-25 20:24:29+0000",
+  "deleted_at": null,
+  "name": "test",
+  "description": "",
+  "docs": "",
+  "guid": "oIRMix6jFdOqUUQfDCriqyP7NVw",
+  "result_type": "replace",
+  "exception": "rethrow",
+  "workspace": {
+    "id": 27,
+    "editBranch": {
+      "color": "#fff3cd",
+      "description": "This is the original branch.",
+      "disabled": false,
+      "display": "v1",
+      "id": 0,
+      "label": "v1",
+      "middleware": {
+        "pre_customize": false,
+        "pre": [],
+        "post_customize": false,
+        "post": []
+      },
+      "parent_id": 0,
+      "created_at": "2025-09-25T20:24:52.338Z",
+      "guid": "",
+      "history": {
+        "function_enabled": false,
+        "function_limit": 100,
+        "middleware_enabled": false,
+        "middleware_limit": 100,
+        "query_enabled": true,
+        "query_limit": 100,
+        "task_enabled": true,
+        "task_limit": 100,
+        "test_enabled": true,
+        "test_limit": 100,
+        "tool_enabled": true,
+        "tool_limit": 100,
+        "trigger_enabled": false,
+        "trigger_limit": 100
+      },
+      "defaults": {
+        "db_primary_key": "int"
+      }
+    },
+    "history": {
+      "function_enabled": false,
+      "function_limit": 100,
+      "middleware_enabled": false,
+      "middleware_limit": 100,
+      "query_enabled": true,
+      "query_limit": 100,
+      "task_enabled": true,
+      "task_limit": 100,
+      "test_enabled": true,
+      "test_limit": 100,
+      "tool_enabled": true,
+      "tool_limit": 100,
+      "trigger_enabled": false,
+      "trigger_limit": 100
+    },
+    "defaults": {
+      "db_primary_key": "int"
+    },
+    "middleware": {
+      "function_pre": [],
+      "function_post": [],
+      "query_pre": [],
+      "query_post": [],
+      "task_pre": [],
+      "task_post": [],
+      "tool_pre": [],
+      "tool_post": []
+    }
+  },
+  "branch": {
+    "id": 27,
+    "history": {
+      "function_enabled": false,
+      "function_limit": 100,
+      "middleware_enabled": false,
+      "middleware_limit": 100,
+      "query_enabled": true,
+      "query_limit": 100,
+      "task_enabled": true,
+      "task_limit": 100,
+      "test_enabled": true,
+      "test_limit": 100,
+      "tool_enabled": true,
+      "tool_limit": 100,
+      "trigger_enabled": false,
+      "trigger_limit": 100
+    },
+    "defaults": {
+      "db_primary_key": "int"
+    }
+  },
+  "history": {
+    "inherit": true,
+    "enabled": false,
+    "limit": 100
+  },
+  "market_item": {
+    "id": 0,
+    "version": 0,
+    "guid": ""
+  },
+  "tag": [],
+  "shared_workspace": {
+    "is_shared": false
+  },
+  "_draft": false,
+  "_xsid": "middleware:e7b23f51-53c2-4d9e-a9e7-373e78a546d7",
+  "input": [
+    {
+      "_xsid": "i:df3a6f42-fdec-4246-86b3-d30c68e279eb",
+      "name": "vars",
+      "type": "json",
+      "description": "",
+      "nullable": false,
+      "default": "",
+      "merge": false,
+      "hidden": [],
+      "override": [],
+      "customize": "",
+      "required": false,
+      "values": [],
+      "mode": "",
+      "format": "",
+      "sensitive": false,
+      "access": "public",
+      "is_settings_registry": false,
+      "children": [],
+      "list": {
+        "min": "",
+        "max": ""
+      },
+      "vector": {
+        "size": 3
+      },
+      "style": {
+        "type": "single"
+      },
+      "methods": [],
+      "market_item": {
+        "id": 0,
+        "version": 0,
+        "guid": ""
+      }
+    },
+    {
+      "_xsid": "i:c8dc59ee-58cc-4a64-a27d-b2ba4f618e05",
+      "name": "type",
+      "type": "enum",
+      "description": "",
+      "nullable": false,
+      "default": "pre",
+      "merge": false,
+      "hidden": [],
+      "override": [],
+      "customize": "",
+      "required": true,
+      "values": [
+        "pre",
+        "post"
+      ],
+      "mode": "",
+      "format": "",
+      "sensitive": false,
+      "access": "public",
+      "is_settings_registry": false,
+      "children": [],
+      "list": {
+        "min": "",
+        "max": ""
+      },
+      "vector": {
+        "size": 3
+      },
+      "style": {
+        "type": "single"
+      },
+      "methods": [],
+      "market_item": {
+        "id": 0,
+        "version": 0,
+        "guid": ""
+      }
+    }
+  ],
+  "result": [],
+  "run": [],
+  "test": []
+}

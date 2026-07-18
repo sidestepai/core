@@ -1,0 +1,42 @@
+{
+  "context": {
+    "dbo": {
+      "id": 4
+    }
+  },
+  "name": "mvp:dbo_hasby",
+  "as": "testb1",
+  "input": [
+    {
+      "name": "field_name",
+      "value": "id",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "field_value",
+      "value": "1",
+      "tag": "const:int",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    }
+  ],
+  "_xsid": "f:1dd99f03-dbb2-439b-b2cb-435c3da81ec0",
+  "@guid": "f:1dd99f03-dbb2-439b-b2cb-435c3da81ec0",
+  "@index": [
+    "undefined"
+  ],
+  "description": "",
+  "settings_registry": [],
+  "output": {
+    "customize": false,
+    "filters": [],
+    "items": []
+  },
+  "addon": []
+}

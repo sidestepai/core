@@ -1,0 +1,24 @@
+{
+  "context": {},
+  "name": "mvp:lambda",
+  "as": "x1",
+  "input": [
+    {
+      "name": "code",
+      "value": "",
+      "tag": "const",
+      "filters": []
+    },
+    {
+      "name": "timeout",
+      "value": 10,
+      "tag": "const:int",
+      "filters": []
+    }
+  ],
+  "_xsid": "f:39ef7479-d210-4790-9e1c-57e73da8ec6b",
+  "@guid": "f:39ef7479-d210-4790-9e1c-57e73da8ec6b",
+  "@index": [
+    "undefined"
+  ]
+}

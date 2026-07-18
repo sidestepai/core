@@ -1,0 +1,129 @@
+{
+  "id": 27,
+  "created_at": "2025-05-16 23:10:36+0000",
+  "updated_at": "2025-09-01 14:38:14+0000",
+  "deleted_at": null,
+  "name": "b12",
+  "description": "nice",
+  "guid": "VY2HyfPgvzTwXeRzb3-fACaBnzc",
+  "canonical": "nc3lQd9n",
+  "use_xdo": false,
+  "use_custom_names": true,
+  "disabled": false,
+  "jumpstart": false,
+  "features": {},
+  "installed_services": {},
+  "domain_prefix": "813eef",
+  "branch": {
+    "id": 0
+  },
+  "user": {
+    "id": 1,
+    "segment": {
+      "anonymousId": "2497263865.4361163430"
+    }
+  },
+  "provision": [],
+  "connect": {
+    "ncscale": {
+      "connected": false,
+      "sync_api_history": false,
+      "sync_log_statements": false,
+      "sync_task_history": false
+    },
+    "webflow": {
+      "env": []
+    }
+  },
+  "env": [],
+  "datasource_live": {
+    "color": "#008000",
+    "show_banner": false
+  },
+  "datasources": [
+    {
+      "color": "#fff3cd",
+      "label": "test"
+    }
+  ],
+  "defaults": {
+    "db_primary_key": "int"
+  },
+  "history": {
+    "function_enabled": false,
+    "function_limit": 100,
+    "middleware_enabled": false,
+    "middleware_limit": 100,
+    "query_enabled": true,
+    "query_limit": 100,
+    "task_enabled": true,
+    "task_limit": 100,
+    "tool_enabled": true,
+    "tool_limit": 100,
+    "trigger_enabled": false,
+    "trigger_limit": 100
+  },
+  "tailor_experience": {
+    "connect_with": "undecided",
+    "using_frontend": "",
+    "using_frontend_other": "",
+    "importing_from": "",
+    "importing_from_other": "",
+    "onboarding": {},
+    "use_xano_for": "Transform data"
+  },
+  "middleware": {
+    "function_pre": [],
+    "function_post": [],
+    "query_pre": [],
+    "query_post": [],
+    "task_pre": [],
+    "task_post": [],
+    "tool_pre": [],
+    "tool_post": []
+  },
+  "preferences": {
+    "use_internal_docs": true,
+    "track_performance": true
+  },
+  "settings": {
+    "ai_enabled": true
+  },
+  "realtime": {
+    "enabled": true,
+    "hash": "gCPGbwKFfIrJfmCdYHERRzSJSTM",
+    "channels": [
+      {
+        "anonymous_clients": false,
+        "client_authenticated_messaging": false,
+        "client_private_messaging": false,
+        "client_private_messaging_authenticated_only": false,
+        "client_public_messaging": false,
+        "client_public_messaging_authenticated_only": false,
+        "description": "",
+        "enabled": true,
+        "history": 0,
+        "id": 19746653999374,
+        "pattern": "test",
+        "presence": false,
+        "wildcard": false
+      },
+      {
+        "anonymous_clients": false,
+        "client_authenticated_messaging": false,
+        "client_private_messaging": false,
+        "client_private_messaging_authenticated_only": false,
+        "client_public_messaging": false,
+        "client_public_messaging_authenticated_only": false,
+        "description": "",
+        "enabled": true,
+        "history": 0,
+        "id": 81175281801193,
+        "pattern": "testrsdfsdf",
+        "presence": false,
+        "wildcard": false
+      }
+    ]
+  },
+  "well_known": []
+}

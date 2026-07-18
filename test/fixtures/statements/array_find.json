@@ -1,0 +1,79 @@
+{
+  "context": {
+    "expr": {
+      "expression": [
+        {
+          "type": "statement",
+          "or": false,
+          "group": {
+            "expression": []
+          },
+          "statement": {
+            "op": "=",
+            "left": {
+              "operand": "$this",
+              "tag": "var",
+              "filters": []
+            },
+            "right": {
+              "operand": "1",
+              "tag": "const:int",
+              "ignore_empty": false,
+              "filters": []
+            }
+          }
+        }
+      ]
+    },
+    "array": {
+      "value": "[]",
+      "tag": "const:array",
+      "filters": [
+        {
+          "name": "array_push",
+          "disabled": false,
+          "arg": [
+            {
+              "value": 1,
+              "tag": "const:int",
+              "filters": []
+            }
+          ]
+        },
+        {
+          "name": "array_push",
+          "disabled": false,
+          "arg": [
+            {
+              "value": 2,
+              "tag": "const:int",
+              "filters": []
+            }
+          ]
+        },
+        {
+          "name": "array_push",
+          "disabled": false,
+          "arg": [
+            {
+              "value": 3,
+              "tag": "const:int",
+              "filters": []
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "name": "mvp:array_find",
+  "input": [],
+  "_xsid": "f:3eeca0c2-e666-40e8-9099-350c27eb3d8f",
+  "@guid": "f:3eeca0c2-e666-40e8-9099-350c27eb3d8f",
+  "@index": [
+    "undefined"
+  ],
+  "as": "test",
+  "output": {
+    "filters": []
+  }
+}

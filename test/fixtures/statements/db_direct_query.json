@@ -1,0 +1,51 @@
+{
+  "context": {
+    "code": "select 1;",
+    "response_type": "list",
+    "arg": [
+      {
+        "value": "a",
+        "tag": "const",
+        "filters": []
+      },
+      {
+        "value": "b",
+        "tag": "const",
+        "filters": [
+          {
+            "name": "concat",
+            "disabled": false,
+            "arg": [
+              {
+                "value": "b",
+                "tag": "const",
+                "filters": []
+              },
+              {
+                "value": "",
+                "tag": "const",
+                "filters": []
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "name": "mvp:dbo_direct_query",
+  "as": "x2",
+  "input": [],
+  "_xsid": "f:6a1ea68f-8d37-4c1f-b35c-caa83dbfe88d",
+  "@guid": "f:6a1ea68f-8d37-4c1f-b35c-caa83dbfe88d",
+  "@index": [
+    "undefined"
+  ],
+  "description": "",
+  "settings_registry": [],
+  "output": {
+    "customize": false,
+    "filters": [],
+    "items": []
+  },
+  "addon": []
+}

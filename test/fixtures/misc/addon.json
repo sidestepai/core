@@ -1,0 +1,690 @@
+{
+  "id": 416,
+  "created_at": "2025-08-10 14:30:33+0000",
+  "updated_at": "2025-08-10 14:30:33+0000",
+  "name": "book_1",
+  "description": "",
+  "guid": "rZ-ab8ldNe0Ti3St5pD8cdCXUC0",
+  "workspace": {
+    "id": 30,
+    "editBranch": {
+      "color": "#fff3cd",
+      "description": "This is the original branch.",
+      "disabled": false,
+      "display": "v1",
+      "id": 0,
+      "label": "v1",
+      "middleware": {
+        "pre_customize": false,
+        "pre": [],
+        "post_customize": false,
+        "post": []
+      },
+      "parent_id": 0,
+      "created_at": "2025-08-10T14:30:42.614Z",
+      "guid": "",
+      "history": {
+        "function_enabled": false,
+        "function_limit": 100,
+        "middleware_enabled": false,
+        "middleware_limit": 100,
+        "query_enabled": true,
+        "query_limit": 100,
+        "task_enabled": true,
+        "task_limit": 100,
+        "test_enabled": true,
+        "test_limit": 100,
+        "tool_enabled": true,
+        "tool_limit": 100,
+        "trigger_enabled": false,
+        "trigger_limit": 100
+      },
+      "defaults": {
+        "db_primary_key": "int"
+      }
+    },
+    "history": {
+      "function_enabled": false,
+      "function_limit": 100,
+      "middleware_enabled": false,
+      "middleware_limit": 100,
+      "query_enabled": true,
+      "query_limit": 100,
+      "task_enabled": true,
+      "task_limit": 100,
+      "test_enabled": true,
+      "test_limit": 100,
+      "tool_enabled": true,
+      "tool_limit": 100,
+      "trigger_enabled": false,
+      "trigger_limit": 100
+    },
+    "defaults": {
+      "db_primary_key": "int"
+    },
+    "middleware": {
+      "function_pre": [],
+      "function_post": [],
+      "query_pre": [],
+      "query_post": [],
+      "task_pre": [],
+      "task_post": [],
+      "tool_pre": [],
+      "tool_post": []
+    }
+  },
+  "branch": {
+    "id": 22,
+    "history": {
+      "function_enabled": false,
+      "function_limit": 100,
+      "middleware_enabled": false,
+      "middleware_limit": 100,
+      "query_enabled": true,
+      "query_limit": 100,
+      "task_enabled": true,
+      "task_limit": 100,
+      "test_enabled": true,
+      "test_limit": 100,
+      "tool_enabled": true,
+      "tool_limit": 100,
+      "trigger_enabled": false,
+      "trigger_limit": 100
+    },
+    "defaults": {
+      "db_primary_key": "int"
+    }
+  },
+  "context": {
+    "dbo": {
+      "id": 2,
+      "as": "book"
+    },
+    "bind": [],
+    "search": {
+      "expression": [
+        {
+          "type": "statement",
+          "or": false,
+          "group": {
+            "expression": []
+          },
+          "statement": {
+            "op": "=",
+            "left": {
+              "operand": "book.id",
+              "tag": "col",
+              "filters": []
+            },
+            "right": {
+              "operand": "book_id",
+              "tag": "input",
+              "ignore_empty": false,
+              "filters": []
+            }
+          }
+        }
+      ]
+    },
+    "lock": {
+      "value": "",
+      "tag": "const:bool",
+      "filters": []
+    },
+    "external": {
+      "value": "",
+      "tag": "input",
+      "filters": [],
+      "permissions": {
+        "search": true,
+        "sort": true,
+        "per_page": false,
+        "page": true
+      }
+    },
+    "simpleExternal": {
+      "page": {
+        "value": "",
+        "tag": "input",
+        "filters": []
+      },
+      "per_page": {
+        "value": "",
+        "tag": "input",
+        "filters": []
+      },
+      "offset": {
+        "value": "",
+        "tag": "input",
+        "filters": []
+      },
+      "search": {
+        "value": "",
+        "tag": "input",
+        "filters": []
+      },
+      "sort": {
+        "value": "",
+        "tag": "input",
+        "filters": []
+      }
+    },
+    "eval": [],
+    "sort": [],
+    "return": {
+      "type": "single",
+      "single": {
+        "sort": []
+      },
+      "list": {
+        "distinct": "auto",
+        "sort": [],
+        "paging": {
+          "enabled": false,
+          "page": 1,
+          "offset": 0,
+          "per_page": 25,
+          "metadata": true,
+          "totals": false
+        }
+      },
+      "stream": {
+        "distinct": "auto",
+        "sort": [],
+        "paging": {
+          "enabled": false,
+          "page": 1,
+          "per_page": 25
+        }
+      },
+      "aggregate": {
+        "group": [],
+        "sort": [],
+        "index": [],
+        "eval": [],
+        "paging": {
+          "enabled": false,
+          "page": 1,
+          "per_page": 25,
+          "metadata": true
+        }
+      }
+    }
+  },
+  "output": {
+    "customize": false,
+    "items": []
+  },
+  "market_item": {
+    "id": 0,
+    "version": 0,
+    "guid": ""
+  },
+  "tag": [],
+  "@io": {
+    "input": {
+      "book_id?=0": "tableref|@(\"dbo=2\")"
+    },
+    "input2": [
+      {
+        "list": {
+          "max": "",
+          "min": ""
+        },
+        "mode": "",
+        "name": "book_id",
+        "type": "int",
+        "_xsid": "",
+        "merge": false,
+        "style": {
+          "type": "single"
+        },
+        "access": "public",
+        "format": "",
+        "hidden": [],
+        "values": [],
+        "vector": {
+          "size": 3
+        },
+        "default": "",
+        "methods": [
+          {
+            "arg": [
+              "dbo=2"
+            ],
+            "name": "@",
+            "disabled": false
+          }
+        ],
+        "children": [],
+        "nullable": false,
+        "override": [],
+        "required": false,
+        "customize": {},
+        "sensitive": false,
+        "description": "",
+        "market_item": {
+          "id": 0,
+          "guid": "",
+          "version": 0
+        },
+        "is_settings_registry": false
+      }
+    ],
+    "output": {
+      "?__self": {
+        "id": "int|@(\"dbo=2\")",
+        "created_at?=\"now\"": "epochms|@(\"access=private\")",
+        "?dsfdsf?=null": "epochms",
+        "dsfdsfds?=\"\"": "epochms",
+        "test?=\"now\"": "epochms"
+      }
+    },
+    "output2": [
+      {
+        "name": "__self",
+        "nullable": true,
+        "required": true,
+        "default": null,
+        "style": {
+          "type": "single",
+          "min": null,
+          "max": null
+        },
+        "op": "=",
+        "methods": [],
+        "children": [
+          {
+            "name": "id",
+            "nullable": false,
+            "required": true,
+            "default": null,
+            "style": {
+              "type": "single",
+              "min": null,
+              "max": null
+            },
+            "op": "=",
+            "methods": [
+              {
+                "name": "@",
+                "arg": [
+                  "dbo=2"
+                ]
+              }
+            ],
+            "children": [],
+            "type": "int"
+          },
+          {
+            "name": "created_at",
+            "nullable": false,
+            "required": false,
+            "default": "now",
+            "style": {
+              "type": "single",
+              "min": null,
+              "max": null
+            },
+            "op": "=",
+            "methods": [
+              {
+                "name": "@",
+                "arg": [
+                  "access=private"
+                ]
+              }
+            ],
+            "children": [],
+            "type": "epochms"
+          },
+          {
+            "name": "dsfdsf",
+            "nullable": true,
+            "required": false,
+            "default": null,
+            "style": {
+              "type": "single",
+              "min": null,
+              "max": null
+            },
+            "op": "=",
+            "methods": [],
+            "children": [],
+            "type": "epochms"
+          },
+          {
+            "name": "dsfdsfds",
+            "nullable": false,
+            "required": false,
+            "default": "",
+            "style": {
+              "type": "single",
+              "min": null,
+              "max": null
+            },
+            "op": "=",
+            "methods": [],
+            "children": [],
+            "type": "epochms"
+          },
+          {
+            "name": "test",
+            "nullable": false,
+            "required": false,
+            "default": "now",
+            "style": {
+              "type": "single",
+              "min": null,
+              "max": null
+            },
+            "op": "=",
+            "methods": [],
+            "children": [],
+            "type": "epochms"
+          }
+        ],
+        "type": "obj"
+      }
+    ],
+    "output_original": {
+      "?__self": {
+        "id": "int|@(\"dbo=2\")",
+        "created_at?=\"now\"": "epochms|@(\"access=private\")",
+        "?dsfdsf?=null": "epochms",
+        "dsfdsfds?=\"\"": "epochms",
+        "test?=\"now\"": "epochms"
+      }
+    },
+    "output2_original": [
+      {
+        "name": "__self",
+        "nullable": true,
+        "required": true,
+        "default": null,
+        "style": {
+          "type": "single",
+          "min": null,
+          "max": null
+        },
+        "op": "=",
+        "methods": [],
+        "children": [
+          {
+            "name": "id",
+            "nullable": false,
+            "required": true,
+            "default": null,
+            "style": {
+              "type": "single",
+              "min": null,
+              "max": null
+            },
+            "op": "=",
+            "methods": [
+              {
+                "name": "@",
+                "arg": [
+                  "dbo=2"
+                ]
+              }
+            ],
+            "children": [],
+            "type": "int"
+          },
+          {
+            "name": "created_at",
+            "nullable": false,
+            "required": false,
+            "default": "now",
+            "style": {
+              "type": "single",
+              "min": null,
+              "max": null
+            },
+            "op": "=",
+            "methods": [
+              {
+                "name": "@",
+                "arg": [
+                  "access=private"
+                ]
+              }
+            ],
+            "children": [],
+            "type": "epochms"
+          },
+          {
+            "name": "dsfdsf",
+            "nullable": true,
+            "required": false,
+            "default": null,
+            "style": {
+              "type": "single",
+              "min": null,
+              "max": null
+            },
+            "op": "=",
+            "methods": [],
+            "children": [],
+            "type": "epochms"
+          },
+          {
+            "name": "dsfdsfds",
+            "nullable": false,
+            "required": false,
+            "default": "",
+            "style": {
+              "type": "single",
+              "min": null,
+              "max": null
+            },
+            "op": "=",
+            "methods": [],
+            "children": [],
+            "type": "epochms"
+          },
+          {
+            "name": "test",
+            "nullable": false,
+            "required": false,
+            "default": "now",
+            "style": {
+              "type": "single",
+              "min": null,
+              "max": null
+            },
+            "op": "=",
+            "methods": [],
+            "children": [],
+            "type": "epochms"
+          }
+        ],
+        "type": "obj"
+      }
+    ]
+  },
+  "_draft": false,
+  "_xsid": "addon:263c44ef-ebef-459e-ac80-210a792b8517",
+  "input": [
+    {
+      "_xsid": "i:3c3b79c6-5f17-4d8f-8db3-7591efc84f6e",
+      "name": "book_id",
+      "type": "int",
+      "description": "",
+      "nullable": false,
+      "default": "",
+      "merge": false,
+      "hidden": [],
+      "override": [],
+      "customize": {},
+      "required": false,
+      "values": [],
+      "mode": "",
+      "format": "",
+      "sensitive": false,
+      "access": "public",
+      "is_settings_registry": false,
+      "children": [],
+      "list": {
+        "min": "",
+        "max": ""
+      },
+      "vector": {
+        "size": 3
+      },
+      "style": {
+        "type": "single"
+      },
+      "methods": [
+        {
+          "name": "@",
+          "disabled": false,
+          "arg": [
+            "dbo=2"
+          ]
+        }
+      ],
+      "market_item": {
+        "id": 0,
+        "version": 0,
+        "guid": ""
+      }
+    }
+  ],
+  "run": [
+    {
+      "as": "",
+      "context": {
+        "dbo": {
+          "id": 2,
+          "as": "book"
+        },
+        "bind": [],
+        "search": {
+          "expression": [
+            {
+              "type": "statement",
+              "or": false,
+              "group": {
+                "expression": []
+              },
+              "statement": {
+                "op": "=",
+                "left": {
+                  "operand": "book.id",
+                  "tag": "col",
+                  "filters": []
+                },
+                "right": {
+                  "operand": "book_id",
+                  "tag": "input",
+                  "ignore_empty": false,
+                  "filters": []
+                }
+              }
+            }
+          ]
+        },
+        "lock": {
+          "value": "",
+          "tag": "const:bool",
+          "filters": []
+        },
+        "external": {
+          "value": "",
+          "tag": "input",
+          "filters": [],
+          "permissions": {
+            "search": true,
+            "sort": true,
+            "per_page": false,
+            "page": true
+          }
+        },
+        "simpleExternal": {
+          "page": {
+            "value": "",
+            "tag": "input",
+            "filters": []
+          },
+          "per_page": {
+            "value": "",
+            "tag": "input",
+            "filters": []
+          },
+          "offset": {
+            "value": "",
+            "tag": "input",
+            "filters": []
+          },
+          "search": {
+            "value": "",
+            "tag": "input",
+            "filters": []
+          },
+          "sort": {
+            "value": "",
+            "tag": "input",
+            "filters": []
+          }
+        },
+        "eval": [],
+        "sort": [],
+        "return": {
+          "type": "single",
+          "single": {
+            "sort": []
+          },
+          "list": {
+            "distinct": "auto",
+            "sort": [],
+            "paging": {
+              "enabled": false,
+              "page": 1,
+              "offset": 0,
+              "per_page": 25,
+              "metadata": true,
+              "totals": false
+            }
+          },
+          "stream": {
+            "distinct": "auto",
+            "sort": [],
+            "paging": {
+              "enabled": false,
+              "page": 1,
+              "per_page": 25
+            }
+          },
+          "aggregate": {
+            "group": [],
+            "sort": [],
+            "index": [],
+            "eval": [],
+            "paging": {
+              "enabled": false,
+              "page": 1,
+              "per_page": 25,
+              "metadata": true
+            }
+          }
+        }
+      },
+      "description": "",
+      "disabled": false,
+      "input": [],
+      "name": "mvp:dbo_view",
+      "output": {
+        "customize": false,
+        "items": []
+      },
+      "_xsid": "f:rZ-ab8ldNe0Ti3St5pD8cdCXUC0",
+      "@guid": "f:rZ-ab8ldNe0Ti3St5pD8cdCXUC0",
+      "@index": [
+        "1"
+      ],
+      "index": 1
+    }
+  ]
+}
