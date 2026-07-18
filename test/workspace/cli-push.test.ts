@@ -8,9 +8,13 @@ import { run } from "../../src/emit/cli.js";
 const examplePath = fileURLToPath(new URL("../fixtures/workspace/index.ts", import.meta.url));
 
 const INSTANCE = "https://default.example.com";
+// Valid OIDC/RFC 8414 metadata — openid-client's discovery requires `issuer`.
 const DISCOVERY = {
+  issuer: "https://app.xano.com",
   authorization_endpoint: "https://app.xano.com/oauth2/authorize",
   token_endpoint: "https://app.xano.com/api:master/oauth/token",
+  grant_types_supported: ["authorization_code", "refresh_token"],
+  token_endpoint_auth_methods_supported: ["none"],
 };
 
 interface TokenOverrides {
@@ -44,7 +48,18 @@ function writeTokenFile(dir: string, o: TokenOverrides = {}): string {
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), { status, statusText: status === 200 ? "OK" : "ERR" });
+  return new Response(JSON.stringify(body), {
+    status,
+    statusText: status === 200 ? "OK" : "ERR",
+    // oauth4webapi (openid-client) requires a JSON content-type on discovery /
+    // token responses; without it, discovery and the refresh grant reject.
+    headers: { "content-type": "application/json" },
+  });
+}
+
+/** A token-endpoint response body, with the `token_type` oauth4webapi requires. */
+function tokenBody(o: Record<string, unknown>): Record<string, unknown> {
+  return { token_type: "bearer", ...o };
 }
 
 /** Single-response stub (import-only path). */
@@ -110,7 +125,7 @@ describe("sidestep push CLI (OAuth)", () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(jsonResponse(DISCOVERY)) // discover
-      .mockResolvedValueOnce(jsonResponse({ access_token: "acc-fresh", refresh_token: "ref-rotated", expires_in: 600 })) // refresh
+      .mockResolvedValueOnce(jsonResponse(tokenBody({ access_token: "acc-fresh", refresh_token: "ref-rotated", expires_in: 600 }))) // refresh
       .mockResolvedValueOnce(new Response('{"imported":true}', { status: 200 })); // import
 
     await run(["push", "--bundle", bundlePathWith(dir, "{}"), "--auth-file", authFile]);
@@ -134,7 +149,7 @@ describe("sidestep push CLI (OAuth)", () => {
       if (u.includes("/.well-known/")) return jsonResponse(DISCOVERY);
       if (u.includes("/oauth/token")) {
         refreshCount++;
-        return jsonResponse({ access_token: "acc-fresh", refresh_token: "rot", expires_in: 600 });
+        return jsonResponse(tokenBody({ access_token: "acc-fresh", refresh_token: "rot", expires_in: 600 }));
       }
       if (u.includes("/sandbox/bundle")) return new Response('{"imported":true}', { status: 200 });
       throw new Error(`unexpected fetch: ${u}`);
@@ -157,7 +172,7 @@ describe("sidestep push CLI (OAuth)", () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(jsonResponse(DISCOVERY)) // discover
-      .mockResolvedValueOnce(jsonResponse({ access_token: "acc-ci", expires_in: 600 })) // refresh
+      .mockResolvedValueOnce(jsonResponse(tokenBody({ access_token: "acc-ci", expires_in: 600 }))) // refresh
       .mockResolvedValueOnce(new Response('{"imported":true}', { status: 200 })); // import
 
     await run(["push", "--bundle", bundlePathWith(dir, "{}"), "--instance", "https://ci.example.com"]);
@@ -221,7 +236,7 @@ describe("sidestep push CLI (OAuth)", () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(jsonResponse(DISCOVERY)) // discover
-      .mockResolvedValueOnce(jsonResponse({ access_token: "acc-override", refresh_token: "r2", expires_in: 600 })) // refresh
+      .mockResolvedValueOnce(jsonResponse(tokenBody({ access_token: "acc-override", refresh_token: "r2", expires_in: 600 }))) // refresh
       .mockResolvedValueOnce(new Response('{"imported":true}', { status: 200 })); // import
 
     await run(["push", "--bundle", bundlePathWith(dir, "{}"), "--auth-file", authFile, "--instance", "https://override.example.com"]);

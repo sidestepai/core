@@ -237,6 +237,7 @@ export async function loadDefault(file: string): Promise<unknown> {
 const USAGE =
   "Usage: sidestep <compile|export> <file> [--out <path>] [--lock[=<path>]] [--frozen-lock] | " +
   "sidestep login [--instance <origin>] [--auth-host <origin>] [--auth-file <path>] [--port <n>] | " +
+  "sidestep logout [--auth-file <path>] | " +
   "sidestep push <file>|--bundle <path> [--instance <origin>] [--auth-file <path>] | " +
   "sidestep lock <rename|prune|adopt> …";
 
@@ -309,6 +310,11 @@ export async function run(argv: string[]): Promise<void> {
     // never pull it in.
     const { runLoginCommand } = await import("./login-command.js");
     return runLoginCommand(args);
+  }
+  if (command === "logout") {
+    // Node-only (OAuth revoke + file removal); lazily imported like `login`.
+    const { runLogoutCommand } = await import("./logout-command.js");
+    return runLogoutCommand(args);
   }
   if (command === "push") {
     // The uploader lives in its own (Node-only) module so the bin's other

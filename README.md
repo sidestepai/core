@@ -315,6 +315,7 @@ sidestep lock adopt live-export.json --yes   # seed the lock from a live engine 
 sidestep login --instance https://your-instance.xano.io  # OAuth sign-in (once)
 sidestep push ./xano/index.ts                # compile + upload to your sandbox (RESETS it)
 sidestep push --bundle ws.json               # upload an already-exported bundle
+sidestep logout                              # revoke the refresh token + delete the local cache
 ```
 
 The CLI imports the module's default export, and **the entry must be an ES
@@ -350,14 +351,19 @@ sidestep login --instance https://your-instance.xano.io   # pre-select the insta
 sidestep login                                             # choose at consent
 ```
 
-This runs the standard authorization-code + PKCE browser flow: it opens your
-browser, you approve the request, and the CLI captures the redirect on a local
-`127.0.0.1` callback. On first use it **dynamically registers its own OAuth
-client** (RFC 7591) whose redirect URI is exactly that loopback address, so the
-authorize step never depends on the server tolerating an arbitrary loopback
-port; the registration is cached in `~/.xano/sidestep-clients.json` and reused.
-The instance the token is bound to is read from the token itself, so `--instance`
-is an optional pre-selection, not a requirement.
+This runs the standard authorization-code + PKCE browser flow (powered by the
+OpenID-certified [`openid-client`](https://github.com/panva/openid-client), the
+same library the [sidestep dashboard](https://www.npmjs.com/package/@sidestep/dashboard)
+uses): it opens your browser, you approve the request, and the CLI captures the
+redirect on a local `127.0.0.1` callback. On first use it **dynamically registers
+its own OAuth client** (RFC 7591) whose redirect URI is exactly that loopback
+address, so the authorize step never depends on the server tolerating an
+arbitrary loopback port; the registration is cached in
+`~/.xano/sidestep-clients.json` and reused. If that cached client is ever
+rejected (`invalid_client` — e.g. the server forgot the registration), `login`
+transparently drops it, re-registers, and retries once. The instance the token
+is bound to is read from the token itself, so `--instance` is an optional
+pre-selection, not a requirement.
 
 The resulting tokens (access + refresh) are cached in a **project-local** file,
 `./.xano/auth.json`, which `login` **auto-adds to your `.gitignore`** so
@@ -381,8 +387,17 @@ are separate. The endpoint's response prints to stdout; progress goes to stderr,
 so `sidestep push --bundle ws.json > result.json` captures just the response.
 
 `push` reuses the cached tokens and **refreshes them automatically** when the
-access token has expired. The target instance is `--instance` → `$XANO_INSTANCE`
-→ the instance you logged in with.
+access token has expired (Xano rotates the refresh token on every use, and the
+new one is persisted for you). If a refresh is rejected because the session was
+revoked or expired (`invalid_grant`), `push` clears the stale cache and tells you
+to run `sidestep login` again rather than retrying a spent token. The target
+instance is `--instance` → `$XANO_INSTANCE` → the instance you logged in with.
+
+**Sign out** with `sidestep logout`. It best-effort **revokes** the refresh token
+at the Xano control plane (so a leaked cache file can't be replayed) and then
+deletes the project-local `./.xano/auth.json`. A revocation that fails at the
+server never blocks the local delete — your credentials are removed from disk
+either way. Point it at a non-default cache with `--auth-file` / `$XANO_AUTH_FILE`.
 
 **CI and agents** can't open a browser, so `push` runs fully non-interactively
 from two env vars — `$XANO_REFRESH_TOKEN` and `$XANO_CLIENT_ID` (both copied once

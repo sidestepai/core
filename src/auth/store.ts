@@ -8,7 +8,7 @@
  * crash can't leave a half-written credential file) and adds mode 0600 and a
  * recursive mkdir of the containing directory.
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { atomicWrite } from "../util/atomic-write.js";
 import type { ParsedArgs } from "../emit/cli.js";
@@ -102,6 +102,29 @@ export function writeTokens(path: string, tokens: TokenRecord): void {
   }
   mkdirSync(dirname(path), { recursive: true });
   atomicWrite(path, JSON.stringify(tokens, null, 2) + "\n", { mode: 0o600 });
+}
+
+/**
+ * Delete the token cache (logout). Returns true when a file was removed, false
+ * when there was nothing to remove. Refuses to delete a file that isn't a
+ * sidestep token cache, so an `--auth-file` typo can't `rm` an unrelated file.
+ */
+export function clearTokens(path: string): boolean {
+  if (!existsSync(path)) return false;
+  let existing: unknown;
+  try {
+    existing = JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    existing = undefined;
+  }
+  if (!isTokenRecord(existing)) {
+    throw new Error(
+      `Refusing to delete ${path}: it exists but is not a sidestep token cache. ` +
+        `Choose a different --auth-file/$XANO_AUTH_FILE path.`,
+    );
+  }
+  rmSync(path);
+  return true;
 }
 
 /** Walk up from `startDir` to the nearest directory containing a `.git` entry. */
