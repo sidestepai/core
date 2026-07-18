@@ -107,11 +107,27 @@ describe("sidestep login (end-to-end)", () => {
   let authPath: string;
   let stderr: string[];
 
+  // A valid RFC 8414 / OIDC metadata document — openid-client's discovery
+  // requires `issuer` and a JSON content-type, and both our manual discover()
+  // and openid-client fetch a `/.well-known/*` path.
   const DISCOVERY = {
+    issuer: "https://app.xano.com",
     authorization_endpoint: "https://app.xano.com/oauth2/authorize",
     token_endpoint: "https://app.xano.com/api:master/oauth/token",
     registration_endpoint: "https://app.xano.com/api:master/oauth/register",
+    response_types_supported: ["code"],
+    grant_types_supported: ["authorization_code", "refresh_token"],
+    code_challenge_methods_supported: ["S256"],
+    token_endpoint_auth_methods_supported: ["none"],
   };
+
+  /** JSON response with the content-type oauth4webapi requires. */
+  function oauthJson(body: unknown): Response {
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), "sidestep-login-"));
@@ -135,13 +151,21 @@ describe("sidestep login (end-to-end)", () => {
     delete process.env.XANO_AUTH_HOST;
   });
 
-  /** Stub the fetch sequence: discovery → DCR registration → token exchange. */
+  /**
+   * Route OAuth fetches by URL (discovery / DCR registration / token endpoint).
+   * openid-client issues its own discovery request in addition to our manual
+   * one, so a fixed call-order stub no longer holds — matching on the URL does.
+   * The loopback callback is driven over real `node:http` (see `hitCallback`),
+   * so it never passes through this mock.
+   */
   function stubOauthFetch(tokenBody: Record<string, unknown>) {
-    return vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(new Response(JSON.stringify(DISCOVERY), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ client_id: "dcr-xyz" }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify(tokenBody), { status: 200 }));
+    return vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = input instanceof URL ? input.href : input instanceof Request ? input.url : String(input);
+      if (url.includes("/.well-known/")) return oauthJson(DISCOVERY);
+      if (url.includes("/oauth/register")) return oauthJson({ client_id: "dcr-xyz" });
+      if (url.includes("/oauth/token")) return oauthJson({ token_type: "bearer", ...tokenBody });
+      throw new Error(`unexpected fetch in login test: ${url}`);
+    });
   }
 
   /** Pull the authorize URL that login wrote to stderr. */

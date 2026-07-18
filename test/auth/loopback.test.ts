@@ -4,16 +4,24 @@ import { startCallbackServer, browserCommand } from "../../src/auth/loopback.js"
 const CALLBACK_PATH = "/oauth/callback";
 
 describe("loopback callback server", () => {
-  it("resolves with the code when the browser redirects with a matching state", async () => {
+  it("resolves with the code and a redirect_uri-anchored callback URL on matching state", async () => {
     const listener = await startCallbackServer({ callbackPath: CALLBACK_PATH, expectedState: "st-1" });
     expect(listener.redirectUri).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/oauth\/callback$/);
 
-    const res = await fetch(`${listener.redirectUri}?code=abc123&state=st-1`);
+    const res = await fetch(`${listener.redirectUri}?code=abc123&state=st-1&iss=https%3A%2F%2Fapp.xano.com`);
     const body = await res.text();
     expect(res.status).toBe(200);
     expect(body).toContain("Authentication complete");
 
-    await expect(listener.waitForCode).resolves.toBe("abc123");
+    const result = await listener.waitForCallback;
+    expect(result.code).toBe("abc123");
+    // The callback URL is rebuilt against the registered redirect_uri (so its
+    // origin+path match exactly) and preserves state + iss for openid-client.
+    const cb = new URL(result.callbackUrl);
+    expect(`${cb.origin}${cb.pathname}`).toBe(listener.redirectUri);
+    expect(cb.searchParams.get("code")).toBe("abc123");
+    expect(cb.searchParams.get("state")).toBe("st-1");
+    expect(cb.searchParams.get("iss")).toBe("https://app.xano.com");
   });
 
   it("ignores a wrong-state callback (400) without tearing down the one-shot server", async () => {
@@ -24,33 +32,41 @@ describe("loopback callback server", () => {
     // The server is still listening: the legitimate redirect still completes.
     const good = await fetch(`${listener.redirectUri}?code=real-code&state=st-good`);
     expect(good.status).toBe(200);
-    await expect(listener.waitForCode).resolves.toBe("real-code");
+    await expect(listener.waitForCallback).resolves.toMatchObject({ code: "real-code" });
   });
 
   it("rejects a valid-state callback that carries no code", async () => {
     const listener = await startCallbackServer({ callbackPath: CALLBACK_PATH, expectedState: "st" });
-    const rejected = expect(listener.waitForCode).rejects.toThrow(/no authorization code/i);
+    const rejected = expect(listener.waitForCallback).rejects.toThrow(/no authorization code/i);
     const res = await fetch(`${listener.redirectUri}?state=st`);
     expect(res.status).toBe(400);
     await rejected;
   });
 
-  it("does not reflect the server error value into the callback HTML", async () => {
+  it("does not reflect the server error value into the callback HTML, and tags the code on `.error`", async () => {
     const listener = await startCallbackServer({ callbackPath: CALLBACK_PATH, expectedState: "st" });
-    const rejected = expect(listener.waitForCode).rejects.toThrow(/access_denied/);
-    const res = await fetch(`${listener.redirectUri}?error=access_denied&state=st`);
+    const rejected = listener.waitForCallback.then(
+      () => {
+        throw new Error("expected rejection");
+      },
+      (err: Error & { error?: string }) => err,
+    );
+    const res = await fetch(`${listener.redirectUri}?error=invalid_client&state=st`);
     const body = await res.text();
     expect(res.status).toBe(400);
     // The raw error surfaces in the thrown Error/stderr, never in the page.
-    expect(body).not.toContain("access_denied");
-    await rejected;
+    expect(body).not.toContain("invalid_client");
+    const err = await rejected;
+    expect(err.message).toMatch(/invalid_client/);
+    // The raw OAuth code rides on `.error` so login's recovery can detect it.
+    expect(err.error).toBe("invalid_client");
   });
 
   it("closes after handling one callback (port is freed)", async () => {
     const listener = await startCallbackServer({ callbackPath: CALLBACK_PATH, expectedState: "st" });
     const uri = listener.redirectUri;
     await fetch(`${uri}?code=x&state=st`);
-    await listener.waitForCode;
+    await listener.waitForCallback;
     // The server is one-shot; a second connect should be refused.
     await expect(fetch(uri)).rejects.toThrow();
   });
@@ -60,12 +76,12 @@ describe("loopback callback server", () => {
     const probe = await startCallbackServer({ callbackPath: CALLBACK_PATH, expectedState: "s" });
     const port = Number(new URL(probe.redirectUri).port);
     probe.close();
-    await probe.waitForCode.catch(() => {}); // absorb the cancel rejection
+    await probe.waitForCallback.catch(() => {}); // absorb the cancel rejection
 
     const fixed = await startCallbackServer({ callbackPath: CALLBACK_PATH, expectedState: "s", port });
     expect(new URL(fixed.redirectUri).port).toBe(String(port));
     fixed.close();
-    await fixed.waitForCode.catch(() => {});
+    await fixed.waitForCallback.catch(() => {});
   });
 });
 

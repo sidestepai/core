@@ -9,8 +9,8 @@
  */
 import lockfile from "proper-lockfile";
 import type { ParsedArgs } from "../emit/cli.js";
-import { discover, refresh, type TokenSet } from "./oauth.js";
-import { readTokens, writeTokens, resolveAuthFilePath, type TokenRecord } from "./store.js";
+import { OpenIdProvider, oauthErrorCode, type RawTokens } from "./oauth.js";
+import { readTokens, writeTokens, clearTokens, resolveAuthFilePath, type TokenRecord } from "./store.js";
 import { resolveInstance, resolveAuthHost, resolveScope, assertHttpsOrigin } from "./config.js";
 
 /** Refresh this many ms before the cached access token actually expires. */
@@ -39,17 +39,29 @@ export interface ResolvedAuth {
   instance: string;
 }
 
-/** Discover the token endpoint for `authHost` and run a refresh-grant exchange. */
+/** Stamp an absolute `expires_at` onto a token-endpoint response (mirrors what the old hand-rolled `postToken` did). */
+function stampExpiry(raw: RawTokens): { access_token: string; refresh_token?: string; scope?: string; expires_at: number } {
+  return {
+    access_token: raw.access_token,
+    refresh_token: raw.refresh_token,
+    scope: raw.scope,
+    expires_at: Date.now() + (raw.expires_in ?? 0) * 1000,
+  };
+}
+
+/**
+ * Run a refresh-grant exchange for the client that minted the token. The AS
+ * ROTATES the refresh token, so the caller MUST persist the returned one.
+ */
 function refreshAccessToken(
   authHost: string,
   clientId: string,
   refreshToken: string,
   instance: string,
   scope: string | undefined,
-): Promise<TokenSet> {
-  return discover(authHost).then(({ token_endpoint }) =>
-    refresh({ tokenEndpoint: token_endpoint, clientId, refreshToken, instance, scope }),
-  );
+): Promise<RawTokens> {
+  const provider = new OpenIdProvider({ authHost, scope: scope ?? "", clientId });
+  return provider.refresh(refreshToken, { instance, scope });
 }
 
 /**
@@ -82,7 +94,7 @@ export async function getAccessToken(args: ParsedArgs): Promise<ResolvedAuth> {
           `(fields "refresh_token" and "client_id") after \`sidestep login\`.`,
       );
     }
-    let set: TokenSet;
+    let set: RawTokens;
     try {
       set = await refreshAccessToken(authHost, clientId, envRefresh, instance, resolveScope(args));
     } catch (err) {
@@ -144,25 +156,36 @@ async function refreshUnderLock(
       );
     }
     process.stderr.write(`Refreshing access token for ${instance}…\n`);
-    let set: TokenSet;
+    let set: RawTokens;
     try {
       set = await refreshAccessToken(current.auth_host, current.client_id, current.refresh_token, instance, current.scope);
     } catch (err) {
+      // A rejected/replayed/expired refresh token can't be salvaged: drop the
+      // spent credentials so the next run starts a clean login rather than
+      // retrying with a token the AS will keep rejecting.
+      if (oauthErrorCode(err) === "invalid_grant") {
+        clearTokens(authFilePath);
+        throw new Error(
+          `Session for ${instance} has expired or was revoked (the refresh token was rejected). ` +
+            `Run \`sidestep login --instance ${instance}\` to sign in again.`,
+        );
+      }
       throw new Error(
         `Token refresh failed for ${instance}: ${err instanceof Error ? err.message : String(err)}\n` +
           `Run \`sidestep login --instance ${instance}\` to sign in again.`,
       );
     }
+    const stamped = stampExpiry(set);
     // Persist the rotated refresh token — the old one is now spent.
     writeTokens(authFilePath, {
       ...current,
-      access_token: set.access_token,
-      refresh_token: set.refresh_token ?? current.refresh_token,
-      expires_at: set.expires_at,
-      scope: set.scope ?? current.scope,
+      access_token: stamped.access_token,
+      refresh_token: stamped.refresh_token ?? current.refresh_token,
+      expires_at: stamped.expires_at,
+      scope: stamped.scope ?? current.scope,
       instance,
     });
-    return { access_token: set.access_token, instance };
+    return { access_token: stamped.access_token, instance };
   } finally {
     await release();
   }

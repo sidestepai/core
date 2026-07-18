@@ -38,6 +38,11 @@ function readAll(path: string): Record<string, ClientRecord> {
   }
 }
 
+function writeAll(path: string, all: Record<string, ClientRecord>): void {
+  mkdirSync(dirname(path), { recursive: true });
+  atomicWrite(path, JSON.stringify(all, null, 2) + "\n", { mode: 0o600 });
+}
+
 /**
  * Return the client_id registered for (authHost, redirectUri), registering a
  * new one (and caching it) when none exists. The registration's redirect_uri is
@@ -61,7 +66,21 @@ export async function getOrRegisterClient(params: {
     scope: params.scope,
   });
   all[k] = { client_id };
-  mkdirSync(dirname(path), { recursive: true });
-  atomicWrite(path, JSON.stringify(all, null, 2) + "\n", { mode: 0o600 });
+  writeAll(path, all);
   return client_id;
+}
+
+/**
+ * Forget the cached client for (authHost, redirectUri). Called after the AS
+ * rejects the registration (`invalid_client`) — a revoked/expired dynamic client
+ * can't be salvaged mid-flight, so we drop it and let the next login re-register.
+ * Idempotent; a no-op when nothing is cached.
+ */
+export function clearClient(params: { authHost: string; redirectUri: string }): void {
+  const path = clientStorePath();
+  const all = readAll(path);
+  const k = key(params.authHost, params.redirectUri);
+  if (!(k in all)) return;
+  delete all[k];
+  writeAll(path, all);
 }
