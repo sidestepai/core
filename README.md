@@ -312,8 +312,9 @@ sidestep lock rename table users members     # move a lock entry after renaming 
 sidestep lock prune ./xano/index.ts --yes    # drop lock entries nothing exports anymore
 sidestep lock adopt live-export.json --yes   # seed the lock from a live engine export
 
-sidestep login --instance https://your-instance.xano.io  # OAuth sign-in (once)
-sidestep push ./xano/index.ts                # compile + upload to your sandbox (RESETS it)
+sidestep login                               # OAuth sign-in (once) — pick the instance at consent
+sidestep push ./xano/index.ts                # compile + import into your sandbox (merges)
+sidestep push ./xano/index.ts --reset        # ...clearing the sandbox workspace first (full replace)
 sidestep push --bundle ws.json               # upload an already-exported bundle
 sidestep logout                              # revoke the refresh token + delete the local cache
 ```
@@ -343,12 +344,11 @@ hatch for a directory with multiple workspace entries.
 longer needs its own upload script. Authentication is **OAuth** against the Xano
 control plane — no static API keys to copy around.
 
-**Sign in once** with `sidestep login`. Name the target instance, or omit it and
-pick one at the consent screen:
+**Sign in once** with `sidestep login`. You pick the target instance at the
+hosted consent screen — the CLI binds to whatever you choose:
 
 ```bash
-sidestep login --instance https://your-instance.xano.io   # pre-select the instance
-sidestep login                                             # choose at consent
+sidestep login
 ```
 
 This runs the standard authorization-code + PKCE browser flow (powered by the
@@ -362,8 +362,8 @@ arbitrary loopback port; the registration is cached in
 `~/.xano/sidestep-clients.json` and reused. If that cached client is ever
 rejected (`invalid_client` — e.g. the server forgot the registration), `login`
 transparently drops it, re-registers, and retries once. The instance the token
-is bound to is read from the token itself, so `--instance` is an optional
-pre-selection, not a requirement.
+is bound to is read from the token itself (its `aud` claim), so which instance
+you're signed in to is always whatever you chose at consent.
 
 The resulting tokens (access + refresh) are cached in a **project-local** file,
 `./.xano/auth.json`, which `login` **auto-adds to your `.gitignore`** so
@@ -374,24 +374,32 @@ credentials never get committed. Override the cache location with `--auth-file` 
 **Then push:**
 
 ```bash
-sidestep push ./xano/index.ts                 # compile the workspace + upload it
+sidestep push ./xano/index.ts                 # compile the workspace + import it (merge)
+sidestep push ./xano/index.ts --reset         # ...clear the sandbox workspace first (full replace)
 sidestep push --bundle workspace.json         # upload a bundle exported earlier
-sidestep push ./xano/index.ts --instance https://other.xano.io  # override the target
 ```
 
 `push <file>` runs the exact same pipeline as `export` (including `xano.lock`
 seeding and merge), then `POST`s the bundle to your instance's sandbox import
 endpoint (`/api:meta/sandbox/bundle`). `push --bundle <path>` skips the compile
 and uploads a bundle a previous `export` wrote — handy in CI where the two steps
-are separate. The endpoint's response prints to stdout; progress goes to stderr,
-so `sidestep push --bundle ws.json > result.json` captures just the response.
+are separate. The endpoint returns `{ url, workspace }`: the whole JSON prints to
+stdout (so `sidestep push --bundle ws.json > result.json` captures it), and the
+sandbox's public `url` is echoed to stderr for convenience.
+
+**`--reset` — merge vs. replace.** By default the bundle is imported **on top of**
+the sandbox workspace (a merge/upsert), so objects you removed from code linger
+in the sandbox. Pass `--reset` to fully **clear the sandbox workspace first**, so
+the bundle replaces it wholesale (sent as `?reset=true`). The clear and the
+import run in a single transaction, so a failed import can never leave the sandbox
+wiped. Use `--reset` when you want the sandbox to exactly mirror your code.
 
 `push` reuses the cached tokens and **refreshes them automatically** when the
 access token has expired (Xano rotates the refresh token on every use, and the
 new one is persisted for you). If a refresh is rejected because the session was
 revoked or expired (`invalid_grant`), `push` clears the stale cache and tells you
 to run `sidestep login` again rather than retrying a spent token. The target
-instance is `--instance` → `$XANO_INSTANCE` → the instance you logged in with.
+instance is always the one your cached token is bound to (chosen at `login`).
 
 **Sign out** with `sidestep logout`. It best-effort **revokes** the refresh token
 at the Xano control plane (so a leaked cache file can't be replayed) and then
@@ -406,9 +414,11 @@ be exchanged by the client that minted it, hence both). `push` exchanges them fo
 an access token — no cache file or browser needed:
 
 ```bash
-XANO_REFRESH_TOKEN=… XANO_CLIENT_ID=… \
-  sidestep push --bundle ws.json --instance https://your-instance.xano.io
+XANO_REFRESH_TOKEN=… XANO_CLIENT_ID=… sidestep push --bundle ws.json
 ```
+
+The target instance is read from the refresh token itself (its `aud`), so CI
+pushes to whatever instance the token was minted for — no instance flag needed.
 
 > **Automated agents:** authenticate with `$XANO_REFRESH_TOKEN` + `$XANO_CLIENT_ID`
 > + `push`; do **not** invoke `sidestep login`, which blocks on an interactive
@@ -418,11 +428,12 @@ XANO_REFRESH_TOKEN=… XANO_CLIENT_ID=… \
 > `XANO_NO_BROWSER=1` to suppress the browser spawn and open the printed authorize
 > URL manually.
 
-> ⚠️ **`push` is destructive and non-permanent.** The sandbox import **resets the
-> target sandbox** before loading your bundle, and it writes to your **live
-> instance**. It's a fast dev-loop convenience, not a production deploy.
-> **Automated agents must ask for explicit confirmation before running
-> `sidestep push`** — never run it unattended.
+> ⚠️ **`push` writes to your live sandbox and is non-permanent.** It imports into
+> the **sandbox tenant** of your live instance — a fast dev-loop convenience, not
+> a production deploy. `--reset` additionally **clears the sandbox workspace**
+> before importing, discarding whatever was there. **Automated agents must ask
+> for explicit confirmation before running `sidestep push`** — never run it
+> unattended, and treat `--reset` as especially destructive.
 
 ## Agent grounding
 

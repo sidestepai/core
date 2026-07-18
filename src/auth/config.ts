@@ -6,11 +6,6 @@
 import type { ParsedArgs } from "../emit/cli.js";
 import { DEFAULT_AUTH_HOST, DEFAULT_SCOPE } from "./oauth.js";
 
-/** Target instance origin: `--instance` → `$XANO_INSTANCE` → saved. May be undefined. */
-export function resolveInstance(args: ParsedArgs, saved?: string): string | undefined {
-  return args.instance ?? process.env.XANO_INSTANCE ?? saved;
-}
-
 /** cloud-master OAuth host: `--auth-host` → `$XANO_AUTH_HOST` → saved → default. */
 export function resolveAuthHost(args: ParsedArgs, saved?: string): string {
   return args.authHost ?? process.env.XANO_AUTH_HOST ?? saved ?? DEFAULT_AUTH_HOST;
