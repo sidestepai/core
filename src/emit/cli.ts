@@ -61,8 +61,8 @@ export interface ParsedArgs {
   yes: boolean;
   /** `push --bundle <path>`: upload an already-exported bundle instead of a file entry. */
   bundle: string | undefined;
-  /** `--instance <origin>`: target instance origin (OAuth `resource` + push URL). Default: $XANO_INSTANCE, then the saved token's instance. */
-  instance: string | undefined;
+  /** `push --reset`: fully replace the sandbox workspace before import (`?reset=true`) instead of merging into it. */
+  reset: boolean;
   /** `--auth-host <origin>`: cloud-master OAuth host. Default: $XANO_AUTH_HOST, then https://app.xano.com. */
   authHost: string | undefined;
   /** `--auth-file <path>`: project-local token cache. Default: $XANO_AUTH_FILE, then ./.xano/auth.json. */
@@ -90,7 +90,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let frozenLock = false;
   let yes = false;
   let bundle: string | undefined;
-  let instance: string | undefined;
+  let reset = false;
   let authHost: string | undefined;
   let authFile: string | undefined;
   let port: number | undefined;
@@ -113,10 +113,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
       bundle = rest[++i];
     } else if (arg.startsWith("--bundle=")) {
       bundle = arg.slice("--bundle=".length);
-    } else if (arg === "--instance") {
-      instance = rest[++i];
-    } else if (arg.startsWith("--instance=")) {
-      instance = arg.slice("--instance=".length);
+    } else if (arg === "--reset") {
+      reset = true;
     } else if (arg === "--auth-host") {
       authHost = rest[++i];
     } else if (arg.startsWith("--auth-host=")) {
@@ -138,7 +136,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       // (and its value) fall through into positionals and misparse as an entry file.
       throw new Error(
         `\`--profile\`/\`--config\` were removed — push now authenticates via OAuth. ` +
-          `Run \`sidestep login --instance <origin>\` once (or set XANO_REFRESH_TOKEN for CI).`,
+          `Run \`sidestep login\` once (or set XANO_REFRESH_TOKEN for CI).`,
       );
     } else {
       positionals.push(arg);
@@ -154,7 +152,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     frozenLock,
     yes,
     bundle,
-    instance,
+    reset,
     authHost,
     authFile,
     port,
@@ -236,9 +234,9 @@ export async function loadDefault(file: string): Promise<unknown> {
 
 const USAGE =
   "Usage: sidestep <compile|export> <file> [--out <path>] [--lock[=<path>]] [--frozen-lock] | " +
-  "sidestep login [--instance <origin>] [--auth-host <origin>] [--auth-file <path>] [--port <n>] | " +
+  "sidestep login [--auth-host <origin>] [--auth-file <path>] [--port <n>] | " +
   "sidestep logout [--auth-file <path>] | " +
-  "sidestep push <file>|--bundle <path> [--instance <origin>] [--auth-file <path>] | " +
+  "sidestep push <file>|--bundle <path> [--reset] [--auth-file <path>] | " +
   "sidestep lock <rename|prune|adopt> …";
 
 /** Quote a name for a suggested shell command when it needs it. */

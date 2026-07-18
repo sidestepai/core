@@ -5,14 +5,15 @@
  * the two share one battle-tested implementation of RFC 8414 discovery, PKCE,
  * the authorization-code grant, refresh (with rotation), and revocation.
  *
- * The CLI differs from the dashboard in three ways, all handled here:
+ * The CLI differs from the dashboard in two ways, both handled here:
  *   - the redirect target is a loopback URL with a runtime-bound port (see
  *     `loopback.ts`), not a fixed config value;
  *   - the DCR client registration is cached per (auth host + redirect URI) in a
- *     global machine file (`client-store.ts`), reused across projects;
- *   - it pins the target instance via RFC 8707 `resource` (the dashboard lets
- *     the user pick at consent). `resource` is passed through on authorize,
- *     code-exchange, and refresh.
+ *     global machine file (`client-store.ts`), reused across projects.
+ *
+ * Like the dashboard, the user picks the target instance at the hosted consent
+ * screen; the binding is read back from the token's `aud` claim (see
+ * `decodeAudience`), so there is no instance pre-selection to plumb through.
  *
  * `discover`, `registerClient`, and `decodeAudience` stay as pure/HTTP-only
  * helpers (fetch + decode, no openid-client) because they're both trivially
@@ -166,24 +167,17 @@ export function oauthErrorCode(err: unknown): string | undefined {
   return undefined;
 }
 
-/** Options shared by every `resource`-carrying request. */
-interface ResourceOpts {
-  /** RFC 8707 `resource` — the instance the token should be bound to. */
-  instance?: string;
-  scope?: string;
-}
-
 /**
  * The protocol surface the CLI commands drive. Fakeable in tests (as in the
  * dashboard) so callers can be exercised without a live authorization server.
  */
 export interface TokenProvider {
   /** Build the browser authorize URL (authorization-code + PKCE, S256). */
-  buildAuthUrl(p: { verifier: string; state: string; instance?: string }): Promise<string>;
+  buildAuthUrl(p: { verifier: string; state: string }): Promise<string>;
   /** Exchange the loopback callback URL for a token set. */
-  exchange(callbackUrl: string, p: { verifier: string; state: string; instance?: string }): Promise<RawTokens>;
+  exchange(callbackUrl: string, p: { verifier: string; state: string }): Promise<RawTokens>;
   /** Refresh — the server ROTATES the refresh token, so persist the new one. */
-  refresh(refreshToken: string, opts?: ResourceOpts): Promise<RawTokens>;
+  refresh(refreshToken: string, opts?: { scope?: string }): Promise<RawTokens>;
   /** Revoke the refresh token at the AS (logout). */
   revoke(refreshToken: string): Promise<void>;
   /** Drop the cached config + DCR registration (e.g. after `invalid_client`). */
@@ -277,47 +271,35 @@ export class OpenIdProvider implements TokenProvider {
     }
   }
 
-  async buildAuthUrl({
-    verifier,
-    state,
-    instance,
-  }: {
-    verifier: string;
-    state: string;
-    instance?: string;
-  }): Promise<string> {
+  async buildAuthUrl({ verifier, state }: { verifier: string; state: string }): Promise<string> {
     const config = await this.config();
     const code_challenge = await client.calculatePKCECodeChallenge(verifier);
-    const params: Record<string, string> = {
+    return client.buildAuthorizationUrl(config, {
       redirect_uri: this.redirectUri(),
       scope: this.opts.scope,
       code_challenge,
       code_challenge_method: "S256",
       state,
-    };
-    if (instance) params.resource = instance;
-    return client.buildAuthorizationUrl(config, params).href;
+    }).href;
   }
 
   async exchange(
     callbackUrl: string,
-    { verifier, state, instance }: { verifier: string; state: string; instance?: string },
+    { verifier, state }: { verifier: string; state: string },
   ): Promise<RawTokens> {
     const config = await this.config();
-    const tokens = await client.authorizationCodeGrant(
-      config,
-      new URL(callbackUrl),
+    const tokens = await client.authorizationCodeGrant(config, new URL(callbackUrl), {
       // We don't request `openid`, so no ID Token is expected.
-      { pkceCodeVerifier: verifier, expectedState: state, idTokenExpected: false },
-      instance ? { resource: instance } : undefined,
-    );
+      pkceCodeVerifier: verifier,
+      expectedState: state,
+      idTokenExpected: false,
+    });
     return pick(tokens);
   }
 
-  async refresh(refreshToken: string, opts?: ResourceOpts): Promise<RawTokens> {
+  async refresh(refreshToken: string, opts?: { scope?: string }): Promise<RawTokens> {
     const config = await this.config();
     const params: Record<string, string> = {};
-    if (opts?.instance) params.resource = opts.instance;
     if (opts?.scope) params.scope = opts.scope;
     return pick(await client.refreshTokenGrant(config, refreshToken, params));
   }

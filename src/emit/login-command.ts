@@ -1,7 +1,7 @@
 /**
- * `sidestep login [--instance <origin>]` — run the OAuth 2.1 authorization-code +
- * PKCE flow against the cloud-master control-plane and cache the resulting
- * tokens locally for reuse by `push`.
+ * `sidestep login` — run the OAuth 2.1 authorization-code + PKCE flow against the
+ * cloud-master control-plane and cache the resulting tokens locally for reuse by
+ * `push`.
  *
  * Flow: start a fixed-port 127.0.0.1 loopback server → build an OpenIdProvider
  * (discovers endpoints and dynamically registers, or reuses, a client whose
@@ -10,9 +10,8 @@
  * the token's `aud` claim → write the project-local cache (0600) and ensure it
  * is gitignored.
  *
- * `--instance` is OPTIONAL: when given it pre-selects the instance (RFC 8707
- * `resource`); when omitted the user picks it at the hosted consent screen. The
- * saved instance is always the token's true audience, not the flag value.
+ * The user always picks the target instance at the hosted consent screen (like
+ * the dashboard); the saved instance is the token's true `aud`, never a flag.
  *
  * Robustness: a stale DCR client (the AS forgot our registration) surfaces as
  * `invalid_client` at authorize OR exchange; we drop the cached client and retry
@@ -26,28 +25,26 @@ import type { ParsedArgs } from "./cli.js";
 import { OpenIdProvider, oauthErrorCode, decodeAudience, CALLBACK_PATH, DEFAULT_PORT } from "../auth/oauth.js";
 import { startCallbackServer, openBrowser } from "../auth/loopback.js";
 import { writeTokens, ensureGitignored, resolveAuthFilePath, type TokenRecord } from "../auth/store.js";
-import { resolveInstance, resolveAuthHost, resolveScope, assertHttpsOrigin } from "../auth/config.js";
+import { resolveAuthHost, resolveScope, assertHttpsOrigin } from "../auth/config.js";
 
 export async function runLoginCommand(args: ParsedArgs): Promise<void> {
-  const instance = resolveInstance(args); // optional pre-selection
   const authHost = resolveAuthHost(args);
   const scope = resolveScope(args);
   const port = args.port ?? DEFAULT_PORT;
   assertHttpsOrigin(authHost, "--auth-host");
-  if (instance) assertHttpsOrigin(instance, "--instance");
 
-  process.stderr.write(`Signing in${instance ? ` to ${instance}` : ""} via ${authHost}…\n`);
+  process.stderr.write(`Signing in via ${authHost}…\n`);
 
   let record: TokenRecord;
   try {
-    record = await attemptLogin({ authHost, instance, scope, port });
+    record = await attemptLogin({ authHost, scope, port });
   } catch (err) {
     // A rejected registration can't be salvaged mid-flight: reset() (inside
     // attemptLogin) already dropped it, so retry the whole flow once with a
     // fresh registration.
     if (oauthErrorCode(err) !== "invalid_client") throw err;
     process.stderr.write(`The registered client was rejected; re-registering and retrying once…\n`);
-    record = await attemptLogin({ authHost, instance, scope, port });
+    record = await attemptLogin({ authHost, scope, port });
   }
 
   const authFilePath = resolveAuthFilePath(args);
@@ -82,7 +79,6 @@ export async function runLoginCommand(args: ParsedArgs): Promise<void> {
  */
 async function attemptLogin(p: {
   authHost: string;
-  instance?: string;
   scope: string;
   port: number;
 }): Promise<TokenRecord> {
@@ -104,7 +100,7 @@ async function attemptLogin(p: {
 
   let authorizeUrl: string;
   try {
-    authorizeUrl = await provider.buildAuthUrl({ verifier, state, instance: p.instance });
+    authorizeUrl = await provider.buildAuthUrl({ verifier, state });
   } catch (err) {
     listener.close();
     throw err;
@@ -126,26 +122,22 @@ async function attemptLogin(p: {
 
   let tokens;
   try {
-    tokens = await provider.exchange(callbackUrl, { verifier, state, instance: p.instance });
+    tokens = await provider.exchange(callbackUrl, { verifier, state });
   } catch (err) {
     if (oauthErrorCode(err) === "invalid_client") await provider.reset();
     throw err;
   }
 
-  // The token's `aud` claim is the authoritative instance binding (the user may
-  // have chosen it at consent). Fall back to the pre-selected --instance.
-  const boundInstance = decodeAudience(tokens.access_token) ?? p.instance;
+  // The instance is whatever the user chose at consent — read it back from the
+  // token's `aud` claim (the authoritative binding).
+  const boundInstance = decodeAudience(tokens.access_token);
   if (!boundInstance) {
     throw new Error(
-      `Could not determine the instance from the issued token. ` +
-        `Re-run with --instance <origin> to bind explicitly.`,
+      `Could not determine the instance from the issued token (no readable \`aud\` claim). ` +
+        `This is unexpected — please report it.`,
     );
   }
-  if (p.instance && boundInstance !== p.instance) {
-    process.stderr.write(
-      `Note: signed in to ${boundInstance} (chosen at consent), not the ${p.instance} you passed.\n`,
-    );
-  }
+  process.stderr.write(`Signed in to ${boundInstance}.\n`);
 
   return {
     access_token: tokens.access_token,
