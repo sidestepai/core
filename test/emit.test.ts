@@ -109,6 +109,17 @@ describe("CLI", () => {
     expect(() => parseArgs(["sandbox", "deploy", "f.ts", "--static-env", "=v"])).toThrow(/KEY=VALUE/);
   });
 
+  it("parseArgs reads --static-host (space and = forms) without colliding with --static/--static-env (#24)", () => {
+    expect(
+      parseArgs(["sandbox", "deploy", "f.ts", "--static", "./dist", "--static-host", "my-app"]),
+    ).toMatchObject({ static: "./dist", staticHost: "my-app" });
+    expect(
+      parseArgs(["sandbox", "deploy", "f.ts", "--static=./dist", "--static-host=my-app"]),
+    ).toMatchObject({ static: "./dist", staticHost: "my-app" });
+    // Absent → undefined (defaults to `default` host at deploy time).
+    expect(parseArgs(["sandbox", "deploy", "f.ts", "--static", "./dist"]).staticHost).toBeUndefined();
+  });
+
   it("`version` (and --version / -v) prints the package.json version to stdout", async () => {
     const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
     const { version } = JSON.parse(readFileSync(pkgPath, "utf8")) as { version: string };

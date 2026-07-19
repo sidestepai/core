@@ -92,13 +92,15 @@ async function deployParentStatic(
   auth: ResolvedAuth,
   env: Record<string, string>,
   explicit: boolean,
+  host?: string,
 ): Promise<DeploySummary["static"]> {
   const { resolveScopedWorkspaceId } = await import("../deploy/workspace.js");
   const { deployStaticHost } = await import("../deploy/static-host.js");
 
-  step(`Deploying static frontend ${dir}`);
+  step(`Deploying static frontend ${dir}${host ? ` (host: ${host})` : ""}`);
   const workspaceId = await resolveScopedWorkspaceId(auth);
   const sh = await deployStaticHost({
+    host,
     dir,
     workspaceId,
     baseUrl: auth.instance,
@@ -149,11 +151,14 @@ export async function runDeployCommand(args: ParsedArgs): Promise<void> {
     const env = buildStaticEnv(resp.baseUrl, args.staticEnv);
     const explicit = Object.keys(args.staticEnv).length > 0;
     try {
-      summary.static = await deployParentStatic(args.static, auth, env, explicit);
+      summary.static = await deployParentStatic(args.static, auth, env, explicit, args.staticHost);
     } catch (err) {
       warn("Backend deployed, but the static-host upload failed:");
       detail(err instanceof Error ? err.message : String(err));
-      detail(`Retry just the static step: sidestep sandbox deploy --static ${args.static}`);
+      detail(
+        `Retry just the static step: sidestep sandbox deploy --static ${args.static}` +
+          (args.staticHost ? ` --static-host ${args.staticHost}` : ""),
+      );
       process.exitCode = EXIT_STATIC_FAILED;
     }
   }

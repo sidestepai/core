@@ -195,6 +195,12 @@ Where a cold reader's intuition usually diverges from this API:
   defaults to the PK `id`). Only `db.query` takes a `where`/`additionalWhere`
   `expr(...)`; writes (`db.add`/`db.edit`/`db.add_or_edit`) take a `row`/`data`.
   See the **Statements › specials** signatures below.
+- **Single-field only — no composite match.** These ops match exactly ONE field;
+  there is no two-field form (the engine's by-field lookup takes a single
+  predicate). For a `(a, b)` existence/fetch — e.g. dedupe a `(habit, date)`
+  check-in — use `db.query({ where: [expr(col("habit"), "=", ...), expr(col("date"), "=", ...)], as })`
+  (a `where` array is ANDed) and branch on the result, rather than pushing the
+  check to the client.
 - **System columns are auto-injected.** `id` + `created_at` are prepended to
   every table (`system: true` by default) — declaring them by hand is redundant.
   `id` is an `int` PK by default; pass `idType: "uuid"` on the table for a uuid key.
@@ -219,6 +225,15 @@ Where a cold reader's intuition usually diverges from this API:
   (`writeBundle`/`writeArtifact`) and lock-file I/O import from `@sidestep/core/node`,
   NOT the browser-safe `@sidestep/core` entry (which a frontend can import query
   defs from to use `getPath()`/`InferInput` with no Node built-ins in the bundle).
+- **Client bundle size / tree-shaking.** `@sidestep/core` is `sideEffects: false`
+  and the `.` entry pulls no Node built-ins, so a bundler drops the SDK exports a
+  frontend doesn't use. But importing a query **def** for its `getPath()`/`verb`
+  also pulls whatever its `stack` references: the `s.*`/`c.*` factory CALLS run at
+  module load to BUILD the def, so they can't be tree-shaken away. Types are free
+  (`InferInput`/`InferRow` erase to nothing). To keep a client bundle minimal, put
+  route-facing metadata a frontend needs (the def handle for `getPath()`/`verb`, and
+  `type` imports) in a module separate from stack-heavy authoring, and `import type`
+  wherever you only need the shape.
 - **Intra-workspace imports use `.js` specifiers** (`../tables/links.js`), not
   extensionless — the defs compile under `moduleResolution: bundler`. A cold start
   often reaches for `../tables/links` first; add the `.js`.
@@ -369,6 +384,12 @@ pipeline. Typed filters carry named args; the rest are variadic by name.
 Read-modify-write a column from its current value with the pipeline: to increment
 a counter, `s.db.edit({ table, fieldValue, row: { clicks: withFilters(col("clicks"), fl.add(c.int(1))) } })`
 (`row` is a partial keyed by column; off a row you already read, `withFilters(ref("row.clicks"), fl.add(c.int(1)))`).
+⚠ This read-modify-write is NOT atomic — two concurrent writers can both read the
+same value and one increment is lost. There is no dedicated atomic-increment
+statement. For a **concurrency-safe** counter, do the arithmetic in the database
+with a single `s.db.direct_query` UPDATE (`SET clicks = clicks + 1 WHERE …`), which
+the DB applies atomically. Reserve the pipeline form for low-contention counters
+where a rare lost update is acceptable.
 
 - `fl.add(value: decimal): decimal` — Add 2 values together and return the answer
 - `fl.append(value: <T>, path: text): <T>[]` — Push an element on to the end of an array within an object and return the updated object

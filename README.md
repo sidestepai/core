@@ -303,6 +303,14 @@ The `@sidestep/core` entry has **zero Node dependencies**, so importing your wor
 graph into a browser bundle just works. The `node:fs`-backed emitters live in the
 separate `@sidestep/core/node` entry a frontend never pulls in.
 
+**Bundle size & tree-shaking.** `@sidestep/core` is `sideEffects: false`, so a bundler drops
+the SDK exports your frontend doesn't use. But importing a query **def** for its `getPath()`
+also pulls whatever its `stack` builds — the `s.*`/`c.*` factory *calls* run at module load
+to construct the def, so they can't be tree-shaken out. Types are free (`InferInput`/
+`InferRow` erase to nothing — use `import type`). To keep the client bundle lean, keep the
+route metadata a frontend needs (the handle for `getPath()`/`verb`, plus `type` imports)
+in a module separate from your stack-heavy authoring.
+
 ---
 
 ## Reference
@@ -427,6 +435,9 @@ resolves the cross-object reference at export. The **db family** (`s.db.add`/`s.
 reads/mutations match one field (`{ fieldName, fieldValue }`, defaulting to `id`); writes
 take a partial `row: { … }`; only `s.db.query` takes a `where` comparison built with
 `expr(...)` (plus `sort: [{ sortBy, dir? }]` and `paging: { page?, per_page?, offset? }`).
+The field-match ops take a **single** field — there's no composite `(a, b)` form. For a
+two-column lookup (e.g. dedupe a `(habit, date)` check-in), use `s.db.query` with a `where`
+array (ANDed) and branch on the result, rather than pushing the check to the client.
 
 **Runtime behavior.** Knowing what these return matters for typing your endpoint responses:
 
@@ -444,7 +455,10 @@ take a partial `row: { … }`; only `s.db.query` takes a `where` comparison buil
 (377 filters generated from the engine's own sources). To **read-modify-write a column from
 its current value** — e.g. increment a counter — pipe it through a filter:
 `s.db.edit({ table, fieldValue, row: { clicks: withFilters(col("clicks"), fl.add(c.int(1))) } })`,
-or `withFilters(ref("row.clicks"), fl.add(c.int(1)))` off a row you already read.
+or `withFilters(ref("row.clicks"), fl.add(c.int(1)))` off a row you already read. Note this
+read-modify-write is **not atomic** — concurrent writers can lose an increment; there's no
+dedicated atomic-increment statement. For a concurrency-safe counter, do the arithmetic in
+the database with a single `s.db.direct_query` `UPDATE … SET clicks = clicks + 1 WHERE …`.
 
 **Inputs** — `input.*` mirrors `f.*` exactly: every engine-legal field type is a valid
 function/query input. Use `input.object(children)` and `input.list(element)` for structured

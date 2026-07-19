@@ -9558,6 +9558,10 @@
           "description": "Archive a built frontend directory and deploy it to your workspace's static host (auto-deployed to dev) after the backend import. The backend URL is auto-injected into the build's root index.html as `window.XANO_HOST`, so the frontend needs no rebuild to target a sandbox."
         },
         {
+          "flag": "--static-host <name>",
+          "description": "Static-host NAME to deploy the frontend to (default `default`). Give each app a DISTINCT host so deploys don't share and overwrite the one `default` host — that shared host is why the first load after a deploy can serve a previous app's cached index.html. The host is auto-created on first deploy."
+        },
+        {
           "flag": "--static-env KEY=VALUE",
           "description": "Repeatable. Bake extra PUBLIC config into the static build's index.html as `window.<KEY>` globals (base URLs, publishable keys). Merged over the auto-seeded XANO_HOST; a static host serves these verbatim, so never put secrets here."
         },

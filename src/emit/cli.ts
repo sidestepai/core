@@ -79,6 +79,13 @@ export interface ParsedArgs {
    * Served to the browser verbatim — public values only, never secrets.
    */
   staticEnv: Record<string, string>;
+  /**
+   * `deploy --static-host <name>`: the static-host NAME to deploy the frontend
+   * to (default `default`). Give each app a distinct host so deploys don't share
+   * and overwrite one `default` host — the shared host is why a first post-deploy
+   * load can serve a *previous* app's cached `index.html`.
+   */
+  staticHost: string | undefined;
   /** `--origin <origin>`: cloud-master OAuth host. Default: $XANO_ORIGIN, then https://app.xano.com. */
   authHost: string | undefined;
   /** `--config <path>`: project-local token cache. Default: $XANO_CONFIG, then ./.xano/auth.json. */
@@ -126,6 +133,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let bundle: string | undefined;
   let reset = false;
   let staticDir: string | undefined;
+  let staticHost: string | undefined;
   const staticEnv: Record<string, string> = {};
   let authHost: string | undefined;
   let authFile: string | undefined;
@@ -159,6 +167,10 @@ export function parseArgs(argv: string[]): ParsedArgs {
         throw new Error(`--static-env expects KEY=VALUE (got "${kv ?? ""}").`);
       }
       staticEnv[kv.slice(0, eq)] = kv.slice(eq + 1);
+    } else if (arg === "--static-host") {
+      staticHost = rest[++i];
+    } else if (arg.startsWith("--static-host=")) {
+      staticHost = arg.slice("--static-host=".length);
     } else if (arg === "--static") {
       staticDir = rest[++i];
     } else if (arg.startsWith("--static=")) {
@@ -219,6 +231,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     bundle,
     reset,
     static: staticDir,
+    staticHost,
     staticEnv,
     authHost,
     authFile,
@@ -331,7 +344,7 @@ const USAGE =
   "sidestep version | " +
   "sidestep login [--origin <origin>] [--config <path>] [--global] [--port <n>] | " +
   "sidestep logout [--config <path>] [--global] | " +
-  "sidestep sandbox deploy <file>|--bundle <path> [--reset] [--static <dir>] [--static-env KEY=VALUE] [--config <path>] [--global] | " +
+  "sidestep sandbox deploy <file>|--bundle <path> [--reset] [--static <dir>] [--static-host <name>] [--static-env KEY=VALUE] [--config <path>] [--global] | " +
   "sidestep sandbox details [--config <path>] [--global] | " +
   "sidestep profile me [--config <path>] [--global] | " +
   "sidestep lock <rename|prune|adopt> …";
