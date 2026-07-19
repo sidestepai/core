@@ -121,7 +121,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let staticDir: string | undefined;
   let authHost: string | undefined;
   let authFile: string | undefined;
-  let global = false;
+  let useGlobal = false;
   let port: number | undefined;
   let scope: string | undefined;
   const positionals: string[] = [];
@@ -157,7 +157,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     } else if (arg.startsWith("--config=")) {
       authFile = arg.slice("--config=".length);
     } else if (arg === "--global") {
-      global = true;
+      useGlobal = true;
     } else if (arg === "--port") {
       port = parsePort(rest[++i]);
     } else if (arg.startsWith("--port=")) {
@@ -206,7 +206,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     static: staticDir,
     authHost,
     authFile,
-    global,
+    global: useGlobal,
     port,
     scope,
   };

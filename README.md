@@ -442,10 +442,13 @@ Tokens (access + refresh) cache in a **project-local** `./.xano/auth.json`, whic
 `--origin`/`$XANO_ORIGIN`, and the loopback port with `--port`.
 
 **Global credentials** — pass `--global` to `login` to cache tokens in a **shared**
-`~/.sidestep/auth.json` instead, reusable from any project directory. Every other command
-resolves credentials **project-local first, global as a fallback**: it uses `./.xano/auth.json`
-when present, otherwise `~/.sidestep/auth.json` — so a single `sidestep login --global` covers
-directories that have no local cache. An explicit `--config`/`$XANO_CONFIG` always wins over both.
+`~/.sidestep/auth.json` instead, reusable from any project directory. Every command that
+**reads** credentials (`sandbox deploy`/`details`, `profile me`, token refresh) resolves them
+**project-local first, global as a fallback**: it uses `./.xano/auth.json` when present,
+otherwise `~/.sidestep/auth.json` — so a single `sidestep login --global` covers directories
+that have no local cache. `login` and `logout` do **not** fall back: they target the
+project-local cache unless you pass `--global`, so a plain `logout` never revokes the shared
+credential. An explicit `--config`/`$XANO_CONFIG` always wins over everything.
 
 `sandbox deploy <file>` runs the exact same pipeline as `export` (including `xano.lock`
 seeding and merge), then `POST`s the bundle to `/api:meta/sandbox/bundle` (`?reset=true`

@@ -1,5 +1,6 @@
 /**
- * `sidestep logout` — sign out of the project-local token cache.
+ * `sidestep logout` — sign out of the project-local token cache (or the shared
+ * `~/.sidestep` cache with `--global`).
  *
  * Mirrors the sidestep dashboard BFF's logout: best-effort REVOKE the refresh
  * token at the authorization server (so a leaked cache file can't be replayed),
@@ -16,7 +17,10 @@ import { resolveScope } from "../auth/config.js";
 import { success, warn, detail, hostLabel } from "./ui.js";
 
 export async function runLogoutCommand(args: ParsedArgs): Promise<void> {
-  const authFilePath = resolveAuthFilePath(args);
+  // "write" mode: like `login`, target a definite cache. Clearing credentials
+  // must never silently fall back to the shared global cache — a plain `logout`
+  // in a project with no local cache is a no-op, not a revoke of `--global`.
+  const authFilePath = resolveAuthFilePath(args, "write");
   const saved = readTokens(authFilePath);
   if (!saved) {
     detail(`Not signed in (no token cache at ${authFilePath}). Nothing to do.`);

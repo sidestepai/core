@@ -50,11 +50,13 @@ export function globalAuthFilePath(): string {
  *   3. the project-local default `./.xano/auth.json`.
  *
  * `mode` disambiguates the default (step 3):
- *   • `"write"` (login) always targets the project-local cache — a login without
- *     `--global` should never silently write to the shared cache.
- *   • `"read"` (every other command) tries the project-local cache first and,
- *     when it is absent, falls back to the global cache — so `sidestep login
- *     --global` once is picked up from any project directory.
+ *   • `"write"` (login, logout) always targets the project-local cache — a
+ *     command that writes or clears credentials must never silently touch the
+ *     shared cache; reaching it requires an explicit `--global` (step 2).
+ *   • `"read"` (read-only commands: deploy, sandbox/profile reads, token
+ *     refresh) tries the project-local cache first and, when it is absent, falls
+ *     back to the global cache — so `sidestep login --global` once is picked up
+ *     from any project directory.
  */
 export function resolveAuthFilePath(args: ParsedArgs, mode: "read" | "write" = "read"): string {
   const explicit = args.authFile ?? process.env.XANO_CONFIG;
