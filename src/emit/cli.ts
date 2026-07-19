@@ -72,6 +72,13 @@ export interface ParsedArgs {
   reset: boolean;
   /** `deploy --static <dir>`: archive this directory and deploy it to the sandbox's static host. */
   static: string | undefined;
+  /**
+   * `deploy --static-env KEY=VALUE` (repeatable): public config baked into the
+   * static build's `index.html` as `window.<KEY>` globals. The backend URL is
+   * wired in automatically as `window.XANO_HOST`; these override/extend it.
+   * Served to the browser verbatim — public values only, never secrets.
+   */
+  staticEnv: Record<string, string>;
   /** `--origin <origin>`: cloud-master OAuth host. Default: $XANO_ORIGIN, then https://app.xano.com. */
   authHost: string | undefined;
   /** `--config <path>`: project-local token cache. Default: $XANO_CONFIG, then ./.xano/auth.json. */
@@ -119,6 +126,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let bundle: string | undefined;
   let reset = false;
   let staticDir: string | undefined;
+  const staticEnv: Record<string, string> = {};
   let authHost: string | undefined;
   let authFile: string | undefined;
   let useGlobal = false;
@@ -144,6 +152,13 @@ export function parseArgs(argv: string[]): ParsedArgs {
       bundle = arg.slice("--bundle=".length);
     } else if (arg === "--reset") {
       reset = true;
+    } else if (arg === "--static-env" || arg.startsWith("--static-env=")) {
+      const kv = arg === "--static-env" ? rest[++i] : arg.slice("--static-env=".length);
+      const eq = kv?.indexOf("=") ?? -1;
+      if (kv === undefined || eq <= 0) {
+        throw new Error(`--static-env expects KEY=VALUE (got "${kv ?? ""}").`);
+      }
+      staticEnv[kv.slice(0, eq)] = kv.slice(eq + 1);
     } else if (arg === "--static") {
       staticDir = rest[++i];
     } else if (arg.startsWith("--static=")) {
@@ -204,6 +219,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     bundle,
     reset,
     static: staticDir,
+    staticEnv,
     authHost,
     authFile,
     global: useGlobal,
@@ -288,7 +304,7 @@ const USAGE =
   "Usage: sidestep <compile|export> <file> [--out <path>] [--lock[=<path>]] [--frozen-lock] | " +
   "sidestep login [--origin <origin>] [--config <path>] [--global] [--port <n>] | " +
   "sidestep logout [--config <path>] [--global] | " +
-  "sidestep sandbox deploy <file>|--bundle <path> [--reset] [--static <dir>] [--config <path>] [--global] | " +
+  "sidestep sandbox deploy <file>|--bundle <path> [--reset] [--static <dir>] [--static-env KEY=VALUE] [--config <path>] [--global] | " +
   "sidestep sandbox details [--config <path>] [--global] | " +
   "sidestep profile me [--config <path>] [--global] | " +
   "sidestep lock <rename|prune|adopt> …";

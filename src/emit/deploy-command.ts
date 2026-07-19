@@ -72,7 +72,11 @@ async function loadBundle(args: ParsedArgs): Promise<{ bundle: string; source: s
  * bearer — the sandbox tenant does not serve static hosting, so the frontend
  * lives on the real workspace.
  */
-async function deployParentStatic(dir: string, auth: ResolvedAuth): Promise<DeploySummary["static"]> {
+async function deployParentStatic(
+  dir: string,
+  auth: ResolvedAuth,
+  env: Record<string, string>,
+): Promise<DeploySummary["static"]> {
   const { resolveScopedWorkspaceId } = await import("../deploy/workspace.js");
   const { deployStaticHost } = await import("../deploy/static-host.js");
 
@@ -83,9 +87,16 @@ async function deployParentStatic(dir: string, auth: ResolvedAuth): Promise<Depl
     workspaceId,
     baseUrl: auth.instance,
     accessToken: auth.access_token,
+    env,
   });
   success("Static host deployed");
   if (sh.url) detail(sh.url);
+  const keys = Object.keys(env);
+  if (keys.length > 0 && sh.envInjected) {
+    detail(`Config injected into index.html: ${keys.map((k) => `window.${k}`).join(", ")}`);
+  } else if (keys.length > 0) {
+    warn(`Config not injected — no <head> in a root index.html to anchor to. window.${keys[0]} is unset.`);
+  }
   return { url: sh.url };
 }
 
@@ -113,8 +124,12 @@ export async function runDeployCommand(args: ParsedArgs): Promise<void> {
   };
 
   if (args.static !== undefined) {
+    // Seed the backend URL as window.XANO_HOST, then let --static-env override/extend it.
+    const env: Record<string, string> = {};
+    if (resp.baseUrl) env.XANO_HOST = resp.baseUrl;
+    Object.assign(env, args.staticEnv);
     try {
-      summary.static = await deployParentStatic(args.static, auth);
+      summary.static = await deployParentStatic(args.static, auth, env);
     } catch (err) {
       warn("Backend deployed, but the static-host upload failed:");
       detail(err instanceof Error ? err.message : String(err));

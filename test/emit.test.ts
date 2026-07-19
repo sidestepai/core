@@ -92,6 +92,23 @@ describe("CLI", () => {
     });
   });
 
+  it("parseArgs collects repeatable --static-env KEY=VALUE pairs (= in the value is kept)", () => {
+    expect(
+      parseArgs(["sandbox", "deploy", "f.ts", "--static", "./dist", "--static-env", "PK=pk_1", "--static-env=Q=a=b"]),
+    ).toMatchObject({
+      command: "sandbox",
+      subcommand: "deploy",
+      file: "f.ts",
+      static: "./dist",
+      staticEnv: { PK: "pk_1", Q: "a=b" },
+    });
+  });
+
+  it("parseArgs rejects a --static-env without KEY=VALUE", () => {
+    expect(() => parseArgs(["sandbox", "deploy", "f.ts", "--static-env", "NOPE"])).toThrow(/KEY=VALUE/);
+    expect(() => parseArgs(["sandbox", "deploy", "f.ts", "--static-env", "=v"])).toThrow(/KEY=VALUE/);
+  });
+
   it("compiling the example module writes the expected JSON to --out", async () => {
     const examplePath = fileURLToPath(new URL("./fixtures/function-module.ts", import.meta.url));
     const outPath = join(tmpdir(), `sidestep-cli-${process.pid}.json`);

@@ -87,15 +87,9 @@ command** — point `--static` at your built frontend and it archives and upload
 sandbox's edge-served static host, right after the backend import, in the same run:
 
 ```bash
-# 1. Get the sandbox's backend base URL (stable per account) and bake it into the
-#    build. `sandbox details` prints the sandbox tenant URL your APIs live at.
-BASE=$(npx sidestep sandbox details | jq -r .baseUrl)
-
-# 2. Build your app against it. The env-var NAME is your framework's convention
-#    (Vite shown); the VALUE is the sandbox base URL from step 1.
-VITE_XANO_HOST="$BASE" npm run build                   # → ./dist, pointed at the sandbox
-
-# 3. Ship backend + frontend, live, together.
+# Build once, then ship backend + frontend together. The deploy wires the
+# backend URL into the frontend for you — no need to know it before building.
+npm run build                                          # → ./dist
 npx sidestep sandbox deploy ./xano/index.ts --static ./dist
 ```
 
@@ -106,18 +100,30 @@ npx sidestep sandbox deploy ./xano/index.ts --static ./dist
 → Deploying static frontend ./dist
 ✓ Static host deployed
     https://my-app.xano.io                                            ← frontend, live
+    Config injected into index.html: window.XANO_HOST                 ← backend URL, wired in
 ```
 
 One authenticated call ships your database schema, your APIs, your functions and
 triggers, **and** your compiled web app. No separate frontend host to configure, no CI
 glue wiring the two together.
 
-> **Wiring the frontend to the backend.** The compiled app needs the sandbox's backend
-> URL baked in *at build time*, so fetch it first with `sidestep sandbox details` (the
-> `baseUrl` field) and pass it to your build as an env var — as in step 1–2 above. That
-> `baseUrl` is the **sandbox tenant** URL your deployed APIs answer at; it is *not* the same
-> as `sidestep profile me`, which prints your account's instance origin. The sandbox is a
-> singleton per account, so its `baseUrl` is stable — fetch it once and reuse it.
+> **Wiring the frontend to the backend.** The deploy bakes the sandbox's backend URL into
+> your build's `index.html` automatically, as a `window.XANO_HOST` global evaluated *before*
+> your app bundle. So read it at runtime with a build-time fallback and you never have to
+> know the URL ahead of time:
+>
+> ```ts
+> const HOST = (typeof window !== "undefined" && window.XANO_HOST) || import.meta.env.VITE_XANO_HOST;
+> ```
+>
+> `window.XANO_HOST` is the **sandbox tenant** URL your deployed APIs answer at (the same
+> value `sidestep sandbox details` prints as `baseUrl`); it is *not* `sidestep profile me`,
+> which prints your account's instance origin. Because injection happens at deploy time, a
+> prebuilt `./dist` retargets any sandbox with **no rebuild** — ideal for headless agents.
+> Add your own public config (base URLs, *publishable* keys) with `--static-env KEY=VALUE`
+> (repeatable), exposed the same way as `window.<KEY>`. A static host serves these files
+> verbatim to the browser, so everything injected is **public** — never put secrets here;
+> those belong in backend env, read server-side via `env(name)`.
 
 **Two modes**, so you're always in control:
 
@@ -473,9 +479,20 @@ auto-creates the `default` host and **auto-deploys to `dev`**, returning the liv
 the static step is independent of the backend deploy (the backend still runs first because
 it's the primary action).
 
-Pair it with `sidestep sandbox details`, which prints the **sandbox's own base URL**
-(`GET /api:meta/sandbox/me`, projected to JSON) an agent can bake into the frontend's API
-config before building and uploading — no need to re-run a deploy just to recover the URL.
+**Config injection** — before archiving, the deploy rewrites the build's root `index.html`,
+inserting an inline `<script>` at the top of `<head>` that assigns each config value to a
+`window.<KEY>` global (so it runs before the app bundle). The backend URL is seeded
+automatically as `window.XANO_HOST` (from the backend deploy's own response), and
+`--static-env KEY=VALUE` (repeatable) merges in extra keys, overriding the seed on a name
+clash. A static host has no server runtime — it serves these files verbatim — so injected
+values are **public**: base URLs and *publishable* keys only, never secrets (those go in
+backend env, read via `env(name)`). Injection is skipped (reported as a warning, not a
+failure) when the archive has no root `index.html` with a `<head>` to anchor to; values are
+`<`-escaped so one containing `</script>` can't break out of the element. This is why a
+prebuilt `./dist` can retarget any sandbox with no rebuild.
+
+`sidestep sandbox details` prints the same **sandbox base URL** (`GET /api:meta/sandbox/me`,
+projected to JSON) out of band, for cases where you'd rather bake it in at build time.
 (`sidestep profile me` prints the *instance* base URL, i.e. the account's origin rather than
 the sandbox tenant.) A static failure after a committed backend deploy **does not roll
 back**: it exits with code `3` and a resumable message telling you to re-run with `--static`
