@@ -26,6 +26,7 @@ import { OpenIdProvider, oauthErrorCode, decodeAudience, CALLBACK_PATH, DEFAULT_
 import { startCallbackServer, openBrowser } from "../auth/loopback.js";
 import { writeTokens, ensureGitignored, resolveAuthFilePath, type TokenRecord } from "../auth/store.js";
 import { resolveAuthHost, resolveScope, assertHttpsOrigin } from "../auth/config.js";
+import { step, success, warn, detail, blank, hostLabel } from "./ui.js";
 
 export async function runLoginCommand(args: ParsedArgs): Promise<void> {
   const authHost = resolveAuthHost(args);
@@ -33,7 +34,7 @@ export async function runLoginCommand(args: ParsedArgs): Promise<void> {
   const port = args.port ?? DEFAULT_PORT;
   assertHttpsOrigin(authHost, "--auth-host");
 
-  process.stderr.write(`Signing in via ${authHost}…\n`);
+  step(`Signing in to ${hostLabel(authHost)}`);
 
   let record: TokenRecord;
   try {
@@ -43,30 +44,33 @@ export async function runLoginCommand(args: ParsedArgs): Promise<void> {
     // attemptLogin) already dropped it, so retry the whole flow once with a
     // fresh registration.
     if (oauthErrorCode(err) !== "invalid_client") throw err;
-    process.stderr.write(`The registered client was rejected; re-registering and retrying once…\n`);
+    warn("The registered client was rejected — re-registering and retrying once.");
     record = await attemptLogin({ authHost, scope, port });
   }
 
   const authFilePath = resolveAuthFilePath(args);
   writeTokens(authFilePath, record);
-  process.stderr.write(`Signed in. Tokens saved to ${authFilePath}.\n`);
+
+  blank();
+  success(`Signed in to ${hostLabel(record.instance)}`);
+  detail(`Tokens saved to ${authFilePath}`);
 
   // Tokens are already durably saved; a .gitignore failure must not fail the
   // login (and thus exit non-zero). Warn and continue.
   try {
     if (ensureGitignored(authFilePath)) {
-      process.stderr.write(`Added the token cache to .gitignore.\n`);
+      detail("Added the token cache to .gitignore");
     }
   } catch (err) {
-    process.stderr.write(
-      `Warning: could not update .gitignore (${err instanceof Error ? err.message : String(err)}). ` +
-        `Add ${authFilePath} to your ignore rules manually.\n`,
+    warn(
+      `Could not update .gitignore (${err instanceof Error ? err.message : String(err)}). ` +
+        `Add ${authFilePath} to your ignore rules manually.`,
     );
   }
   if (!record.refresh_token) {
-    process.stderr.write(
-      `Warning: no refresh token was issued (offline_access not granted); ` +
-        `push will require re-login once the access token expires.\n`,
+    warn(
+      "No refresh token was issued (offline_access not granted); " +
+        "push will require re-login once the access token expires.",
     );
   }
 }
@@ -106,7 +110,9 @@ async function attemptLogin(p: {
     throw err;
   }
 
-  process.stderr.write(`Opening your browser to authorize. If it doesn't open, visit:\n  ${authorizeUrl}\n`);
+  detail("Opening your browser to authorize — waiting for you to finish…");
+  detail("If it doesn't open, paste this URL into your browser:");
+  detail(authorizeUrl);
   openBrowser(authorizeUrl);
 
   let callbackUrl: string;
@@ -137,7 +143,6 @@ async function attemptLogin(p: {
         `This is unexpected — please report it.`,
     );
   }
-  process.stderr.write(`Signed in to ${boundInstance}.\n`);
 
   return {
     access_token: tokens.access_token,

@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import http from "node:http";
+import net from "node:net";
 import { startCallbackServer, browserCommand } from "../../src/auth/loopback.js";
 
 const CALLBACK_PATH = "/oauth/callback";
@@ -69,6 +71,63 @@ describe("loopback callback server", () => {
     await listener.waitForCallback;
     // The server is one-shot; a second connect should be refused.
     await expect(fetch(uri)).rejects.toThrow();
+  });
+
+  it("destroys the browser's keep-alive callback socket so the CLI can exit promptly", async () => {
+    const listener = await startCallbackServer({ callbackPath: CALLBACK_PATH, expectedState: "st" });
+    const { hostname, port } = new URL(listener.redirectUri);
+    // A keep-alive agent mimics the browser: it would normally hold the callback
+    // socket open for reuse. `server.close()` alone leaves such a socket alive and
+    // keeps Node's event loop from draining — the CLI would hang after login. The
+    // server must actively destroy the socket.
+    const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
+    const socketClosed = new Promise<void>((resolve, reject) => {
+      const req = http.request(
+        { host: hostname, port: Number(port), path: `${CALLBACK_PATH}?code=x&state=st`, agent },
+        (res) => res.resume(),
+      );
+      req.on("socket", (socket) => socket.on("close", () => resolve()));
+      req.on("error", reject);
+      req.end();
+    });
+
+    await listener.waitForCallback;
+    // A short deadline turns a regression into a clear failure rather than a hang.
+    await Promise.race([
+      socketClosed,
+      new Promise((_, rej) =>
+        setTimeout(() => rej(new Error("keep-alive callback socket was not destroyed")), 2000).unref(),
+      ),
+    ]);
+    agent.destroy();
+  });
+
+  it("destroys idle preconnect sockets so the CLI can exit promptly after login", async () => {
+    const listener = await startCallbackServer({ callbackPath: CALLBACK_PATH, expectedState: "st" });
+    const { hostname, port } = new URL(listener.redirectUri);
+    // Browsers open speculative preconnect sockets that never send a request.
+    // `Connection: close` can't reap those (there is no response to close on), and
+    // `server.close()` only stops NEW connections — so this idle socket would keep
+    // Node's event loop alive and the CLI would hang after login. The server must
+    // actively destroy it.
+    const idle = net.connect(Number(port), hostname);
+    await new Promise<void>((resolve, reject) => {
+      idle.once("connect", () => resolve());
+      idle.once("error", reject);
+    });
+    const idleClosed = new Promise<void>((resolve) => idle.once("close", () => resolve()));
+
+    // Complete the real flow on a separate connection.
+    await fetch(`${listener.redirectUri}?code=x&state=st`);
+    await listener.waitForCallback;
+
+    // A short deadline turns a regression into a clear failure rather than a hang.
+    await Promise.race([
+      idleClosed,
+      new Promise((_, rej) =>
+        setTimeout(() => rej(new Error("idle preconnect socket was not destroyed")), 2000).unref(),
+      ),
+    ]);
   });
 
   it("binds a fixed port when one is given", async () => {
