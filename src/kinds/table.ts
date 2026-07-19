@@ -117,26 +117,51 @@ export interface ViewDef {
 export type SchemaCols<S extends FieldMap> = Extract<keyof S, string> | "id" | "created_at";
 
 /**
- * The auto-injected system columns as they appear on a **row**: the `int`
- * primary key and the `epochms` `created_at` (both numbers). A `FieldMap`-schema
- * table adds these to {@link RowOf} unless it declares its own.
+ * The auto-injected system columns as they appear on a **row**, parameterized by
+ * the table's {@link TableDef.idType}: the primary key `id` (a `number` for the
+ * default `int`, a `string` for `uuid`) and the `epochms` `created_at` (always a
+ * number). A `FieldMap`-schema table adds these to {@link RowOf} unless it
+ * declares its own.
  */
-type SystemRow = { id: number; created_at: number };
+type SystemRow<IdT extends "int" | "uuid"> = {
+  id: IdT extends "uuid" ? string : number;
+  created_at: number;
+};
 
 /**
  * The **row type** of a `FieldMap`-schema table — the shape a read returns: each
  * declared column (value types recovered from the field brands, `nullable`/
  * `array` applied) plus the auto-injected system columns `id`/`created_at`,
- * unless the schema declares its own. The read-side mirror of the request-only
+ * unless the schema declares its own. `IdT` threads the table's
+ * {@link TableDef.idType} through so a `uuid` primary key infers `id: string`
+ * (not `number`); `Sys` threads {@link TableDef.system} through so a
+ * `system:false` table drops the injected columns (matching its narrower runtime
+ * row). The read-side mirror of the request-only
  * {@link import("../inputs/infer.js").InferInput}. Recovered from a table handle
  * via {@link InferRow}.
  *
- * Assumes the default `system:true` (matching {@link SchemaCols}, the column-name
- * phantom, which also always carries `id`/`created_at`). A table that opts out
- * with `system:false` and declares neither column gets no injected system
- * columns at runtime, so its real row is narrower than this type reports.
+ * `Sys` is compared non-distributively (`[Sys] extends [false]`) so only a
+ * literal `false` drops the columns — an unresolved `boolean` keeps them, the
+ * safe default. Note {@link SchemaCols} (the column-name phantom) is unaffected
+ * and still always carries `id`/`created_at`; the two intentionally diverge for
+ * `system:false` (a name may still be referenced even when the read row omits it).
+ *
+ * This is the table's full declared row, not any one endpoint's payload — a query
+ * returns whatever its `response`/`output` selects. `created_at` carries
+ * `access:"private"`, which the engine excludes from a *default, auto-shaped*
+ * read (it's `hidden` in the generated response), so such an endpoint omits it
+ * even though this type lists it; a response that explicitly selects `created_at`
+ * still returns it. Narrow with `Omit<InferRow<T>, "created_at">` on the
+ * auto-shaped path if you need the payload's exact shape.
  */
-export type RowOf<S extends FieldMap> = Prettify<Omit<SystemRow, keyof S> & RowFromFieldMap<S>>;
+export type RowOf<
+  S extends FieldMap,
+  IdT extends "int" | "uuid" = "int",
+  Sys extends boolean = true,
+> = Prettify<
+  ([Sys] extends [false] ? Record<never, never> : Omit<SystemRow<IdT>, keyof S>) &
+    RowFromFieldMap<S>
+>;
 
 /**
  * Recover a table's row type from a {@link table} handle:
@@ -382,9 +407,17 @@ registerKind(tableKind);
  * can type their column-name fields (`fieldName`, `output`, `sortBy`, `row`
  * keys) against the real columns. A raw `ColumnDef[]` schema stays loose.
  */
-export function table<S extends FieldMap>(
-  def: Omit<TableDef, "schema"> & { schema: S },
-): TableDef<SchemaCols<S>, RowOf<S>>;
+export function table<
+  S extends FieldMap,
+  IdT extends "int" | "uuid" = "int",
+  Sys extends boolean = true,
+>(
+  def: Omit<TableDef, "schema" | "idType" | "system"> & {
+    schema: S;
+    idType?: IdT;
+    system?: Sys;
+  },
+): TableDef<SchemaCols<S>, RowOf<S, IdT, Sys>>;
 export function table(def: TableDef): TableDef;
 export function table(def: TableDef): TableDef {
   return def;
