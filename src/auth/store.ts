@@ -9,6 +9,7 @@
  * recursive mkdir of the containing directory.
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { atomicWrite } from "../util/atomic-write.js";
 import type { ParsedArgs } from "../emit/cli.js";
@@ -34,13 +35,44 @@ export interface TokenRecord {
 const DEFAULT_AUTH_FILE = join(".xano", "auth.json");
 
 /**
- * Resolve the token cache path: `--config` → `$XANO_CONFIG` → the
- * project-local default `./.xano/auth.json`. Mirrors the flag→env→default
- * precedence used elsewhere in the CLI.
+ * Shared cross-project cache path (`--global`): `~/.sidestep/auth.json`.
+ * `$XANO_GLOBAL_CONFIG` overrides the location (mainly for tests, mirroring the
+ * client store's `$XANO_CLIENT_FILE`).
  */
-export function resolveAuthFilePath(args: ParsedArgs): string {
-  const raw = args.authFile ?? process.env.XANO_CONFIG ?? DEFAULT_AUTH_FILE;
-  return resolve(raw);
+export function globalAuthFilePath(): string {
+  return process.env.XANO_GLOBAL_CONFIG ?? join(homedir(), ".sidestep", "auth.json");
+}
+
+/**
+ * Resolve the token cache path. Precedence, highest first:
+ *   1. `--config <path>` / `$XANO_CONFIG` — an explicit path always wins.
+ *   2. `--global` — the shared `~/.sidestep/auth.json` cache.
+ *   3. the project-local default `./.xano/auth.json`.
+ *
+ * `mode` disambiguates the default (step 3):
+ *   • `"write"` (login, logout) always targets the project-local cache — a
+ *     command that writes or clears credentials must never silently touch the
+ *     shared cache; reaching it requires an explicit `--global` (step 2).
+ *   • `"read"` (read-only commands: deploy, sandbox/profile reads, token
+ *     refresh) tries the project-local cache first and, when it is absent, falls
+ *     back to the global cache — so `sidestep login --global` once is picked up
+ *     from any project directory.
+ */
+export function resolveAuthFilePath(args: ParsedArgs, mode: "read" | "write" = "read"): string {
+  const explicit = args.authFile ?? process.env.XANO_CONFIG;
+  if (explicit !== undefined) return resolve(explicit);
+  if (args.global) return globalAuthFilePath();
+
+  const local = resolve(DEFAULT_AUTH_FILE);
+  if (mode === "write") return local;
+
+  // Read: prefer the project-local cache, then fall back to the global one.
+  if (existsSync(local)) return local;
+  const global = globalAuthFilePath();
+  if (existsSync(global)) return global;
+  // Nothing exists yet — return the local path so "not signed in" errors point
+  // at the conventional location.
+  return local;
 }
 
 /**

@@ -34,7 +34,8 @@ export interface DeployResponse {
   baseUrl: string | undefined;
   /** The imported workspace object; carries the numeric `id` the static-host path needs. */
   workspace: { id?: number; name?: string; [k: string]: unknown } | undefined;
-  /** The raw response body — streamed to stdout unchanged. */
+  /** The raw response body, kept for diagnostics. The command layer projects a
+   *  secret-free summary to stdout rather than emitting this blob verbatim. */
   raw: string;
 }
 

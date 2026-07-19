@@ -97,4 +97,58 @@ describe("sidestep logout", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(stderr.join("")).toMatch(/not signed in/i);
   });
+
+  it("without --global never touches the shared cache (no silent global revoke)", async () => {
+    // A global cache exists, but the project has no local cache and we do not
+    // pass --global. `logout` must be a no-op — not a revoke of the shared cred.
+    const globalPath = join(dir, "global", "auth.json");
+    mkdirSync(join(dir, "global"), { recursive: true });
+    writeFileSync(globalPath, JSON.stringify({ refresh_token: "shared-ref", auth_host: "https://app.xano.com", client_id: "dcr-abc" }));
+    process.env.XANO_GLOBAL_CONFIG = globalPath;
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const cwd = process.cwd();
+    try {
+      process.chdir(dir); // no ./.xano/auth.json here
+      await run(["logout"]);
+    } finally {
+      process.chdir(cwd);
+      delete process.env.XANO_GLOBAL_CONFIG;
+    }
+
+    expect(fetchMock).not.toHaveBeenCalled(); // nothing revoked
+    expect(existsSync(globalPath)).toBe(true); // shared cache untouched
+    expect(stderr.join("")).toMatch(/not signed in/i);
+  });
+
+  it("with --global revokes and clears the shared cache", async () => {
+    const globalPath = join(dir, "global", "auth.json");
+    mkdirSync(join(dir, "global"), { recursive: true });
+    writeFileSync(
+      globalPath,
+      JSON.stringify({
+        access_token: "acc",
+        refresh_token: "shared-ref",
+        instance: "https://x8ki.xano.io",
+        auth_host: "https://app.xano.com",
+        client_id: "dcr-abc",
+      }),
+    );
+    process.env.XANO_GLOBAL_CONFIG = globalPath;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = input instanceof URL ? input.href : input instanceof Request ? input.url : String(input);
+      if (url.includes("/.well-known/")) return oauthJson(DISCOVERY);
+      if (url.includes("/oauth/revoke")) return new Response("", { status: 200 });
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    try {
+      await run(["logout", "--global"]);
+    } finally {
+      delete process.env.XANO_GLOBAL_CONFIG;
+    }
+
+    const revokeCall = fetchMock.mock.calls.find(([u]) => String(u).includes("/oauth/revoke"));
+    expect(new URLSearchParams(revokeCall![1]!.body as string).get("token")).toBe("shared-ref");
+    expect(existsSync(globalPath)).toBe(false); // shared cache cleared
+    expect(stderr.join("")).toContain("Signed out");
+  });
 });

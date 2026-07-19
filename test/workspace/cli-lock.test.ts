@@ -180,7 +180,7 @@ export default {};
     delete lock.objects["function:oldName"];
     writeFileSync(lockPath, serializeLock(lock), "utf8");
     await run(["export", writeWorkspace("oldName"), "--out", join(dir, "b2.json")]);
-    expect(stderrText()).toContain('dropped stale lock entry "function:newName"');
+    expect(stderrText()).toContain('Dropped stale lock entry "function:newName"');
     expect(readLockAt(lockPath).objects["function:newName"]).toBeUndefined();
   });
 
@@ -209,7 +209,7 @@ export default new Xano()
   it("missing lock without --lock warns on stderr and exports unlocked", async () => {
     const entry = writeWorkspace("sayHello");
     await run(["export", entry, "--out", join(dir, "b.json")]);
-    expect(stderrText()).toContain("exporting without xano.lock");
+    expect(stderrText()).toContain("Exporting without xano.lock");
     expect(existsSync(join(dir, "xano.lock"))).toBe(false);
     const bundle = JSON.parse(readFileSync(join(dir, "b.json"), "utf8"));
     expect(bundle.payload.app[0].canonical).toBe(""); // no minting when unlocked

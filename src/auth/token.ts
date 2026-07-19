@@ -12,6 +12,7 @@ import type { ParsedArgs } from "../emit/cli.js";
 import { OpenIdProvider, oauthErrorCode, decodeAudience, type RawTokens } from "./oauth.js";
 import { readTokens, writeTokens, clearTokens, resolveAuthFilePath, type TokenRecord } from "./store.js";
 import { resolveAuthHost, resolveScope, assertHttpsOrigin } from "./config.js";
+import { detail, hostLabel } from "../emit/ui.js";
 
 /** Refresh this many ms before the cached access token actually expires. */
 const EXPIRY_SKEW_MS = 30_000;
@@ -145,7 +146,7 @@ async function refreshUnderLock(authFilePath: string, saved: TokenRecord): Promi
           `Run \`sidestep login\` again.`,
       );
     }
-    process.stderr.write(`Refreshing access token for ${instance}…\n`);
+    detail(`Refreshing access token for ${hostLabel(instance)}…`);
     let set: RawTokens;
     try {
       set = await refreshAccessToken(current.auth_host, current.client_id, current.refresh_token, current.scope);

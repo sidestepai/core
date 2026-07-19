@@ -48,12 +48,15 @@ export async function runLoginCommand(args: ParsedArgs): Promise<void> {
     record = await attemptLogin({ authHost, scope, port });
   }
 
-  const authFilePath = resolveAuthFilePath(args);
+  const authFilePath = resolveAuthFilePath(args, "write");
   writeTokens(authFilePath, record);
 
   blank();
   success(`Signed in to ${hostLabel(record.instance)}`);
   detail(`Tokens saved to ${authFilePath}`);
+  if (args.global) {
+    detail("Using the shared ~/.sidestep cache — available from any project directory.");
+  }
 
   // Tokens are already durably saved; a .gitignore failure must not fail the
   // login (and thus exit non-zero). Warn and continue.
