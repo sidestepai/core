@@ -33,7 +33,7 @@ import { c } from "../../values/value.js";
 import { resolveRef } from "../../refs/guid.js";
 import type { ObjectRef } from "../../refs/guid.js";
 import { tableColumns } from "../../kinds/table.js";
-import type { ColumnDef, TableDef } from "../../kinds/table.js";
+import type { ColumnDef, TableDef, InferRow } from "../../kinds/table.js";
 import { encodeSearchExpression } from "../conditional.js";
 import type { Comparison } from "../conditional.js";
 
@@ -44,6 +44,31 @@ import type { Comparison } from "../conditional.js";
  * `output`, `sortBy`, and `row` keys.
  */
 type ColsOf<T> = T extends TableDef<infer C> ? C : string;
+
+/**
+ * The single-row shape a db read yields, for `InferResponse`'s trace (U5): the
+ * table's {@link InferRow}, narrowed to the selected `Cols` when an `output`
+ * list is given, else the full row. A bare-name / raw-`ColumnDef[]` table has no
+ * field brands, so `InferRow` is `never` → `unknown` (nothing to infer).
+ */
+type RowShapeOf<T extends ObjectRef, Cols extends readonly string[]> = [
+  InferRow<T>,
+] extends [never]
+  ? unknown
+  : Cols["length"] extends 0
+    ? InferRow<T>
+    : Pick<InferRow<T>, Extract<Cols[number], keyof InferRow<T>>>;
+
+/**
+ * A db read statement branded — **at the type level only** — with the stack
+ * variable it binds (`__as`) and the shape it produces (`__shape`). Both are
+ * phantom carriers `InferResponse`'s single-variable trace reads; the runtime
+ * statement is a plain {@link Statement}, so `encodeStatement` is unchanged.
+ */
+export type DbResult<As extends string, Shape> = Statement & {
+  readonly __as: As;
+  readonly __shape: Shape;
+};
 
 /** A stored rich input entry (db ops carry the expanded `{ignore,expand,children}` form). */
 interface RichInput {
@@ -98,7 +123,11 @@ function dboStatement(
   };
 }
 
-export interface DbGetArgs<T extends ObjectRef = ObjectRef> {
+export interface DbGetArgs<
+  T extends ObjectRef = ObjectRef,
+  As extends string = string,
+  Cols extends readonly ColsOf<T>[] = readonly ColsOf<T>[],
+> {
   /** The target table (def handle or name). */
   table: T;
   /** The lookup field (defaults to the primary key `id`). */
@@ -113,15 +142,23 @@ export interface DbGetArgs<T extends ObjectRef = ObjectRef> {
    * (byte shape per the `schema:query-auth-me` engine golden). Omitting it
    * returns the full record (`customize:false`). Note: an explicit `output`
    * list overrides column visibility — listing an `internal` column (e.g. a
-   * password hash) pulls it into the statement result.
+   * password hash) pulls it into the statement result. Captured literally so
+   * `InferResponse` narrows a traced row to exactly these columns.
    */
-  output?: ColsOf<T>[];
-  /** Capture the row into this stack variable. */
-  as?: string;
+  output?: Cols;
+  /** Capture the row into this stack variable. Captured literally so
+   * `InferResponse` can trace a `ref` back to this statement. */
+  as?: As;
 }
 
-/** `db.get <table>` — fetch a single record by a field match (`mvp:dbo_getby`). */
-export function dbGet<T extends ObjectRef>(args: DbGetArgs<T>): Statement {
+/** `db.get <table>` — fetch a single record by a field match (`mvp:dbo_getby`).
+ * Returns a {@link DbResult} branded with `as` + the (optionally narrowed) row
+ * shape so `InferResponse` can type a response that returns this variable. */
+export function dbGet<
+  T extends ObjectRef,
+  const As extends string = "",
+  const Cols extends readonly ColsOf<T>[] = readonly [],
+>(args: DbGetArgs<T, As, Cols>): DbResult<As, RowShapeOf<T, Cols>> {
   return dboStatement(
     "mvp:dbo_getby",
     args.table,
@@ -132,7 +169,7 @@ export function dbGet<T extends ObjectRef>(args: DbGetArgs<T>): Statement {
       entry("lock", c.bool(args.lock ?? false)),
     ],
     args.output,
-  );
+  ) as DbResult<As, RowShapeOf<T, Cols>>;
 }
 
 export interface DbDelArgs<T extends ObjectRef = ObjectRef> {
@@ -553,7 +590,11 @@ function encodeWhere(w: DbWhere): unknown {
   return w;
 }
 
-export interface DbQueryArgs<T extends ObjectRef = ObjectRef> {
+export interface DbQueryArgs<
+  T extends ObjectRef = ObjectRef,
+  As extends string = string,
+  Cols extends readonly ColsOf<T>[] = readonly ColsOf<T>[],
+> {
   table: T;
   /** Primary filter — `expr(...)`, an array of `expr(...)` (ANDed), or a raw `Value`. */
   where?: DbWhere;
@@ -565,9 +606,12 @@ export interface DbQueryArgs<T extends ObjectRef = ObjectRef> {
   lock?: boolean;
   /** Paging controls (page/per_page/offset/totals/metadata). */
   paging?: DbPaging;
-  /** Restrict returned columns. */
-  output?: ColsOf<T>[];
-  as?: string;
+  /** Restrict returned columns. Captured literally so `InferResponse` narrows
+   * the traced row list to exactly these columns. */
+  output?: Cols;
+  /** Capture the result list into this stack variable. Captured literally so
+   * `InferResponse` can trace a `ref` back to this statement. */
+  as?: As;
 }
 
 /**
@@ -578,15 +622,22 @@ export interface DbQueryArgs<T extends ObjectRef = ObjectRef> {
  * (shared with conditionals/trigger search); a raw `Value` is passed through.
  * Structural until a `dbo_view` golden is vendored.
  */
-export function dbQuery<T extends ObjectRef>(args: DbQueryArgs<T>): Statement {
+export function dbQuery<
+  T extends ObjectRef,
+  const As extends string = "",
+  const Cols extends readonly ColsOf<T>[] = readonly [],
+>(args: DbQueryArgs<T, As, Cols>): DbResult<As, RowShapeOf<T, Cols>[]> {
   const context: Record<string, unknown> = { dbo: { id: resolveRef("dbo", args.table) } };
   if (args.where) context.where = encodeWhere(args.where);
   if (args.additionalWhere) context.additional_where = encodeWhere(args.additionalWhere);
   if (args.sort) context.sort = args.sort;
   if (args.lock !== undefined) context.lock = args.lock;
   if (args.paging) context.paging = args.paging;
-  if (args.output) context.output = args.output;
-  return { name: "mvp:dbo_view", context, as: args.as ?? "", input: [], ...envelope() };
+  if (args.output) context.output = args.output as unknown as string[];
+  return { name: "mvp:dbo_view", context, as: args.as ?? "", input: [], ...envelope() } as unknown as DbResult<
+    As,
+    RowShapeOf<T, Cols>[]
+  >;
 }
 
 export interface DbTransactionArgs {

@@ -22,6 +22,7 @@ export interface FunctionDef<
   I extends Record<string, InputDescriptor> = Record<string, InputDescriptor>,
   Res = never,
   Resp extends ResponseDef = ResponseDef,
+  S extends readonly Statement[] = readonly Statement[],
 > {
   name: string;
   /** Explicit Xano `guid` (this object's identity). Defaults to a guid derived from `name`; set it to keep identity across a rename or to match an existing object. */
@@ -31,7 +32,9 @@ export interface FunctionDef<
   /** Deploy-target workspace id. Defaults to 0 (binding deferred). */
   workspace?: number;
   input?: I;
-  stack?: Statement[];
+  /** The statement stack, captured as the literal tuple `S` — see
+   * {@link QueryDef.stack}. Enables `InferResponse`'s single-variable trace. */
+  stack?: S;
   /** The response assignment — see {@link QueryDef.response}. Captured as `Resp`
    * so `InferResponse` can auto-derive object-literal keys / trace a variable. */
   response?: Resp;
@@ -55,7 +58,8 @@ export function defineFunction<
   const I extends Record<string, InputDescriptor> = Record<never, never>,
   Res = never,
   Resp extends ResponseDef = ResponseDef,
->(def: FunctionDef<I, Res, Resp>): FunctionDef<I, Res, Resp> {
+  const S extends readonly Statement[] = readonly Statement[],
+>(def: FunctionDef<I, Res, Resp, S>): FunctionDef<I, Res, Resp, S> {
   if (!def.name || typeof def.name !== "string") {
     throw new Error("defineFunction: `name` is required and must be a non-empty string.");
   }

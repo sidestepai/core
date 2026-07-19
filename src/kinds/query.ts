@@ -35,6 +35,7 @@ export interface QueryDef<
   I extends Record<string, InputDescriptor> = Record<string, InputDescriptor>,
   Res = never,
   Resp extends ResponseDef = ResponseDef,
+  S extends readonly Statement[] = readonly Statement[],
 > {
   name: string;
   /** Explicit Xano `guid` (this object's identity). Defaults to a guid derived from `name`; set it to keep identity across a rename or to match an existing object. */
@@ -60,7 +61,14 @@ export interface QueryDef<
   /** Workspace tags (stored `tag: [{tag}]`), e.g. `["xano:quick-start"]`. */
   tags?: string[];
   input?: I;
-  stack?: Statement[];
+  /**
+   * The endpoint's statement stack. Captured as the literal tuple `S` (via
+   * `query()`'s `const` inference) so `InferResponse` can trace a single-variable
+   * response back to the branded `db.get`/`db.query` that bound it (U5). A
+   * dynamically-built `Statement[]` widens `S` and the trace degrades to
+   * `unknown` — the override (`responseShape`) remains the escape hatch.
+   */
+  stack?: S;
   /**
    * The response assignment: a single {@link Value} (returned directly) or a
    * record of named values (an object with those keys). Captured as the literal
@@ -89,7 +97,8 @@ export type QueryHandle<
   I extends Record<string, InputDescriptor> = Record<string, InputDescriptor>,
   Res = never,
   Resp extends ResponseDef = ResponseDef,
-> = QueryDef<I, Res, Resp> & {
+  S extends readonly Statement[] = readonly Statement[],
+> = QueryDef<I, Res, Resp, S> & {
     /**
      * The endpoint's **group-relative** URL path — `/api:<canonical>/<name>` —
      * ready to prepend a host and drop into `fetch`. The api group's `canonical`
@@ -235,7 +244,8 @@ function queryImpl<
   const I extends Record<string, InputDescriptor> = Record<never, never>,
   Res = never,
   Resp extends ResponseDef = ResponseDef,
->(def: QueryDef<I, Res, Resp>): QueryHandle<I, Res, Resp> {
+  const S extends readonly Statement[] = readonly Statement[],
+>(def: QueryDef<I, Res, Resp, S>): QueryHandle<I, Res, Resp, S> {
   // The path segment is invariant across calls; only the canonical can vary
   // (via an override), so normalize the name once here.
   const path = def.name.replace(/^\/+/, "");
