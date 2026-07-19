@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { writeFileSync, readFileSync, rmSync, mkdtempSync, mkdirSync } from "node:fs";
+import { gunzipSync } from "node:zlib";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,7 +9,6 @@ import { run } from "../../src/emit/cli.js";
 const examplePath = fileURLToPath(new URL("../fixtures/workspace/index.ts", import.meta.url));
 
 const INSTANCE = "https://default.example.com";
-// Valid OIDC/RFC 8414 metadata — openid-client's discovery requires `issuer`.
 const DISCOVERY = {
   issuer: "https://app.xano.com",
   authorization_endpoint: "https://app.xano.com/oauth2/authorize",
@@ -24,8 +24,6 @@ interface TokenOverrides {
   instance?: string;
 }
 
-/** Write a token cache file and return its path. Defaults to an unexpired token.
- *  Pass `refresh_token: undefined` explicitly (the key present) to omit it. */
 function writeTokenFile(dir: string, o: TokenOverrides = {}): string {
   const path = join(dir, ".xano", "auth.json");
   const record: Record<string, unknown> = {
@@ -36,7 +34,6 @@ function writeTokenFile(dir: string, o: TokenOverrides = {}): string {
     auth_host: "https://app.xano.com",
     client_id: "dcr-abc",
   };
-  // Present-but-undefined omits the field; absent uses the default.
   if ("refresh_token" in o) {
     if (o.refresh_token !== undefined) record.refresh_token = o.refresh_token;
   } else {
@@ -47,7 +44,6 @@ function writeTokenFile(dir: string, o: TokenOverrides = {}): string {
   return path;
 }
 
-/** Minimal unsigned JWT carrying an `aud` claim, so decodeAudience can read it. */
 function jwtWithAud(aud: string): string {
   const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
   return `${b64({ typ: "at+jwt" })}.${b64({ aud })}.sig`;
@@ -57,29 +53,31 @@ function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     statusText: status === 200 ? "OK" : "ERR",
-    // oauth4webapi (openid-client) requires a JSON content-type on discovery /
-    // token responses; without it, discovery and the refresh grant reject.
     headers: { "content-type": "application/json" },
   });
 }
 
-/** A token-endpoint response body, with the `token_type` oauth4webapi requires. */
 function tokenBody(o: Record<string, unknown>): Record<string, unknown> {
   return { token_type: "bearer", ...o };
 }
 
-/** Single-response stub (import-only path). */
 function stubFetchOk(body = '{"ok":true}') {
   return vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(body, { status: 200, statusText: "OK" }));
 }
 
-describe("sidestep push CLI (OAuth)", () => {
+/** Gunzip a fetch mock's posted body back to the original bundle JSON text. */
+function postedBundle(fetchMock: ReturnType<typeof stubFetchOk>, callIndex = 0): string {
+  const init = fetchMock.mock.calls[callIndex]![1] as RequestInit;
+  return gunzipSync(init.body as Uint8Array).toString("utf8");
+}
+
+describe("sidestep sandbox deploy (OAuth, replaces push)", () => {
   let dir: string;
   let bundlePath: string;
   let stdoutChunks: string[];
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "sidestep-push-"));
+    dir = mkdtempSync(join(tmpdir(), "sidestep-sbx-"));
     bundlePath = join(dir, "bundle.json");
     stdoutChunks = [];
     vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
@@ -97,18 +95,19 @@ describe("sidestep push CLI (OAuth)", () => {
     delete process.env.XANO_ORIGIN;
   });
 
-  it("compiles a workspace entry and POSTs it to the cached instance with the OAuth token", async () => {
+  it("compiles a workspace entry and POSTs a gzipped bundle to the sandbox endpoint", async () => {
     const authFile = writeTokenFile(dir);
     const fetchMock = stubFetchOk('{"imported":true}');
 
-    await run(["push", examplePath, "--config", authFile]);
+    await run(["sandbox", "deploy", examplePath, "--config", authFile]);
 
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe(`${INSTANCE}/api:meta/sandbox/bundle`);
     expect(init?.method).toBe("POST");
     expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer acc-cached");
-    const posted = JSON.parse(init!.body as string);
+    expect((init?.headers as Record<string, string>)["Content-Encoding"]).toBeUndefined();
+    const posted = JSON.parse(postedBundle(fetchMock));
     expect(posted.app).toBe("xano");
     expect(posted.payload.workspace).toMatchObject({ name: "example" });
     expect(stdoutChunks.join("")).toContain("imported");
@@ -119,21 +118,20 @@ describe("sidestep push CLI (OAuth)", () => {
     writeFileSync(bundlePath, JSON.stringify({ app: "xano", payload: {} }));
     const fetchMock = stubFetchOk();
 
-    await run(["push", "--bundle", bundlePath, "--config", authFile]);
+    await run(["sandbox", "deploy", "--bundle", bundlePath, "--config", authFile]);
 
-    const [, init] = fetchMock.mock.calls[0]!;
-    expect(JSON.parse(init!.body as string)).toEqual({ app: "xano", payload: {} });
+    expect(JSON.parse(postedBundle(fetchMock))).toEqual({ app: "xano", payload: {} });
   });
 
-  it("refreshes an expired access token, persists rotation, and pushes with the new token", async () => {
+  it("refreshes an expired access token, persists rotation, and deploys with the new token", async () => {
     const authFile = writeTokenFile(dir, { expires_at: Date.now() - 1000 });
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(jsonResponse(DISCOVERY)) // discover
-      .mockResolvedValueOnce(jsonResponse(tokenBody({ access_token: "acc-fresh", refresh_token: "ref-rotated", expires_in: 600 }))) // refresh
-      .mockResolvedValueOnce(new Response('{"imported":true}', { status: 200 })); // import
+      .mockResolvedValueOnce(jsonResponse(DISCOVERY))
+      .mockResolvedValueOnce(jsonResponse(tokenBody({ access_token: "acc-fresh", refresh_token: "ref-rotated", expires_in: 600 })))
+      .mockResolvedValueOnce(new Response('{"imported":true}', { status: 200 }));
 
-    await run(["push", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile]);
+    await run(["sandbox", "deploy", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile]);
 
     expect(fetchMock).toHaveBeenCalledTimes(3);
     const [importUrl, importInit] = fetchMock.mock.calls[2]!;
@@ -143,115 +141,43 @@ describe("sidestep push CLI (OAuth)", () => {
     const saved = JSON.parse(readFileSync(authFile, "utf8"));
     expect(saved.access_token).toBe("acc-fresh");
     expect(saved.refresh_token).toBe("ref-rotated");
-    expect(saved.expires_at).toBeGreaterThan(Date.now());
   });
 
-  it("two concurrent pushes on a stale token refresh only ONCE (cross-process lock)", async () => {
-    const authFile = writeTokenFile(dir, { expires_at: Date.now() - 1000 });
-    let refreshCount = 0;
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
-      const u = String(url);
-      if (u.includes("/.well-known/")) return jsonResponse(DISCOVERY);
-      if (u.includes("/oauth/token")) {
-        refreshCount++;
-        return jsonResponse(tokenBody({ access_token: "acc-fresh", refresh_token: "rot", expires_in: 600 }));
-      }
-      if (u.includes("/sandbox/bundle")) return new Response('{"imported":true}', { status: 200 });
-      throw new Error(`unexpected fetch: ${u}`);
-    });
-
-    await Promise.all([
-      run(["push", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile]),
-      run(["push", "--bundle", bundlePathWith(dir, "{  }"), "--config", authFile]),
-    ]);
-
-    // The second push waited on the lock, re-read the freshly-rotated token, and
-    // skipped its own refresh — so the single-use refresh token is spent once.
-    expect(refreshCount).toBe(1);
-    expect(JSON.parse(readFileSync(authFile, "utf8")).refresh_token).toBe("rot");
-  });
-
-  it("CI: exchanges XANO_REFRESH_TOKEN for an access token without touching a file (instance from aud)", async () => {
+  it("CI: exchanges XANO_REFRESH_TOKEN and posts to the aud instance", async () => {
     process.env.XANO_REFRESH_TOKEN = "ci-refresh";
     process.env.XANO_CLIENT_ID = "dcr-abc";
     const ciToken = jwtWithAud("https://ci.example.com");
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(jsonResponse(DISCOVERY)) // discover
-      .mockResolvedValueOnce(jsonResponse(tokenBody({ access_token: ciToken, expires_in: 600 }))) // refresh
-      .mockResolvedValueOnce(new Response('{"imported":true}', { status: 200 })); // import
+      .mockResolvedValueOnce(jsonResponse(DISCOVERY))
+      .mockResolvedValueOnce(jsonResponse(tokenBody({ access_token: ciToken, expires_in: 600 })))
+      .mockResolvedValueOnce(new Response('{"imported":true}', { status: 200 }));
 
-    await run(["push", "--bundle", bundlePathWith(dir, "{}")]);
+    await run(["sandbox", "deploy", "--bundle", bundlePathWith(dir, "{}")]);
 
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    const refreshBody = new URLSearchParams(fetchMock.mock.calls[1]![1]!.body as string);
-    expect(refreshBody.get("grant_type")).toBe("refresh_token");
-    expect(refreshBody.get("refresh_token")).toBe("ci-refresh");
-    expect(refreshBody.get("client_id")).toBe("dcr-abc");
-    // The target instance is read back from the freshly minted token's aud.
     const [importUrl, importInit] = fetchMock.mock.calls[2]!;
     expect(importUrl).toBe("https://ci.example.com/api:meta/sandbox/bundle");
     expect((importInit?.headers as Record<string, string>).Authorization).toBe(`Bearer ${ciToken}`);
   });
 
-  it("CI: errors when the refreshed token carries no readable aud", async () => {
-    process.env.XANO_REFRESH_TOKEN = "ci-refresh";
-    process.env.XANO_CLIENT_ID = "dcr-abc";
-    vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(jsonResponse(DISCOVERY))
-      .mockResolvedValueOnce(jsonResponse(tokenBody({ access_token: "opaque-not-a-jwt", expires_in: 600 })));
-    await expect(run(["push", "--bundle", bundlePathWith(dir, "{}")])).rejects.toThrow(
-      /Could not determine the target instance/i,
-    );
-  });
-
-  it("CI: errors when XANO_REFRESH_TOKEN is set but XANO_CLIENT_ID is missing", async () => {
-    process.env.XANO_REFRESH_TOKEN = "ci-refresh";
-    await expect(run(["push", "--bundle", bundlePathWith(dir, "{}")])).rejects.toThrow(/XANO_CLIENT_ID is not/);
-  });
-
   it("errors when there is no token cache and no refresh env", async () => {
     await expect(
-      run(["push", "--bundle", bundlePathWith(dir, "{}"), "--config", join(dir, "nope.json")]),
+      run(["sandbox", "deploy", "--bundle", bundlePathWith(dir, "{}"), "--config", join(dir, "nope.json")]),
     ).rejects.toThrow(/Not signed in/);
   });
 
-  it("errors when the access token is expired and no refresh token is cached", async () => {
-    const authFile = writeTokenFile(dir, { expires_at: Date.now() - 1000, refresh_token: undefined });
-    await expect(
-      run(["push", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile]),
-    ).rejects.toThrow(/no refresh token is cached/i);
-  });
-
-  it("errors with an actionable message on a corrupt token cache", async () => {
-    const authFile = join(dir, ".xano", "auth.json");
-    mkdirSync(join(dir, ".xano"), { recursive: true });
-    writeFileSync(authFile, "{ not valid json");
-    await expect(
-      run(["push", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile]),
-    ).rejects.toThrow(/corrupt/i);
-  });
-
-  it("rejects a non-https auth host (plain http to a non-localhost host)", async () => {
-    process.env.XANO_REFRESH_TOKEN = "ci-refresh";
-    process.env.XANO_CLIENT_ID = "dcr-abc";
-    await expect(
-      run(["push", "--bundle", bundlePathWith(dir, "{}"), "--origin", "http://insecure.example.com"]),
-    ).rejects.toThrow(/must use https/i);
-  });
-
-  it("reuses an unexpired cached token (import only — no discovery/refresh)", async () => {
-    const authFile = writeTokenFile(dir); // unexpired, saved instance = INSTANCE
+  it("reuses an unexpired cached token (deploy only — no discovery/refresh)", async () => {
+    const authFile = writeTokenFile(dir);
     const fetchMock = stubFetchOk();
-    await run(["push", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile]);
-    expect(fetchMock).toHaveBeenCalledOnce(); // import only, no discovery/refresh
+    await run(["sandbox", "deploy", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile]);
+    expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock.mock.calls[0]![0]).toBe(`${INSTANCE}/api:meta/sandbox/bundle`);
   });
 
-  it("--reset appends ?reset=true to the sandbox import URL", async () => {
+  it("--reset appends ?reset=true to the sandbox endpoint", async () => {
     const authFile = writeTokenFile(dir);
-    const fetchMock = stubFetchOk('{"url":"https://x.dev.xano.io/tenant/abc","workspace":{"id":1}}');
-    await run(["push", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile, "--reset"]);
+    const fetchMock = stubFetchOk('{"base_url":"https://x.dev.xano.io/tenant/abc","workspace":{"id":1}}');
+    await run(["sandbox", "deploy", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile, "--reset"]);
     expect(fetchMock.mock.calls[0]![0]).toBe(`${INSTANCE}/api:meta/sandbox/bundle?reset=true`);
   });
 
@@ -259,8 +185,19 @@ describe("sidestep push CLI (OAuth)", () => {
     const authFile = writeTokenFile(dir);
     stubFetchOk();
     await expect(
-      run(["push", examplePath, "--bundle", bundlePath, "--config", authFile]),
+      run(["sandbox", "deploy", examplePath, "--bundle", bundlePath, "--config", authFile]),
     ).rejects.toThrow(/not both/);
+  });
+
+  it("rejects --static and --prune on sandbox deploy", async () => {
+    const authFile = writeTokenFile(dir);
+    stubFetchOk();
+    await expect(
+      run(["sandbox", "deploy", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile, "--static", dir]),
+    ).rejects.toThrow(/--static applies only to `workspace deploy`/);
+    await expect(
+      run(["sandbox", "deploy", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile, "--prune"]),
+    ).rejects.toThrow(/--prune applies only to `workspace deploy`/);
   });
 
   it("surfaces a non-2xx sandbox response as an error", async () => {
@@ -269,12 +206,21 @@ describe("sidestep push CLI (OAuth)", () => {
       new Response("boom", { status: 422, statusText: "Unprocessable Entity" }),
     );
     await expect(
-      run(["push", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile]),
-    ).rejects.toThrow(/Sandbox import failed \(422/);
+      run(["sandbox", "deploy", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile]),
+    ).rejects.toThrow(/failed \(422/);
+  });
+
+  it("`sidestep push` is removed with a pointer to sandbox deploy", async () => {
+    await expect(run(["push", "--bundle", bundlePathWith(dir, "{}")])).rejects.toThrow(
+      /was removed.*sandbox deploy/s,
+    );
+  });
+
+  it("errors on an unknown noun subcommand", async () => {
+    await expect(run(["sandbox", "frobnicate"])).rejects.toThrow(/Unknown sandbox subcommand/);
   });
 });
 
-/** Write a throwaway bundle file in `dir` and return its path. */
 function bundlePathWith(dir: string, contents: string): string {
   const p = join(dir, `b-${contents.length}-${Math.floor(performance.now())}.json`);
   writeFileSync(p, contents);

@@ -4,14 +4,14 @@ import { postDeploy } from "../../src/deploy/client.js";
 
 const AUTH = { access_token: "acc-1", instance: "https://inst.example.com" };
 
-function stubFetch(body: string, status = 200): ReturnType<typeof vi.spyOn> {
+function stubFetch(body: string, status = 200) {
   return vi.spyOn(globalThis, "fetch").mockResolvedValue(
     new Response(body, { status, statusText: status === 200 ? "OK" : "ERR" }),
   );
 }
 
 /** Recover the request body bytes from a fetch mock call. */
-function postedBytes(fetchMock: ReturnType<typeof vi.spyOn>): Uint8Array {
+function postedBytes(fetchMock: ReturnType<typeof stubFetch>): Uint8Array {
   const init = fetchMock.mock.calls[0]![1] as RequestInit;
   return init.body as Uint8Array;
 }
