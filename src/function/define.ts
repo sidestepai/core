@@ -13,10 +13,15 @@ export type { ResponseDef };
 /**
  * Like {@link QueryDef}, `FunctionDef` is generic over its `input` map `I` so a
  * consumer can recover the exact, branded input types via
- * `InferInput<typeof myFunction>`. The default keeps every bare-`FunctionDef` use
- * working unchanged.
+ * `InferInput<typeof myFunction>`, and over its declared response shape `Res` so
+ * `InferResponse<typeof myFunction>` recovers the read shape (functions share
+ * the response system with queries). Both default so every bare-`FunctionDef`
+ * use works unchanged; `Res` defaults to `never` (undeclared → derivation).
  */
-export interface FunctionDef<I extends Record<string, InputDescriptor> = Record<string, InputDescriptor>> {
+export interface FunctionDef<
+  I extends Record<string, InputDescriptor> = Record<string, InputDescriptor>,
+  Res = never,
+> {
   name: string;
   /** Explicit Xano `guid` (this object's identity). Defaults to a guid derived from `name`; set it to keep identity across a rename or to match an existing object. */
   guid?: string;
@@ -27,6 +32,13 @@ export interface FunctionDef<I extends Record<string, InputDescriptor> = Record<
   input?: I;
   stack?: Statement[];
   response?: ResponseDef;
+  /**
+   * Type-only: declare the function's response shape so
+   * `InferResponse<typeof fn>` recovers it exactly (the override, taking
+   * precedence over automatic derivation). The runtime value is ignored by the
+   * encoder; only its type is read. See {@link QueryDef.responseShape}.
+   */
+  responseShape?: Res;
   /** Workspace tags (stored `tag: [{tag}]`), e.g. `["xano:quick-start"]`. */
   tags?: string[];
 }
@@ -36,9 +48,10 @@ export interface FunctionDef<I extends Record<string, InputDescriptor> = Record<
  * map on the return type so `InferInput<typeof theFunction>` recovers the input
  * payload type (functions share the input system with queries).
  */
-export function defineFunction<const I extends Record<string, InputDescriptor> = Record<never, never>>(
-  def: FunctionDef<I>,
-): FunctionDef<I> {
+export function defineFunction<
+  const I extends Record<string, InputDescriptor> = Record<never, never>,
+  Res = never,
+>(def: FunctionDef<I, Res>): FunctionDef<I, Res> {
   if (!def.name || typeof def.name !== "string") {
     throw new Error("defineFunction: `name` is required and must be a non-empty string.");
   }

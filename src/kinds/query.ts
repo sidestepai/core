@@ -25,10 +25,16 @@ export type HttpVerb = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
 /**
  * `QueryDef` is generic over its `input` map `I` so a consumer can recover the
  * exact, branded input types via `InferInput<typeof myQuery>` (see
- * `src/inputs/infer.ts`). The default keeps every existing use — a bare
- * `QueryDef` — working unchanged.
+ * `src/inputs/infer.ts`), and over its declared response shape `Res` so
+ * `InferResponse<typeof myQuery>` (see `src/responses/infer.ts`) recovers the
+ * read shape. Both default so every existing use — a bare `QueryDef` — works
+ * unchanged; `Res` defaults to `never` (undeclared), which routes
+ * `InferResponse` to automatic derivation.
  */
-export interface QueryDef<I extends Record<string, InputDescriptor> = Record<string, InputDescriptor>> {
+export interface QueryDef<
+  I extends Record<string, InputDescriptor> = Record<string, InputDescriptor>,
+  Res = never,
+> {
   name: string;
   /** Explicit Xano `guid` (this object's identity). Defaults to a guid derived from `name`; set it to keep identity across a rename or to match an existing object. */
   guid?: string;
@@ -55,6 +61,16 @@ export interface QueryDef<I extends Record<string, InputDescriptor> = Record<str
   input?: I;
   stack?: Statement[];
   response?: ResponseDef;
+  /**
+   * Type-only: declare the endpoint's response shape so
+   * `InferResponse<typeof query>` recovers it exactly (the always-correct
+   * override, taking precedence over automatic derivation). Reuse the read-side
+   * types you already have — e.g. `responseShape: [] as InferRow<typeof link>[]`
+   * for a list, or `null as InferRow<typeof s> | null` for a get. Use it for
+   * responses the static walk can't see (filters, lambdas, control-flow vars).
+   * The runtime value is ignored by `encodeQuery`; only its type is read.
+   */
+  responseShape?: Res;
 }
 
 /**
@@ -62,8 +78,10 @@ export interface QueryDef<I extends Record<string, InputDescriptor> = Record<str
  * descriptor with one added method — the method is dropped by `JSON.stringify`
  * and ignored by `encodeQuery`, so serialization and conformance are unaffected.
  */
-export type QueryHandle<I extends Record<string, InputDescriptor> = Record<string, InputDescriptor>> =
-  QueryDef<I> & {
+export type QueryHandle<
+  I extends Record<string, InputDescriptor> = Record<string, InputDescriptor>,
+  Res = never,
+> = QueryDef<I, Res> & {
     /**
      * The endpoint's **group-relative** URL path — `/api:<canonical>/<name>` —
      * ready to prepend a host and drop into `fetch`. The api group's `canonical`
@@ -113,7 +131,7 @@ function defaultCache(override?: Partial<CacheXdo>): CacheXdo {
   };
 }
 
-export function encodeQuery(def: QueryDef): QueryXdo {
+export function encodeQuery(def: QueryDef<Record<string, InputDescriptor>, unknown>): QueryXdo {
   if (!def.name) throw new Error("query: `name` is required.");
   if (!def.verb) throw new Error("query: `verb` is required.");
   warnUnboundReturn("query", def.name, def.stack, def.response);
@@ -172,7 +190,10 @@ registerKind(queryKind);
  * token that doesn't match the deployed endpoint. So when nothing is resolvable
  * we throw with the fix rather than fabricate.
  */
-function resolveCanonical(def: QueryDef, override?: string): string {
+function resolveCanonical(
+  def: QueryDef<Record<string, InputDescriptor>, unknown>,
+  override?: string,
+): string {
   if (override) return override;
   const group = def.apiGroup;
   if (group && typeof group === "object" && typeof group.canonical === "string" && group.canonical !== "") {
@@ -202,9 +223,10 @@ function resolveCanonical(def: QueryDef, override?: string): string {
  * `getPath()` method — and preserves the exact, branded `input` map on the
  * return type so `InferInput<typeof theQuery>` recovers the request-payload type.
  */
-function queryImpl<const I extends Record<string, InputDescriptor> = Record<never, never>>(
-  def: QueryDef<I>,
-): QueryHandle<I> {
+function queryImpl<
+  const I extends Record<string, InputDescriptor> = Record<never, never>,
+  Res = never,
+>(def: QueryDef<I, Res>): QueryHandle<I, Res> {
   // The path segment is invariant across calls; only the canonical can vary
   // (via an override), so normalize the name once here.
   const path = def.name.replace(/^\/+/, "");

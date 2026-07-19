@@ -41,6 +41,10 @@ export type { InputOptions, InputDescriptor } from "./inputs/input.js";
 // inputs (no codegen) — `InferInput<typeof myQuery>`. The read-side counterpart
 // is `InferRow<typeof myTable>` (exported with the table kind below).
 export type { InferInput } from "./inputs/infer.js";
+// Consumer contract: derive a query/function's response type from its declared
+// `responseShape` (override) or its `response`/`stack` (auto-derivation) — the
+// read-side round-trip counterpart of `InferInput`.
+export type { InferResponse } from "./responses/infer.js";
 export type {
   TypeBrand,
   BrandValue,
