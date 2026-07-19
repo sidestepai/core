@@ -162,6 +162,20 @@ export function parseArgs(argv: string[]): ParsedArgs {
         `\`--profile\` was removed — push now authenticates via OAuth. ` +
           `Run \`sidestep login\` once (or set XANO_REFRESH_TOKEN for CI).`,
       );
+    } else if (
+      arg === "--prune" ||
+      arg === "--confirm-workspace" ||
+      arg.startsWith("--confirm-workspace=") ||
+      arg === "--adopt-workspace"
+    ) {
+      // Removed with `workspace deploy` — the sandbox is the only deploy target.
+      // Fail loudly (like `--profile`) rather than silently dropping the flag and
+      // deploying anyway, which would hide a broken migrated command.
+      const flag = arg.split("=")[0];
+      throw new Error(
+        `\`${flag}\` was removed along with \`sidestep workspace deploy\` — ` +
+          `the sandbox is the only deploy target. Use \`sidestep sandbox deploy\` (optionally with \`--reset\`).`,
+      );
     } else {
       positionals.push(arg);
     }

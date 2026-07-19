@@ -10,9 +10,15 @@
  * tenant-routing `headers` explicitly; the `workspace_id` is the sandbox's own
  * workspace id, which `sandbox/bundle` returns in its response.
  *
+ * The build route's `{static_host_id}` path segment is a NUMERIC id, not a name.
+ * The sandbox may have no static host yet, so we first `POST .../static_host/search`
+ * (empty body) — that endpoint auto-creates a `default` host when the workspace has
+ * none and returns the list — and use the resolved host's numeric id in the build URL.
+ *
  * Archive format: a gzipped USTAR tarball, built dependency-free (the SDK stays
- * lean). NOTE(verify): confirm the build endpoint accepts tar.gz vs. zip against
- * a live instance — this is the plan's flagged execution-time unknown.
+ * lean). The build endpoint dispatches on the uploaded filename's extension and
+ * accepts `.tar.gz` (verified against `StaticHosting::uncompress` in cloud-client);
+ * we upload as `build.tar.gz`.
  *
  * Node-only (`node:fs`/`node:zlib`) and lazily imported so the browser-safe
  * authoring bundle never pulls it in.
@@ -94,8 +100,46 @@ export interface StaticHostRequest {
    * without them the upload lands on the caller's real workspace, not the sandbox.
    */
   headers: Record<string, string>;
-  /** Static-host name; the endpoint auto-creates `default` on first build. */
+  /** Static-host name to deploy into. Resolved to a numeric id via search (which
+   *  auto-creates it when the workspace has none). Defaults to `default`. */
   host?: string;
+}
+
+/**
+ * Resolve the sandbox's static host to a numeric id. The build route wants a
+ * numeric `{static_host_id}`, and the sandbox may have no host yet — the search
+ * endpoint auto-creates a `default` host when the workspace has none, so an empty
+ * search reliably returns at least that one.
+ */
+async function resolveStaticHostId(req: StaticHostRequest): Promise<number> {
+  const name = req.host ?? "default";
+  const url = new URL(`/api:meta/workspace/${req.workspaceId}/static_host/search`, req.baseUrl);
+  const res = await fetch(url.href, {
+    method: "POST",
+    headers: { ...req.headers, "Content-Type": "application/json", Authorization: `Bearer ${req.accessToken}` },
+    body: "{}",
+    signal: AbortSignal.timeout(STATIC_TIMEOUT_MS),
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`Static-host lookup failed (${res.status} ${res.statusText}):\n${text}`);
+  }
+  let parsed: Record<string, unknown> = {};
+  try {
+    parsed = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    /* non-JSON — fall through to the empty-list error below */
+  }
+  const items = Array.isArray(parsed.items) ? (parsed.items as Array<Record<string, unknown>>) : [];
+  const match = items.find((h) => h.name === name) ?? items[0];
+  const id = match?.id;
+  if (typeof id !== "number") {
+    throw new Error(
+      `Static-host lookup: the sandbox workspace has no static host to deploy into ` +
+        `(expected \`static_host/search\` to auto-create "default").`,
+    );
+  }
+  return id;
 }
 
 export interface StaticHostResult {
@@ -118,8 +162,8 @@ export async function deployStaticHost(req: StaticHostRequest): Promise<StaticHo
     throw new Error(`--static ${req.dir}: archive is ${archive.length} bytes, over the ${MAX_ARCHIVE_BYTES}-byte cap.`);
   }
 
-  const host = req.host ?? "default";
-  const url = new URL(`/api:meta/workspace/${req.workspaceId}/static_host/${host}/build`, req.baseUrl);
+  const staticHostId = await resolveStaticHostId(req);
+  const url = new URL(`/api:meta/workspace/${req.workspaceId}/static_host/${staticHostId}/build`, req.baseUrl);
   const form = new FormData();
   form.append("name", "sidestep-deploy");
   form.append("file", new Blob([archive], { type: "application/gzip" }), "build.tar.gz");

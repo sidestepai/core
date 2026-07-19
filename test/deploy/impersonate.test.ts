@@ -41,13 +41,22 @@ describe("impersonateSandbox", () => {
     expect(creds.baseUrl).toBe("https://inst.example.com");
   });
 
-  it("refuses to continue when the exchange returns no tenant-routing headers", async () => {
+  it("refuses to continue when the exchange returns no headers at all", async () => {
     // Without X-Tenant every downstream call silently hits the caller's REAL
     // workspace, so this must fail loudly rather than deploy to the wrong place.
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(jsonResponse({ _ti: "ott-1" }))
       .mockResolvedValueOnce(jsonResponse({ _authToken: "imp-tok", baseUrl: "https://inst.example.com/" }));
-    await expect(impersonateSandbox(AUTH)).rejects.toThrow(/no tenant-routing headers/i);
+    await expect(impersonateSandbox(AUTH)).rejects.toThrow(/no `X-Tenant` tenant-routing header/i);
+  });
+
+  it("refuses to continue when headers are present but lack X-Tenant specifically", async () => {
+    // A non-empty headers object that happens to omit X-Tenant is just as
+    // dangerous — the check must key on X-Tenant, not merely "some header".
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse({ _ti: "ott-1" }))
+      .mockResolvedValueOnce(jsonResponse({ _authToken: "imp-tok", headers: { "X-Other": "nope" } }));
+    await expect(impersonateSandbox(AUTH)).rejects.toThrow(/no `X-Tenant` tenant-routing header/i);
   });
 
   it("errors when the impersonate leg returns no ticket", async () => {

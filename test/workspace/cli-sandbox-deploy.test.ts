@@ -201,21 +201,42 @@ describe("sidestep sandbox deploy (OAuth, replaces push)", () => {
       .mockResolvedValueOnce(
         jsonResponse({ name: "sbx-1", _authToken: "imp-tok", baseUrl: `${INSTANCE}/`, headers: { "X-Tenant": "sbx-1" } }),
       )
+      .mockResolvedValueOnce(jsonResponse({ items: [{ id: 9, name: "default" }] }))
       .mockResolvedValueOnce(jsonResponse({ url: "https://sbx-1.static.dev" }));
 
     await run(["sandbox", "deploy", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile, "--static", staticDir]);
 
     expect(fetchMock.mock.calls[1]![0]).toBe(`${INSTANCE}/api:meta/sandbox/impersonate`);
     expect(fetchMock.mock.calls[2]![0]).toBe(`${INSTANCE}/api:meta/tenant/token/exchange`);
+    // The static-host id is a NUMERIC id fetched via search (auto-creates default),
+    // not the literal string "default" the build route would reject.
+    expect(fetchMock.mock.calls[3]![0]).toBe(`${INSTANCE}/api:meta/workspace/7/static_host/search`);
 
     // The upload must use the sandbox's OWN workspace id (7, from the deploy
-    // response) and carry X-Tenant — without it the build lands on the caller's
-    // real workspace instead of the sandbox.
-    const [staticUrl, staticInit] = fetchMock.mock.calls[3]!;
-    expect(staticUrl).toBe(`${INSTANCE}/api:meta/workspace/7/static_host/default/build`);
+    // response) + the resolved numeric host id (9), and carry X-Tenant — without
+    // it the build lands on the caller's real workspace instead of the sandbox.
+    const [staticUrl, staticInit] = fetchMock.mock.calls[4]!;
+    expect(staticUrl).toBe(`${INSTANCE}/api:meta/workspace/7/static_host/9/build`);
     const headers = (staticInit as RequestInit).headers as Record<string, string>;
     expect(headers["X-Tenant"]).toBe("sbx-1");
     expect(headers.Authorization).toBe("Bearer imp-tok");
+  });
+
+  it("--static skips the upload with exit 3 when the deploy response carries no workspace id", async () => {
+    const authFile = writeTokenFile(dir);
+    const staticDir = join(dir, "site3");
+    mkdirSync(staticDir, { recursive: true });
+    writeFileSync(join(staticDir, "index.html"), "<h1>hi</h1>");
+
+    // Backend deploy succeeds but omits `workspace.id`, so the static step has no
+    // id to target — it must be skipped (not crash) and reported as resumable.
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(jsonResponse({ base_url: "https://x.dev/tenant/sbx-1" }));
+
+    await run(["sandbox", "deploy", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile, "--static", staticDir]);
+
+    expect(fetchMock).toHaveBeenCalledOnce(); // no impersonation/search/build attempted
+    expect(process.exitCode).toBe(3);
+    process.exitCode = 0;
   });
 
   it("--static fails the static step, not the deploy, when the exchange returns no tenant headers", async () => {
@@ -251,6 +272,22 @@ describe("sidestep sandbox deploy (OAuth, replaces push)", () => {
       /was removed.*sandbox deploy/s,
     );
   });
+
+  it("`sidestep workspace deploy` is removed with a pointer to sandbox deploy", async () => {
+    await expect(run(["workspace", "deploy", examplePath])).rejects.toThrow(
+      /workspace deploy.*was removed.*sandbox is the only deploy target/s,
+    );
+  });
+
+  it.each(["--prune", "--confirm-workspace", "--adopt-workspace"])(
+    "loud-fails the removed `%s` flag instead of silently ignoring it",
+    async (flag) => {
+      const authFile = writeTokenFile(dir);
+      await expect(
+        run(["sandbox", "deploy", examplePath, flag, "my-app", "--config", authFile]),
+      ).rejects.toThrow(new RegExp(`\\${flag}\`? was removed`));
+    },
+  );
 
   it("errors on an unknown noun subcommand", async () => {
     await expect(run(["sandbox", "frobnicate"])).rejects.toThrow(/Unknown sandbox subcommand/);

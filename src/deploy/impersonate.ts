@@ -95,10 +95,13 @@ export async function impersonateSandbox(auth: ResolvedAuth): Promise<SandboxCre
       if (typeof v === "string" && v !== "") headers[k] = v;
     }
   }
-  if (Object.keys(headers).length === 0) {
+  // X-Tenant specifically is the load-bearing header — accepting any other
+  // non-empty header would still let the upload land on the caller's real
+  // workspace, which is the exact failure this check exists to prevent.
+  if (headers["X-Tenant"] === undefined) {
     throw new Error(
-      `sandbox token exchange: response carried no tenant-routing headers (expected \`X-Tenant\`). ` +
-        `Refusing to continue — without them the upload would target your real workspace.`,
+      `sandbox token exchange: response carried no \`X-Tenant\` tenant-routing header. ` +
+        `Refusing to continue — without it the upload would target your real workspace.`,
     );
   }
 
