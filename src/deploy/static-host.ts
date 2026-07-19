@@ -4,8 +4,11 @@
  * (`/api:meta/workspace/{workspace_id}/static_host/{host}/build`), which ingests
  * the build and deploys it to the `dev` environment.
  *
- * The `workspace_id` is the numeric id from the shared resolver (U9) — the
- * static-host path is NOT token-resolved, so the caller passes it explicitly.
+ * There is no sandbox-specific static-host route, so this targets the ordinary
+ * meta endpoint using the credentials from the sandbox impersonation hop
+ * (`impersonateSandbox`). The caller passes `baseUrl`, `accessToken` and the
+ * tenant-routing `headers` explicitly; the `workspace_id` is the sandbox's own
+ * workspace id, which `sandbox/bundle` returns in its response.
  *
  * Archive format: a gzipped USTAR tarball, built dependency-free (the SDK stays
  * lean). NOTE(verify): confirm the build endpoint accepts tar.gz vs. zip against
@@ -17,7 +20,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { gzipSync } from "node:zlib";
-import type { ResolvedAuth } from "../auth/token.js";
 
 const STATIC_TIMEOUT_MS = 120_000;
 /** Client-side archive cap — the static upload is a second attacker-influenced payload path. */
@@ -81,9 +83,17 @@ export function tarGz(files: ArchiveEntry[]): Buffer {
 export interface StaticHostRequest {
   /** Local directory to archive and deploy. */
   dir: string;
-  /** Numeric workspace id (from the shared resolver). */
+  /** Numeric workspace id — the sandbox's own, as returned by `sandbox/bundle`. */
   workspaceId: number;
-  auth: ResolvedAuth;
+  /** Origin to resolve the meta-API path against. */
+  baseUrl: string;
+  /** Bearer token to send. */
+  accessToken: string;
+  /**
+   * Tenant-routing headers from the impersonation hop (`X-Tenant`). Sent verbatim;
+   * without them the upload lands on the caller's real workspace, not the sandbox.
+   */
+  headers: Record<string, string>;
   /** Static-host name; the endpoint auto-creates `default` on first build. */
   host?: string;
 }
@@ -109,14 +119,14 @@ export async function deployStaticHost(req: StaticHostRequest): Promise<StaticHo
   }
 
   const host = req.host ?? "default";
-  const url = new URL(`/api:meta/workspace/${req.workspaceId}/static_host/${host}/build`, req.auth.instance);
+  const url = new URL(`/api:meta/workspace/${req.workspaceId}/static_host/${host}/build`, req.baseUrl);
   const form = new FormData();
   form.append("name", "sidestep-deploy");
   form.append("file", new Blob([archive], { type: "application/gzip" }), "build.tar.gz");
 
   const res = await fetch(url.href, {
     method: "POST",
-    headers: { Authorization: `Bearer ${req.auth.access_token}` },
+    headers: { ...req.headers, Authorization: `Bearer ${req.accessToken}` },
     body: form,
     signal: AbortSignal.timeout(STATIC_TIMEOUT_MS),
   });

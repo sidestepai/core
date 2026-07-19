@@ -36,7 +36,7 @@ describe("deployStaticHost", () => {
     const dir = tmpDirWith({ "index.html": "<h1>hi</h1>", "assets/app.js": "console.log(1)" });
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response('{"url":"https://site.dev"}', { status: 200 }));
 
-    const out = await deployStaticHost({ dir, workspaceId: 42, auth: AUTH });
+    const out = await deployStaticHost({ dir, workspaceId: 42, baseUrl: AUTH.instance, accessToken: AUTH.access_token, headers: { "X-Tenant": "sbx-1" } });
 
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe("https://inst.example.com/api:meta/workspace/42/static_host/default/build");
@@ -48,19 +48,19 @@ describe("deployStaticHost", () => {
   });
 
   it("errors when the directory is missing", async () => {
-    await expect(deployStaticHost({ dir: "/no/such/dir", workspaceId: 1, auth: AUTH })).rejects.toThrow(/directory not found/);
+    await expect(deployStaticHost({ dir: "/no/such/dir", workspaceId: 1, baseUrl: AUTH.instance, accessToken: AUTH.access_token, headers: { "X-Tenant": "sbx-1" } })).rejects.toThrow(/directory not found/);
   });
 
   it("errors when the directory is empty", async () => {
     const dir = mkdtempSync(join(tmpdir(), "sidestep-empty-"));
-    await expect(deployStaticHost({ dir, workspaceId: 1, auth: AUTH })).rejects.toThrow(/no files to deploy/);
+    await expect(deployStaticHost({ dir, workspaceId: 1, baseUrl: AUTH.instance, accessToken: AUTH.access_token, headers: { "X-Tenant": "sbx-1" } })).rejects.toThrow(/no files to deploy/);
     rmSync(dir, { recursive: true, force: true });
   });
 
   it("surfaces a non-2xx build response as an error", async () => {
     const dir = tmpDirWith({ "index.html": "hi" });
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("boom", { status: 500, statusText: "ERR" }));
-    await expect(deployStaticHost({ dir, workspaceId: 1, auth: AUTH })).rejects.toThrow(/Static-host build failed \(500/);
+    await expect(deployStaticHost({ dir, workspaceId: 1, baseUrl: AUTH.instance, accessToken: AUTH.access_token, headers: { "X-Tenant": "sbx-1" } })).rejects.toThrow(/Static-host build failed \(500/);
     rmSync(dir, { recursive: true, force: true });
   });
 });

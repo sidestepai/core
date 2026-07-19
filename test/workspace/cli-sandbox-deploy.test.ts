@@ -188,12 +188,52 @@ describe("sidestep sandbox deploy (OAuth, replaces push)", () => {
     ).rejects.toThrow(/not both/);
   });
 
-  it("rejects --static on sandbox deploy", async () => {
+  it("--static runs the impersonation hop and uploads with the sandbox's X-Tenant header", async () => {
     const authFile = writeTokenFile(dir);
-    stubFetchOk();
-    await expect(
-      run(["sandbox", "deploy", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile, "--static", dir]),
-    ).rejects.toThrow(/--static applies only to `workspace deploy`/);
+    const staticDir = join(dir, "site");
+    mkdirSync(staticDir, { recursive: true });
+    writeFileSync(join(staticDir, "index.html"), "<h1>hi</h1>");
+
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse({ base_url: "https://x.dev/tenant/sbx-1", workspace: { id: 7 } }))
+      .mockResolvedValueOnce(jsonResponse({ _ti: "ott-1" }))
+      .mockResolvedValueOnce(
+        jsonResponse({ name: "sbx-1", _authToken: "imp-tok", baseUrl: `${INSTANCE}/`, headers: { "X-Tenant": "sbx-1" } }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ url: "https://sbx-1.static.dev" }));
+
+    await run(["sandbox", "deploy", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile, "--static", staticDir]);
+
+    expect(fetchMock.mock.calls[1]![0]).toBe(`${INSTANCE}/api:meta/sandbox/impersonate`);
+    expect(fetchMock.mock.calls[2]![0]).toBe(`${INSTANCE}/api:meta/tenant/token/exchange`);
+
+    // The upload must use the sandbox's OWN workspace id (7, from the deploy
+    // response) and carry X-Tenant — without it the build lands on the caller's
+    // real workspace instead of the sandbox.
+    const [staticUrl, staticInit] = fetchMock.mock.calls[3]!;
+    expect(staticUrl).toBe(`${INSTANCE}/api:meta/workspace/7/static_host/default/build`);
+    const headers = (staticInit as RequestInit).headers as Record<string, string>;
+    expect(headers["X-Tenant"]).toBe("sbx-1");
+    expect(headers.Authorization).toBe("Bearer imp-tok");
+  });
+
+  it("--static fails the static step, not the deploy, when the exchange returns no tenant headers", async () => {
+    const authFile = writeTokenFile(dir);
+    const staticDir = join(dir, "site2");
+    mkdirSync(staticDir, { recursive: true });
+    writeFileSync(join(staticDir, "index.html"), "<h1>hi</h1>");
+
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse({ base_url: "https://x.dev/tenant/sbx-1", workspace: { id: 7 } }))
+      .mockResolvedValueOnce(jsonResponse({ _ti: "ott-1" }))
+      .mockResolvedValueOnce(jsonResponse({ _authToken: "imp-tok", baseUrl: `${INSTANCE}/`, headers: {} }));
+
+    // The backend deploy already committed, so this must not throw — it reports
+    // a resumable static failure via the exit code instead.
+    await run(["sandbox", "deploy", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile, "--static", staticDir]);
+    expect(process.exitCode).toBe(3);
+    process.exitCode = 0;
   });
 
   it("surfaces a non-2xx sandbox response as an error", async () => {
