@@ -10,6 +10,21 @@
  */
 import type { StackItemXdo } from "../types/xdo.js";
 
+/**
+ * The type-level contract linking a branded read statement (the **producer** —
+ * `db.get`/`db.query`, which return `Statement & AsShapeBrand<…>`) to
+ * `InferResponse`'s single-variable trace (the **consumer** — `TraceVar`, which
+ * destructures this shape). Both `__as` (the stack variable the statement binds)
+ * and `__shape` (the row shape it produces) are phantom carriers — never present
+ * at runtime. Naming the contract here keeps producer and consumer
+ * compiler-linked, so future branded statements (`db.add`/`edit`/`del`) join the
+ * trace by extending this type with zero edits to the trace logic.
+ */
+export type AsShapeBrand<As extends string, Shape> = {
+  readonly __as: As;
+  readonly __shape: Shape;
+};
+
 /** What a statement factory returns before base-envelope encoding. */
 export interface Statement {
   name: string;

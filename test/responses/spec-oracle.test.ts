@@ -76,7 +76,7 @@ function engineKeySet(
   if (producer.name !== "mvp:dbo_getby" && producer.name !== "mvp:dbo_view") return null;
   const out = producer.output;
   if (out?.customize && out.items) return out.items.map((i) => i.name).sort();
-  return [...fullRecordCols].sort();
+  return fullRecordCols; // caller passes the pre-sorted column list
 }
 
 function keysOfXdo(q: Parameters<typeof encodeQuery>[0]): string[] | null {

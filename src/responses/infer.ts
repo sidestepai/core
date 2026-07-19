@@ -26,6 +26,8 @@
  *      the author narrows or overrides via `responseShape`.
  */
 import type { Value, RefValue, FilteredValue } from "../values/value.js";
+import type { AsShapeBrand } from "../statements/statement.js";
+import type { Prettify } from "../fields/value-types.js";
 
 /**
  * The author-declared response shape, read from a def's `responseShape` field
@@ -54,7 +56,7 @@ type DeclaredResponse<Q> = Q extends { responseShape?: infer R }
  * head and yields `unknown` too.
  */
 type TraceVar<Name extends string, S> = S extends readonly [infer Head, ...infer Tail]
-  ? Head extends { __as: infer As extends string; __shape: infer Shape }
+  ? Head extends AsShapeBrand<infer As, infer Shape>
     ? As extends Name
       ? Name extends As
         ? Shape
@@ -91,7 +93,7 @@ export type DeriveResponse<Q> = Q extends { response?: infer Resp; stack?: infer
     : Resp extends Value
       ? ResolveValue<Resp, S>
       : Resp extends Record<string, Value>
-        ? { -readonly [K in keyof Resp]: ResolveValue<Resp[K], S> }
+        ? Prettify<{ -readonly [K in keyof Resp]: ResolveValue<Resp[K], S> }>
         : unknown
   : unknown;
 

@@ -26,7 +26,7 @@
  * `db.bulk*` (array-of-rows), `db.query` (structural !function), and
  * `db.direct_query`/external SQL/`db.transaction` are deferred.
  */
-import type { Statement } from "../statement.js";
+import type { Statement, AsShapeBrand } from "../statement.js";
 import { encodeStatement, registerStatement } from "../statement.js";
 import type { Value } from "../../values/value.js";
 import { c } from "../../values/value.js";
@@ -60,15 +60,12 @@ type RowShapeOf<T extends ObjectRef, Cols extends readonly string[]> = [
     : Pick<InferRow<T>, Extract<Cols[number], keyof InferRow<T>>>;
 
 /**
- * A db read statement branded — **at the type level only** — with the stack
- * variable it binds (`__as`) and the shape it produces (`__shape`). Both are
- * phantom carriers `InferResponse`'s single-variable trace reads; the runtime
- * statement is a plain {@link Statement}, so `encodeStatement` is unchanged.
+ * A db read statement branded — **at the type level only** — via the shared
+ * {@link AsShapeBrand} contract (the stack variable it binds + the shape it
+ * produces). The runtime statement is a plain {@link Statement}, so
+ * `encodeStatement` is unchanged.
  */
-export type DbResult<As extends string, Shape> = Statement & {
-  readonly __as: As;
-  readonly __shape: Shape;
-};
+export type DbResult<As extends string, Shape> = Statement & AsShapeBrand<As, Shape>;
 
 /** A stored rich input entry (db ops carry the expanded `{ignore,expand,children}` form). */
 interface RichInput {
