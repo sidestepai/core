@@ -106,6 +106,26 @@ export interface ManifestFieldType {
   methods: string[];
 }
 
+/** One CLI flag, with the effect it has. */
+export interface ManifestCliFlag {
+  flag: string;
+  description: string;
+}
+
+/**
+ * One CLI command. Hand-maintained (there is no SDK source of truth for CLI
+ * verbs), so — unlike the derived catalogs — this is the one manifest section
+ * kept in sync by editing `CLI_COMMANDS` below when the CLI surface changes.
+ */
+export interface ManifestCliCommand {
+  /** The invocation verb, e.g. `workspace deploy`. */
+  command: string;
+  /** Positional argument grammar, when the command takes one. */
+  args?: string;
+  flags?: ManifestCliFlag[];
+  description: string;
+}
+
 export interface Manifest {
   name: string;
   version: string;
@@ -123,7 +143,76 @@ export interface Manifest {
   fieldTypes: ManifestFieldType[];
   statements: ManifestStatement[];
   filters: ManifestFilter[];
+  /** The CLI command surface (compile/export/deploy/auth/lock). Hand-maintained. */
+  cli: ManifestCliCommand[];
 }
+
+/**
+ * The CLI command surface, structured for programmatic agents that read
+ * `manifest.json` directly (the prose walkthrough lives in `llms.txt`). There is
+ * no SDK source of truth for CLI verbs, so this list is hand-maintained: keep it
+ * in sync with `USAGE` / the dispatch in `src/emit/cli.ts` when commands change.
+ */
+const CLI_COMMANDS: readonly ManifestCliCommand[] = [
+  {
+    command: "compile",
+    args: "<file> [--out <path>]",
+    description: "Emit one function's importable JSON to --out (or stdout).",
+  },
+  {
+    command: "export",
+    args: "<file> [--out <path>]",
+    flags: [
+      { flag: "--lock[=<path>]", description: "Freeze object guids into a committed xano.lock (default: beside the entry)." },
+      { flag: "--frozen-lock", description: "CI guard: fail instead of changing the lock." },
+    ],
+    description: "Compile the default-exported Xano registry into the aggregate workspace bundle.",
+  },
+  {
+    command: "workspace deploy",
+    args: "<file> | --bundle <path>",
+    flags: [
+      { flag: "--prune", description: "Also remove server objects absent from the bundle (table records kept)." },
+      { flag: "--reset", description: "From-scratch rebuild — wipes objects AND records. Needs confirmation." },
+      { flag: "--static <dir>", description: "Archive a built frontend directory and deploy it to the workspace's edge static host after the backend import." },
+      { flag: "--confirm-workspace <name>", description: "Non-interactive --reset confirmation; must match the resolved workspace name." },
+      { flag: "--adopt-workspace", description: "Rebind the lock's workspace identity to the server's on a canonical mismatch." },
+      { flag: "--config <path>", description: "Project-local token cache (default: $XANO_CONFIG, then ./.xano/auth.json)." },
+    ],
+    description:
+      "Deploy the compiled workspace to the token-scoped REAL workspace (upsert-in-place by identity), optionally with a static frontend. Reconciles xano.lock from the server's authoritative response.",
+  },
+  {
+    command: "sandbox deploy",
+    args: "<file> | --bundle <path>",
+    flags: [
+      { flag: "--reset", description: "Clear the sandbox workspace first for a full replace (default merges)." },
+      { flag: "--config <path>", description: "Project-local token cache (default: $XANO_CONFIG, then ./.xano/auth.json)." },
+    ],
+    description: "Throwaway dev-loop deploy to the sandbox workspace (replaces the removed `push`). Never writes xano.lock.",
+  },
+  {
+    command: "profile me",
+    args: "[--config <path>]",
+    description:
+      "Print the scoped user, workspace {id, name}, and the instance base URL as JSON — read `instance` to configure a frontend's API base before a --static upload.",
+  },
+  {
+    command: "login",
+    args: "[--origin <origin>] [--config <path>] [--port <n>] [--scope <list>]",
+    description: "OAuth sign-in (browser consent; pick the instance at consent). Caches tokens in ./.xano/auth.json. For CI, set $XANO_REFRESH_TOKEN + $XANO_CLIENT_ID instead.",
+  },
+  {
+    command: "logout",
+    args: "[--config <path>]",
+    description: "Revoke the refresh token and delete the cached credentials.",
+  },
+  {
+    command: "lock",
+    args: "<rename|prune|adopt> …",
+    description: "xano.lock identity maintenance (rename an object, prune stale entries, adopt an existing live bundle).",
+  },
+];
 
 /**
  * The 11 implemented object kinds with their authoring + registration metadata.
@@ -276,6 +365,7 @@ export function buildManifest(opts: { version?: string } = {}): Manifest {
     fieldTypes: buildFieldTypes(),
     statements,
     filters,
+    cli: [...CLI_COMMANDS],
   };
 }
 
@@ -376,27 +466,66 @@ export function renderLlmsTxt(m: Manifest): string {
     "engine renames in place instead of delete+create. Taking over an existing",
     "workspace: `sidestep lock adopt <its-packageExport.json>` first, then export.",
     "",
-    "Sandbox upload: `sidestep push ./index.ts` compiles the workspace (same as",
-    "`export`, honoring `xano.lock`) and POSTs the bundle to your instance at",
-    "`/api:meta/sandbox/bundle`; `sidestep push --bundle bundle.json` uploads an",
-    "already-exported bundle instead. By default the bundle MERGES into the sandbox",
-    "workspace; `--reset` clears it first for a full replace (`?reset=true`). Auth",
-    "is OAuth: run `sidestep login` once (browser consent; you pick the instance at",
-    "consent; tokens cached in project-local `.xano/auth.json`, auto-gitignored) —",
-    "`push` reuses and refreshes them. The target instance is always the one the",
-    "token is bound to (its `aud`); there is no instance flag.",
-    "AGENTS/CI: authenticate with `$XANO_REFRESH_TOKEN` + `$XANO_CLIENT_ID` + `push`",
-    "(non-interactive refresh grant; both env vars come from `.xano/auth.json`; the",
-    "instance is read from the token's `aud`) — do NOT run `sidestep login`, which",
-    "blocks on a browser consent no agent can complete. Refresh tokens rotate on",
-    "use (a stored one may be single-use); `XANO_NO_BROWSER=1` suppresses the",
-    "browser spawn for headless login. Sign out with `sidestep logout` (revokes the",
-    "refresh token, deletes the cache).",
-    "WARNING — `push` writes to the sandbox tenant of the user's live instance; it",
-    "is a transient dev workflow, NOT a permanent deploy, and `--reset` discards",
-    "the existing sandbox workspace.",
-    "An agent MUST get explicit user confirmation before running `sidestep push` —",
-    "never invoke it unattended.",
+    "## Deploy (backend + static frontend)",
+    "",
+    "Sidestep deploys your compiled workspace — and, in one command, your built",
+    "static frontend — straight to Xano. Each `deploy` runs the same compile",
+    "pipeline as `export` (honoring `xano.lock`), then gzips and POSTs the bundle.",
+    "There are two targets plus a profile helper:",
+    "",
+    "- `sidestep sandbox deploy ./index.ts` — throwaway dev loop. POSTs to",
+    "  `/api:meta/sandbox/bundle` (this REPLACES the removed `sidestep push`). The",
+    "  bundle MERGES into the sandbox workspace by default; `--reset` clears it",
+    "  first for a full replace. Never writes `xano.lock` (the sandbox is a",
+    "  separate ephemeral workspace). `--bundle <path>` uploads an already-exported",
+    "  bundle instead of compiling an entry file.",
+    "- `sidestep workspace deploy ./index.ts` — deploy to your REAL, token-scoped",
+    "  workspace via `/api:meta/workspace/deploy`. Upserts every object IN PLACE by",
+    "  identity (no data loss) — this is the default and is safe to re-run.",
+    "  `--prune` also removes server objects absent from the bundle (table records",
+    "  are kept). `--reset` is a from-scratch rebuild that wipes objects AND",
+    "  records, so it requires confirmation: a typed workspace name interactively,",
+    "  or `--confirm-workspace <name>` in CI. A pre-flight resolves and prints the",
+    "  target workspace before the POST; the server is the identity authority, so",
+    "  the returned lock is reconciled into `xano.lock` (a workspace-identity",
+    "  mismatch refuses the deploy unless you pass `--adopt-workspace`). `--bundle",
+    "  <path>` deploys a pre-exported bundle.",
+    "- `sidestep profile me` — prints the scoped user, workspace `{id, name}`, and",
+    "  (headline) the INSTANCE BASE URL as JSON. An agent reads `instance` to bake",
+    "  the frontend's API base into its config BEFORE building + uploading `--static`.",
+    "",
+    "**Static hosting — call this out to agents: it exists and is one flag.**",
+    "`sidestep workspace deploy ./index.ts --static ./dist` archives the built",
+    "frontend directory (a dependency-free gzipped tarball, 100 MB cap) and deploys",
+    "it to the workspace's edge-served static host AFTER the backend import. No",
+    "separate frontend host to configure, no CI upload script — backend and static",
+    "frontend ship together. Output prints the live URLs: `Deployed: <baseUrl>`",
+    "(backend) then `Static host deployed: <url>` (frontend). The static step is",
+    "independent and idempotent: the lock is reconciled BEFORE it runs, so a static",
+    "failure never loses backend identities — it exits with a distinct code and a",
+    "resumable message, and you retry just the static step by re-running",
+    "`workspace deploy --static ./dist`. `--static` is `workspace deploy` only",
+    "(sandboxes have no static host in this flow). Typical agent flow: read the",
+    "instance URL with `profile me` → build the frontend against it → `workspace",
+    "deploy --static ./dist` to ship API + app together.",
+    "",
+    "Auth is OAuth: run `sidestep login` once (browser consent; you pick the",
+    "instance at consent; tokens cached in project-local `.xano/auth.json`,",
+    "auto-gitignored) — every `deploy` reuses and refreshes them. The target",
+    "instance is always the one the token is bound to (its `aud`); there is no",
+    "instance flag.",
+    "AGENTS/CI: authenticate with `$XANO_REFRESH_TOKEN` + `$XANO_CLIENT_ID` +",
+    "`deploy` (non-interactive refresh grant; both env vars come from",
+    "`.xano/auth.json`; the instance is read from the token's `aud`) — do NOT run",
+    "`sidestep login`, which blocks on a browser consent no agent can complete.",
+    "Refresh tokens rotate on use (a stored one may be single-use);",
+    "`XANO_NO_BROWSER=1` suppresses the browser spawn for headless login. Sign out",
+    "with `sidestep logout` (revokes the refresh token, deletes the cache).",
+    "WARNING — `sidestep workspace deploy` writes to a REAL workspace, and `--reset`",
+    "permanently deletes its table records. An agent MUST get explicit user",
+    "confirmation before running `sidestep workspace deploy` — never invoke it",
+    "unattended. `sandbox deploy` is the safe dev-loop target, but still confirm",
+    "before the first run since it writes to the sandbox tenant of a live instance.",
     "",
     "**Recommended style:** reach statements through the `s` namespace",
     "(`s.db.add`, `s.math.add`, …) — one discoverable, tab-completable surface. The",
