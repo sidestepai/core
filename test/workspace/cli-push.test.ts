@@ -94,14 +94,14 @@ describe("sidestep push CLI (OAuth)", () => {
     rmSync(dir, { recursive: true, force: true });
     delete process.env.XANO_REFRESH_TOKEN;
     delete process.env.XANO_CLIENT_ID;
-    delete process.env.XANO_AUTH_HOST;
+    delete process.env.XANO_ORIGIN;
   });
 
   it("compiles a workspace entry and POSTs it to the cached instance with the OAuth token", async () => {
     const authFile = writeTokenFile(dir);
     const fetchMock = stubFetchOk('{"imported":true}');
 
-    await run(["push", examplePath, "--auth-file", authFile]);
+    await run(["push", examplePath, "--config", authFile]);
 
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, init] = fetchMock.mock.calls[0]!;
@@ -119,7 +119,7 @@ describe("sidestep push CLI (OAuth)", () => {
     writeFileSync(bundlePath, JSON.stringify({ app: "xano", payload: {} }));
     const fetchMock = stubFetchOk();
 
-    await run(["push", "--bundle", bundlePath, "--auth-file", authFile]);
+    await run(["push", "--bundle", bundlePath, "--config", authFile]);
 
     const [, init] = fetchMock.mock.calls[0]!;
     expect(JSON.parse(init!.body as string)).toEqual({ app: "xano", payload: {} });
@@ -133,7 +133,7 @@ describe("sidestep push CLI (OAuth)", () => {
       .mockResolvedValueOnce(jsonResponse(tokenBody({ access_token: "acc-fresh", refresh_token: "ref-rotated", expires_in: 600 }))) // refresh
       .mockResolvedValueOnce(new Response('{"imported":true}', { status: 200 })); // import
 
-    await run(["push", "--bundle", bundlePathWith(dir, "{}"), "--auth-file", authFile]);
+    await run(["push", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile]);
 
     expect(fetchMock).toHaveBeenCalledTimes(3);
     const [importUrl, importInit] = fetchMock.mock.calls[2]!;
@@ -161,8 +161,8 @@ describe("sidestep push CLI (OAuth)", () => {
     });
 
     await Promise.all([
-      run(["push", "--bundle", bundlePathWith(dir, "{}"), "--auth-file", authFile]),
-      run(["push", "--bundle", bundlePathWith(dir, "{  }"), "--auth-file", authFile]),
+      run(["push", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile]),
+      run(["push", "--bundle", bundlePathWith(dir, "{  }"), "--config", authFile]),
     ]);
 
     // The second push waited on the lock, re-read the freshly-rotated token, and
@@ -212,14 +212,14 @@ describe("sidestep push CLI (OAuth)", () => {
 
   it("errors when there is no token cache and no refresh env", async () => {
     await expect(
-      run(["push", "--bundle", bundlePathWith(dir, "{}"), "--auth-file", join(dir, "nope.json")]),
+      run(["push", "--bundle", bundlePathWith(dir, "{}"), "--config", join(dir, "nope.json")]),
     ).rejects.toThrow(/Not signed in/);
   });
 
   it("errors when the access token is expired and no refresh token is cached", async () => {
     const authFile = writeTokenFile(dir, { expires_at: Date.now() - 1000, refresh_token: undefined });
     await expect(
-      run(["push", "--bundle", bundlePathWith(dir, "{}"), "--auth-file", authFile]),
+      run(["push", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile]),
     ).rejects.toThrow(/no refresh token is cached/i);
   });
 
@@ -228,7 +228,7 @@ describe("sidestep push CLI (OAuth)", () => {
     mkdirSync(join(dir, ".xano"), { recursive: true });
     writeFileSync(authFile, "{ not valid json");
     await expect(
-      run(["push", "--bundle", bundlePathWith(dir, "{}"), "--auth-file", authFile]),
+      run(["push", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile]),
     ).rejects.toThrow(/corrupt/i);
   });
 
@@ -236,14 +236,14 @@ describe("sidestep push CLI (OAuth)", () => {
     process.env.XANO_REFRESH_TOKEN = "ci-refresh";
     process.env.XANO_CLIENT_ID = "dcr-abc";
     await expect(
-      run(["push", "--bundle", bundlePathWith(dir, "{}"), "--auth-host", "http://insecure.example.com"]),
+      run(["push", "--bundle", bundlePathWith(dir, "{}"), "--origin", "http://insecure.example.com"]),
     ).rejects.toThrow(/must use https/i);
   });
 
   it("reuses an unexpired cached token (import only — no discovery/refresh)", async () => {
     const authFile = writeTokenFile(dir); // unexpired, saved instance = INSTANCE
     const fetchMock = stubFetchOk();
-    await run(["push", "--bundle", bundlePathWith(dir, "{}"), "--auth-file", authFile]);
+    await run(["push", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile]);
     expect(fetchMock).toHaveBeenCalledOnce(); // import only, no discovery/refresh
     expect(fetchMock.mock.calls[0]![0]).toBe(`${INSTANCE}/api:meta/sandbox/bundle`);
   });
@@ -251,7 +251,7 @@ describe("sidestep push CLI (OAuth)", () => {
   it("--reset appends ?reset=true to the sandbox import URL", async () => {
     const authFile = writeTokenFile(dir);
     const fetchMock = stubFetchOk('{"url":"https://x.dev.xano.io/tenant/abc","workspace":{"id":1}}');
-    await run(["push", "--bundle", bundlePathWith(dir, "{}"), "--auth-file", authFile, "--reset"]);
+    await run(["push", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile, "--reset"]);
     expect(fetchMock.mock.calls[0]![0]).toBe(`${INSTANCE}/api:meta/sandbox/bundle?reset=true`);
   });
 
@@ -259,7 +259,7 @@ describe("sidestep push CLI (OAuth)", () => {
     const authFile = writeTokenFile(dir);
     stubFetchOk();
     await expect(
-      run(["push", examplePath, "--bundle", bundlePath, "--auth-file", authFile]),
+      run(["push", examplePath, "--bundle", bundlePath, "--config", authFile]),
     ).rejects.toThrow(/not both/);
   });
 
@@ -269,7 +269,7 @@ describe("sidestep push CLI (OAuth)", () => {
       new Response("boom", { status: 422, statusText: "Unprocessable Entity" }),
     );
     await expect(
-      run(["push", "--bundle", bundlePathWith(dir, "{}"), "--auth-file", authFile]),
+      run(["push", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile]),
     ).rejects.toThrow(/Sandbox import failed \(422/);
   });
 });
