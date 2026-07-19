@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { writeFileSync, readFileSync, rmSync, mkdtempSync, mkdirSync } from "node:fs";
-import { gunzipSync } from "node:zlib";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -65,10 +64,10 @@ function stubFetchOk(body = '{"ok":true}') {
   return vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(body, { status: 200, statusText: "OK" }));
 }
 
-/** Gunzip a fetch mock's posted body back to the original bundle JSON text. */
+/** Recover a fetch mock's posted body — the raw bundle JSON text. */
 function postedBundle(fetchMock: ReturnType<typeof stubFetchOk>, callIndex = 0): string {
   const init = fetchMock.mock.calls[callIndex]![1] as RequestInit;
-  return gunzipSync(init.body as Uint8Array).toString("utf8");
+  return init.body as string;
 }
 
 describe("sidestep sandbox deploy (OAuth, replaces push)", () => {
@@ -95,7 +94,7 @@ describe("sidestep sandbox deploy (OAuth, replaces push)", () => {
     delete process.env.XANO_ORIGIN;
   });
 
-  it("compiles a workspace entry and POSTs a gzipped bundle to the sandbox endpoint", async () => {
+  it("compiles a workspace entry and POSTs the bundle to the sandbox endpoint", async () => {
     const authFile = writeTokenFile(dir);
     const fetchMock = stubFetchOk('{"imported":true}');
 
@@ -189,15 +188,12 @@ describe("sidestep sandbox deploy (OAuth, replaces push)", () => {
     ).rejects.toThrow(/not both/);
   });
 
-  it("rejects --static and --prune on sandbox deploy", async () => {
+  it("rejects --static on sandbox deploy", async () => {
     const authFile = writeTokenFile(dir);
     stubFetchOk();
     await expect(
       run(["sandbox", "deploy", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile, "--static", dir]),
     ).rejects.toThrow(/--static applies only to `workspace deploy`/);
-    await expect(
-      run(["sandbox", "deploy", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile, "--prune"]),
-    ).rejects.toThrow(/--prune applies only to `workspace deploy`/);
   });
 
   it("surfaces a non-2xx sandbox response as an error", async () => {

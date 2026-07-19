@@ -67,10 +67,8 @@ export interface ParsedArgs {
   yes: boolean;
   /** `push --bundle <path>`: upload an already-exported bundle instead of a file entry. */
   bundle: string | undefined;
-  /** `deploy --reset`: full clear (records + sequences) then import — a from-scratch rebuild. Mutually exclusive with `--prune`. */
+  /** `deploy --reset`: full clear (records + sequences) then import — a from-scratch rebuild. */
   reset: boolean;
-  /** `deploy --prune`: remove server objects absent from the bundle (table records kept). Mutually exclusive with `--reset`. */
-  prune: boolean;
   /** `deploy --static <dir>`: archive this directory and deploy it to the workspace's static host. */
   static: string | undefined;
   /** `deploy --confirm-workspace <name>`: non-interactive `--reset` confirmation; must match the resolved workspace name. */
@@ -116,7 +114,6 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let yes = false;
   let bundle: string | undefined;
   let reset = false;
-  let prune = false;
   let staticDir: string | undefined;
   let confirmWorkspace: string | undefined;
   let adoptWorkspace = false;
@@ -144,8 +141,6 @@ export function parseArgs(argv: string[]): ParsedArgs {
       bundle = arg.slice("--bundle=".length);
     } else if (arg === "--reset") {
       reset = true;
-    } else if (arg === "--prune") {
-      prune = true;
     } else if (arg === "--static") {
       staticDir = rest[++i];
     } else if (arg.startsWith("--static=")) {
@@ -183,9 +178,6 @@ export function parseArgs(argv: string[]): ParsedArgs {
       positionals.push(arg);
     }
   }
-  if (reset && prune) {
-    throw new Error(`Pass either --reset or --prune, not both.`);
-  }
   return {
     command,
     subcommand,
@@ -198,7 +190,6 @@ export function parseArgs(argv: string[]): ParsedArgs {
     yes,
     bundle,
     reset,
-    prune,
     static: staticDir,
     confirmWorkspace,
     adoptWorkspace,
@@ -285,7 +276,7 @@ const USAGE =
   "Usage: sidestep <compile|export> <file> [--out <path>] [--lock[=<path>]] [--frozen-lock] | " +
   "sidestep login [--origin <origin>] [--config <path>] [--port <n>] | " +
   "sidestep logout [--config <path>] | " +
-  "sidestep workspace deploy <file>|--bundle <path> [--prune|--reset] [--static <dir>] [--confirm-workspace <name>] [--adopt-workspace] [--config <path>] | " +
+  "sidestep workspace deploy <file>|--bundle <path> [--reset] [--static <dir>] [--confirm-workspace <name>] [--adopt-workspace] [--config <path>] | " +
   "sidestep sandbox deploy <file>|--bundle <path> [--reset] [--config <path>] | " +
   "sidestep profile me [--config <path>] | " +
   "sidestep lock <rename|prune|adopt> …";

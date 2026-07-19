@@ -103,13 +103,11 @@ glue wiring the two together.
 | Command | What it does |
 |---|---|
 | `workspace deploy` | Upserts everything **in place** by identity. No data loss. The default. |
-| `workspace deploy --prune` | Also removes server objects no longer in your code. **Table records are kept.** |
 | `workspace deploy --reset --confirm-workspace my-app` | Deliberate **from-scratch rebuild** — wipes objects *and records*, then imports. Recovery is just a re-deploy (git is your source of truth). |
 
 Deploys are **authenticated over OAuth** — sign in once, and the CLI refreshes tokens
-automatically. The bundle is gzipped on the wire (workspaces get big), the target
-workspace is resolved from your token (never a stray flag), and the CLI prints exactly
-which workspace it's about to change before it touches anything.
+automatically. The target workspace is resolved from your token (never a stray flag),
+and the CLI prints exactly which workspace it's about to change before it touches anything.
 
 **CI & agents** run fully headless from two env vars — no browser needed:
 
@@ -386,7 +384,6 @@ sidestep lock adopt live-export.json --yes   # seed the lock from a live engine 
 sidestep login                               # OAuth sign-in (once) — pick the instance at consent
 sidestep sandbox deploy ./xano/index.ts      # compile + import into your sandbox (dev loop)
 sidestep workspace deploy ./xano/index.ts    # compile + deploy to your real (token-scoped) workspace
-sidestep workspace deploy ./xano/index.ts --prune   # ...also remove objects absent from the bundle (records kept)
 sidestep workspace deploy ./xano/index.ts --reset --confirm-workspace my-app  # rebuild from scratch (wipes records)
 sidestep workspace deploy ./xano/index.ts --static ./dist  # also deploy a static frontend
 sidestep workspace deploy --bundle ws.json   # deploy an already-exported bundle
@@ -421,7 +418,7 @@ Tokens (access + refresh) cache in a **project-local** `./.xano/auth.json`, whic
 `--origin`/`$XANO_ORIGIN`, and the loopback port with `--port`.
 
 `deploy <file>` runs the exact same pipeline as `export` (including `xano.lock` seeding and
-merge), then gzips and `POST`s the bundle — `/api:meta/sandbox/bundle` for `sandbox deploy`,
+merge), then `POST`s the bundle — `/api:meta/sandbox/bundle` for `sandbox deploy`,
 `/api:meta/workspace/deploy` for `workspace deploy`. `deploy --bundle <path>` skips the
 compile and uploads a bundle a previous `export` wrote (handy in CI). The endpoint's JSON
 response prints to stdout; the workspace's public URL echoes to stderr.

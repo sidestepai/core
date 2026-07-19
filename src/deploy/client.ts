@@ -1,18 +1,15 @@
 /**
- * Node-only deploy transport: gzip a compiled workspace bundle and POST it to a
- * deploy endpoint (real-workspace `/api:meta/workspace/deploy` or the sandbox
+ * Node-only deploy transport: POST a compiled workspace bundle to a deploy
+ * endpoint (real-workspace `/api:meta/workspace/deploy` or the sandbox
  * `/api:meta/sandbox/bundle`), authenticating with an OAuth access token.
  *
- * Compression (KTD-5): the body is gzipped and the endpoint gunzips it by magic-byte
- * detection. We deliberately do NOT send `Content-Encoding: gzip` — an intermediary
- * that honored it would inflate the body before the app, delivering raw JSON and
- * silently bypassing the endpoint's bounded streaming-inflate guard. The bundle is
- * still `Content-Type: application/json` (its decompressed content is JSON).
+ * The bundle is sent as raw `Content-Type: application/json`. (Gzip compression
+ * of the body was removed as too complex; the endpoint still magic-byte detects
+ * gzip, so an uncompressed body is accepted unchanged.)
  *
- * Node-only (`node:zlib`) and lazily imported by the command layer, so the browser-safe
- * authoring bundle never pulls it in.
+ * Lazily imported by the command layer so the browser-safe authoring bundle
+ * never pulls this Node-only transport in.
  */
-import { gzipSync } from "node:zlib";
 import type { ResolvedAuth } from "../auth/token.js";
 
 /** Bound the upload so a stalled endpoint can't hang the CLI/CI forever. */
@@ -25,10 +22,14 @@ export interface DeployRequest {
   endpointPath: string;
   /** Access token + the instance origin it authorizes against. */
   auth: ResolvedAuth;
-  /** `--reset`: full clear then import (`?reset=true`). */
-  reset?: boolean;
-  /** `--prune`: remove server objects absent from the bundle (`?prune=true`). */
-  prune?: boolean;
+  /**
+   * Target-specific query params appended to the endpoint URL. The routes take
+   * DIFFERENT params — the sandbox route a `reset=true` bool; the real-workspace
+   * route `mode=reset` plus a server-enforced `confirm_workspace` — so the
+   * command layer (which knows the target) builds them and this transport just
+   * forwards them. The `bundle` itself is the raw request body, never a param.
+   */
+  query?: Record<string, string>;
 }
 
 export interface DeployResponse {
@@ -45,16 +46,15 @@ export interface DeployResponse {
 }
 
 /**
- * POST a gzipped bundle to a deploy endpoint and parse the response. Throws on a
+ * POST a bundle to a deploy endpoint and parse the response. Throws on a
  * non-2xx status with the endpoint's body attached. Tolerates a response that
  * omits `lock` (an older endpoint) — `lock` is simply `undefined` then.
  */
 export async function postDeploy(req: DeployRequest): Promise<DeployResponse> {
   const url = new URL(req.endpointPath, req.auth.instance);
-  if (req.reset) url.searchParams.set("reset", "true");
-  if (req.prune) url.searchParams.set("prune", "true");
-
-  const body = gzipSync(Buffer.from(req.bundle, "utf8"));
+  for (const [key, value] of Object.entries(req.query ?? {})) {
+    url.searchParams.set(key, value);
+  }
 
   const res = await fetch(url.href, {
     method: "POST",
@@ -62,7 +62,7 @@ export async function postDeploy(req: DeployRequest): Promise<DeployResponse> {
       "Content-Type": "application/json",
       Authorization: `Bearer ${req.auth.access_token}`,
     },
-    body,
+    body: req.bundle,
     signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
   });
 

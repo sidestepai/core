@@ -1,7 +1,7 @@
 /**
  * `sidestep workspace deploy` / `sidestep sandbox deploy` — the shared deploy core.
  *
- * Both commands compile-or-load a bundle, gzip+POST it, and stream the response;
+ * Both commands compile-or-load a bundle, POST it, and stream the response;
  * they differ only in endpoint and in the real-workspace safety wrapper:
  *   • workspace deploy → `/api:meta/workspace/deploy`, with a pre-flight that
  *     resolves and DISPLAYS the token-scoped target workspace before the POST,
@@ -126,18 +126,18 @@ function reconcileAndWriteLock(args: ParsedArgs, serverLock: unknown): void {
 }
 
 export async function runDeployCommand(args: ParsedArgs, target: DeployTarget): Promise<void> {
-  if (target === "sandbox") {
-    if (args.static !== undefined) {
-      throw new Error(`--static applies only to \`workspace deploy\` (sandboxes have no static host in this flow).`);
-    }
-    if (args.prune) {
-      throw new Error(`--prune applies only to \`workspace deploy\`.`);
-    }
+  if (target === "sandbox" && args.static !== undefined) {
+    throw new Error(`--static applies only to \`workspace deploy\` (sandboxes have no static host in this flow).`);
   }
 
   const { bundle, source } = await loadBundle(args);
   const endpointPath = target === "workspace" ? WORKSPACE_DEPLOY_PATH : SANDBOX_DEPLOY_PATH;
 
+  // Target-specific query params. The two routes take DIFFERENT ones: the
+  // workspace route keys mode off `mode=reset` and independently ENFORCES a
+  // matching `confirm_workspace` server-side; the sandbox route takes a `reset`
+  // bool. The `bundle` is always the raw JSON body, never a param.
+  const query: Record<string, string> = {};
   let staticWorkspaceId: number | undefined;
   if (target === "workspace") {
     // Pre-flight: resolve and DISPLAY the target workspace before mutating it.
@@ -148,8 +148,10 @@ export async function runDeployCommand(args: ParsedArgs, target: DeployTarget): 
     if (args.reset) {
       await confirmReset(resolved.workspaceName, args);
       process.stderr.write(`--reset REBUILDS "${resolved.workspaceName}" from scratch (clears all objects + records first).\n`);
-    } else if (args.prune) {
-      process.stderr.write(`--prune removes objects absent from the bundle (table records kept).\n`);
+      // The server re-checks this confirmation, so send the resolved name it
+      // expects — a client-side-only confirmation is no confirmation at all.
+      query.mode = "reset";
+      query.confirm_workspace = resolved.workspaceName;
     }
     staticWorkspaceId = resolved.workspaceId;
   } else {
@@ -158,10 +160,11 @@ export async function runDeployCommand(args: ParsedArgs, target: DeployTarget): 
         ? `Deploying ${source} -> sandbox; --reset REPLACES the sandbox workspace (clears it first).\n`
         : `Deploying ${source} -> sandbox (merges into the sandbox workspace).\n`,
     );
+    if (args.reset) query.reset = "true";
   }
 
   const auth = await getAccessToken(args);
-  const resp = await postDeploy({ bundle, endpointPath, auth, reset: args.reset, prune: args.prune });
+  const resp = await postDeploy({ bundle, endpointPath, auth, query });
 
   // Reconcile the lock BEFORE any static step (workspace deploy only).
   if (target === "workspace") {

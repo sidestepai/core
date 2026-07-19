@@ -86,7 +86,7 @@ workspace: `sidestep lock adopt <its-packageExport.json>` first, then export.
 
 Sidestep deploys your compiled workspace — and, in one command, your built
 static frontend — straight to Xano. Each `deploy` runs the same compile
-pipeline as `export` (honoring `xano.lock`), then gzips and POSTs the bundle.
+pipeline as `export` (honoring `xano.lock`), then POSTs the bundle.
 There are two targets plus a profile helper:
 
 - `sidestep sandbox deploy ./index.ts` — throwaway dev loop. POSTs to
@@ -98,8 +98,7 @@ There are two targets plus a profile helper:
 - `sidestep workspace deploy ./index.ts` — deploy to your REAL, token-scoped
   workspace via `/api:meta/workspace/deploy`. Upserts every object IN PLACE by
   identity (no data loss) — this is the default and is safe to re-run.
-  `--prune` also removes server objects absent from the bundle (table records
-  are kept). `--reset` is a from-scratch rebuild that wipes objects AND
+  `--reset` is a from-scratch rebuild that wipes objects AND
   records, so it requires confirmation: a typed workspace name interactively,
   or `--confirm-workspace <name>` in CI. A pre-flight resolves and prints the
   target workspace before the POST; the server is the identity authority, so

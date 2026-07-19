@@ -9550,10 +9550,6 @@
       "args": "<file> | --bundle <path>",
       "flags": [
         {
-          "flag": "--prune",
-          "description": "Also remove server objects absent from the bundle (table records kept)."
-        },
-        {
           "flag": "--reset",
           "description": "From-scratch rebuild — wipes objects AND records. Needs confirmation."
         },

@@ -1,5 +1,4 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { gunzipSync } from "node:zlib";
 import { postDeploy } from "../../src/deploy/client.js";
 
 const AUTH = { access_token: "acc-1", instance: "https://inst.example.com" };
@@ -10,16 +9,10 @@ function stubFetch(body: string, status = 200) {
   );
 }
 
-/** Recover the request body bytes from a fetch mock call. */
-function postedBytes(fetchMock: ReturnType<typeof stubFetch>): Uint8Array {
-  const init = fetchMock.mock.calls[0]![1] as RequestInit;
-  return init.body as Uint8Array;
-}
-
 describe("postDeploy", () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it("POSTs a gzipped bundle to the endpoint with a bearer token and no Content-Encoding", async () => {
+  it("POSTs the raw bundle to the endpoint with a bearer token and no Content-Encoding", async () => {
     const fetchMock = stubFetch('{"base_url":"https://inst.example.com/x","workspace":{"id":7},"lock":{"version":1,"objects":{}}}');
 
     await postDeploy({ bundle: '{"app":"xano"}', endpointPath: "/api:meta/workspace/deploy", auth: AUTH });
@@ -31,11 +24,8 @@ describe("postDeploy", () => {
     expect(headers.Authorization).toBe("Bearer acc-1");
     expect(headers["Content-Type"]).toBe("application/json");
     expect(headers["Content-Encoding"]).toBeUndefined();
-    // Body is gzip (magic bytes) and round-trips to the bundle.
-    const bytes = postedBytes(fetchMock);
-    expect(bytes[0]).toBe(0x1f);
-    expect(bytes[1]).toBe(0x8b);
-    expect(gunzipSync(bytes).toString("utf8")).toBe('{"app":"xano"}');
+    // Body is the raw bundle JSON, uncompressed.
+    expect((init as RequestInit).body).toBe('{"app":"xano"}');
   });
 
   it("parses base_url, workspace (with numeric id), lock, and canonical_changes", async () => {
@@ -56,14 +46,21 @@ describe("postDeploy", () => {
     expect(out.lock).toBeUndefined();
   });
 
-  it("appends ?reset=true and ?prune=true", async () => {
+  it("appends the caller's query params to the endpoint URL", async () => {
     const resetMock = stubFetch("{}");
-    await postDeploy({ bundle: "{}", endpointPath: "/api:meta/workspace/deploy", auth: AUTH, reset: true });
-    expect(resetMock.mock.calls[0]![0]).toBe("https://inst.example.com/api:meta/workspace/deploy?reset=true");
+    await postDeploy({
+      bundle: "{}",
+      endpointPath: "/api:meta/workspace/deploy",
+      auth: AUTH,
+      query: { mode: "reset", confirm_workspace: "my app" },
+    });
+    expect(resetMock.mock.calls[0]![0]).toBe(
+      "https://inst.example.com/api:meta/workspace/deploy?mode=reset&confirm_workspace=my+app",
+    );
     vi.restoreAllMocks();
-    const pruneMock = stubFetch("{}");
-    await postDeploy({ bundle: "{}", endpointPath: "/api:meta/workspace/deploy", auth: AUTH, prune: true });
-    expect(pruneMock.mock.calls[0]![0]).toBe("https://inst.example.com/api:meta/workspace/deploy?prune=true");
+    const sandboxMock = stubFetch("{}");
+    await postDeploy({ bundle: "{}", endpointPath: "/api:meta/sandbox/bundle", auth: AUTH, query: { reset: "true" } });
+    expect(sandboxMock.mock.calls[0]![0]).toBe("https://inst.example.com/api:meta/sandbox/bundle?reset=true");
   });
 
   it("throws an actionable error on a non-2xx response, including status and body", async () => {

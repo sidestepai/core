@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { writeFileSync, readFileSync, existsSync, rmSync, mkdtempSync, mkdirSync } from "node:fs";
-import { gunzipSync } from "node:zlib";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "../../src/emit/cli.js";
@@ -89,7 +88,7 @@ describe("sidestep workspace deploy", () => {
     process.exitCode = priorExit;
   });
 
-  it("resolves + displays the target workspace, then POSTs a gzipped bundle to /api:meta/workspace/deploy", async () => {
+  it("resolves + displays the target workspace, then POSTs the bundle to /api:meta/workspace/deploy", async () => {
     const fetchMock = routeFetch();
     await run(["workspace", "deploy", "--bundle", bundleFile(dir), "--config", authFile]);
 
@@ -97,7 +96,7 @@ describe("sidestep workspace deploy", () => {
     expect(String(call[0])).toBe(`${INSTANCE}/api:meta/workspace/deploy`);
     const init = call[1] as RequestInit;
     expect(init.method).toBe("POST");
-    expect(JSON.parse(gunzipSync(init.body as Uint8Array).toString())).toEqual({ app: "xano", payload: {} });
+    expect(JSON.parse(init.body as string)).toEqual({ app: "xano", payload: {} });
     expect(stderr.join("")).toMatch(/workspace "my-app" \(id 42\)/);
   });
 
@@ -122,10 +121,10 @@ describe("sidestep workspace deploy", () => {
     expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/workspace/deploy"))).toBe(false);
   });
 
-  it("--reset --confirm-workspace matching the resolved name proceeds with ?reset=true", async () => {
+  it("--reset --confirm-workspace matching the resolved name proceeds with ?mode=reset and the server-enforced confirm_workspace", async () => {
     const fetchMock = routeFetch();
     await run(["workspace", "deploy", "--bundle", bundleFile(dir), "--config", authFile, "--reset", "--confirm-workspace=my-app"]);
-    expect(deployUrl(fetchMock)).toBe(`${INSTANCE}/api:meta/workspace/deploy?reset=true`);
+    expect(deployUrl(fetchMock)).toBe(`${INSTANCE}/api:meta/workspace/deploy?mode=reset&confirm_workspace=my-app`);
   });
 
   it("--reset --confirm-workspace with a wrong name aborts", async () => {
