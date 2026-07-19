@@ -9565,6 +9565,11 @@
       "description": "Deploy the compiled workspace to your sandbox (replaces the removed `push`), optionally with a static frontend. The sandbox is the only deploy target. Never writes SERVER identities back into xano.lock (the compile step still maintains it exactly as `export` does)."
     },
     {
+      "command": "sandbox details",
+      "args": "[--config <path>]",
+      "description": "Print the sandbox tenant as JSON, headlined by its public `baseUrl` — read it to point a frontend at the deployed backend without re-running a deploy. Projects only safe fields (never the raw tenant blob)."
+    },
+    {
       "command": "profile me",
       "args": "[--config <path>]",
       "description": "Print the scoped user and the instance base URL as JSON — read `instance` to configure a frontend's API base before a --static upload."

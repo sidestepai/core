@@ -389,6 +389,7 @@ sidestep sandbox deploy ./xano/index.ts      # compile + import into your sandbo
 sidestep sandbox deploy ./xano/index.ts --reset            # clear the sandbox first, then import
 sidestep sandbox deploy ./xano/index.ts --static ./dist    # also deploy a static frontend
 sidestep sandbox deploy --bundle ws.json     # deploy an already-exported bundle
+sidestep sandbox details                     # print the sandbox base URL + tenant details (JSON)
 sidestep profile me                          # print the scoped user + instance base URL (JSON)
 sidestep logout                              # revoke the refresh token + delete the local cache
 ```
@@ -439,10 +440,13 @@ the sandbox tenant. The archive then goes to the ordinary
 **sandbox's own**, which comes back in the `sandbox/bundle` response (`workspace.id`) —
 so the backend deploy always runs first.
 
-Pair it with `sidestep profile me`, which prints the instance base URL an agent can bake
-into the frontend's API config before building and uploading. A static failure after a
-committed backend deploy **does not roll back**: it exits with code `3` and a resumable
-message telling you to re-run with `--static` to retry just that step.
+Pair it with `sidestep sandbox details`, which prints the **sandbox's own base URL**
+(`GET /api:meta/sandbox/me`, projected to JSON) an agent can bake into the frontend's API
+config before building and uploading — no need to re-run a deploy just to recover the URL.
+(`sidestep profile me` prints the *instance* base URL, i.e. the account's origin rather than
+the sandbox tenant.) A static failure after a committed backend deploy **does not roll
+back**: it exits with code `3` and a resumable message telling you to re-run with `--static`
+to retry just that step.
 
 `deploy` reuses cached tokens and **refreshes them automatically** when the access token
 expires (Xano rotates the refresh token on every use; the new one is persisted). A rejected

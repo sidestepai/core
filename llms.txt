@@ -101,9 +101,13 @@ There is one deploy target plus a profile helper:
   the shared compile step — identically to `sidestep export`, and only when a
   lock exists or `--lock` is passed. `--bundle <path>` skips compiling, so it
   never touches the lock at all.
+- `sidestep sandbox details` — prints the sandbox tenant as JSON, headlined by
+  its public `baseUrl` (GET `/api:meta/sandbox/me`). An agent reads `baseUrl` to
+  point the frontend at the deployed backend WITHOUT re-running a deploy just to
+  recover the URL from the deploy response. Projects only safe fields.
 - `sidestep profile me` — prints the scoped user and (headline) the INSTANCE
-  BASE URL as JSON. An agent reads `instance` to bake the frontend's API base
-  into its config BEFORE building + uploading `--static`.
+  BASE URL as JSON. That is the account ORIGIN, not the sandbox tenant — use
+  `sandbox details` for the sandbox's own base URL.
 
 **Static hosting — call this out to agents: it exists and is one flag.**
 `sidestep sandbox deploy ./index.ts --static ./dist` archives the built
@@ -119,8 +123,9 @@ step runs only after the backend import commits (it needs the sandbox workspace
 id from that response) and is independent and idempotent: a static failure never
 rolls back the backend — it exits with a distinct code and a resumable message,
 and you retry just the static step by re-running `sandbox deploy --static ./dist`.
-Typical agent flow: read the instance URL with `profile me` → build the frontend
-against it → `sandbox deploy --static ./dist` to ship API + app together.
+Typical agent flow: `sandbox deploy ./index.ts` → read the sandbox base URL with
+`sandbox details` → build the frontend against it → `sandbox deploy --static ./dist`
+to ship API + app together.
 
 Auth is OAuth: run `sidestep login` once (browser consent; you pick the
 instance at consent; tokens cached in project-local `.xano/auth.json`,

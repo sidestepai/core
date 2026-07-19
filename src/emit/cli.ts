@@ -277,6 +277,7 @@ const USAGE =
   "sidestep login [--origin <origin>] [--config <path>] [--port <n>] | " +
   "sidestep logout [--config <path>] | " +
   "sidestep sandbox deploy <file>|--bundle <path> [--reset] [--static <dir>] [--config <path>] | " +
+  "sidestep sandbox details [--config <path>] | " +
   "sidestep profile me [--config <path>] | " +
   "sidestep lock <rename|prune|adopt> …";
 
@@ -356,15 +357,22 @@ export async function run(argv: string[]): Promise<void> {
     return runLogoutCommand(args);
   }
   if (command === "sandbox") {
-    if (args.subcommand !== "deploy") {
-      throw new Error(
-        `Unknown sandbox subcommand "${args.subcommand ?? ""}". Did you mean \`sidestep sandbox deploy\`? ${USAGE}`,
-      );
+    if (args.subcommand === "deploy") {
+      // The deploy core lives in its own (Node-only) module so the bin's other
+      // commands never pay its import cost.
+      const { runDeployCommand } = await import("./deploy-command.js");
+      return runDeployCommand(args);
     }
-    // The deploy core lives in its own (Node-only) module so the bin's other
-    // commands never pay its import cost.
-    const { runDeployCommand } = await import("./deploy-command.js");
-    return runDeployCommand(args);
+    if (args.subcommand === "details") {
+      // Lazily imported like the other Node-only commands so the browser-safe
+      // authoring bundle never pulls in the OAuth stack.
+      const { runSandboxDetailsCommand } = await import("./sandbox-details-command.js");
+      return runSandboxDetailsCommand(args);
+    }
+    throw new Error(
+      `Unknown sandbox subcommand "${args.subcommand ?? ""}". ` +
+        `Did you mean \`sidestep sandbox deploy\` or \`sidestep sandbox details\`? ${USAGE}`,
+    );
   }
   if (command === "workspace") {
     throw new Error(
