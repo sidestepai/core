@@ -61,6 +61,16 @@ export const input = {
   bool: makeInput<boolean>("bool"),
   email: makeInput<string, EmailMethod>("email"),
   password: makeInput<string, PasswordMethod>("password"),
+  /**
+   * URL input — a `text` field that names the intent "this holds a URL". There
+   * is no native engine `url` type, and this does **not** by itself enforce an
+   * http(s) scheme: a `javascript:`/`data:` URL still type-checks and imports.
+   * When the value is security-relevant (e.g. a link that gets navigated to),
+   * reject bad input at the boundary in the stack with `s.precondition` — see
+   * the "validate input at the boundary" recipe in the README. Carries the same
+   * `TextMethod` options as {@link input.text}.
+   */
+  url: makeInput<string, TextMethod>("text"),
   uuid: makeInput<string>("uuid"),
   date: makeInput<string>("date"),
   /** Epoch-millisecond timestamp (stored `epochms`). */

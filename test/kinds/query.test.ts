@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { encodeQuery, queryKind } from "../../src/kinds/query.js";
+import { encodeQuery, queryKind, query, toSearchParams } from "../../src/kinds/query.js";
 import { encodeApiGroup, apiGroupKind } from "../../src/kinds/api-group.js";
 import { Xano } from "../../src/workspace/xano.js";
 import { input } from "../../src/inputs/input.js";
@@ -124,5 +124,25 @@ describe("query + api_group on Xano", () => {
     expect(q.find((x) => x.name === "byDef").app.id).toBe(groupGuid);
     expect(q.find((x) => x.name === "byName").app.id).toBe(groupGuid);
     expect(q.find((x) => x.name === "explicitWins").app.id).toBe(9); // numeric override wins
+  });
+
+  describe("toSearchParams (GET transport, #6)", () => {
+    it("serializes scalars, stringifying numbers and booleans", () => {
+      const p = toSearchParams({ id: 7, active: true, q: "hi there" });
+      expect(p.toString()).toBe("id=7&active=true&q=hi+there");
+    });
+
+    it("repeats the key for array values and omits null/undefined", () => {
+      const p = toSearchParams({ tag: ["a", "b"], skip: undefined, none: null, page: 2 });
+      expect(p.getAll("tag")).toEqual(["a", "b"]);
+      expect(p.has("skip")).toBe(false);
+      expect(p.has("none")).toBe(false);
+      expect(p.get("page")).toBe("2");
+    });
+
+    it("is reachable as a static on `query`", () => {
+      expect(query.toSearchParams).toBe(toSearchParams);
+      expect(query.toSearchParams({ id: 1 }).toString()).toBe("id=1");
+    });
   });
 });
