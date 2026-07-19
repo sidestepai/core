@@ -2,19 +2,37 @@
 
 # SideStep
 
-### Your Xano backend, as TypeScript. Shipped with one command.
+### Your Xano backend, as TypeScript. Backend *and* frontend, one command.
 
 **Write your database, APIs, functions, triggers, and AI agents in typed TypeScript.
-Run `sidestep deploy`. Your backend *and* your frontend go live on Xano's
-infrastructure — in seconds.**
+Then ship your entire stack — backend and static frontend, together — with a single deploy.**
+
+</div>
+
+```bash
+# One command. Whole stack. Live.
+sidestep workspace deploy ./xano/index.ts --static ./dist
+```
+
+```
+Deploying ./xano/index.ts -> workspace "my-app" (id 42) at https://x8ki-letl.n7.xano.io
+Deployed:              https://x8ki-letl.n7.xano.io/api:blog     ← backend, live
+Static host deployed:  https://my-app.xano.io                    ← frontend, live
+```
+
+<div align="center">
+
+No export/import dance. No upload script. No CI glue between your API and your app.
+Your TypeScript is the source of truth, and one command puts all of it into production
+on Xano's scalable infrastructure.
 
 ```bash
 npm install @sidestep/core
 ```
 
+[Ship it](#ship-it-backend--frontend-one-command) ·
 [The model](#the-model-typescript-in-real-infrastructure-out) ·
 [Quickstart](#60-second-quickstart) ·
-[Ship it](#ship-it-backend--frontend-one-command) ·
 [Type-safe frontend](#the-payoff-a-type-safe-frontend-for-free) ·
 [Reference](#reference)
 
@@ -53,6 +71,55 @@ gives you that backend **as code you own**:
   you) emits well-typed TS that always compiles to a valid, importable workspace. Ships
   with machine-readable grounding (`manifest.json`, `llms.txt`) so agents learn the whole
   SDK without reading source.
+
+---
+
+## Ship it: backend + frontend, one command
+
+This is the headline. Most stacks make you deploy your API and your app through two
+separate pipelines. SideStep collapses that into **one command** — point `--static` at
+your built frontend and it archives and uploads it to your workspace's edge-served static
+host, right after the backend import, in the same run:
+
+```bash
+npm run build                                          # build your React/Vue/Angular app → ./dist
+
+npx sidestep workspace deploy ./xano/index.ts \
+    --static ./dist                                    # backend + frontend, live, together
+```
+
+```
+Deploying ./xano/index.ts -> workspace "my-app" (id 42) at https://x8ki-letl.n7.xano.io
+Deployed:              https://x8ki-letl.n7.xano.io/api:blog     ← backend, live
+Static host deployed:  https://my-app.xano.io                    ← frontend, live
+```
+
+One authenticated call ships your database schema, your APIs, your functions and
+triggers, **and** your compiled web app. No separate frontend host to configure, no CI
+glue wiring the two together.
+
+**Three deploy modes**, so you're always in control:
+
+| Command | What it does |
+|---|---|
+| `workspace deploy` | Upserts everything **in place** by identity. No data loss. The default. |
+| `workspace deploy --prune` | Also removes server objects no longer in your code. **Table records are kept.** |
+| `workspace deploy --reset --confirm-workspace my-app` | Deliberate **from-scratch rebuild** — wipes objects *and records*, then imports. Recovery is just a re-deploy (git is your source of truth). |
+
+Deploys are **authenticated over OAuth** — sign in once, and the CLI refreshes tokens
+automatically. The bundle is gzipped on the wire (workspaces get big), the target
+workspace is resolved from your token (never a stray flag), and the CLI prints exactly
+which workspace it's about to change before it touches anything.
+
+**CI & agents** run fully headless from two env vars — no browser needed:
+
+```bash
+XANO_REFRESH_TOKEN=… XANO_CLIENT_ID=… npx sidestep workspace deploy --bundle ws.json
+```
+
+> ⚠️ `workspace deploy` writes to a **real** workspace; `--reset` permanently deletes its
+> table records. Automated agents should confirm before running it. Use `sandbox deploy`
+> for the throwaway dev loop.
 
 ---
 
@@ -138,50 +205,6 @@ manual imports, no upload scripts.
 > entry loads natively; install [`tsx`](https://tsx.is) for older Node or multi-file
 > workspaces. Set `"type": "module"` in the nearest `package.json` if you hit a
 > "must be ES modules" error.
-
----
-
-## Ship it: backend + frontend, one command
-
-SideStep deploys the **whole stack**. Point `--static` at your built frontend and it
-archives and uploads it to your workspace's edge-served static host — right after the
-backend import, in the same command:
-
-```bash
-npm run build                                          # build your React/Vue/Angular app → ./dist
-
-npx sidestep workspace deploy ./xano/index.ts \
-    --static ./dist                                    # backend + frontend, live, together
-```
-
-```
-Deploying ./xano/index.ts -> workspace "my-app" (id 42) at https://x8ki-letl.n7.xano.io
-Deployed: https://x8ki-letl.n7.xano.io/api:blog
-Static host deployed: https://my-app.xano.io
-```
-
-**Three deploy modes**, so you're always in control:
-
-| Command | What it does |
-|---|---|
-| `workspace deploy` | Upserts everything **in place** by identity. No data loss. The default. |
-| `workspace deploy --prune` | Also removes server objects no longer in your code. **Table records are kept.** |
-| `workspace deploy --reset --confirm-workspace my-app` | Deliberate **from-scratch rebuild** — wipes objects *and records*, then imports. Recovery is just a re-deploy (git is your source of truth). |
-
-Deploys are **authenticated over OAuth** — sign in once, and the CLI refreshes tokens
-automatically. The bundle is gzipped on the wire (workspaces get big), the target
-workspace is resolved from your token (never a stray flag), and the CLI prints exactly
-which workspace it's about to change before it touches anything.
-
-**CI & agents** run fully headless from two env vars — no browser needed:
-
-```bash
-XANO_REFRESH_TOKEN=… XANO_CLIENT_ID=… npx sidestep workspace deploy --bundle ws.json
-```
-
-> ⚠️ `workspace deploy` writes to a **real** workspace; `--reset` permanently deletes its
-> table records. Automated agents should confirm before running it. Use `sandbox deploy`
-> for the throwaway dev loop.
 
 ---
 
