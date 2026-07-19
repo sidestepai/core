@@ -62,6 +62,7 @@ import {
   createAuthToken,
   expectToThrow,
 } from "./special/misc.js";
+import { precondition, throwError } from "./special/precondition.js";
 import type { ExternalSqlEngine } from "./special/db.js";
 import {
   returnValue,
@@ -81,6 +82,11 @@ const cloudJobNs = Object.assign(cloudJob, { await: cloudJobAwait, status: cloud
 
 export const s = {
   ...generated,
+  // Typed overrides of generated factories: `precondition` narrows `error_type`
+  // to the status-bearing enum, and `throw` documents that it returns HTTP 200
+  // (use `precondition` for a status-observable rejection). See issue #21.
+  precondition,
+  throw: throwError,
   // Hand-authored specials (not in the codegen'd catalog).
   set_var: setVar,
   update_var: updateVar,

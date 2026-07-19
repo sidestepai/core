@@ -8,6 +8,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { s } from "../../src/statements/s.js";
+import { generated } from "../../src/statements/generated/factories.generated.js";
 import { encodeStatement } from "../../src/statements/statement.js";
 import { deriveGuid } from "../../src/refs/guid.js";
 import { c } from "../../src/values/value.js";
@@ -138,5 +139,24 @@ describe("structural array + misc specials", () => {
     const enc = encodeStatement(s.expect.to_throw({ body: [s.return(c.null())] }));
     expect(enc.name).toBe("mvp:test_expect_to_throw");
     expect((enc.context as { run: unknown[] }).run).toHaveLength(1);
+  });
+
+  // Issue #21: the typed `precondition`/`throw` overrides must delegate to the
+  // generated factories byte-for-byte — they only narrow/annotate the arg types.
+  it("precondition encodes with a status-bearing error_type (delegates to the generated factory)", () => {
+    const enc = encodeStatement(
+      s.precondition({ error_type: "badrequest", error: c.text("url must start with http://") }),
+    );
+    expect(enc.name).toBe("mvp:precondition");
+    const raw = encodeStatement(
+      generated.precondition({ error_type: "badrequest", error: c.text("url must start with http://") }),
+    );
+    expect(enc).toEqual(raw);
+  });
+
+  it("throw override encodes identically to the generated factory", () => {
+    const enc = encodeStatement(s.throw({ value: c.text("boom") }));
+    expect(enc.name).toBe("mvp:throw_error");
+    expect(enc).toEqual(encodeStatement(generated.throw({ value: c.text("boom") })));
   });
 });
