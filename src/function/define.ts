@@ -21,6 +21,7 @@ export type { ResponseDef };
 export interface FunctionDef<
   I extends Record<string, InputDescriptor> = Record<string, InputDescriptor>,
   Res = never,
+  Resp extends ResponseDef = ResponseDef,
 > {
   name: string;
   /** Explicit Xano `guid` (this object's identity). Defaults to a guid derived from `name`; set it to keep identity across a rename or to match an existing object. */
@@ -31,7 +32,9 @@ export interface FunctionDef<
   workspace?: number;
   input?: I;
   stack?: Statement[];
-  response?: ResponseDef;
+  /** The response assignment — see {@link QueryDef.response}. Captured as `Resp`
+   * so `InferResponse` can auto-derive object-literal keys / trace a variable. */
+  response?: Resp;
   /**
    * Type-only: declare the function's response shape so
    * `InferResponse<typeof fn>` recovers it exactly (the override, taking
@@ -51,7 +54,8 @@ export interface FunctionDef<
 export function defineFunction<
   const I extends Record<string, InputDescriptor> = Record<never, never>,
   Res = never,
->(def: FunctionDef<I, Res>): FunctionDef<I, Res> {
+  Resp extends ResponseDef = ResponseDef,
+>(def: FunctionDef<I, Res, Resp>): FunctionDef<I, Res, Resp> {
   if (!def.name || typeof def.name !== "string") {
     throw new Error("defineFunction: `name` is required and must be a non-empty string.");
   }

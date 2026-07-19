@@ -34,6 +34,7 @@ export type HttpVerb = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
 export interface QueryDef<
   I extends Record<string, InputDescriptor> = Record<string, InputDescriptor>,
   Res = never,
+  Resp extends ResponseDef = ResponseDef,
 > {
   name: string;
   /** Explicit Xano `guid` (this object's identity). Defaults to a guid derived from `name`; set it to keep identity across a rename or to match an existing object. */
@@ -60,7 +61,13 @@ export interface QueryDef<
   tags?: string[];
   input?: I;
   stack?: Statement[];
-  response?: ResponseDef;
+  /**
+   * The response assignment: a single {@link Value} (returned directly) or a
+   * record of named values (an object with those keys). Captured as the literal
+   * `Resp` so `InferResponse` can auto-derive object-literal keys (U2) and, with
+   * the branded stack, trace a single-variable response (U5).
+   */
+  response?: Resp;
   /**
    * Type-only: declare the endpoint's response shape so
    * `InferResponse<typeof query>` recovers it exactly (the always-correct
@@ -81,7 +88,8 @@ export interface QueryDef<
 export type QueryHandle<
   I extends Record<string, InputDescriptor> = Record<string, InputDescriptor>,
   Res = never,
-> = QueryDef<I, Res> & {
+  Resp extends ResponseDef = ResponseDef,
+> = QueryDef<I, Res, Resp> & {
     /**
      * The endpoint's **group-relative** URL path — `/api:<canonical>/<name>` —
      * ready to prepend a host and drop into `fetch`. The api group's `canonical`
@@ -226,7 +234,8 @@ function resolveCanonical(
 function queryImpl<
   const I extends Record<string, InputDescriptor> = Record<never, never>,
   Res = never,
->(def: QueryDef<I, Res>): QueryHandle<I, Res> {
+  Resp extends ResponseDef = ResponseDef,
+>(def: QueryDef<I, Res, Resp>): QueryHandle<I, Res, Resp> {
   // The path segment is invariant across calls; only the canonical can vary
   // (via an override), so normalize the name once here.
   const path = def.name.replace(/^\/+/, "");

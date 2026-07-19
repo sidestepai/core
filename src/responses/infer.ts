@@ -25,6 +25,8 @@
  *      `set_var`, function-produced vars, streams) resolves to `unknown`, which
  *      the author narrows or overrides via `responseShape`.
  */
+import type { Value } from "../values/value.js";
+
 /**
  * The author-declared response shape, read from a def's `responseShape` field
  * (captured by `query()`/`defineFunction()`), or `never` when undeclared.
@@ -43,12 +45,32 @@ type DeclaredResponse<Q> = Q extends { responseShape?: infer R }
   : never;
 
 /**
- * Best-effort automatic derivation of a response shape from the def's `response`
- * field and `stack`. A stub (`unknown`) here; extended in U2 (object-literal
- * keys) and U5 (single-variable trace against the branded stack). Kept separate
- * from {@link DeclaredResponse} so the user override always takes precedence.
+ * Resolve one response {@link Value} to its type. A stub (`unknown`) here;
+ * extended in U5 (trace a `ref` to the branded `db.get`/`db.query` that produced
+ * it) and U6 (degrade a filtered value to `unknown`). Until then every value is
+ * `unknown` — the honest floor, matching the engine's `json` fallback.
  */
-export type DeriveResponse<_Q> = unknown;
+type ResolveValue<_V> = unknown;
+
+/**
+ * Best-effort automatic derivation of a response shape from the def's `response`
+ * field. Mirrors the Xano engine's static walk:
+ *   - a record response (object literal) → an object with **those keys** (values
+ *     resolved individually via {@link ResolveValue}); the keys are statically
+ *     known regardless of whether the values can be traced;
+ *   - a single {@link Value} response → {@link ResolveValue} of it;
+ *   - no response / an unresolvable shape → `unknown`.
+ * Kept separate from {@link DeclaredResponse} so the user override always wins.
+ */
+export type DeriveResponse<Q> = Q extends { response?: infer Resp }
+  ? [Resp] extends [undefined]
+    ? unknown
+    : Resp extends Value
+      ? ResolveValue<Resp>
+      : Resp extends Record<string, Value>
+        ? { -readonly [K in keyof Resp]: ResolveValue<Resp[K]> }
+        : unknown
+  : unknown;
 
 /**
  * Recover a query/function's response type. A declared `responseShape` wins;

@@ -57,6 +57,25 @@ const undeclared = query({
   response: ref("x"),
 });
 
+// An object-literal response — keys statically known (U2), values unknown until
+// the single-var trace (U5).
+const objectResponse = query({
+  verb: "GET",
+  apiGroup: links,
+  name: "object_response",
+  response: { id: ref("row"), label: ref("row") },
+});
+
+// A single-variable response with no override and no trace yet → unknown (U5
+// turns this into the traced row shape).
+const singleVar = query({
+  verb: "GET",
+  apiGroup: links,
+  name: "single_var",
+  stack: [],
+  response: ref("row"),
+});
+
 // A function carrying a declared response (parity with queries).
 const computeStats = defineFunction({
   name: "compute_stats",
@@ -77,6 +96,24 @@ describe("InferResponse (type-level)", () => {
 
   it("undeclared, non-derivable response → unknown (U1 fallback)", () => {
     expectTypeOf<InferResponse<typeof undeclared>>().toEqualTypeOf<unknown>();
+  });
+
+  it("object-literal response → keys known, values unknown (U2)", () => {
+    expectTypeOf<InferResponse<typeof objectResponse>>().toEqualTypeOf<{
+      id: unknown;
+      label: unknown;
+    }>();
+  });
+
+  it("a key absent from the response record is rejected", () => {
+    const r: InferResponse<typeof objectResponse> = { id: 1, label: "x" };
+    // @ts-expect-error — `missing` is not a declared response key
+    r.missing;
+    void r;
+  });
+
+  it("single-variable response with no trace yet → unknown (U5 will trace it)", () => {
+    expectTypeOf<InferResponse<typeof singleVar>>().toEqualTypeOf<unknown>();
   });
 
   it("defineFunction carries a declared responseShape identically", () => {
