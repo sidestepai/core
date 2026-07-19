@@ -53,7 +53,7 @@ export const DEFAULT_AUTH_HOST = "https://app.xano.com";
  */
 export const DEFAULT_SCOPE = "offline_access workspace:read workspace:write xano:dev";
 
-/** Well-known discovery path (served at the bare auth-host origin). */
+/** Well-known discovery path (served at the bare OAuth origin). */
 const DISCOVERY_PATH = "/.well-known/oauth-authorization-server";
 
 /** Bound every OAuth HTTP call so a stalled endpoint can't hang the CLI/CI forever. */
@@ -86,7 +86,7 @@ export async function discover(authHost: string): Promise<Endpoints> {
   if (!res.ok) {
     throw new Error(
       `OAuth discovery failed (${res.status} ${res.statusText}) at ${url}. ` +
-        `Check --auth-host (currently ${authHost}).`,
+        `Check --origin (currently ${authHost}).`,
     );
   }
   const doc = (await res.json()) as Partial<Endpoints>;
@@ -239,7 +239,7 @@ export class OpenIdProvider implements TokenProvider {
       if (!registration_endpoint) {
         throw new Error(
           `The OAuth server at ${this.opts.authHost} does not advertise a registration ` +
-            `endpoint, so sidestep can't register its loopback client. Check --auth-host.`,
+            `endpoint, so sidestep can't register its loopback client. Check --origin.`,
         );
       }
       clientId = await getOrRegisterClient({

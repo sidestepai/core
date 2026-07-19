@@ -7,7 +7,7 @@ import type { FunctionXdo } from "../types/xdo.js";
 import type { FunctionDef } from "../function/define.js";
 import { encodeInput } from "../inputs/input.js";
 import { encodeStatement } from "../statements/statement.js";
-import { encodeResponse } from "../responses/response.js";
+import { encodeResponse, warnUnboundReturn } from "../responses/response.js";
 import { registerKind } from "./kind.js";
 import type { ObjectKind } from "./kind.js";
 import { defaultHistory, encodeTags } from "./common.js";
@@ -17,6 +17,7 @@ export function encodeFunction(fn: FunctionDef): FunctionXdo {
   if (!fn.name) {
     throw new Error("function kind: `name` is required.");
   }
+  warnUnboundReturn("function", fn.name, fn.stack, fn.response);
   return {
     name: fn.name,
     description: fn.description ?? "",

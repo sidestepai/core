@@ -39,7 +39,7 @@ describe("auth store", () => {
 
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
-    delete process.env.XANO_AUTH_FILE;
+    delete process.env.XANO_CONFIG;
   });
 
   it("round-trips a token record through write/read", () => {
@@ -95,13 +95,13 @@ describe("auth store", () => {
   });
 
   it("resolveAuthFilePath honors flag > env > default", () => {
-    const flag = parseArgs(["push", "--auth-file", "/tmp/flag.json"]);
+    const flag = parseArgs(["push", "--config", "/tmp/flag.json"]);
     expect(resolveAuthFilePath(flag)).toBe("/tmp/flag.json");
 
-    process.env.XANO_AUTH_FILE = "/tmp/env.json";
+    process.env.XANO_CONFIG = "/tmp/env.json";
     expect(resolveAuthFilePath(parseArgs(["push"]))).toBe("/tmp/env.json");
 
-    delete process.env.XANO_AUTH_FILE;
+    delete process.env.XANO_CONFIG;
     const def = resolveAuthFilePath(parseArgs(["push"]));
     expect(def.endsWith(join(".xano", "auth.json"))).toBe(true);
   });

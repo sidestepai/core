@@ -63,9 +63,9 @@ export interface ParsedArgs {
   bundle: string | undefined;
   /** `push --reset`: fully replace the sandbox workspace before import (`?reset=true`) instead of merging into it. */
   reset: boolean;
-  /** `--auth-host <origin>`: cloud-master OAuth host. Default: $XANO_AUTH_HOST, then https://app.xano.com. */
+  /** `--origin <origin>`: cloud-master OAuth host. Default: $XANO_ORIGIN, then https://app.xano.com. */
   authHost: string | undefined;
-  /** `--auth-file <path>`: project-local token cache. Default: $XANO_AUTH_FILE, then ./.xano/auth.json. */
+  /** `--config <path>`: project-local token cache. Default: $XANO_CONFIG, then ./.xano/auth.json. */
   authFile: string | undefined;
   /** `login --port <n>`: fixed loopback callback port (default: an ephemeral port). */
   port: number | undefined;
@@ -115,14 +115,14 @@ export function parseArgs(argv: string[]): ParsedArgs {
       bundle = arg.slice("--bundle=".length);
     } else if (arg === "--reset") {
       reset = true;
-    } else if (arg === "--auth-host") {
+    } else if (arg === "--origin") {
       authHost = rest[++i];
-    } else if (arg.startsWith("--auth-host=")) {
-      authHost = arg.slice("--auth-host=".length);
-    } else if (arg === "--auth-file") {
+    } else if (arg.startsWith("--origin=")) {
+      authHost = arg.slice("--origin=".length);
+    } else if (arg === "--config") {
       authFile = rest[++i];
-    } else if (arg.startsWith("--auth-file=")) {
-      authFile = arg.slice("--auth-file=".length);
+    } else if (arg.startsWith("--config=")) {
+      authFile = arg.slice("--config=".length);
     } else if (arg === "--port") {
       port = parsePort(rest[++i]);
     } else if (arg.startsWith("--port=")) {
@@ -131,11 +131,11 @@ export function parseArgs(argv: string[]): ParsedArgs {
       scope = rest[++i];
     } else if (arg.startsWith("--scope=")) {
       scope = arg.slice("--scope=".length);
-    } else if (arg === "--profile" || arg.startsWith("--profile=") || arg === "--config" || arg.startsWith("--config=")) {
+    } else if (arg === "--profile" || arg.startsWith("--profile=")) {
       // Removed in the OAuth migration — fail loudly instead of letting the flag
       // (and its value) fall through into positionals and misparse as an entry file.
       throw new Error(
-        `\`--profile\`/\`--config\` were removed — push now authenticates via OAuth. ` +
+        `\`--profile\` was removed — push now authenticates via OAuth. ` +
           `Run \`sidestep login\` once (or set XANO_REFRESH_TOKEN for CI).`,
       );
     } else {
@@ -234,9 +234,9 @@ export async function loadDefault(file: string): Promise<unknown> {
 
 const USAGE =
   "Usage: sidestep <compile|export> <file> [--out <path>] [--lock[=<path>]] [--frozen-lock] | " +
-  "sidestep login [--auth-host <origin>] [--auth-file <path>] [--port <n>] | " +
-  "sidestep logout [--auth-file <path>] | " +
-  "sidestep push <file>|--bundle <path> [--reset] [--auth-file <path>] | " +
+  "sidestep login [--origin <origin>] [--config <path>] [--port <n>] | " +
+  "sidestep logout [--config <path>] | " +
+  "sidestep push <file>|--bundle <path> [--reset] [--config <path>] | " +
   "sidestep lock <rename|prune|adopt> …";
 
 /** Quote a name for a suggested shell command when it needs it. */

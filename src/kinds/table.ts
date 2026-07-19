@@ -8,6 +8,7 @@ import type { FieldXdo, ExprStatement } from "../types/xdo.js";
 import { encodeField, COLUMN_CONTEXT } from "../fields/field.js";
 import type { FieldOptions } from "../fields/field.js";
 import type { FieldMap } from "../fields/catalog.js";
+import type { RowFromFieldMap, Prettify } from "../fields/value-types.js";
 import { encodeComparison } from "../statements/conditional.js";
 import type { Comparison } from "../statements/conditional.js";
 import { registerKind } from "./kind.js";
@@ -116,14 +117,76 @@ export interface ViewDef {
 export type SchemaCols<S extends FieldMap> = Extract<keyof S, string> | "id" | "created_at";
 
 /**
+ * The auto-injected system columns as they appear on a **row**, parameterized by
+ * the table's {@link TableDef.idType}: the primary key `id` (a `number` for the
+ * default `int`, a `string` for `uuid`) and the `epochms` `created_at` (always a
+ * number). A `FieldMap`-schema table adds these to {@link RowOf} unless it
+ * declares its own.
+ */
+type SystemRow<IdT extends "int" | "uuid"> = {
+  id: IdT extends "uuid" ? string : number;
+  created_at: number;
+};
+
+/**
+ * The **row type** of a `FieldMap`-schema table — the shape a read returns: each
+ * declared column (value types recovered from the field brands, `nullable`/
+ * `array` applied) plus the auto-injected system columns `id`/`created_at`,
+ * unless the schema declares its own. `IdT` threads the table's
+ * {@link TableDef.idType} through so a `uuid` primary key infers `id: string`
+ * (not `number`); `Sys` threads {@link TableDef.system} through so a
+ * `system:false` table drops the injected columns (matching its narrower runtime
+ * row). The read-side mirror of the request-only
+ * {@link import("../inputs/infer.js").InferInput}. Recovered from a table handle
+ * via {@link InferRow}.
+ *
+ * `Sys` is compared non-distributively (`[Sys] extends [false]`) so only a
+ * literal `false` drops the columns — an unresolved `boolean` keeps them, the
+ * safe default. Note {@link SchemaCols} (the column-name phantom) is unaffected
+ * and still always carries `id`/`created_at`; the two intentionally diverge for
+ * `system:false` (a name may still be referenced even when the read row omits it).
+ *
+ * This is the table's full declared row, not any one endpoint's payload — a query
+ * returns whatever its `response`/`output` selects. `created_at` carries
+ * `access:"private"`, which the engine excludes from a *default, auto-shaped*
+ * read (it's `hidden` in the generated response), so such an endpoint omits it
+ * even though this type lists it; a response that explicitly selects `created_at`
+ * still returns it. Narrow with `Omit<InferRow<T>, "created_at">` on the
+ * auto-shaped path if you need the payload's exact shape.
+ */
+export type RowOf<
+  S extends FieldMap,
+  IdT extends "int" | "uuid" = "int",
+  Sys extends boolean = true,
+> = Prettify<
+  ([Sys] extends [false] ? Record<never, never> : Omit<SystemRow<IdT>, keyof S>) &
+    RowFromFieldMap<S>
+>;
+
+/**
+ * Recover a table's row type from a {@link table} handle:
+ * `InferRow<typeof postTable>`. Closes the loop the SDK opens with `InferInput`
+ * on the request side — rename or retype a column and every consumer that types
+ * a row against `InferRow` lights up. A table authored with a raw `ColumnDef[]`
+ * schema carries no field brands, so its row is `unknown` (nothing to infer).
+ */
+export type InferRow<T> = T extends TableDef<string, infer Row> ? Row : never;
+
+/**
  * @typeParam Cols - phantom column-name union, captured by {@link table} from a
  *   `FieldMap` schema so db statements can type their column-name fields against
  *   it. Defaults to `string` (a table authored with a raw `ColumnDef[]`, or a
  *   bare-name reference, stays loosely typed). Never set at runtime.
+ * @typeParam Row - phantom row-type carrier, captured by {@link table} from a
+ *   `FieldMap` schema so `InferRow<typeof table>` can recover the read shape.
+ *   Defaults to `unknown` (a raw-schema/bare-name table carries no brands).
+ *   Never set at runtime.
  */
-export interface TableDef<Cols extends string = string> {
+export interface TableDef<Cols extends string = string, Row = unknown> {
   /** @internal phantom carrier for {@link Cols}; never assigned at runtime. */
   readonly __cols?: Cols;
+  /** @internal phantom carrier for {@link Row}; never assigned at runtime. */
+  readonly __row?: Row;
   name: string;
   /** Explicit Xano `guid` (this object's identity). Defaults to a guid derived from `name`; set it to keep identity across a rename or to match an existing object. */
   guid?: string;
@@ -344,9 +407,17 @@ registerKind(tableKind);
  * can type their column-name fields (`fieldName`, `output`, `sortBy`, `row`
  * keys) against the real columns. A raw `ColumnDef[]` schema stays loose.
  */
-export function table<S extends FieldMap>(
-  def: Omit<TableDef, "schema"> & { schema: S },
-): TableDef<SchemaCols<S>>;
+export function table<
+  S extends FieldMap,
+  IdT extends "int" | "uuid" = "int",
+  Sys extends boolean = true,
+>(
+  def: Omit<TableDef, "schema" | "idType" | "system"> & {
+    schema: S;
+    idType?: IdT;
+    system?: Sys;
+  },
+): TableDef<SchemaCols<S>, RowOf<S, IdT, Sys>>;
 export function table(def: TableDef): TableDef;
 export function table(def: TableDef): TableDef {
   return def;
