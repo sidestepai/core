@@ -214,9 +214,12 @@ function queryImpl<const I extends Record<string, InputDescriptor> = Record<neve
 }
 
 /**
- * A value acceptable in a query-string param. Covers what an `InferInput` map
- * yields — scalars, plus arrays of scalars (repeated as `?k=a&k=b`). `null`/
- * `undefined` are dropped so an absent optional input contributes no param.
+ * A value acceptable in a query-string param. Covers the *scalar* subset an
+ * `InferInput` map yields — scalars, plus arrays of scalars (repeated as
+ * `?k=a&k=b`). Nested `input.object`/`input.list` shapes are deliberately
+ * excluded (no canonical query-string encoding), so a query with those inputs
+ * won't type-check here. `null`/`undefined` are dropped so an absent optional
+ * input contributes no param.
  */
 export type SearchParamValue =
   | string
@@ -229,10 +232,15 @@ export type SearchParamValue =
 /**
  * Serialize a query input map into {@link URLSearchParams} for a GET request —
  * `query.toSearchParams(input)`. GET endpoints carry their inputs in the query
- * string, not a JSON body; this is the transport counterpart to
- * `InferInput<typeof q>`, so a generic `fetch` wrapper doesn't have to hand-roll
- * the `?k=v` convention. Scalars stringify (`true`→`"true"`, `1`→`"1"`), arrays
- * repeat the key, and `null`/`undefined` are omitted.
+ * string, not a JSON body; this is the transport counterpart to the scalar
+ * inputs of `InferInput<typeof q>`, so a generic `fetch` wrapper doesn't have to
+ * hand-roll the `?k=v` convention. Scalars stringify (`true`→`"true"`, `1`→`"1"`,
+ * `0`/`false` are kept), arrays repeat the key, and `null`/`undefined` are omitted.
+ *
+ * Fails loud rather than emitting a garbage param: a non-finite number
+ * (`NaN`/`Infinity`) or a non-primitive value (an object slipping past the type
+ * via `any`) throws a {@link TypeError} instead of serializing to `"NaN"` /
+ * `"[object Object]"`.
  *
  * @example
  * const q = query({ name: "get_snippet", verb: "GET", apiGroup: g, input: { id: input.int() } });
@@ -240,15 +248,24 @@ export type SearchParamValue =
  */
 export function toSearchParams(input: Record<string, SearchParamValue>): URLSearchParams {
   const params = new URLSearchParams();
+  const append = (key: string, item: string | number | boolean): void => {
+    if (typeof item === "number" && !Number.isFinite(item)) {
+      throw new TypeError(`toSearchParams: param "${key}" is ${item} — not a finite value`);
+    }
+    if (typeof item !== "string" && typeof item !== "number" && typeof item !== "boolean") {
+      throw new TypeError(`toSearchParams: param "${key}" is not a scalar (got ${typeof item})`);
+    }
+    params.append(key, String(item));
+  };
   for (const [key, value] of Object.entries(input)) {
     if (value === undefined || value === null) continue;
     if (Array.isArray(value)) {
       for (const item of value) {
         if (item === undefined || item === null) continue;
-        params.append(key, String(item));
+        append(key, item);
       }
     } else {
-      params.append(key, String(value));
+      append(key, value as string | number | boolean);
     }
   }
   return params;

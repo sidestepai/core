@@ -272,7 +272,9 @@ A GET endpoint carries its inputs in the query string rather than a JSON body:
 
 ```ts
 import { getSnippet } from "../xano/index.js";
-import { query } from "@sidestep/core";
+import { query, type InferInput } from "@sidestep/core";
+
+const BASE = "https://your-instance.xano.io";
 
 async function fetchSnippet(id: number) {
   const params = { id } satisfies InferInput<typeof getSnippet>;   // { id: number }
@@ -423,10 +425,14 @@ guard the scheme before persisting:
 import { s, c, inp, expr, withFilters, fl } from "@sidestep/core";
 
 s.precondition({
-  // `fl.istarts_with` pipes the SUBJECT (the url); the arg is the prefix.
+  // `fl.istarts_with` pipes the SUBJECT (the url); the arg is the prefix. An
+  // `http` prefix rejects the dangerous schemes (`javascript:`/`data:` don't
+  // start with it). For a strict scheme match (excluding `httpfoo://` lookalikes)
+  // reach for `fl.regex_test` with a `^https?://` pattern — note it is
+  // pattern-piped, the reverse of `istarts_with` (#22).
   expr: expr(withFilters(inp("url"), fl.istarts_with(c.text("http"))), "=", c.bool(true)),
   error_type: "badrequest",                       // → HTTP 400 (not a 200 throw)
-  error: c.text("url must start with http:// or https://"),
+  error: c.text("url must be an http(s) URL"),
 })
 ```
 
