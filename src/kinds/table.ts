@@ -8,6 +8,7 @@ import type { FieldXdo, ExprStatement } from "../types/xdo.js";
 import { encodeField, COLUMN_CONTEXT } from "../fields/field.js";
 import type { FieldOptions } from "../fields/field.js";
 import type { FieldMap } from "../fields/catalog.js";
+import type { RowFromFieldMap, Prettify } from "../fields/value-types.js";
 import { encodeComparison } from "../statements/conditional.js";
 import type { Comparison } from "../statements/conditional.js";
 import { registerKind } from "./kind.js";
@@ -116,14 +117,46 @@ export interface ViewDef {
 export type SchemaCols<S extends FieldMap> = Extract<keyof S, string> | "id" | "created_at";
 
 /**
+ * The auto-injected system columns as they appear on a **row**: the `int`
+ * primary key and the `epochms` `created_at` (both numbers). A `FieldMap`-schema
+ * table adds these to {@link RowOf} unless it declares its own.
+ */
+type SystemRow = { id: number; created_at: number };
+
+/**
+ * The **row type** of a `FieldMap`-schema table — the shape a read returns: each
+ * declared column (value types recovered from the field brands, `nullable`/
+ * `array` applied) plus the auto-injected system columns `id`/`created_at`,
+ * unless the schema declares its own. The read-side mirror of the request-only
+ * {@link import("../inputs/infer.js").InferInput}. Recovered from a table handle
+ * via {@link InferRow}.
+ */
+export type RowOf<S extends FieldMap> = Prettify<Omit<SystemRow, keyof S> & RowFromFieldMap<S>>;
+
+/**
+ * Recover a table's row type from a {@link table} handle:
+ * `InferRow<typeof postTable>`. Closes the loop the SDK opens with `InferInput`
+ * on the request side — rename or retype a column and every consumer that types
+ * a row against `InferRow` lights up. A table authored with a raw `ColumnDef[]`
+ * schema carries no field brands, so its row is `unknown` (nothing to infer).
+ */
+export type InferRow<T> = T extends TableDef<string, infer Row> ? Row : never;
+
+/**
  * @typeParam Cols - phantom column-name union, captured by {@link table} from a
  *   `FieldMap` schema so db statements can type their column-name fields against
  *   it. Defaults to `string` (a table authored with a raw `ColumnDef[]`, or a
  *   bare-name reference, stays loosely typed). Never set at runtime.
+ * @typeParam Row - phantom row-type carrier, captured by {@link table} from a
+ *   `FieldMap` schema so `InferRow<typeof table>` can recover the read shape.
+ *   Defaults to `unknown` (a raw-schema/bare-name table carries no brands).
+ *   Never set at runtime.
  */
-export interface TableDef<Cols extends string = string> {
+export interface TableDef<Cols extends string = string, Row = unknown> {
   /** @internal phantom carrier for {@link Cols}; never assigned at runtime. */
   readonly __cols?: Cols;
+  /** @internal phantom carrier for {@link Row}; never assigned at runtime. */
+  readonly __row?: Row;
   name: string;
   /** Explicit Xano `guid` (this object's identity). Defaults to a guid derived from `name`; set it to keep identity across a rename or to match an existing object. */
   guid?: string;
@@ -346,7 +379,7 @@ registerKind(tableKind);
  */
 export function table<S extends FieldMap>(
   def: Omit<TableDef, "schema"> & { schema: S },
-): TableDef<SchemaCols<S>>;
+): TableDef<SchemaCols<S>, RowOf<S>>;
 export function table(def: TableDef): TableDef;
 export function table(def: TableDef): TableDef {
   return def;
