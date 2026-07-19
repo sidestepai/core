@@ -130,6 +130,11 @@ type SystemRow = { id: number; created_at: number };
  * unless the schema declares its own. The read-side mirror of the request-only
  * {@link import("../inputs/infer.js").InferInput}. Recovered from a table handle
  * via {@link InferRow}.
+ *
+ * Assumes the default `system:true` (matching {@link SchemaCols}, the column-name
+ * phantom, which also always carries `id`/`created_at`). A table that opts out
+ * with `system:false` and declares neither column gets no injected system
+ * columns at runtime, so its real row is narrower than this type reports.
  */
 export type RowOf<S extends FieldMap> = Prettify<Omit<SystemRow, keyof S> & RowFromFieldMap<S>>;
 
