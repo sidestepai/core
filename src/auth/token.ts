@@ -62,6 +62,39 @@ function refreshAccessToken(
 }
 
 /**
+ * A refresh failure that carries no OAuth error code is a transport-level blip
+ * (DNS/connection reset/timeout — a bare `fetch failed`), not a credential
+ * problem. The AS never got to reject anything, so `sidestep login` is the wrong
+ * remedy: re-running the deploy usually just works. An OAuth error response
+ * (`invalid_grant`, `invalid_client`, …) is deterministic and IS auth-related.
+ */
+export function isTransientRefreshError(err: unknown): boolean {
+  return oauthErrorCode(err) === undefined;
+}
+
+/**
+ * Refresh the access token, retrying once on a transient network failure. An
+ * OAuth error response is deterministic and never retried — a second attempt
+ * would only re-reject. If the retry hits `invalid_grant` (e.g. the first
+ * attempt actually rotated the token server-side before the response was lost),
+ * the caller's `invalid_grant` branch handles it correctly.
+ */
+async function refreshWithRetry(
+  authHost: string,
+  clientId: string,
+  refreshToken: string,
+  scope: string | undefined,
+): Promise<RawTokens> {
+  try {
+    return await refreshAccessToken(authHost, clientId, refreshToken, scope);
+  } catch (err) {
+    if (!isTransientRefreshError(err)) throw err;
+    detail(`Token refresh hit a network error; retrying once…`);
+    return await refreshAccessToken(authHost, clientId, refreshToken, scope);
+  }
+}
+
+/**
  * Resolve an OAuth access token and the target instance. The instance is always
  * the one the token is bound to — chosen at consent during `login`, never a
  * flag.
@@ -149,8 +182,9 @@ async function refreshUnderLock(authFilePath: string, saved: TokenRecord): Promi
     detail(`Refreshing access token for ${hostLabel(instance)}…`);
     let set: RawTokens;
     try {
-      set = await refreshAccessToken(current.auth_host, current.client_id, current.refresh_token, current.scope);
+      set = await refreshWithRetry(current.auth_host, current.client_id, current.refresh_token, current.scope);
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       // A rejected/replayed/expired refresh token can't be salvaged: drop the
       // spent credentials so the next run starts a clean login rather than
       // retrying with a token the AS will keep rejecting.
@@ -161,9 +195,20 @@ async function refreshUnderLock(authFilePath: string, saved: TokenRecord): Promi
             `Run \`sidestep login\` to sign in again.`,
         );
       }
+      // A transient network failure (bare `fetch failed`, timeout) reached no
+      // authorization server, so `sidestep login` is the wrong fix — and the one
+      // command automated agents are told not to run. Point at a retry instead.
+      if (isTransientRefreshError(err)) {
+        throw new Error(
+          `Token refresh for ${instance} could not reach the authorization server (${message}), even after one retry. ` +
+            `This is a transient network error, not an auth problem — re-run the deploy. ` +
+            `If it persists, check connectivity to ${current.auth_host}.`,
+        );
+      }
+      // A genuine OAuth error (invalid_client, etc.) — credentials/config are at
+      // fault, so re-authenticating is the right remedy.
       throw new Error(
-        `Token refresh failed for ${instance}: ${err instanceof Error ? err.message : String(err)}\n` +
-          `Run \`sidestep login\` to sign in again.`,
+        `Token refresh failed for ${instance}: ${message}\n` + `Run \`sidestep login\` to sign in again.`,
       );
     }
     const stamped = stampExpiry(set);
