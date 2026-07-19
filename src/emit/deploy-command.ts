@@ -72,10 +72,26 @@ async function loadBundle(args: ParsedArgs): Promise<{ bundle: string; source: s
  * bearer — the sandbox tenant does not serve static hosting, so the frontend
  * lives on the real workspace.
  */
+/**
+ * Build the static-host config globals: the backend URL is seeded as `XANO_HOST`,
+ * then the caller's `--static-env` pairs override/extend it (an explicit
+ * `XANO_HOST=` wins over the seed). Exported for tests.
+ */
+export function buildStaticEnv(
+  baseUrl: string | undefined,
+  staticEnv: Record<string, string>,
+): Record<string, string> {
+  const env: Record<string, string> = {};
+  if (baseUrl) env.XANO_HOST = baseUrl;
+  Object.assign(env, staticEnv);
+  return env;
+}
+
 async function deployParentStatic(
   dir: string,
   auth: ResolvedAuth,
   env: Record<string, string>,
+  explicit: boolean,
 ): Promise<DeploySummary["static"]> {
   const { resolveScopedWorkspaceId } = await import("../deploy/workspace.js");
   const { deployStaticHost } = await import("../deploy/static-host.js");
@@ -91,11 +107,16 @@ async function deployParentStatic(
   });
   success("Static host deployed");
   if (sh.url) detail(sh.url);
-  const keys = Object.keys(env);
-  if (keys.length > 0 && sh.envInjected) {
-    detail(`Config injected into index.html: ${keys.map((k) => `window.${k}`).join(", ")}`);
-  } else if (keys.length > 0) {
-    warn(`Config not injected — no <head> in a root index.html to anchor to. window.${keys[0]} is unset.`);
+  const globals = Object.keys(env).map((k) => `window.${k}`);
+  if (globals.length === 0) return { url: sh.url };
+  if (sh.envInjected) {
+    detail(`Config injected into index.html: ${globals.join(", ")}`);
+  } else if (explicit) {
+    // The caller asked for config via --static-env and it could not be delivered — warn loudly.
+    warn(`Config not injected — no <head> in a root index.html to anchor to. ${globals.join(", ")} unset.`);
+  } else {
+    // Only the auto-seeded XANO_HOST was in play; a static host with no root index.html is a fine, quiet outcome.
+    detail(`No root index.html to inject window.XANO_HOST into — skipped.`);
   }
   return { url: sh.url };
 }
@@ -125,11 +146,10 @@ export async function runDeployCommand(args: ParsedArgs): Promise<void> {
 
   if (args.static !== undefined) {
     // Seed the backend URL as window.XANO_HOST, then let --static-env override/extend it.
-    const env: Record<string, string> = {};
-    if (resp.baseUrl) env.XANO_HOST = resp.baseUrl;
-    Object.assign(env, args.staticEnv);
+    const env = buildStaticEnv(resp.baseUrl, args.staticEnv);
+    const explicit = Object.keys(args.staticEnv).length > 0;
     try {
-      summary.static = await deployParentStatic(args.static, auth, env);
+      summary.static = await deployParentStatic(args.static, auth, env, explicit);
     } catch (err) {
       warn("Backend deployed, but the static-host upload failed:");
       detail(err instanceof Error ? err.message : String(err));
