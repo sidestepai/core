@@ -110,7 +110,7 @@ describe("InferResponse (type-level)", () => {
   it("a key absent from the response record is rejected", () => {
     const r: InferResponse<typeof objectResponse> = { id: 1, label: "x" };
     // @ts-expect-error — `missing` is not a declared response key
-    r.missing;
+    void r.missing;
     void r;
   });
 
@@ -170,6 +170,18 @@ const setVarResponse = query({
 });
 
 describe("InferResponse — single-variable trace (U5, type-level)", () => {
+  it("trace fixtures construct as named queries (runtime touch)", () => {
+    const names = [
+      listLinksTraced.name,
+      getLinkTraced.name,
+      getNarrowed.name,
+      objectTraced.name,
+      unresolvableRef.name,
+      setVarResponse.name,
+    ];
+    expect(names.every((n) => n.length > 0)).toBe(true);
+  });
+
   it("list: db.query result returned → InferRow<typeof link>[]", () => {
     expectTypeOf<InferResponse<typeof listLinksTraced>>().toEqualTypeOf<
       InferRow<typeof link>[]
@@ -208,6 +220,7 @@ describe("InferResponse — single-variable trace (U5, type-level)", () => {
       stack: [s.db.get({ table: link, fieldValue: c.int(1), as: "row" })],
       response: withFilters(ref("row"), fl.first()),
     });
+    expect(filtered.name).toBe("filtered_resp");
     expectTypeOf<InferResponse<typeof filtered>>().toEqualTypeOf<unknown>();
   });
 
@@ -219,6 +232,7 @@ describe("InferResponse — single-variable trace (U5, type-level)", () => {
       stack: [s.db.get({ table: link, fieldValue: c.int(1), as: "row" })],
       response: { raw: ref("row"), munged: withFilters(ref("row"), fl.first()) },
     });
+    expect(mixed.name).toBe("mixed_resp");
     expectTypeOf<InferResponse<typeof mixed>>().toEqualTypeOf<{
       raw: InferRow<typeof link>;
       munged: unknown;
@@ -239,6 +253,7 @@ describe("InferResponse — single-variable trace (U5, type-level)", () => {
       ],
       response: ref("target"),
     });
+    expect(deep.name).toBe("deep_stack");
     expectTypeOf<InferResponse<typeof deep>>().toEqualTypeOf<
       Pick<InferRow<typeof link>, "id">
     >();
@@ -263,5 +278,16 @@ describe("InferResponse — single-variable trace (U5, type-level)", () => {
     expect("responseShape" in xdo).toBe(false);
     // The declared list endpoint still encodes its response assignment.
     expect(Array.isArray(xdo.result)).toBe(true);
+  });
+
+  it("all fixtures construct as named queries/functions (runtime touch)", () => {
+    const names = [
+      getLink.name,
+      undeclared.name,
+      objectResponse.name,
+      singleVar.name,
+    ];
+    expect(names.every((n) => n.length > 0)).toBe(true);
+    expect(computeStats.name).toBe("compute_stats");
   });
 });
