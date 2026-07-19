@@ -3,7 +3,7 @@ import { writeFileSync, rmSync, mkdtempSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "../../src/emit/cli.js";
-import { runProfileCommand, fetchProfile, resolveTargetWorkspace } from "../../src/emit/profile-command.js";
+import { runProfileCommand, fetchProfile } from "../../src/emit/profile-command.js";
 
 const INSTANCE = "https://inst.example.com";
 
@@ -61,7 +61,6 @@ describe("sidestep profile me", () => {
     const out = JSON.parse(stdout.join(""));
     expect(out.instance).toBe(INSTANCE); // headline: instance base URL, from the token
     expect(out.user).toEqual({ id: 9, name: "Ada", email: "ada@example.com" });
-    expect(out.workspace).toEqual({ id: 42, name: "my-app" });
   });
 
   it("never emits the raw `extras` blob", async () => {
@@ -72,23 +71,6 @@ describe("sidestep profile me", () => {
     expect(joined).not.toContain("extras");
     expect(joined).not.toContain("ws-guid");
     expect(joined).not.toContain("membership");
-  });
-
-  it("resolveTargetWorkspace returns the numeric workspace id and name", async () => {
-    const authFile = writeTokenFile(dir);
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(ME_BODY, { status: 200 }));
-    const target = await resolveTargetWorkspace(parseArgs(["workspace", "deploy", "--config", authFile]));
-    expect(target).toEqual({ instance: INSTANCE, workspaceId: 42, workspaceName: "my-app" });
-  });
-
-  it("resolveTargetWorkspace errors when the instance exposes no scoped workspace id", async () => {
-    const authFile = writeTokenFile(dir);
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response('{"id":9,"name":"Ada","extras":{}}', { status: 200 }),
-    );
-    await expect(
-      resolveTargetWorkspace(parseArgs(["workspace", "deploy", "--config", authFile])),
-    ).rejects.toThrow(/Could not resolve the token's target workspace/i);
   });
 
   it("errors when not signed in", async () => {

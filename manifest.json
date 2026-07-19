@@ -9546,37 +9546,6 @@
       "description": "Compile the default-exported Xano registry into the aggregate workspace bundle."
     },
     {
-      "command": "workspace deploy",
-      "args": "<file> | --bundle <path>",
-      "flags": [
-        {
-          "flag": "--prune",
-          "description": "Also remove server objects absent from the bundle (table records kept)."
-        },
-        {
-          "flag": "--reset",
-          "description": "From-scratch rebuild — wipes objects AND records. Needs confirmation."
-        },
-        {
-          "flag": "--static <dir>",
-          "description": "Archive a built frontend directory and deploy it to the workspace's edge static host after the backend import."
-        },
-        {
-          "flag": "--confirm-workspace <name>",
-          "description": "Non-interactive --reset confirmation; must match the resolved workspace name."
-        },
-        {
-          "flag": "--adopt-workspace",
-          "description": "Rebind the lock's workspace identity to the server's on a canonical mismatch."
-        },
-        {
-          "flag": "--config <path>",
-          "description": "Project-local token cache (default: $XANO_CONFIG, then ./.xano/auth.json)."
-        }
-      ],
-      "description": "Deploy the compiled workspace to the token-scoped REAL workspace (upsert-in-place by identity), optionally with a static frontend. Reconciles xano.lock from the server's authoritative response."
-    },
-    {
       "command": "sandbox deploy",
       "args": "<file> | --bundle <path>",
       "flags": [
@@ -9585,16 +9554,25 @@
           "description": "Clear the sandbox workspace first for a full replace (default merges)."
         },
         {
+          "flag": "--static <dir>",
+          "description": "Archive a built frontend directory and deploy it to your workspace's static host (auto-deployed to dev) after the backend import."
+        },
+        {
           "flag": "--config <path>",
           "description": "Project-local token cache (default: $XANO_CONFIG, then ./.xano/auth.json)."
         }
       ],
-      "description": "Throwaway dev-loop deploy to the sandbox workspace (replaces the removed `push`). Never writes xano.lock."
+      "description": "Deploy the compiled workspace to your sandbox (replaces the removed `push`), optionally with a static frontend. The sandbox is the only deploy target. Never writes SERVER identities back into xano.lock (the compile step still maintains it exactly as `export` does)."
+    },
+    {
+      "command": "sandbox details",
+      "args": "[--config <path>]",
+      "description": "Print the sandbox tenant as JSON, headlined by its public `baseUrl` — read it to point a frontend at the deployed backend without re-running a deploy. Projects only safe fields (never the raw tenant blob)."
     },
     {
       "command": "profile me",
       "args": "[--config <path>]",
-      "description": "Print the scoped user, workspace {id, name}, and the instance base URL as JSON — read `instance` to configure a frontend's API base before a --static upload."
+      "description": "Print the scoped user and the instance base URL as JSON — read `instance` to configure a frontend's API base before a --static upload."
     },
     {
       "command": "login",

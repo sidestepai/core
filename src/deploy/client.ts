@@ -1,18 +1,15 @@
 /**
- * Node-only deploy transport: gzip a compiled workspace bundle and POST it to a
- * deploy endpoint (real-workspace `/api:meta/workspace/deploy` or the sandbox
- * `/api:meta/sandbox/bundle`), authenticating with an OAuth access token.
+ * Node-only deploy transport: POST a compiled workspace bundle to the sandbox
+ * deploy endpoint (`/api:meta/sandbox/bundle`), authenticating with an OAuth
+ * access token.
  *
- * Compression (KTD-5): the body is gzipped and the endpoint gunzips it by magic-byte
- * detection. We deliberately do NOT send `Content-Encoding: gzip` — an intermediary
- * that honored it would inflate the body before the app, delivering raw JSON and
- * silently bypassing the endpoint's bounded streaming-inflate guard. The bundle is
- * still `Content-Type: application/json` (its decompressed content is JSON).
+ * The bundle is sent as raw `Content-Type: application/json`. (Gzip compression
+ * of the body was removed as too complex; the endpoint still magic-byte detects
+ * gzip, so an uncompressed body is accepted unchanged.)
  *
- * Node-only (`node:zlib`) and lazily imported by the command layer, so the browser-safe
- * authoring bundle never pulls it in.
+ * Lazily imported by the command layer so the browser-safe authoring bundle
+ * never pulls this Node-only transport in.
  */
-import { gzipSync } from "node:zlib";
 import type { ResolvedAuth } from "../auth/token.js";
 
 /** Bound the upload so a stalled endpoint can't hang the CLI/CI forever. */
@@ -21,14 +18,15 @@ const UPLOAD_TIMEOUT_MS = 120_000;
 export interface DeployRequest {
   /** The compiled workspace bundle JSON (text). */
   bundle: string;
-  /** Meta-API route, e.g. `/api:meta/workspace/deploy` or `/api:meta/sandbox/bundle`. */
+  /** Meta-API route — `/api:meta/sandbox/bundle`. */
   endpointPath: string;
   /** Access token + the instance origin it authorizes against. */
   auth: ResolvedAuth;
-  /** `--reset`: full clear then import (`?reset=true`). */
-  reset?: boolean;
-  /** `--prune`: remove server objects absent from the bundle (`?prune=true`). */
-  prune?: boolean;
+  /**
+   * Query params appended to the endpoint URL (the sandbox route takes a
+   * `reset=true` bool). The `bundle` itself is the raw request body, never a param.
+   */
+  query?: Record<string, string>;
 }
 
 export interface DeployResponse {
@@ -36,25 +34,20 @@ export interface DeployResponse {
   baseUrl: string | undefined;
   /** The imported workspace object; carries the numeric `id` the static-host path needs. */
   workspace: { id?: number; name?: string; [k: string]: unknown } | undefined;
-  /** The server's authoritative post-import lock (a `LockFile`-shaped value), if returned. */
-  lock: unknown;
-  /** Public-URL tokens the import regenerated, if the endpoint reports them. */
-  canonicalChanges: unknown;
   /** The raw response body — streamed to stdout unchanged. */
   raw: string;
 }
 
 /**
- * POST a gzipped bundle to a deploy endpoint and parse the response. Throws on a
+ * POST a bundle to a deploy endpoint and parse the response. Throws on a
  * non-2xx status with the endpoint's body attached. Tolerates a response that
- * omits `lock` (an older endpoint) — `lock` is simply `undefined` then.
+ * omits `workspace` — the field is simply `undefined` then.
  */
 export async function postDeploy(req: DeployRequest): Promise<DeployResponse> {
   const url = new URL(req.endpointPath, req.auth.instance);
-  if (req.reset) url.searchParams.set("reset", "true");
-  if (req.prune) url.searchParams.set("prune", "true");
-
-  const body = gzipSync(Buffer.from(req.bundle, "utf8"));
+  for (const [key, value] of Object.entries(req.query ?? {})) {
+    url.searchParams.set(key, value);
+  }
 
   const res = await fetch(url.href, {
     method: "POST",
@@ -62,7 +55,7 @@ export async function postDeploy(req: DeployRequest): Promise<DeployResponse> {
       "Content-Type": "application/json",
       Authorization: `Bearer ${req.auth.access_token}`,
     },
-    body,
+    body: req.bundle,
     signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
   });
 
@@ -82,8 +75,6 @@ export async function postDeploy(req: DeployRequest): Promise<DeployResponse> {
   return {
     baseUrl,
     workspace: (parsed.workspace as DeployResponse["workspace"]) ?? undefined,
-    lock: parsed.lock,
-    canonicalChanges: parsed.canonical_changes,
     raw: text,
   };
 }

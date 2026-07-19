@@ -1,15 +1,28 @@
 /**
  * Node-only static-host deploy: archive a local directory and POST it to the
- * existing static-host build endpoint
- * (`/api:meta/workspace/{workspace_id}/static_host/{host}/build`), which ingests
- * the build and deploys it to the `dev` environment.
+ * static-host build endpoint, which ingests the build AND deploys it to the `dev`
+ * environment in one call.
  *
- * The `workspace_id` is the numeric id from the shared resolver (U9) — the
- * static-host path is NOT token-resolved, so the caller passes it explicitly.
+ * TARGET — the caller's own (parent) workspace, NOT the sandbox tenant. The
+ * sandbox tenant does not serve static hosting (its impersonated `mvp-admin`
+ * build publishes but the host answers `503`), so the frontend lives on the
+ * caller's real workspace instead. The `workspaceId` is resolved from the OAuth
+ * token's scoped workspace (see `./workspace.js`), and requests carry the
+ * caller's ordinary OAuth bearer — no impersonation, no `X-Tenant` routing.
+ *
+ * The `api:meta` build route keys the host by NAME and auto-creates a `default`
+ * host when the workspace has none, so a single call suffices — no lookup step:
+ *
+ *   `POST /api:meta/workspace/{id}/static_host/default/build`  (multipart) -> URLs
+ *
+ * Unlike the `mvp-admin` build route, the meta route auto-deploys to `dev` and
+ * returns the live URL (`default_url`/`custom_url`). Matches the reference
+ * `xano static_host build push` CLI.
  *
  * Archive format: a gzipped USTAR tarball, built dependency-free (the SDK stays
- * lean). NOTE(verify): confirm the build endpoint accepts tar.gz vs. zip against
- * a live instance — this is the plan's flagged execution-time unknown.
+ * lean). The build endpoint dispatches on the uploaded filename's extension and
+ * accepts `.tar.gz` (verified against `StaticHosting::uncompress` in cloud-client);
+ * we upload as `build.tar.gz`.
  *
  * Node-only (`node:fs`/`node:zlib`) and lazily imported so the browser-safe
  * authoring bundle never pulls it in.
@@ -17,7 +30,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { gzipSync } from "node:zlib";
-import type { ResolvedAuth } from "../auth/token.js";
 
 const STATIC_TIMEOUT_MS = 120_000;
 /** Client-side archive cap — the static upload is a second attacker-influenced payload path. */
@@ -81,10 +93,14 @@ export function tarGz(files: ArchiveEntry[]): Buffer {
 export interface StaticHostRequest {
   /** Local directory to archive and deploy. */
   dir: string;
-  /** Numeric workspace id (from the shared resolver). */
+  /** Numeric id of the caller's (parent) workspace — resolved from the token (see `./workspace.js`). */
   workspaceId: number;
-  auth: ResolvedAuth;
-  /** Static-host name; the endpoint auto-creates `default` on first build. */
+  /** Instance origin to resolve the meta-API path against. */
+  baseUrl: string;
+  /** The caller's OAuth bearer token. */
+  accessToken: string;
+  /** Static-host NAME, used verbatim in the build path. The meta build route
+   *  auto-creates it only when it is `default`. Defaults to `default`. */
   host?: string;
 }
 
@@ -94,7 +110,29 @@ export interface StaticHostResult {
   raw: string;
 }
 
-/** Archive `dir` and POST it to the static-host build endpoint for the given workspace. */
+/**
+ * Pick the live URL out of the meta build response. `StaticHosting::packageUrls`
+ * emits `default_url`/`custom_url` (built as `https://{env.host|custom}`); older
+ * shapes nested them under `dev` or exposed a bare `host`. Prefer a custom domain,
+ * then the default URL, and prefix a bare host with https as a last resort.
+ */
+function pickUrl(parsed: Record<string, unknown>): string | undefined {
+  const dev = parsed.dev as
+    | { host?: unknown; custom?: unknown; url?: unknown; default_url?: unknown; custom_url?: unknown }
+    | undefined;
+  const direct = [parsed.custom_url, parsed.default_url, parsed.url, dev?.custom_url, dev?.default_url, dev?.url].find(
+    (c): c is string => typeof c === "string" && c !== "",
+  );
+  if (direct !== undefined) return /^https?:\/\//.test(direct) ? direct : `https://${direct}`;
+  const host = [dev?.custom, dev?.host].find((c): c is string => typeof c === "string" && c !== "");
+  return host !== undefined ? `https://${host}` : undefined;
+}
+
+/**
+ * Archive `dir` and POST it to the meta static-host build endpoint for the given
+ * (parent) workspace. The route auto-creates the `default` host and auto-deploys
+ * to `dev`, returning the live URL — a single call, no lookup or publish step.
+ */
 export async function deployStaticHost(req: StaticHostRequest): Promise<StaticHostResult> {
   if (!existsSync(req.dir)) {
     throw new Error(`--static ${req.dir}: directory not found.`);
@@ -109,14 +147,17 @@ export async function deployStaticHost(req: StaticHostRequest): Promise<StaticHo
   }
 
   const host = req.host ?? "default";
-  const url = new URL(`/api:meta/workspace/${req.workspaceId}/static_host/${host}/build`, req.auth.instance);
+  const url = new URL(
+    `/api:meta/workspace/${req.workspaceId}/static_host/${encodeURIComponent(host)}/build`,
+    req.baseUrl,
+  );
   const form = new FormData();
   form.append("name", "sidestep-deploy");
   form.append("file", new Blob([archive], { type: "application/gzip" }), "build.tar.gz");
 
   const res = await fetch(url.href, {
     method: "POST",
-    headers: { Authorization: `Bearer ${req.auth.access_token}` },
+    headers: { Authorization: `Bearer ${req.accessToken}` },
     body: form,
     signal: AbortSignal.timeout(STATIC_TIMEOUT_MS),
   });
@@ -128,9 +169,7 @@ export async function deployStaticHost(req: StaticHostRequest): Promise<StaticHo
   try {
     parsed = JSON.parse(text) as Record<string, unknown>;
   } catch {
-    /* non-JSON — surface verbatim */
+    /* non-JSON — surface verbatim, url stays undefined */
   }
-  const dev = (parsed.dev as { url?: unknown } | undefined)?.url;
-  const built = typeof parsed.url === "string" ? parsed.url : typeof dev === "string" ? dev : undefined;
-  return { url: built, raw: text };
+  return { url: pickUrl(parsed), raw: text };
 }

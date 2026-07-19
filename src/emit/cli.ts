@@ -48,8 +48,8 @@ import { resetLockOverrides, seedLockOverrides } from "../lock/store.js";
 export interface ParsedArgs {
   command: string | undefined;
   /**
-   * The verb of a noun-verb command (`workspace deploy`, `sandbox deploy`,
-   * `profile me`): here `command` is the noun and `subcommand` is the verb.
+   * The verb of a noun-verb command (`sandbox deploy`, `profile me`): here
+   * `command` is the noun and `subcommand` is the verb.
    * Undefined for the single-token verbs (`compile`/`export`/`lock`/…).
    */
   subcommand: string | undefined;
@@ -67,16 +67,10 @@ export interface ParsedArgs {
   yes: boolean;
   /** `push --bundle <path>`: upload an already-exported bundle instead of a file entry. */
   bundle: string | undefined;
-  /** `deploy --reset`: full clear (records + sequences) then import — a from-scratch rebuild. Mutually exclusive with `--prune`. */
+  /** `deploy --reset`: full clear (records + sequences) then import — a from-scratch rebuild. */
   reset: boolean;
-  /** `deploy --prune`: remove server objects absent from the bundle (table records kept). Mutually exclusive with `--reset`. */
-  prune: boolean;
-  /** `deploy --static <dir>`: archive this directory and deploy it to the workspace's static host. */
+  /** `deploy --static <dir>`: archive this directory and deploy it to the sandbox's static host. */
   static: string | undefined;
-  /** `deploy --confirm-workspace <name>`: non-interactive `--reset` confirmation; must match the resolved workspace name. */
-  confirmWorkspace: string | undefined;
-  /** `deploy --adopt-workspace`: rebind the lock's workspace key to the server value on a workspace-canonical mismatch. */
-  adoptWorkspace: boolean;
   /** `--origin <origin>`: cloud-master OAuth host. Default: $XANO_ORIGIN, then https://app.xano.com. */
   authHost: string | undefined;
   /** `--config <path>`: project-local token cache. Default: $XANO_CONFIG, then ./.xano/auth.json. */
@@ -97,11 +91,11 @@ function parsePort(raw: string | undefined): number {
 }
 
 /** Nouns that take a verb as a second token (`sidestep <noun> <verb> …`). */
-const NOUN_COMMANDS = new Set(["workspace", "sandbox", "profile"]);
+const NOUN_COMMANDS = new Set(["sandbox", "profile"]);
 
 export function parseArgs(argv: string[]): ParsedArgs {
   const [command, ...afterCommand] = argv;
-  // Noun-verb commands (`workspace deploy`, `sandbox deploy`, `profile me`) peel
+  // Noun-verb commands (`sandbox deploy`, `profile me`) peel
   // the verb off before flag parsing so the entry `<file>` stays positionals[0].
   let subcommand: string | undefined;
   let rest = afterCommand;
@@ -116,10 +110,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let yes = false;
   let bundle: string | undefined;
   let reset = false;
-  let prune = false;
   let staticDir: string | undefined;
-  let confirmWorkspace: string | undefined;
-  let adoptWorkspace = false;
   let authHost: string | undefined;
   let authFile: string | undefined;
   let port: number | undefined;
@@ -144,18 +135,10 @@ export function parseArgs(argv: string[]): ParsedArgs {
       bundle = arg.slice("--bundle=".length);
     } else if (arg === "--reset") {
       reset = true;
-    } else if (arg === "--prune") {
-      prune = true;
     } else if (arg === "--static") {
       staticDir = rest[++i];
     } else if (arg.startsWith("--static=")) {
       staticDir = arg.slice("--static=".length);
-    } else if (arg === "--confirm-workspace") {
-      confirmWorkspace = rest[++i];
-    } else if (arg.startsWith("--confirm-workspace=")) {
-      confirmWorkspace = arg.slice("--confirm-workspace=".length);
-    } else if (arg === "--adopt-workspace") {
-      adoptWorkspace = true;
     } else if (arg === "--origin") {
       authHost = rest[++i];
     } else if (arg.startsWith("--origin=")) {
@@ -179,12 +162,23 @@ export function parseArgs(argv: string[]): ParsedArgs {
         `\`--profile\` was removed — push now authenticates via OAuth. ` +
           `Run \`sidestep login\` once (or set XANO_REFRESH_TOKEN for CI).`,
       );
+    } else if (
+      arg === "--prune" ||
+      arg === "--confirm-workspace" ||
+      arg.startsWith("--confirm-workspace=") ||
+      arg === "--adopt-workspace"
+    ) {
+      // Removed with `workspace deploy` — the sandbox is the only deploy target.
+      // Fail loudly (like `--profile`) rather than silently dropping the flag and
+      // deploying anyway, which would hide a broken migrated command.
+      const flag = arg.split("=")[0];
+      throw new Error(
+        `\`${flag}\` was removed along with \`sidestep workspace deploy\` — ` +
+          `the sandbox is the only deploy target. Use \`sidestep sandbox deploy\` (optionally with \`--reset\`).`,
+      );
     } else {
       positionals.push(arg);
     }
-  }
-  if (reset && prune) {
-    throw new Error(`Pass either --reset or --prune, not both.`);
   }
   return {
     command,
@@ -198,10 +192,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     yes,
     bundle,
     reset,
-    prune,
     static: staticDir,
-    confirmWorkspace,
-    adoptWorkspace,
     authHost,
     authFile,
     port,
@@ -285,8 +276,8 @@ const USAGE =
   "Usage: sidestep <compile|export> <file> [--out <path>] [--lock[=<path>]] [--frozen-lock] | " +
   "sidestep login [--origin <origin>] [--config <path>] [--port <n>] | " +
   "sidestep logout [--config <path>] | " +
-  "sidestep workspace deploy <file>|--bundle <path> [--prune|--reset] [--static <dir>] [--confirm-workspace <name>] [--adopt-workspace] [--config <path>] | " +
-  "sidestep sandbox deploy <file>|--bundle <path> [--reset] [--config <path>] | " +
+  "sidestep sandbox deploy <file>|--bundle <path> [--reset] [--static <dir>] [--config <path>] | " +
+  "sidestep sandbox details [--config <path>] | " +
   "sidestep profile me [--config <path>] | " +
   "sidestep lock <rename|prune|adopt> …";
 
@@ -365,16 +356,29 @@ export async function run(argv: string[]): Promise<void> {
     const { runLogoutCommand } = await import("./logout-command.js");
     return runLogoutCommand(args);
   }
-  if (command === "workspace" || command === "sandbox") {
-    if (args.subcommand !== "deploy") {
-      throw new Error(
-        `Unknown ${command} subcommand "${args.subcommand ?? ""}". Did you mean \`sidestep ${command} deploy\`? ${USAGE}`,
-      );
+  if (command === "sandbox") {
+    if (args.subcommand === "deploy") {
+      // The deploy core lives in its own (Node-only) module so the bin's other
+      // commands never pay its import cost.
+      const { runDeployCommand } = await import("./deploy-command.js");
+      return runDeployCommand(args);
     }
-    // The deploy core lives in its own (Node-only) module so the bin's other
-    // commands never pay its import cost.
-    const { runDeployCommand } = await import("./deploy-command.js");
-    return runDeployCommand(args, command);
+    if (args.subcommand === "details") {
+      // Lazily imported like the other Node-only commands so the browser-safe
+      // authoring bundle never pulls in the OAuth stack.
+      const { runSandboxDetailsCommand } = await import("./sandbox-details-command.js");
+      return runSandboxDetailsCommand(args);
+    }
+    throw new Error(
+      `Unknown sandbox subcommand "${args.subcommand ?? ""}". ` +
+        `Did you mean \`sidestep sandbox deploy\` or \`sidestep sandbox details\`? ${USAGE}`,
+    );
+  }
+  if (command === "workspace") {
+    throw new Error(
+      `\`sidestep workspace deploy\` was removed — the sandbox is the only deploy target. ` +
+        `Use \`sidestep sandbox deploy\`. ${USAGE}`,
+    );
   }
   if (command === "profile") {
     if (args.subcommand !== "me") {

@@ -2,35 +2,36 @@
 
 # SideStep
 
-### Your Xano stack, as TypeScript. Backend *and* frontend, deployed together.
+### Your Xano backend, as TypeScript. Deployed to a live sandbox in one command.
 
 **Write your database, APIs, functions, triggers, and AI agents in typed TypeScript.
-Then ship your entire stack — backend and static frontend, together — with a single deploy.**
+Then push the whole thing — plus an optional static frontend — to a disposable Xano
+sandbox with a single deploy.**
 
 </div>
 
 ```bash
-# One command. Whole stack. Live.
-sidestep workspace deploy ./xano/index.ts --static ./dist
+# One command. Backend + frontend. Live in your sandbox.
+sidestep sandbox deploy ./xano/index.ts --static ./dist
 ```
 
 ```
-Deploying ./xano/index.ts -> workspace "my-app" (id 42) at https://x8ki-letl.n7.xano.io
-Deployed:              https://x8ki-letl.n7.xano.io/api:blog     ← backend, live
-Static host deployed:  https://my-app.xano.io                    ← frontend, live
+Deploying ./xano/index.ts -> sandbox (merges into the sandbox workspace).
+Deployed:              https://x8ki-letl.n7.xano.io               ← backend, live
+Static host deployed:  https://my-app.xano.io                     ← frontend, live
 ```
 
 <div align="center">
 
 No export/import dance. No upload script. No CI glue between your API and your app.
-Your TypeScript is the source of truth, and one command puts all of it into production
-on Xano's scalable infrastructure.
+Your TypeScript is the source of truth, and one command puts it on real Xano
+infrastructure you can hit immediately.
 
 ```bash
 npm install @sidestep/core
 ```
 
-[Ship it](#ship-it-backend--frontend-one-command) ·
+[Deploy it](#deploy-it-backend--frontend-one-command) ·
 [The model](#the-model-typescript-in-real-infrastructure-out) ·
 [Quickstart](#60-second-quickstart) ·
 [Type-safe frontend](#the-payoff-a-type-safe-frontend-for-free) ·
@@ -51,13 +52,13 @@ gives you that backend **as code you own**:
   repo. Version it, review it in PRs, diff it, roll it back. No more clicking through a
   dashboard and hoping prod matches staging.
 
-- **🚀 Deploy is built in.** `sidestep deploy` compiles your code and ships it straight to
-  a live Xano workspace over an authenticated connection. No export/import dance, no
-  upload script to maintain. Backend **and** static frontend in one command.
+- **🚀 Deploy is built in.** `sidestep sandbox deploy` compiles your code and ships it
+  straight to your live Xano sandbox over an authenticated connection. No export/import
+  dance, no upload script to maintain. Backend **and** static frontend in one command.
 
-- **⚡ Fast, safe iteration.** Push to a throwaway **sandbox** while you build, then
-  promote to your real workspace. Deploys are identity-stable — re-running never
-  duplicates objects, and renames stay renames instead of delete-and-recreate.
+- **⚡ Fast, safe iteration.** The sandbox is disposable, so you can rebuild it as often
+  as you like. Deploys are identity-stable — re-running never duplicates objects, and
+  with a committed `xano.lock` renames stay renames instead of delete-and-recreate.
 
 - **🧩 The types flow to your frontend.** Import a `query()` def into your React/Angular
   app and get the endpoint path, HTTP verb, and a fully-typed request payload — with
@@ -74,52 +75,65 @@ gives you that backend **as code you own**:
 
 ---
 
-## Ship it: backend + frontend, one command
+## Deploy it: backend + frontend, one command
 
-This is the headline. Most stacks make you deploy your API and your app through two
-separate pipelines. SideStep collapses that into **one command** — point `--static` at
-your built frontend and it archives and uploads it to your workspace's edge-served static
-host, right after the backend import, in the same run:
+The **sandbox** is SideStep's deploy target: a disposable Xano workspace attached to your
+account, meant to be written to constantly while you build. Most stacks make you deploy
+your API and your app through two separate pipelines. SideStep collapses that into **one
+command** — point `--static` at your built frontend and it archives and uploads it to the
+sandbox's edge-served static host, right after the backend import, in the same run:
 
 ```bash
-npm run build                                          # build your React/Vue/Angular app → ./dist
+# 1. Get the sandbox's backend base URL (stable per account) and bake it into the
+#    build. `sandbox details` prints the sandbox tenant URL your APIs live at.
+BASE=$(npx sidestep sandbox details | jq -r .baseUrl)
 
-npx sidestep workspace deploy ./xano/index.ts \
-    --static ./dist                                    # backend + frontend, live, together
+# 2. Build your app against it. The env-var NAME is your framework's convention
+#    (Vite shown); the VALUE is the sandbox base URL from step 1.
+VITE_XANO_HOST="$BASE" npm run build                   # → ./dist, pointed at the sandbox
+
+# 3. Ship backend + frontend, live, together.
+npx sidestep sandbox deploy ./xano/index.ts --static ./dist
 ```
 
 ```
-Deploying ./xano/index.ts -> workspace "my-app" (id 42) at https://x8ki-letl.n7.xano.io
-Deployed:              https://x8ki-letl.n7.xano.io/api:blog     ← backend, live
-Static host deployed:  https://my-app.xano.io                    ← frontend, live
+Deploying ./xano/index.ts -> sandbox (merges into the sandbox workspace).
+Deployed:              https://x8ki-letl.n7.xano.io/tenant/sbx-ab12   ← backend, live
+Static host deployed:  https://my-app.xano.io                         ← frontend, live
 ```
 
 One authenticated call ships your database schema, your APIs, your functions and
 triggers, **and** your compiled web app. No separate frontend host to configure, no CI
 glue wiring the two together.
 
-**Three deploy modes**, so you're always in control:
+> **Wiring the frontend to the backend.** The compiled app needs the sandbox's backend
+> URL baked in *at build time*, so fetch it first with `sidestep sandbox details` (the
+> `baseUrl` field) and pass it to your build as an env var — as in step 1–2 above. That
+> `baseUrl` is the **sandbox tenant** URL your deployed APIs answer at; it is *not* the same
+> as `sidestep profile me`, which prints your account's instance origin. The sandbox is a
+> singleton per account, so its `baseUrl` is stable — fetch it once and reuse it.
+
+**Two modes**, so you're always in control:
 
 | Command | What it does |
 |---|---|
-| `workspace deploy` | Upserts everything **in place** by identity. No data loss. The default. |
-| `workspace deploy --prune` | Also removes server objects no longer in your code. **Table records are kept.** |
-| `workspace deploy --reset --confirm-workspace my-app` | Deliberate **from-scratch rebuild** — wipes objects *and records*, then imports. Recovery is just a re-deploy (git is your source of truth). |
+| `sandbox deploy` | Upserts everything **in place** by identity — the bundle merges into the sandbox workspace. Safe to re-run. The default. |
+| `sandbox deploy --reset` | **From-scratch rebuild** — clears the sandbox workspace (objects *and* records) first, then imports. Recovery is just a re-deploy (git is your source of truth). |
 
 Deploys are **authenticated over OAuth** — sign in once, and the CLI refreshes tokens
-automatically. The bundle is gzipped on the wire (workspaces get big), the target
-workspace is resolved from your token (never a stray flag), and the CLI prints exactly
-which workspace it's about to change before it touches anything.
+automatically. The target instance comes from your token (never a stray flag), and the CLI
+prints what it's about to do before it touches anything.
 
 **CI & agents** run fully headless from two env vars — no browser needed:
 
 ```bash
-XANO_REFRESH_TOKEN=… XANO_CLIENT_ID=… npx sidestep workspace deploy --bundle ws.json
+XANO_REFRESH_TOKEN=… XANO_CLIENT_ID=… npx sidestep sandbox deploy --bundle ws.json
 ```
 
-> ⚠️ `workspace deploy` writes to a **real** workspace; `--reset` permanently deletes its
-> table records. Automated agents should confirm before running it. Use `sandbox deploy`
-> for the throwaway dev loop.
+> ⚠️ `--reset` clears the sandbox workspace, including its table records, before importing.
+> The blast radius is your own disposable sandbox — but anything you only ever created by
+> hand in it (or any data it accumulated) is gone. Leave `--reset` off for the normal
+> merge-in-place loop.
 
 ---
 
@@ -191,11 +205,13 @@ npm i -D tsx                       # lets the CLI run your .ts entry directly
 # 3. Sign in once (OAuth — no API keys to copy around)
 npx sidestep login                 # opens your browser; you pick the instance
 
-# 4. Iterate against a throwaway sandbox
+# 4. Deploy to your sandbox — this is the dev loop
 npx sidestep sandbox deploy ./xano/index.ts
 
-# 5. Ship it to your real workspace
-npx sidestep workspace deploy ./xano/index.ts
+# 5. Ship a built frontend alongside it — point it at the sandbox backend first
+BASE=$(npx sidestep sandbox details | jq -r .baseUrl)   # the sandbox's backend URL
+VITE_XANO_HOST="$BASE" npm run build                    # bake it into ./dist
+npx sidestep sandbox deploy ./xano/index.ts --static ./dist
 ```
 
 That's the whole loop: **install → write TypeScript → login → deploy.** No dashboards, no
@@ -384,12 +400,11 @@ sidestep lock prune ./xano/index.ts --yes    # drop lock entries nothing exports
 sidestep lock adopt live-export.json --yes   # seed the lock from a live engine export
 
 sidestep login                               # OAuth sign-in (once) — pick the instance at consent
-sidestep sandbox deploy ./xano/index.ts      # compile + import into your sandbox (dev loop)
-sidestep workspace deploy ./xano/index.ts    # compile + deploy to your real (token-scoped) workspace
-sidestep workspace deploy ./xano/index.ts --prune   # ...also remove objects absent from the bundle (records kept)
-sidestep workspace deploy ./xano/index.ts --reset --confirm-workspace my-app  # rebuild from scratch (wipes records)
-sidestep workspace deploy ./xano/index.ts --static ./dist  # also deploy a static frontend
-sidestep workspace deploy --bundle ws.json   # deploy an already-exported bundle
+sidestep sandbox deploy ./xano/index.ts      # compile + import into your sandbox (the dev loop)
+sidestep sandbox deploy ./xano/index.ts --reset            # clear the sandbox first, then import
+sidestep sandbox deploy ./xano/index.ts --static ./dist    # also deploy a static frontend
+sidestep sandbox deploy --bundle ws.json     # deploy an already-exported bundle
+sidestep sandbox details                     # print the sandbox base URL + tenant details (JSON)
 sidestep profile me                          # print the scoped user + instance base URL (JSON)
 sidestep logout                              # revoke the refresh token + delete the local cache
 ```
@@ -420,26 +435,33 @@ Tokens (access + refresh) cache in a **project-local** `./.xano/auth.json`, whic
 **auto-adds to `.gitignore`**. Override with `--config`/`$XANO_CONFIG`, the OAuth host with
 `--origin`/`$XANO_ORIGIN`, and the loopback port with `--port`.
 
-`deploy <file>` runs the exact same pipeline as `export` (including `xano.lock` seeding and
-merge), then gzips and `POST`s the bundle — `/api:meta/sandbox/bundle` for `sandbox deploy`,
-`/api:meta/workspace/deploy` for `workspace deploy`. `deploy --bundle <path>` skips the
-compile and uploads a bundle a previous `export` wrote (handy in CI). The endpoint's JSON
-response prints to stdout; the workspace's public URL echoes to stderr.
+`sandbox deploy <file>` runs the exact same pipeline as `export` (including `xano.lock`
+seeding and merge), then `POST`s the bundle to `/api:meta/sandbox/bundle` (`?reset=true`
+with `--reset`). `sandbox deploy --bundle <path>` skips the compile and uploads a bundle a
+previous `export` wrote (handy in CI). The endpoint's JSON response prints to stdout; the
+instance's public URL echoes to stderr.
 
-**Where `workspace deploy` sends it** — the workspace your **token is scoped to**, resolved
-server-side, never a flag. The CLI prints the resolved workspace name + id before the
-upload. `deploy` never creates or selects a workspace.
+**Where it goes** — the sandbox workspace of the instance your **token is bound to**
+(the token's `aud`), never a flag. `deploy` never creates or selects any other workspace,
+and there is no deploy path to a real workspace.
 
-**Lock reconciliation** — the backend is the identity authority, so `workspace deploy`
-writes the server's authoritative identities back into your local `xano.lock` after each
-deploy. If the lock's workspace identity differs from the server's, the deploy refuses to
-overwrite it; pass `--adopt-workspace` to rebind on a legitimate re-point.
+**Static host** — `sandbox deploy --static <dir>` archives a directory and deploys it to a
+static host after the backend import. It targets your **own (parent) workspace**, not the
+sandbox: the sandbox tenant does not serve static hosting, so the frontend lives on your
+real workspace. The CLI resolves which workspace from your token (`GET /api:meta/auth/me` —
+the scoped workspace guid mapped to its numeric id) and uploads the archive to
+`/api:meta/workspace/{id}/static_host/default/build` with your ordinary bearer. That route
+auto-creates the `default` host and **auto-deploys to `dev`**, returning the live URL — so
+the static step is independent of the backend deploy (the backend still runs first because
+it's the primary action).
 
-**Static host** — `workspace deploy --static <dir>` archives a directory and deploys it to
-the workspace's static host after the backend import. Pair it with `sidestep profile me`,
-which prints the instance base URL an agent can bake into the frontend's API config before
-uploading. A static failure after a committed backend deploy exits with a distinct code and
-a resumable message — nothing rolls back.
+Pair it with `sidestep sandbox details`, which prints the **sandbox's own base URL**
+(`GET /api:meta/sandbox/me`, projected to JSON) an agent can bake into the frontend's API
+config before building and uploading — no need to re-run a deploy just to recover the URL.
+(`sidestep profile me` prints the *instance* base URL, i.e. the account's origin rather than
+the sandbox tenant.) A static failure after a committed backend deploy **does not roll
+back**: it exits with code `3` and a resumable message telling you to re-run with `--static`
+to retry just that step.
 
 `deploy` reuses cached tokens and **refreshes them automatically** when the access token
 expires (Xano rotates the refresh token on every use; the new one is persisted). A rejected
@@ -447,14 +469,13 @@ refresh (`invalid_grant`) clears the stale cache and tells you to `sidestep logi
 
 **CI & agents** run non-interactively from `$XANO_REFRESH_TOKEN` + `$XANO_CLIENT_ID` (both
 copied once from `./.xano/auth.json` after a local `sidestep login`). The target instance
-is read from the refresh token's `aud`. For an unattended `--reset`, add
-`--confirm-workspace=<name>`.
+is read from the refresh token's `aud`.
 
 > **Automated agents:** authenticate with `$XANO_REFRESH_TOKEN` + `$XANO_CLIENT_ID`; do
 > **not** invoke `sidestep login` (it blocks on interactive browser consent). Xano rotates
 > refresh tokens on use, so a stored one may be single-use — mint one per job if exchanges
-> fail. Agents **must ask for explicit confirmation before `sidestep workspace deploy`** and
-> treat `--reset` as especially destructive.
+> fail. `sandbox deploy` writes to the user's disposable sandbox, so it's fine to run in a
+> loop; just be aware `--reset` clears that sandbox before importing.
 
 </details>
 
@@ -547,7 +568,7 @@ the `workflow_test` / `service` / `vault` / `branch` payload sections.
 
 <div align="center">
 
-**Write TypeScript. Run `sidestep deploy`. Ship your whole stack.**
+**Write TypeScript. Run `sidestep sandbox deploy`. See it live.**
 
 See [`@sidestep/auth`](https://www.npmjs.com/package/@sidestep/auth) for a real,
 reusable extension package · [`llms.txt`](llms.txt) for the full authoring surface ·
