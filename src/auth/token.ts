@@ -9,9 +9,9 @@
  */
 import lockfile from "proper-lockfile";
 import type { ParsedArgs } from "../emit/cli.js";
-import { discover, refresh, type TokenSet } from "./oauth.js";
-import { readTokens, writeTokens, resolveAuthFilePath, type TokenRecord } from "./store.js";
-import { resolveInstance, resolveAuthHost, resolveScope, assertHttpsOrigin } from "./config.js";
+import { OpenIdProvider, oauthErrorCode, decodeAudience, type RawTokens } from "./oauth.js";
+import { readTokens, writeTokens, clearTokens, resolveAuthFilePath, type TokenRecord } from "./store.js";
+import { resolveAuthHost, resolveScope, assertHttpsOrigin } from "./config.js";
 
 /** Refresh this many ms before the cached access token actually expires. */
 const EXPIRY_SKEW_MS = 30_000;
@@ -27,11 +27,6 @@ const REFRESH_LOCK_OPTS = {
   stale: 20_000,
 };
 
-/** Compare two instance origins for token-audience purposes (trailing slash insensitive). */
-function sameInstance(a: string, b: string): boolean {
-  return a.replace(/\/+$/, "") === b.replace(/\/+$/, "");
-}
-
 /** A usable access token plus the instance it authorizes against. */
 export interface ResolvedAuth {
   access_token: string;
@@ -39,24 +34,39 @@ export interface ResolvedAuth {
   instance: string;
 }
 
-/** Discover the token endpoint for `authHost` and run a refresh-grant exchange. */
+/** Stamp an absolute `expires_at` onto a token-endpoint response (mirrors what the old hand-rolled `postToken` did). */
+function stampExpiry(raw: RawTokens): { access_token: string; refresh_token?: string; scope?: string; expires_at: number } {
+  return {
+    access_token: raw.access_token,
+    refresh_token: raw.refresh_token,
+    scope: raw.scope,
+    expires_at: Date.now() + (raw.expires_in ?? 0) * 1000,
+  };
+}
+
+/**
+ * Run a refresh-grant exchange for the client that minted the token. The AS
+ * ROTATES the refresh token, so the caller MUST persist the returned one. No
+ * `resource` is sent — the new token is bound to the instance the refresh token
+ * was already minted for (read it back from the token's `aud`).
+ */
 function refreshAccessToken(
   authHost: string,
   clientId: string,
   refreshToken: string,
-  instance: string,
   scope: string | undefined,
-): Promise<TokenSet> {
-  return discover(authHost).then(({ token_endpoint }) =>
-    refresh({ tokenEndpoint: token_endpoint, clientId, refreshToken, instance, scope }),
-  );
+): Promise<RawTokens> {
+  const provider = new OpenIdProvider({ authHost, scope: scope ?? "", clientId });
+  return provider.refresh(refreshToken, { scope });
 }
 
 /**
- * Resolve an OAuth access token and the target instance.
+ * Resolve an OAuth access token and the target instance. The instance is always
+ * the one the token is bound to — chosen at consent during `login`, never a
+ * flag.
  *
- * CI path: `XANO_REFRESH_TOKEN` set → exchange it (needs an explicit
- * --instance/$XANO_INSTANCE); nothing is read from or written to disk.
+ * CI path: `XANO_REFRESH_TOKEN` set → exchange it; the target instance is read
+ * back from the fresh token's `aud`. Nothing is read from or written to disk.
  * Interactive path: read the `login` token cache, refreshing + persisting the
  * rotated refresh token when the cached access token is stale.
  */
@@ -64,15 +74,7 @@ export async function getAccessToken(args: ParsedArgs): Promise<ResolvedAuth> {
   const envRefresh = process.env.XANO_REFRESH_TOKEN;
 
   if (envRefresh) {
-    const instance = resolveInstance(args);
-    if (!instance) {
-      throw new Error(
-        `XANO_REFRESH_TOKEN is set but no target instance was given. ` +
-          `Pass --instance <origin> (or set $XANO_INSTANCE).`,
-      );
-    }
     const authHost = resolveAuthHost(args);
-    assertHttpsOrigin(instance, "--instance");
     assertHttpsOrigin(authHost, "--auth-host");
     const clientId = process.env.XANO_CLIENT_ID;
     if (!clientId) {
@@ -82,16 +84,25 @@ export async function getAccessToken(args: ParsedArgs): Promise<ResolvedAuth> {
           `(fields "refresh_token" and "client_id") after \`sidestep login\`.`,
       );
     }
-    let set: TokenSet;
+    let set: RawTokens;
     try {
-      set = await refreshAccessToken(authHost, clientId, envRefresh, instance, resolveScope(args));
+      set = await refreshAccessToken(authHost, clientId, envRefresh, resolveScope(args));
     } catch (err) {
       throw new Error(
-        `XANO_REFRESH_TOKEN exchange failed for ${instance}: ${err instanceof Error ? err.message : String(err)}\n` +
+        `XANO_REFRESH_TOKEN exchange failed: ${err instanceof Error ? err.message : String(err)}\n` +
           `The refresh token may be expired or already spent — refresh tokens rotate on use, so a ` +
           `single stored value is consumed on first exchange. Mint a fresh one via \`sidestep login\`.`,
       );
     }
+    // The target instance is whatever the refresh token is bound to.
+    const instance = decodeAudience(set.access_token);
+    if (!instance) {
+      throw new Error(
+        `Could not determine the target instance from the token minted by XANO_REFRESH_TOKEN ` +
+          `(no readable \`aud\` claim). Mint a fresh refresh token via \`sidestep login\`.`,
+      );
+    }
+    assertHttpsOrigin(instance, "instance");
     return { access_token: set.access_token, instance };
   }
 
@@ -100,24 +111,18 @@ export async function getAccessToken(args: ParsedArgs): Promise<ResolvedAuth> {
   if (!saved) {
     throw new Error(
       `Not signed in (no token cache at ${authFilePath}). ` +
-        `Run \`sidestep login --instance <origin>\` first, or set XANO_REFRESH_TOKEN for CI.`,
+        `Run \`sidestep login\` first, or set XANO_REFRESH_TOKEN for CI.`,
     );
   }
 
-  const instance = resolveInstance(args, saved.instance)!;
+  const instance = saved.instance;
   assertHttpsOrigin(instance, "instance");
 
-  // Reuse the cached access token only when it is both fresh AND minted for the
-  // instance we're targeting. A cached token's audience is `saved.instance`; if
-  // --instance/$XANO_INSTANCE overrides to a different origin, reusing it would
-  // send an A-audience bearer token to origin B (a 401/403 at best, a token
-  // leak to the wrong host at worst). On mismatch, fall through to re-mint a
-  // token for the new audience.
-  if (sameInstance(instance, saved.instance) && Date.now() < saved.expires_at - EXPIRY_SKEW_MS) {
+  if (Date.now() < saved.expires_at - EXPIRY_SKEW_MS) {
     return { access_token: saved.access_token, instance };
   }
 
-  return refreshUnderLock(authFilePath, saved, instance);
+  return refreshUnderLock(authFilePath, saved);
 }
 
 /**
@@ -126,43 +131,50 @@ export async function getAccessToken(args: ParsedArgs): Promise<ResolvedAuth> {
  * refreshed while we waited, we use its result instead of spending our
  * now-stale refresh token a second time.
  */
-async function refreshUnderLock(
-  authFilePath: string,
-  saved: TokenRecord,
-  instance: string,
-): Promise<ResolvedAuth> {
+async function refreshUnderLock(authFilePath: string, saved: TokenRecord): Promise<ResolvedAuth> {
   const release = await lockfile.lock(authFilePath, REFRESH_LOCK_OPTS);
   try {
     const current = readTokens(authFilePath) ?? saved;
-    if (sameInstance(instance, current.instance) && Date.now() < current.expires_at - EXPIRY_SKEW_MS) {
+    const instance = current.instance;
+    if (Date.now() < current.expires_at - EXPIRY_SKEW_MS) {
       return { access_token: current.access_token, instance };
     }
     if (!current.refresh_token) {
       throw new Error(
         `No usable access token for ${instance} and no refresh token is cached. ` +
-          `Run \`sidestep login --instance ${instance}\` again.`,
+          `Run \`sidestep login\` again.`,
       );
     }
     process.stderr.write(`Refreshing access token for ${instance}…\n`);
-    let set: TokenSet;
+    let set: RawTokens;
     try {
-      set = await refreshAccessToken(current.auth_host, current.client_id, current.refresh_token, instance, current.scope);
+      set = await refreshAccessToken(current.auth_host, current.client_id, current.refresh_token, current.scope);
     } catch (err) {
+      // A rejected/replayed/expired refresh token can't be salvaged: drop the
+      // spent credentials so the next run starts a clean login rather than
+      // retrying with a token the AS will keep rejecting.
+      if (oauthErrorCode(err) === "invalid_grant") {
+        clearTokens(authFilePath);
+        throw new Error(
+          `Session for ${instance} has expired or was revoked (the refresh token was rejected). ` +
+            `Run \`sidestep login\` to sign in again.`,
+        );
+      }
       throw new Error(
         `Token refresh failed for ${instance}: ${err instanceof Error ? err.message : String(err)}\n` +
-          `Run \`sidestep login --instance ${instance}\` to sign in again.`,
+          `Run \`sidestep login\` to sign in again.`,
       );
     }
+    const stamped = stampExpiry(set);
     // Persist the rotated refresh token — the old one is now spent.
     writeTokens(authFilePath, {
       ...current,
-      access_token: set.access_token,
-      refresh_token: set.refresh_token ?? current.refresh_token,
-      expires_at: set.expires_at,
-      scope: set.scope ?? current.scope,
-      instance,
+      access_token: stamped.access_token,
+      refresh_token: stamped.refresh_token ?? current.refresh_token,
+      expires_at: stamped.expires_at,
+      scope: stamped.scope ?? current.scope,
     });
-    return { access_token: set.access_token, instance };
+    return { access_token: stamped.access_token, instance };
   } finally {
     await release();
   }

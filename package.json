@@ -1,6 +1,6 @@
 {
   "name": "@sidestep/core",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Sidestep — a standalone TypeScript SDK for driving Xano infrastructure from code. Compiles typed Xano workspaces into importable JSON.",
   "keywords": [
     "sidestep",
@@ -60,9 +60,10 @@
     "release:beta": "npm version prerelease --preid=beta -m \"chore(release): %s\" && npm publish --tag beta --access public"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "dependencies": {
+    "openid-client": "^6.8.4",
     "proper-lockfile": "^4.1.2"
   },
   "devDependencies": {

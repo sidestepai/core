@@ -6,18 +6,6 @@ import { join } from "node:path";
 import { parseArgs, run } from "../../src/emit/cli.js";
 
 describe("parseArgs — login/OAuth flags", () => {
-  it("parses `login --instance` (space form)", () => {
-    const args = parseArgs(["login", "--instance", "https://x.io"]);
-    expect(args.command).toBe("login");
-    expect(args.instance).toBe("https://x.io");
-  });
-
-  it("parses `login --instance=` (inline form) identically", () => {
-    const args = parseArgs(["login", "--instance=https://x.io"]);
-    expect(args.command).toBe("login");
-    expect(args.instance).toBe("https://x.io");
-  });
-
   it("parses --auth-host, --auth-file, --scope in both flag forms", () => {
     const spaced = parseArgs([
       "login",
@@ -59,20 +47,25 @@ describe("parseArgs — login/OAuth flags", () => {
     expect(() => parseArgs(["push", "./index.ts", "--config=./creds.yaml"])).toThrow(/were removed/);
   });
 
-  it("does not leak the --instance value into positionals", () => {
-    const args = parseArgs(["push", "./src/index.ts", "--instance", "https://x.io"]);
-    expect(args.positionals).toEqual(["./src/index.ts"]);
-    expect(args.file).toBe("./src/index.ts");
-    expect(args.instance).toBe("https://x.io");
+  it("parses `push --reset` as a boolean flag", () => {
+    expect(parseArgs(["push", "./src/index.ts", "--reset"]).reset).toBe(true);
+    expect(parseArgs(["push", "./src/index.ts"]).reset).toBe(false);
   });
 
-  it("leaves login flags undefined when absent", () => {
+  it("does not leak a flag value into positionals", () => {
+    const args = parseArgs(["push", "./src/index.ts", "--auth-file", "./creds.json"]);
+    expect(args.positionals).toEqual(["./src/index.ts"]);
+    expect(args.file).toBe("./src/index.ts");
+    expect(args.authFile).toBe("./creds.json");
+  });
+
+  it("leaves login flags undefined/default when absent", () => {
     const args = parseArgs(["push", "./src/index.ts"]);
-    expect(args.instance).toBeUndefined();
     expect(args.authHost).toBeUndefined();
     expect(args.authFile).toBeUndefined();
     expect(args.port).toBeUndefined();
     expect(args.scope).toBeUndefined();
+    expect(args.reset).toBe(false);
   });
 });
 
@@ -107,11 +100,27 @@ describe("sidestep login (end-to-end)", () => {
   let authPath: string;
   let stderr: string[];
 
+  // A valid RFC 8414 / OIDC metadata document — openid-client's discovery
+  // requires `issuer` and a JSON content-type, and both our manual discover()
+  // and openid-client fetch a `/.well-known/*` path.
   const DISCOVERY = {
+    issuer: "https://app.xano.com",
     authorization_endpoint: "https://app.xano.com/oauth2/authorize",
     token_endpoint: "https://app.xano.com/api:master/oauth/token",
     registration_endpoint: "https://app.xano.com/api:master/oauth/register",
+    response_types_supported: ["code"],
+    grant_types_supported: ["authorization_code", "refresh_token"],
+    code_challenge_methods_supported: ["S256"],
+    token_endpoint_auth_methods_supported: ["none"],
   };
+
+  /** JSON response with the content-type oauth4webapi requires. */
+  function oauthJson(body: unknown): Response {
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), "sidestep-login-"));
@@ -131,17 +140,24 @@ describe("sidestep login (end-to-end)", () => {
     rmSync(dir, { recursive: true, force: true });
     delete process.env.XANO_NO_BROWSER;
     delete process.env.XANO_CLIENT_FILE;
-    delete process.env.XANO_INSTANCE;
     delete process.env.XANO_AUTH_HOST;
   });
 
-  /** Stub the fetch sequence: discovery → DCR registration → token exchange. */
+  /**
+   * Route OAuth fetches by URL (discovery / DCR registration / token endpoint).
+   * openid-client issues its own discovery request in addition to our manual
+   * one, so a fixed call-order stub no longer holds — matching on the URL does.
+   * The loopback callback is driven over real `node:http` (see `hitCallback`),
+   * so it never passes through this mock.
+   */
   function stubOauthFetch(tokenBody: Record<string, unknown>) {
-    return vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(new Response(JSON.stringify(DISCOVERY), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ client_id: "dcr-xyz" }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify(tokenBody), { status: 200 }));
+    return vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = input instanceof URL ? input.href : input instanceof Request ? input.url : String(input);
+      if (url.includes("/.well-known/")) return oauthJson(DISCOVERY);
+      if (url.includes("/oauth/register")) return oauthJson({ client_id: "dcr-xyz" });
+      if (url.includes("/oauth/token")) return oauthJson({ token_type: "bearer", ...tokenBody });
+      throw new Error(`unexpected fetch in login test: ${url}`);
+    });
   }
 
   /** Pull the authorize URL that login wrote to stderr. */
@@ -152,25 +168,26 @@ describe("sidestep login (end-to-end)", () => {
     return new URL(match[0]);
   }
 
-  it("runs the full flow (discover → register → exchange) and writes tokens + client_id + gitignore", async () => {
-    stubOauthFetch({ access_token: "acc", refresh_token: "ref", expires_in: 600 });
+  it("runs the full flow (discover → register → exchange), derives the instance from aud, writes tokens + client_id + gitignore", async () => {
+    stubOauthFetch({ access_token: jwtWithAud("https://x8ki.xano.io"), refresh_token: "ref", expires_in: 600 });
 
-    const p = run(["login", "--instance", "https://x8ki.xano.io", "--auth-file", authPath, "--port", "0"]);
+    const p = run(["login", "--auth-file", authPath, "--port", "0"]);
 
     await waitFor(() => stderr.join("").includes("/oauth2/authorize?"));
     const authUrl = authorizeUrlFromStderr();
     const redirectUri = authUrl.searchParams.get("redirect_uri")!;
     const state = authUrl.searchParams.get("state")!;
     expect(authUrl.searchParams.get("client_id")).toBe("dcr-xyz");
-    expect(authUrl.searchParams.get("resource")).toBe("https://x8ki.xano.io");
+    // The user always picks the instance at consent — never a `resource` param.
+    expect(authUrl.searchParams.has("resource")).toBe(false);
 
     await hitCallback(`${redirectUri}?code=the-code&state=${state}`);
     await p;
 
     const saved = JSON.parse(readFileSync(authPath, "utf8"));
-    expect(saved.access_token).toBe("acc");
+    expect(saved.access_token).toBe(jwtWithAud("https://x8ki.xano.io"));
     expect(saved.refresh_token).toBe("ref");
-    expect(saved.instance).toBe("https://x8ki.xano.io"); // non-JWT token → falls back to --instance
+    expect(saved.instance).toBe("https://x8ki.xano.io"); // read from the token's aud
     expect(saved.client_id).toBe("dcr-xyz");
     expect(saved.expires_at).toBeGreaterThan(Date.now());
     expect(readFileSync(join(dir, ".gitignore"), "utf8")).toContain(".xano/");
@@ -178,20 +195,7 @@ describe("sidestep login (end-to-end)", () => {
     expect(existsSync(join(dir, "clients.json"))).toBe(true);
   });
 
-  it("without --instance, derives the instance from the token's aud and omits resource", async () => {
-    stubOauthFetch({ access_token: jwtWithAud("https://consent-picked.xano.io"), refresh_token: "ref", expires_in: 600 });
-
-    const p = run(["login", "--auth-file", authPath, "--port", "0"]);
-    await waitFor(() => stderr.join("").includes("/oauth2/authorize?"));
-    const authUrl = authorizeUrlFromStderr();
-    expect(authUrl.searchParams.has("resource")).toBe(false); // no pre-selection
-    await hitCallback(`${authUrl.searchParams.get("redirect_uri")}?code=c&state=${authUrl.searchParams.get("state")}`);
-    await p;
-
-    expect(JSON.parse(readFileSync(authPath, "utf8")).instance).toBe("https://consent-picked.xano.io");
-  });
-
-  it("errors when neither --instance nor a token aud can determine the instance", async () => {
+  it("errors when the issued token carries no readable aud", async () => {
     stubOauthFetch({ access_token: "opaque-not-a-jwt", refresh_token: "ref", expires_in: 600 });
     const p = run(["login", "--auth-file", authPath, "--port", "0"]);
     const rejected = expect(p).rejects.toThrow(/Could not determine the instance/);
@@ -199,18 +203,5 @@ describe("sidestep login (end-to-end)", () => {
     const authUrl = authorizeUrlFromStderr();
     await hitCallback(`${authUrl.searchParams.get("redirect_uri")}?code=c&state=${authUrl.searchParams.get("state")}`);
     await rejected;
-  });
-
-  it("pre-selects the instance from $XANO_INSTANCE (resource param)", async () => {
-    process.env.XANO_INSTANCE = "https://env-instance.xano.io";
-    stubOauthFetch({ access_token: "acc", refresh_token: "ref", expires_in: 600 });
-
-    const p = run(["login", "--auth-file", authPath, "--port", "0"]);
-    await waitFor(() => stderr.join("").includes("/oauth2/authorize?"));
-    const authUrl = authorizeUrlFromStderr();
-    expect(authUrl.searchParams.get("resource")).toBe("https://env-instance.xano.io");
-    await hitCallback(`${authUrl.searchParams.get("redirect_uri")}?code=c&state=${authUrl.searchParams.get("state")}`);
-    await p;
-    expect(JSON.parse(readFileSync(authPath, "utf8")).instance).toBe("https://env-instance.xano.io");
   });
 });

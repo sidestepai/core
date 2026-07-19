@@ -1,15 +1,12 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { createHash } from "node:crypto";
-import {
-  generatePkce,
-  randomState,
-  discover,
-  buildAuthorizeUrl,
-  exchangeCode,
-  refresh,
-  registerClient,
-  decodeAudience,
-} from "../../src/auth/oauth.js";
+import { discover, registerClient, decodeAudience, oauthErrorCode } from "../../src/auth/oauth.js";
+
+/**
+ * Only the pure/HTTP-only helpers are unit-tested here. PKCE, the authorize
+ * URL, the code exchange, refresh, and revocation are delegated to
+ * `openid-client` (see `OpenIdProvider`) and exercised at the flow level, the
+ * same way the sidestep dashboard tests its provider — not by stubbing fetch.
+ */
 
 /** Build a minimal unsigned JWT carrying the given claims payload. */
 function fakeJwt(payload: Record<string, unknown>): string {
@@ -27,28 +24,8 @@ function json(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), { status: 200, statusText: "OK", ...init });
 }
 
-describe("oauth core", () => {
+describe("oauth helpers", () => {
   afterEach(() => vi.restoreAllMocks());
-
-  describe("generatePkce", () => {
-    it("produces a challenge equal to base64url(sha256(verifier))", () => {
-      const { verifier, challenge } = generatePkce();
-      const expected = createHash("sha256").update(verifier).digest().toString("base64url");
-      expect(challenge).toBe(expected);
-    });
-
-    it("uses a verifier within RFC 7636 length bounds and varies per call", () => {
-      const a = generatePkce();
-      const b = generatePkce();
-      expect(a.verifier.length).toBeGreaterThanOrEqual(43);
-      expect(a.verifier.length).toBeLessThanOrEqual(128);
-      expect(a.verifier).not.toBe(b.verifier);
-    });
-
-    it("randomState varies per call", () => {
-      expect(randomState()).not.toBe(randomState());
-    });
-  });
 
   describe("discover", () => {
     it("returns the endpoints (incl. registration) from the well-known document", async () => {
@@ -72,41 +49,6 @@ describe("oauth core", () => {
     it("throws when the doc is missing endpoints", async () => {
       stubFetch(json({ authorization_endpoint: "x" }));
       await expect(discover("https://app.xano.com")).rejects.toThrow(/missing authorization\/token/);
-    });
-  });
-
-  describe("buildAuthorizeUrl", () => {
-    it("includes all required params and the passed client_id", () => {
-      const href = buildAuthorizeUrl({
-        authorizationEndpoint: "https://app.xano.com/oauth2/authorize",
-        clientId: "dcr-client-123",
-        redirectUri: "http://127.0.0.1:47100/oauth/callback",
-        instance: "https://x8ki.xano.io",
-        scope: "offline_access workspace:write",
-        state: "st",
-        codeChallenge: "chal",
-      });
-      const u = new URL(href);
-      expect(u.searchParams.get("client_id")).toBe("dcr-client-123");
-      expect(u.searchParams.get("response_type")).toBe("code");
-      expect(u.searchParams.get("code_challenge_method")).toBe("S256");
-      expect(u.searchParams.get("code_challenge")).toBe("chal");
-      expect(u.searchParams.get("redirect_uri")).toBe("http://127.0.0.1:47100/oauth/callback");
-      expect(u.searchParams.get("resource")).toBe("https://x8ki.xano.io");
-      expect(u.searchParams.get("scope")).toBe("offline_access workspace:write");
-      expect(u.searchParams.get("state")).toBe("st");
-    });
-
-    it("omits `resource` when no instance is pre-selected", () => {
-      const href = buildAuthorizeUrl({
-        authorizationEndpoint: "https://app.xano.com/oauth2/authorize",
-        clientId: "c",
-        redirectUri: "http://127.0.0.1:47100/oauth/callback",
-        scope: "offline_access",
-        state: "st",
-        codeChallenge: "chal",
-      });
-      expect(new URL(href).searchParams.has("resource")).toBe(false);
     });
   });
 
@@ -149,62 +91,16 @@ describe("oauth core", () => {
     });
   });
 
-  describe("exchangeCode", () => {
-    it("posts the authorization_code grant and stamps expires_at", async () => {
-      const now = Date.now();
-      const spy = stubFetch(json({ access_token: "acc", refresh_token: "ref", expires_in: 600, scope: "openid" }));
-      const set = await exchangeCode({
-        tokenEndpoint: "https://app.xano.com/api:master/oauth/token",
-        clientId: "dcr-abc",
-        code: "the-code",
-        codeVerifier: "the-verifier",
-        redirectUri: "http://127.0.0.1:47100/oauth/callback",
-        instance: "https://x8ki.xano.io",
-      });
-      expect(set.access_token).toBe("acc");
-      expect(set.refresh_token).toBe("ref");
-      expect(set.expires_at).toBeGreaterThanOrEqual(now + 600 * 1000);
-
-      const body = new URLSearchParams(spy.mock.calls[0]![1]!.body as string);
-      expect(body.get("grant_type")).toBe("authorization_code");
-      expect(body.get("client_id")).toBe("dcr-abc");
-      expect(body.get("code")).toBe("the-code");
-      expect(body.get("code_verifier")).toBe("the-verifier");
-      expect(body.get("resource")).toBe("https://x8ki.xano.io");
+  describe("oauthErrorCode", () => {
+    it("reads the OAuth `error` code off an error-like object", () => {
+      expect(oauthErrorCode({ error: "invalid_grant" })).toBe("invalid_grant");
+      expect(oauthErrorCode(Object.assign(new Error("x"), { error: "invalid_client" }))).toBe("invalid_client");
     });
 
-    it("throws including the server error body on invalid_grant", async () => {
-      stubFetch(json({ error: "invalid_grant", error_description: "bad code" }, { status: 400, statusText: "Bad Request" }));
-      await expect(
-        exchangeCode({
-          tokenEndpoint: "https://app.xano.com/api:master/oauth/token",
-          clientId: "c",
-          code: "x",
-          codeVerifier: "y",
-          redirectUri: "http://127.0.0.1:47100/oauth/callback",
-          instance: "https://x8ki.xano.io",
-        }),
-      ).rejects.toThrow(/invalid_grant: bad code/);
-    });
-  });
-
-  describe("refresh", () => {
-    it("posts the refresh_token grant with the client_id and surfaces the rotated token", async () => {
-      const spy = stubFetch(json({ access_token: "acc2", refresh_token: "rotated", expires_in: 600 }));
-      const set = await refresh({
-        tokenEndpoint: "https://app.xano.com/api:master/oauth/token",
-        clientId: "dcr-abc",
-        refreshToken: "old-refresh",
-        instance: "https://x8ki.xano.io",
-      });
-      expect(set.access_token).toBe("acc2");
-      expect(set.refresh_token).toBe("rotated");
-
-      const body = new URLSearchParams(spy.mock.calls[0]![1]!.body as string);
-      expect(body.get("grant_type")).toBe("refresh_token");
-      expect(body.get("client_id")).toBe("dcr-abc");
-      expect(body.get("refresh_token")).toBe("old-refresh");
-      expect(body.get("resource")).toBe("https://x8ki.xano.io");
+    it("returns undefined when there is no string `error`", () => {
+      expect(oauthErrorCode(new Error("boom"))).toBeUndefined();
+      expect(oauthErrorCode({ error: 42 })).toBeUndefined();
+      expect(oauthErrorCode(null)).toBeUndefined();
     });
   });
 });
