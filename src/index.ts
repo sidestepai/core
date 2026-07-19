@@ -38,7 +38,8 @@ export type { FunctionDef, ResponseDef } from "./function/define.js";
 export { input } from "./inputs/input.js";
 export type { InputOptions, InputDescriptor } from "./inputs/input.js";
 // Consumer contract: derive a query's request-payload type from its declared
-// inputs (no codegen) — `InferInput<typeof myQuery>`.
+// inputs (no codegen) — `InferInput<typeof myQuery>`. The read-side counterpart
+// is `InferRow<typeof myTable>` (exported with the table kind below).
 export type { InferInput } from "./inputs/infer.js";
 export type {
   TypeBrand,
@@ -46,6 +47,7 @@ export type {
   BrandOpts,
   ValueOf,
   FromFieldMap,
+  RowFromFieldMap,
   XanoFileRef,
   XanoGeoJson,
 } from "./fields/value-types.js";
@@ -272,6 +274,8 @@ export type {
   ColumnDef,
   SchemaDef,
   SchemaCols,
+  RowOf,
+  InferRow,
   IndexDef,
   IndexXdo,
   IndexType,

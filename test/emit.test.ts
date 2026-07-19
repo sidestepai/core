@@ -11,6 +11,10 @@ import { compile } from "../src/function/compile.js";
 import { input } from "../src/inputs/input.js";
 import { setVar } from "../src/statements/set-var.js";
 import { c, ref } from "../src/values/value.js";
+import { query, encodeQuery } from "../src/kinds/query.js";
+import { table, encodeTable } from "../src/kinds/table.js";
+import { f } from "../src/fields/catalog.js";
+import { apiGroup } from "../src/kinds/api-group.js";
 
 const sample = defineFunction({
   name: "omg1",
@@ -28,6 +32,26 @@ describe("emit", () => {
   it("an empty-stack function still emits valid JSON", () => {
     const json = emit(defineFunction({ name: "empty" }));
     expect(JSON.parse(json).run).toEqual([]);
+  });
+
+  it("dispatches a table def to the dbo payload (its real columns), not a function envelope", () => {
+    const post = table({ name: "post", schema: { title: f.text({ required: true }) } });
+    const parsed = JSON.parse(emit(post));
+    // The dbo payload has a `schema` with the real columns — the old function-
+    // shaped envelope (input/result/run) hid them.
+    expect(parsed).toEqual(encodeTable(post));
+    expect(parsed.schema.map((col: { name: string }) => col.name)).toEqual([
+      "id",
+      "created_at",
+      "title",
+    ]);
+    expect(parsed).not.toHaveProperty("run");
+  });
+
+  it("dispatches a query def to the query envelope", () => {
+    const g = apiGroup({ name: "Blog", canonical: "blog" });
+    const q = query({ name: "list", verb: "GET", apiGroup: g, response: ref("posts") });
+    expect(JSON.parse(emit(q))).toEqual(encodeQuery(q));
   });
 
   it("writeArtifact writes a file whose contents parse and match", () => {

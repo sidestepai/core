@@ -63,7 +63,7 @@ describe("sidestep logout", () => {
       throw new Error(`unexpected fetch: ${url}`);
     });
 
-    await run(["logout", "--auth-file", authFile]);
+    await run(["logout", "--config", authFile]);
 
     // The refresh token was POSTed to the revocation endpoint…
     const revokeCall = fetchMock.mock.calls.find(([u]) => String(u).includes("/oauth/revoke"));
@@ -85,7 +85,7 @@ describe("sidestep logout", () => {
       throw new Error(`unexpected fetch: ${url}`);
     });
 
-    await run(["logout", "--auth-file", authFile]);
+    await run(["logout", "--config", authFile]);
 
     expect(existsSync(authFile)).toBe(false); // best-effort revoke, local clear always happens
     expect(stderr.join("")).toMatch(/could not revoke/i);
@@ -93,7 +93,7 @@ describe("sidestep logout", () => {
 
   it("is a no-op with a clear message when not signed in", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch");
-    await run(["logout", "--auth-file", join(dir, "nope.json")]);
+    await run(["logout", "--config", join(dir, "nope.json")]);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(stderr.join("")).toMatch(/not signed in/i);
   });

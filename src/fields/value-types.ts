@@ -77,5 +77,14 @@ export type FromFieldMap<M> = Prettify<
   { [K in RequiredKeys<M>]: ValueOf<M[K]> } & { [K in OptionalKeys<M>]?: ValueOf<M[K]> }
 >;
 
+/**
+ * Turn a named map of branded descriptors into a **row** type — the read shape
+ * of a table. Unlike {@link FromFieldMap} (a request payload, where `required`
+ * gates key optionality), every declared column is present on a returned row, so
+ * all keys are required here; `nullable`/`array` still apply via {@link ValueOf}.
+ * Powers `InferRow<typeof table>` (see `../kinds/table.ts`).
+ */
+export type RowFromFieldMap<M> = Prettify<{ [K in keyof M]: ValueOf<M[K]> }>;
+
 /** Flatten an intersection into a single object literal for readable hovers. */
 export type Prettify<T> = { [K in keyof T]: T[K] } & {};

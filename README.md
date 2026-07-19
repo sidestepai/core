@@ -196,7 +196,9 @@ The single-record reads/mutations **match one field**, not a `where`-expr:
 `s.db.get`/`s.db.edit`/`s.db.del`/`s.db.has`/`s.db.patch` take
 `{ fieldName, fieldValue }` (`fieldName` defaults to the primary key `id`), while
 writes (`s.db.add`/`s.db.edit`/`s.db.add_or_edit`) take a partial `row: { … }`
-(or explicit `data` entries). **Only `s.db.query`** takes a `where`/`additionalWhere`
+(or explicit `data` entries) — set only your own fields: the auto-injected
+`created_at` already carries `default:"now"`, so don't pass it manually on an
+insert (it's redundant), and `id` is engine-assigned. **Only `s.db.query`** takes a `where`/`additionalWhere`
 comparison (or an array of them, ANDed) built with `expr(...)` —
 `where: expr(col("status"), "=", c.text("published"))` — encoded into the
 engine's operand-based search expression; a raw `Value` remains the escape hatch.
@@ -280,6 +282,35 @@ async function login(email: string, password: string) {
   are required keys; `nullable` adds `| null`; `input.list(...)` becomes `T[]`;
   `input.enum([...])` a literal union; `input.object({...})` a nested type. The same
   utility works on a `defineFunction` def (functions share the input system).
+- **`InferRow<typeof postTable>`** is the read-side counterpart: the row type of a
+  table whose schema is a `FieldMap` (`{ title: f.text(), … }`), derived from the same
+  field brands. Every declared column is present (`nullable` adds `| null`, `f.list`
+  → `T[]`), plus the auto-injected system columns `id` and `created_at: number`
+  (`id: number`, or `id: string` when the table sets `idType: "uuid"`).
+  Type your response usage against it instead of hand-copying the table, and a column
+  rename/retype lights up every consumer — closing the loop `InferInput` opens on the
+  request side.
+
+  ```ts
+  import type { InferRow } from "@sidestep/core";
+  import { post } from "./tables";               // a table({ schema: { … } }) def
+
+  type Post = InferRow<typeof post>;              // { id: number; created_at: number; title: string; … }
+  const rows = (await res.json()) as Post[];
+  ```
+
+  A table authored with a raw `ColumnDef[]` schema carries no brands, so its row is
+  `unknown`. (Response-level inference from a query — `InferResponse<typeof listPosts>`
+  — is a planned follow-up; for now derive the row from the table and wrap it as the
+  endpoint returns it, e.g. `InferRow<typeof post>[]`.)
+
+  `InferRow` is the table's **full declared row**, not a specific endpoint's payload —
+  an endpoint returns whatever its `response`/`output` selects. In particular
+  `created_at` is `access:"private"`, which the engine drops from a *default,
+  auto-shaped* read, so that payload omits it even though `InferRow` lists it; a
+  response that explicitly selects `created_at` returns it. Narrow with
+  `Omit<InferRow<typeof post>, "created_at">` on the auto-shaped path if you need the
+  exact shape.
 
 **Browser-safe.** The `@sidestep/core` entry has no Node built-in dependencies, so
 importing a query def (and its transitive workspace graph) into an Angular/React
@@ -367,8 +398,8 @@ you're signed in to is always whatever you chose at consent.
 
 The resulting tokens (access + refresh) are cached in a **project-local** file,
 `./.xano/auth.json`, which `login` **auto-adds to your `.gitignore`** so
-credentials never get committed. Override the cache location with `--auth-file` /
-`$XANO_AUTH_FILE`, the OAuth host with `--auth-host` / `$XANO_AUTH_HOST` (default
+credentials never get committed. Override the cache location with `--config` /
+`$XANO_CONFIG`, the OAuth host with `--origin` / `$XANO_ORIGIN` (default
 `https://app.xano.com`), and the loopback port with `--port` (default `47100`).
 
 **Then push:**
@@ -405,7 +436,7 @@ instance is always the one your cached token is bound to (chosen at `login`).
 at the Xano control plane (so a leaked cache file can't be replayed) and then
 deletes the project-local `./.xano/auth.json`. A revocation that fails at the
 server never blocks the local delete — your credentials are removed from disk
-either way. Point it at a non-default cache with `--auth-file` / `$XANO_AUTH_FILE`.
+either way. Point it at a non-default cache with `--config` / `$XANO_CONFIG`.
 
 **CI and agents** can't open a browser, so `push` runs fully non-interactively
 from two env vars — `$XANO_REFRESH_TOKEN` and `$XANO_CLIENT_ID` (both copied once

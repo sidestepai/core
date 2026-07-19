@@ -32,7 +32,7 @@ export async function runLoginCommand(args: ParsedArgs): Promise<void> {
   const authHost = resolveAuthHost(args);
   const scope = resolveScope(args);
   const port = args.port ?? DEFAULT_PORT;
-  assertHttpsOrigin(authHost, "--auth-host");
+  assertHttpsOrigin(authHost, "--origin");
 
   step(`Signing in to ${hostLabel(authHost)}`);
 

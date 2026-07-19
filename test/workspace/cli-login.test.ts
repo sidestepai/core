@@ -6,12 +6,12 @@ import { join } from "node:path";
 import { parseArgs, run } from "../../src/emit/cli.js";
 
 describe("parseArgs — login/OAuth flags", () => {
-  it("parses --auth-host, --auth-file, --scope in both flag forms", () => {
+  it("parses --origin, --config, --scope in both flag forms", () => {
     const spaced = parseArgs([
       "login",
-      "--auth-host",
+      "--origin",
       "https://app.xano.com",
-      "--auth-file",
+      "--config",
       "./.xano/auth.json",
       "--scope",
       "openid offline_access",
@@ -22,8 +22,8 @@ describe("parseArgs — login/OAuth flags", () => {
 
     const inline = parseArgs([
       "login",
-      "--auth-host=https://app.xano.com",
-      "--auth-file=./.xano/auth.json",
+      "--origin=https://app.xano.com",
+      "--config=./.xano/auth.json",
       "--scope=openid offline_access",
     ]);
     expect(inline.authHost).toBe("https://app.xano.com");
@@ -42,9 +42,13 @@ describe("parseArgs — login/OAuth flags", () => {
     expect(() => parseArgs(["login", "--port"])).toThrow(/--port must be an integer/);
   });
 
-  it("fails loudly on the removed --profile/--config flags instead of swallowing them", () => {
-    expect(() => parseArgs(["push", "./index.ts", "--profile", "staging"])).toThrow(/were removed/);
-    expect(() => parseArgs(["push", "./index.ts", "--config=./creds.yaml"])).toThrow(/were removed/);
+  it("fails loudly on the removed --profile flag instead of swallowing it", () => {
+    expect(() => parseArgs(["push", "./index.ts", "--profile", "staging"])).toThrow(/was removed/);
+  });
+
+  it("parses --config (the token cache path) rather than treating it as removed", () => {
+    expect(parseArgs(["push", "./index.ts", "--config=./creds.json"]).authFile).toBe("./creds.json");
+    expect(parseArgs(["push", "./index.ts", "--config", "./creds.json"]).authFile).toBe("./creds.json");
   });
 
   it("parses `push --reset` as a boolean flag", () => {
@@ -53,7 +57,7 @@ describe("parseArgs — login/OAuth flags", () => {
   });
 
   it("does not leak a flag value into positionals", () => {
-    const args = parseArgs(["push", "./src/index.ts", "--auth-file", "./creds.json"]);
+    const args = parseArgs(["push", "./src/index.ts", "--config", "./creds.json"]);
     expect(args.positionals).toEqual(["./src/index.ts"]);
     expect(args.file).toBe("./src/index.ts");
     expect(args.authFile).toBe("./creds.json");
@@ -140,7 +144,7 @@ describe("sidestep login (end-to-end)", () => {
     rmSync(dir, { recursive: true, force: true });
     delete process.env.XANO_NO_BROWSER;
     delete process.env.XANO_CLIENT_FILE;
-    delete process.env.XANO_AUTH_HOST;
+    delete process.env.XANO_ORIGIN;
   });
 
   /**
@@ -171,7 +175,7 @@ describe("sidestep login (end-to-end)", () => {
   it("runs the full flow (discover → register → exchange), derives the instance from aud, writes tokens + client_id + gitignore", async () => {
     stubOauthFetch({ access_token: jwtWithAud("https://x8ki.xano.io"), refresh_token: "ref", expires_in: 600 });
 
-    const p = run(["login", "--auth-file", authPath, "--port", "0"]);
+    const p = run(["login", "--config", authPath, "--port", "0"]);
 
     await waitFor(() => stderr.join("").includes("/oauth2/authorize?"));
     const authUrl = authorizeUrlFromStderr();
@@ -197,7 +201,7 @@ describe("sidestep login (end-to-end)", () => {
 
   it("errors when the issued token carries no readable aud", async () => {
     stubOauthFetch({ access_token: "opaque-not-a-jwt", refresh_token: "ref", expires_in: 600 });
-    const p = run(["login", "--auth-file", authPath, "--port", "0"]);
+    const p = run(["login", "--config", authPath, "--port", "0"]);
     const rejected = expect(p).rejects.toThrow(/Could not determine the instance/);
     await waitFor(() => stderr.join("").includes("/oauth2/authorize?"));
     const authUrl = authorizeUrlFromStderr();

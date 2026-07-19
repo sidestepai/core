@@ -7,7 +7,7 @@
 import type { ResultItemXdo, StackItemXdo, InputXdo, CacheXdo } from "../types/xdo.js";
 import { encodeStatement } from "../statements/statement.js";
 import type { Statement } from "../statements/statement.js";
-import { encodeResponse } from "../responses/response.js";
+import { encodeResponse, warnUnboundReturn } from "../responses/response.js";
 import type { ResponseDef } from "../responses/response.js";
 import { encodeInput } from "../inputs/input.js";
 import type { InputDescriptor } from "../inputs/input.js";
@@ -116,6 +116,7 @@ function defaultCache(override?: Partial<CacheXdo>): CacheXdo {
 export function encodeQuery(def: QueryDef): QueryXdo {
   if (!def.name) throw new Error("query: `name` is required.");
   if (!def.verb) throw new Error("query: `verb` is required.");
+  warnUnboundReturn("query", def.name, def.stack, def.response);
   return {
     name: def.name,
     description: def.description ?? "",
