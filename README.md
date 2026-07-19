@@ -2,7 +2,7 @@
 
 # SideStep
 
-### Your Xano stack, as TypeScript. Backend *and* frontend, one command.
+### Your Xano stack, as TypeScript. Backend *and* frontend, deployed together.
 
 **Write your database, APIs, functions, triggers, and AI agents in typed TypeScript.
 Then ship your entire stack — backend and static frontend, together — with a single deploy.**
