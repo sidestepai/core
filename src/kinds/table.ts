@@ -33,16 +33,32 @@ export type SchemaDef = ColumnDef[] | FieldMap;
  * columns, `gin` on the internal JSON, `search` (full-text), `gist` (spatial),
  * `vector`. Open-ended (`string & {}`) since the stored layer accepts variants
  * (e.g. `gin|unique`) the authoring DSL doesn't enumerate.
+ *
+ * `"unique"` is accepted as an ergonomic shorthand for `"btree|unique"` (the
+ * literal the engine requires); it is normalized on export. See
+ * {@link normalizeIndexType}.
  */
 export type IndexType =
   | "primary"
   | "btree"
   | "btree|unique"
+  | "unique"
   | "gin"
   | "search"
   | "gist"
   | "vector"
   | (string & {});
+
+/**
+ * Map author-facing index-type shorthands to the literal the Xano engine
+ * accepts. Today just `"unique"` → `"btree|unique"`: `"unique"` is the obvious
+ * thing to write and type-checks (the union ends in `string & {}`), but the
+ * engine rejects it at import with an opaque `Invalid index type.` 500. Applied
+ * everywhere a type is compared or serialized so dedup and export agree.
+ */
+export function normalizeIndexType(type: IndexType): string {
+  return type === "unique" ? "btree|unique" : type;
+}
 
 /**
  * Per-field index operator: `asc`/`desc` (btree), `jsonb_path_op` (gin),
@@ -322,7 +338,7 @@ function systemIndexes(useXdo = false): IndexDef[] {
 
 /** Dedup signature for an index: its type plus the ordered field names it covers. */
 function indexSignature(def: IndexDef): string {
-  return `${def.type}|${def.fields.map((field) => field.name).join(",")}`;
+  return `${normalizeIndexType(def.type)}|${def.fields.map((field) => field.name).join(",")}`;
 }
 
 /**
@@ -345,7 +361,7 @@ export function encodeIndex(def: IndexDef): IndexXdo {
   return {
     name: def.name ?? "",
     lang: def.lang ?? "",
-    type: def.type,
+    type: normalizeIndexType(def.type),
     fields: def.fields.map((field) => ({ name: field.name, op: field.op ?? "" })),
     market_item: { id: 0, version: 0, guid: "" },
   };

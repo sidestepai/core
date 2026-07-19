@@ -45,6 +45,16 @@ describe("table kind", () => {
     ).toEqual(normalize(idxByType("btree|unique")));
   });
 
+  it("normalizes the `unique` shorthand to `btree|unique` (the literal the engine accepts)", () => {
+    // "unique" type-checks (IndexType ends in `string & {}`) and is the obvious
+    // thing to write, but Xano rejects it at import with `Invalid index type.`
+    // (a 500). It must serialize as "btree|unique". See issue #15.
+    expect(encodeIndex({ type: "unique", fields: [{ name: "email" }] }).type).toBe("btree|unique");
+    expect(encodeIndex({ type: "unique", fields: [{ name: "email", op: "asc" }] })).toEqual(
+      encodeIndex({ type: "btree|unique", fields: [{ name: "email", op: "asc" }] }),
+    );
+  });
+
   it("encodes the table envelope (auth, autocomplete, external, sql_name, market_item)", () => {
     const t = encodeTable({
       name: "user",

@@ -1,6 +1,6 @@
 {
   "name": "sidestep",
-  "version": "2.3.1",
+  "version": "2.3.2",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
@@ -5995,7 +5995,7 @@
       ],
       "result": "bool",
       "group": "text",
-      "description": "Returns whether or not the expression is found"
+      "description": "Returns whether or not the expression is found Direction: the piped value is the subject text; the argument is the substring searched for."
     },
     {
       "name": "convert_encoding",
@@ -6486,7 +6486,7 @@
       ],
       "result": "bool",
       "group": "text",
-      "description": "Returns whether or not the expression is present at the end"
+      "description": "Returns whether or not the expression is present at the end Direction: the piped value is the subject text; the argument is the substring searched for."
     },
     {
       "name": "entries",
@@ -7426,7 +7426,7 @@
       ],
       "result": "bool",
       "group": "text",
-      "description": "Returns whether or not the case-insensitive expression is found"
+      "description": "Returns whether or not the case-insensitive expression is found Direction: the piped value is the subject text; the argument is the substring searched for."
     },
     {
       "name": "iends_with",
@@ -7440,7 +7440,7 @@
       ],
       "result": "bool",
       "group": "text",
-      "description": "Returns whether or not the case-insensitive expression is present at the end"
+      "description": "Returns whether or not the case-insensitive expression is present at the end Direction: the piped value is the subject text; the argument is the substring searched for."
     },
     {
       "name": "iindex",
@@ -7579,7 +7579,7 @@
       ],
       "result": "bool",
       "group": "text",
-      "description": "Returns whether or not the case-insensitive expression is present at the beginning"
+      "description": "Returns whether or not the case-insensitive expression is present at the beginning Direction: the piped value is the subject text; the argument is the substring searched for."
     },
     {
       "name": "join",
@@ -8212,13 +8212,13 @@
       "name": "regex_get_all_matches",
       "fl": "fl.regex_get_all_matches",
       "typed": false,
-      "description": "Return all matches performed by a regular expression on the supplied subject text."
+      "description": "Return all matches performed by a regular expression on the supplied subject text. Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains."
     },
     {
       "name": "regex_get_first_match",
       "fl": "fl.regex_get_first_match",
       "typed": false,
-      "description": "Return the first set of matches performed by a regular expression on the supplied subject text."
+      "description": "Return the first set of matches performed by a regular expression on the supplied subject text. Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains."
     },
     {
       "name": "regex_match",
@@ -8232,7 +8232,7 @@
       ],
       "result": "text[]",
       "group": "text",
-      "description": "Return the first set of matches performed by a regular expression"
+      "description": "Return the first set of matches performed by a regular expression Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains."
     },
     {
       "name": "regex_match_all",
@@ -8246,13 +8246,13 @@
       ],
       "result": "text[]",
       "group": "text",
-      "description": "Return all matches performed by a regular expression on the"
+      "description": "Return all matches performed by a regular expression on the Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains."
     },
     {
       "name": "regex_matches",
       "fl": "fl.regex_matches",
       "typed": false,
-      "description": "Tests if a regular expression matches the supplied subject text."
+      "description": "Tests if a regular expression matches the supplied subject text. Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains."
     },
     {
       "name": "regex_quote",
@@ -8285,7 +8285,7 @@
       ],
       "result": "text",
       "group": "text",
-      "description": "Perform a regular expression search and replace on the supplied subject text."
+      "description": "Perform a regular expression search and replace on the supplied subject text. Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains."
     },
     {
       "name": "regex_test",
@@ -8299,7 +8299,7 @@
       ],
       "result": "bool",
       "group": "text",
-      "description": "Tests if a regular expression matches the supplied subject text."
+      "description": "Tests if a regular expression matches the supplied subject text. Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains."
     },
     {
       "name": "remove",
@@ -8651,7 +8651,7 @@
       ],
       "result": "bool",
       "group": "text",
-      "description": "Returns whether or not the expression is present at the beginning"
+      "description": "Returns whether or not the expression is present at the beginning Direction: the piped value is the subject text; the argument is the substring searched for."
     },
     {
       "name": "string_replace",

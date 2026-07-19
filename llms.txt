@@ -1,4 +1,4 @@
-# sidestep v2.3.1
+# sidestep v2.3.2
 
 > TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.
 
@@ -364,7 +364,7 @@ pipeline. Typed filters carry named args; the rest are variadic by name.
 - `fl.bitwise_xor(value: int): int` — Bitwise XOR 2 values together and return the answer
 - `fl.coalesce(value: <T>): <T>` — Provides an alternative value for null values
 - `fl.concat(value: any): text` — Concatenates two values together
-- `fl.contains(search: text): bool` — Returns whether or not the expression is found
+- `fl.contains(search: text): bool` — Returns whether or not the expression is found Direction: the piped value is the subject text; the argument is the substring searched for.
 - `fl.convert_encoding(to: text, from: text): text` — Convert the character encoding of the supplied text
 - `fl.covers(geometry: geo_point): bool` — Determines if one geometry covers another
 - `fl.create_object(values?: <T>[]): any` — Creates an object based on a list of keys and a list of values
@@ -381,7 +381,7 @@ pipeline. Typed filters carry named args; the rest are variadic by name.
 - `fl.distance(geometry: geo_point): decimal` — Provides the distance in meters between two geometries
 - `fl.div(value: decimal): decimal` — Divides 2 values together and returns the answer
 - `fl.encrypt(algorithm?: enum, key: text, iv: text): text` — Encrypts the value and returns the result in raw binary form.
-- `fl.ends_with(search: text): bool` — Returns whether or not the expression is present at the end
+- `fl.ends_with(search: text): bool` — Returns whether or not the expression is present at the end Direction: the piped value is the subject text; the argument is the substring searched for.
 - `fl.epochms_add_day(amount?: decimal): epochms` — Add a number of days to the timestamp
 - `fl.epochms_add_hour(amount?: decimal): epochms` — Add a number of hours to the timestamp
 - `fl.epochms_add_minute(amount?: decimal): epochms` — Add a number of minutes to the timestamp
@@ -431,11 +431,11 @@ pipeline. Typed filters carry named args; the rest are variadic by name.
 - `fl.hmac_sha256(key: text, raw?: bool): text` — Returns a SHA256 signature representation of the value using a shared secret via the HMAC method
 - `fl.hmac_sha384(key: text, raw?: bool): text` — Returns a SHA384 signature representation of the value using a shared secret via the HMAC method
 - `fl.hmac_sha512(key: text, raw?: bool): text` — Returns a SHA512 signature representation of the value using a shared secret via the HMAC method
-- `fl.icontains(search: text): bool` — Returns whether or not the case-insensitive expression is found
-- `fl.iends_with(search: text): bool` — Returns whether or not the case-insensitive expression is present at the end
+- `fl.icontains(search: text): bool` — Returns whether or not the case-insensitive expression is found Direction: the piped value is the subject text; the argument is the substring searched for.
+- `fl.iends_with(search: text): bool` — Returns whether or not the case-insensitive expression is present at the end Direction: the piped value is the subject text; the argument is the substring searched for.
 - `fl.in(search: <T>): bool` — Returns whether or not the value is in the array
 - `fl.index_by(path: text): <T>[]` — Create a new array indexed off of the value of each item's path
-- `fl.istarts_with(search: text): bool` — Returns whether or not the case-insensitive expression is present at the beginning
+- `fl.istarts_with(search: text): bool` — Returns whether or not the case-insensitive expression is present at the beginning Direction: the piped value is the subject text; the argument is the substring searched for.
 - `fl.join(separator: text): text` — Joins an array into a text string via the separator and returns the result
 - `fl.lambda(code: text, timeout?: int): any` — Business logic using JavaScript.
 - `fl.log(base: <T>): decimal` — Returns the logarithm with a custom base
@@ -455,11 +455,11 @@ pipeline. Typed filters carry named args; the rest are variadic by name.
 - `fl.prepend(value: <T>, path: text): <T>[]` — Push an element on to the beginning of an array within an object and return the updated object
 - `fl.range(start: int, stop: int): int[]` — Returns array of values between the specified start/stop.
 - `fl.reduce(initial_value?: int, code: text, timeout?: int): any[]` — Reduces the array to a single value using the code block to combine each element of the array.
-- `fl.regex_match(subject: text): text[]` — Return the first set of matches performed by a regular expression
-- `fl.regex_match_all(subject: text): text[]` — Return all matches performed by a regular expression on the
+- `fl.regex_match(subject: text): text[]` — Return the first set of matches performed by a regular expression Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains.
+- `fl.regex_match_all(subject: text): text[]` — Return all matches performed by a regular expression on the Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains.
 - `fl.regex_quote(delimiter?: text): text` — Update the supplied text value to be properly escaped for regular expressions.
-- `fl.regex_replace(replacement: text, subject: text): text` — Perform a regular expression search and replace on the supplied subject text.
-- `fl.regex_test(subject: text): bool` — Tests if a regular expression matches the supplied subject text.
+- `fl.regex_replace(replacement: text, subject: text): text` — Perform a regular expression search and replace on the supplied subject text. Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains.
+- `fl.regex_test(subject: text): bool` — Tests if a regular expression matches the supplied subject text. Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains.
 - `fl.round(precision?: int): decimal` — Round a decimal with optional precision
 - `fl.rtrim(mask?: text): text` — Trim whitespace or other characters from the right return the result
 - `fl.search_rank(text: text): decimal` — Calculate a ranking value for the search match
@@ -475,7 +475,7 @@ pipeline. Typed filters carry named args; the rest are variadic by name.
 - `fl.sha512(raw?: bool): text` — Returns a SHA512 signature representation of the value
 - `fl.some(code: text, timeout?: int): any[]` — Checks if at least one element in the array passes the test implemented by the provided function.
 - `fl.split(separator: text): text[]` — Splits text into an array of text and returns the result
-- `fl.starts_with(search: text): bool` — Returns whether or not the expression is present at the beginning
+- `fl.starts_with(search: text): bool` — Returns whether or not the expression is present at the beginning Direction: the piped value is the subject text; the argument is the substring searched for.
 - `fl.string_replace(search: text, replacement: text): text` — Replace a text phrase with another
 - `fl.strip_tags(exclude?: text): text` — Removes HTML tags from a string
 - `fl.stripos(search: text): int` — Returns the index of the case-insensitive expression or false if it
