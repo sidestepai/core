@@ -283,6 +283,38 @@ async function fetchPosts(): Promise<Post[]> {
   key, `null`/`undefined` are dropped) instead of hand-building `?id=…`.
 - **`InferRow<typeof post>`** → the table's row type. Rename or retype a column and every
   consumer breaks at compile time — exactly where you want it.
+- **`InferResponse<typeof someQuery>`** → the endpoint's **response** type, closing the round
+  trip. It auto-derives the common shapes with no codegen: an object-literal response yields
+  those keys, and a query that returns a variable filled by a `db.get`/`db.query` derives that
+  table's row (a list → `Row[]`, a single get → `Row`, an `output: [...]` selection narrows to
+  a `Pick`). Where the shape isn't statically knowable — a value reshaped by a filter/lambda,
+  or built by control flow — it resolves to `unknown`; declare `responseShape` to close it.
+
+```ts
+import { listPosts, getPost } from "../xano/index.js";
+import type { InferResponse } from "@sidestep/core";
+
+type Posts = InferResponse<typeof listPosts>;   // Post[] — derived from the db.query it returns
+type Post  = InferResponse<typeof getPost>;      // Post   — derived from the db.get it returns
+```
+
+When a response is filtered, computed, or otherwise opaque to the static walk, declare it once
+on the query and every caller derives from that single source of truth:
+
+```ts
+const getPost = query({
+  verb: "GET", apiGroup: blog, name: "get_post",
+  input: { id: input.int({ required: true }) },
+  stack: [s.db.get({ table: post, fieldValue: inp("id"), as: "row" })],
+  response: ref("row"),
+  responseShape: null as InferRow<typeof post> | null,   // a get returns Row | null
+});
+type MaybePost = InferResponse<typeof getPost>;           // InferRow<typeof post> | null
+```
+
+This mirrors how the Xano engine itself derives an endpoint's response schema (a static walk of
+the stack), so what you get in the type is what the endpoint actually returns — and it degrades
+to `unknown` in exactly the cases the engine can't resolve either.
 
 A GET endpoint carries its inputs in the query string rather than a JSON body:
 
@@ -698,7 +730,11 @@ runtime (SideStep only compiles), and generating engine-side numeric ids/timesta
 `xano.lock`.)
 
 **Deferred (by design)** — folder auto-discovery, round-trip/decompile (bundle → TS), and
-the `workflow_test` / `service` / `vault` / `branch` payload sections.
+the `workflow_test` / `service` / `vault` / `branch` payload sections. `InferResponse`
+auto-derivation covers the object-literal and single-`db`-variable cases (matching the engine's
+static walk); multi-hop tracing (a response variable produced inside control flow, `set_var`, or
+a nested function call) and addon/related-field keys resolve to `unknown` — declare
+`responseShape` for those.
 
 </details>
 
