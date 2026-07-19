@@ -8,6 +8,16 @@ import type { FilterXdo, TaggedValue, Tag } from "../types/xdo.js";
 /** A sidestep authored value is just the stored tagged-value shape. */
 export type Value = TaggedValue;
 
+/**
+ * A {@link Value} that also carries, **at the type level only**, the name of the
+ * stack variable it references (`ref("user")` → `RefValue<"user">`). The `__ref`
+ * carrier is phantom — never present at runtime — and required (not optional) so
+ * `InferResponse`'s trace (U5) matches only real refs, never a plain `Value`.
+ * Because it is a subtype of `Value`, every existing `ref(...)` use — filter
+ * args, `db.query` `where`, response fields — keeps type-checking unchanged.
+ */
+export type RefValue<Name extends string = string> = Value & { readonly __ref: Name };
+
 function val(value: string, tag: Tag, filters: FilterXdo[] = []): Value {
   return { value, tag, filters };
 }
@@ -56,8 +66,10 @@ export const c = {
  * - {@link auth} — the authenticated caller (`auth("id")`).
  * - `c.*` — a literal constant (`c.int(1)`, `c.text("x")`).
  */
-export function ref(name: string): Value {
-  return val(name, "var");
+export function ref<const Name extends string>(name: Name): RefValue<Name> {
+  // `__ref` is a phantom (type-only) carrier — the runtime object is exactly the
+  // plain `{value, tag, filters}` Value; the cast attaches the name to the type.
+  return val(name, "var") as RefValue<Name>;
 }
 
 /** Reference a function/endpoint **input**: `{tag:"input", value}`. See {@link ref} for the full picker. */

@@ -75,7 +75,7 @@ export type {
   TableRefMethod,
 } from "./fields/generated/field-methods.generated.js";
 export { c, ref, inp, col, auth, env, setting, filter, withFilters } from "./values/value.js";
-export type { Value } from "./values/value.js";
+export type { Value, RefValue } from "./values/value.js";
 export { fl, FILTER_NAMES } from "./values/generated/filters.generated.js";
 export { setVar, updateVar } from "./statements/set-var.js";
 export { conditional, expr } from "./statements/conditional.js";
