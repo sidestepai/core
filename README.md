@@ -124,6 +124,14 @@ glue wiring the two together.
 > (repeatable), exposed the same way as `window.<KEY>`. A static host serves these files
 > verbatim to the browser, so everything injected is **public** — never put secrets here;
 > those belong in backend env, read server-side via `env(name)`.
+>
+> **Verifying the injection:** the served `index.html` writes the global in **bracket
+> notation** — `window["XANO_HOST"]="…";` — so grep for the bare token `XANO_HOST`, not the
+> exact string `window.XANO_HOST` (the dot form is valid to *read* the global in your app,
+> but it's not what the file contains, so an exact-string grep for it wrongly reads as "not
+> injected"). Note it can also be served from cache for up to an hour after a deploy — fetch
+> once with a cache-buster (`curl -s "$URL/?nocache=$(date +%s)" | grep XANO_HOST`) rather
+> than retrying the bare URL.
 
 **Two modes**, so you're always in control:
 
@@ -233,6 +241,14 @@ manual imports, no upload scripts.
 > entry loads natively; install [`tsx`](https://tsx.is) for older Node or multi-file
 > workspaces. Set `"type": "module"` in the nearest `package.json` if you hit a
 > "must be ES modules" error.
+>
+> **Verifying a def outside a bundler.** Inside a bundler (Vite/webpack) importing a query
+> def to read `getPath()`/`verb` just works. To spot-check from Node, run a **real file**
+> with `tsx <file.ts>` **from inside the project root** — not `tsx -e "import …"` (its
+> CJS-preparse mis-resolves the package `exports` map → `ERR_PACKAGE_PATH_NOT_EXPORTED`) and
+> not bare `node file.ts` (chokes on the `.js`-specifier intra-workspace imports the CLI's
+> own loader resolves). Intra-workspace imports use `.js` specifiers
+> (`../tables/links.js`) under `moduleResolution: bundler`, not extensionless.
 
 ---
 
@@ -286,6 +302,14 @@ async function fetchSnippet(id: number) {
 The `@sidestep/core` entry has **zero Node dependencies**, so importing your workspace
 graph into a browser bundle just works. The `node:fs`-backed emitters live in the
 separate `@sidestep/core/node` entry a frontend never pulls in.
+
+**Bundle size & tree-shaking.** `@sidestep/core` is `sideEffects: false`, so a bundler drops
+the SDK exports your frontend doesn't use. But importing a query **def** for its `getPath()`
+also pulls whatever its `stack` builds — the `s.*`/`c.*` factory *calls* run at module load
+to construct the def, so they can't be tree-shaken out. Types are free (`InferInput`/
+`InferRow` erase to nothing — use `import type`). To keep the client bundle lean, keep the
+route metadata a frontend needs (the handle for `getPath()`/`verb`, plus `type` imports)
+in a module separate from your stack-heavy authoring.
 
 ---
 
@@ -353,16 +377,24 @@ toolset references.
 `f.timestamp`, the four file resources (`f.image`/`f.video`/`f.audio`/`f.attachment`), the
 six `f.geo.*` types, `f.enum(values)`, `f.vector(size)`, and `f.object(children)`. Foreign
 keys are `f.tableRef(table)` — an `int` (or `{ type: "uuid" }`) column whose link resolves
-to the target table's guid at export. Tables accept a named-map schema
-(`{ email: f.email({ required: true }) }`), filter methods carry args (`"min:8"`), and
+to the target table's guid at export. `f.tableRef` also takes the standard field options as
+its second arg (`f.tableRef(users, { required: true })`). Any scalar `f.*` becomes a **list
+column** with `{ array: true }` — `f.text({ array: true })` surfaces as `string[]` in
+`InferRow<typeof table>` (the column analogue of `input.list`). Tables accept a named-map
+schema (`{ email: f.email({ required: true }) }`), filter methods carry args (`"min:8"`), and
 `views[]` (expression/sort/hiddenCols) encode via the shared comparison encoder. Byte-exact
 vs the engine's `Schema::TYPE_MAP`.
 
 **System columns & indexes** — `id` (int primary key; `idType:"uuid"` for a uuid key) and
 `created_at` (`epochms`, `default:"now"`, `access:"private"`) auto-inject at the head of
-the schema unless `system:false` or you declared them. The matching standard indexes
-(`primary(id)`, `btree(created_at desc)`, plus `gin(xdo)` only when the table stores fields
-as JSON) auto-prepend, de-duped so author-declared ones aren't doubled.
+the schema unless `system:false` or you declared them. Both are usable wherever a column
+name is expected — a `db.query` `sort`/`output`, a `db.get`/`edit`/`del` `fieldName` — and
+both appear in `InferRow<typeof table>`. Declare your own indexes with the shape
+`{ type, fields: [{ name, op? }] }`, e.g. a unique email index
+(`index: [{ type: "unique", fields: [{ name: "email" }] }]` — `"unique"` is shorthand for
+`"btree|unique"`). The matching standard indexes (`primary(id)`, `btree(created_at desc)`,
+plus `gin(xdo)` only when the table stores fields as JSON) auto-prepend, de-duped so
+author-declared ones aren't doubled.
 
 **`use_xdo` storage mode** — a table either stores every field as JSON under the internal
 `xdo` column (`use_xdo:true`, adds the `gin(xdo)` index) or gives each field a real Postgres
@@ -402,12 +434,31 @@ resolves the cross-object reference at export. The **db family** (`s.db.add`/`s.
 `s.db.get`/`s.db.query`/`s.db.del`/…) reads and mutates records. Single-record
 reads/mutations match one field (`{ fieldName, fieldValue }`, defaulting to `id`); writes
 take a partial `row: { … }`; only `s.db.query` takes a `where` comparison built with
-`expr(...)`.
+`expr(...)` (plus `sort: [{ sortBy, dir? }]` and `paging: { page?, per_page?, offset? }`).
+The field-match ops take a **single** field — there's no composite `(a, b)` form. For a
+two-column lookup (e.g. dedupe a `(habit, date)` check-in), use `s.db.query` with a `where`
+array (ANDed) and branch on the result, rather than pushing the check to the client.
+
+**Runtime behavior.** Knowing what these return matters for typing your endpoint responses:
+
+- `s.db.get` binds **`null`** when no row matches — it does *not* throw. So its response type
+  is `InferRow<typeof table> | null`; null-check it. On a hit it binds the full row.
+  (`s.db.has` is the boolean existence test.)
+- `s.db.edit` binds the **full, post-mutation row** (the freshly-written values), `s.db.del`
+  the **full deleted row**, and `s.db.add` the **full inserted row** (including the
+  auto-assigned `id`/`created_at`). So `InferRow<typeof table>` is the correct response type
+  for those three. Unlike `get`, `edit`/`del` **throw** `NotFound` (404) when nothing matches.
 
 **Values** — `c.int/text/bool/decimal/null/obj/array`, `ref(var)`, `inp(input)`,
 `col(name)`, plus context refs `auth(path?)`, `env(name)`, `setting(name)`.
 `withFilters(value, ...filters)` attaches the value pipeline via a typed catalog `fl.*`
-(377 filters generated from the engine's own sources).
+(377 filters generated from the engine's own sources). To **read-modify-write a column from
+its current value** — e.g. increment a counter — pipe it through a filter:
+`s.db.edit({ table, fieldValue, row: { clicks: withFilters(col("clicks"), fl.add(c.int(1))) } })`,
+or `withFilters(ref("row.clicks"), fl.add(c.int(1)))` off a row you already read. Note this
+read-modify-write is **not atomic** — concurrent writers can lose an increment; there's no
+dedicated atomic-increment statement. For a concurrency-safe counter, do the arithmetic in
+the database with a single `s.db.direct_query` `UPDATE … SET clicks = clicks + 1 WHERE …`.
 
 **Inputs** — `input.*` mirrors `f.*` exactly: every engine-legal field type is a valid
 function/query input. Use `input.object(children)` and `input.list(element)` for structured

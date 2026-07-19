@@ -1,7 +1,8 @@
 import { describe, it, expect, expectTypeOf } from "vitest";
-import { query, apiGroup, input, type InferInput } from "../src/index.js";
+import { query, apiGroup, input, type InferInput, type InferRow } from "../src/index.js";
 import { meQuery, login, getSnippet, fetchSnippet } from "./fixtures/consumer-example.js";
 import { createLink } from "./fixtures/validate-input-recipe.js";
+import { links, bumpClicks } from "./fixtures/docs-recipes.js";
 import { Xano } from "../src/workspace/xano.js";
 
 /**
@@ -51,5 +52,19 @@ describe("public consumer surface", () => {
     );
     expect(q?.run?.some((st) => st.name === "mvp:precondition")).toBe(true);
     expectTypeOf<InferInput<typeof createLink>>().toEqualTypeOf<{ url: string }>();
+  });
+
+  it("the docs recipes fixture exports (#13: array column, tableRef opts, unique index, increment)", () => {
+    const bundle = new Xano().register("table", links).register("query", bumpClicks).export();
+    const table = (bundle.payload.dbo as Array<{ name: string; index: Array<{ type: string }> }>).find(
+      (t) => t.name === "links",
+    );
+    // The declared `unique` shorthand serialized to the engine's `btree|unique`.
+    expect(table?.index?.some((i) => i.type === "btree|unique")).toBe(true);
+    // `tags` is a string[] column, so InferRow surfaces it as string[].
+    expectTypeOf<InferRow<typeof links>["tags"]>().toEqualTypeOf<string[]>();
+    // System columns are present in InferRow.
+    expectTypeOf<InferRow<typeof links>["id"]>().toEqualTypeOf<number>();
+    expectTypeOf<InferRow<typeof links>["created_at"]>().toEqualTypeOf<number>();
   });
 });
