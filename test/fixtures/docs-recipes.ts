@@ -61,6 +61,7 @@ export const bumpClicks = query({
       paging: { page: c.int(1), per_page: c.int(25) },
       as: "recent",
     }),
-    s.return(ref("updated")),
   ],
+  // A query's response comes from `response:`, not s.return.
+  response: ref("updated"),
 });
