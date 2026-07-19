@@ -96,7 +96,9 @@ describe("sidestep sandbox deploy (OAuth, replaces push)", () => {
 
   it("compiles a workspace entry and POSTs the bundle to the sandbox endpoint", async () => {
     const authFile = writeTokenFile(dir);
-    const fetchMock = stubFetchOk('{"imported":true}');
+    const fetchMock = stubFetchOk(
+      '{"base_url":"https://x.dev.xano.io/tenant/abc","workspace":{"id":1,"name":"example","crypto":{"secret":"s3cr3t"}}}',
+    );
 
     await run(["sandbox", "deploy", examplePath, "--config", authFile]);
 
@@ -109,7 +111,14 @@ describe("sidestep sandbox deploy (OAuth, replaces push)", () => {
     const posted = JSON.parse(postedBundle(fetchMock));
     expect(posted.app).toBe("xano");
     expect(posted.payload.workspace).toMatchObject({ name: "example" });
-    expect(stdoutChunks.join("")).toContain("imported");
+
+    // stdout is a projected, secret-free summary — not the raw workspace blob.
+    const out = JSON.parse(stdoutChunks.join(""));
+    expect(out).toEqual({
+      baseUrl: "https://x.dev.xano.io/tenant/abc",
+      workspace: { id: 1, name: "example" },
+    });
+    expect(stdoutChunks.join("")).not.toContain("s3cr3t");
   });
 
   it("uploads an existing bundle with --bundle, without compiling", async () => {
@@ -215,6 +224,12 @@ describe("sidestep sandbox deploy (OAuth, replaces push)", () => {
     const headers = (staticInit as RequestInit).headers as Record<string, string>;
     expect(headers["X-Tenant"]).toBeUndefined();
     expect(headers.Authorization).toBe("Bearer acc-cached");
+
+    // The projected stdout summary carries both the backend base URL and the
+    // deployed static host URL.
+    const out = JSON.parse(stdoutChunks.join(""));
+    expect(out.baseUrl).toBe("https://x.dev/tenant/sbx-1");
+    expect(out.static).toEqual({ url: "https://default-dev-abc.xano.io" });
   });
 
   it("--static fails the static step (exit 3), not the deploy, when the workspace can't be resolved", async () => {

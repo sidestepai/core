@@ -16,9 +16,12 @@ sidestep sandbox deploy ./xano/index.ts --static ./dist
 ```
 
 ```
-Deploying ./xano/index.ts -> sandbox (merges into the sandbox workspace).
-Deployed:              https://x8ki-letl.n7.xano.io               ← backend, live
-Static host deployed:  https://my-app.xano.io                     ← frontend, live
+→ Deploying ./xano/index.ts → sandbox (merge)
+✓ Backend deployed
+    https://x8ki-letl.n7.xano.io                                  ← backend, live
+→ Deploying static frontend ./dist
+✓ Static host deployed
+    https://my-app.xano.io                                        ← frontend, live
 ```
 
 <div align="center">
@@ -97,9 +100,12 @@ npx sidestep sandbox deploy ./xano/index.ts --static ./dist
 ```
 
 ```
-Deploying ./xano/index.ts -> sandbox (merges into the sandbox workspace).
-Deployed:              https://x8ki-letl.n7.xano.io/tenant/sbx-ab12   ← backend, live
-Static host deployed:  https://my-app.xano.io                         ← frontend, live
+→ Deploying ./xano/index.ts → sandbox (merge)
+✓ Backend deployed
+    https://x8ki-letl.n7.xano.io/tenant/sbx-ab12                      ← backend, live
+→ Deploying static frontend ./dist
+✓ Static host deployed
+    https://my-app.xano.io                                            ← frontend, live
 ```
 
 One authenticated call ships your database schema, your APIs, your functions and
@@ -435,11 +441,20 @@ Tokens (access + refresh) cache in a **project-local** `./.xano/auth.json`, whic
 **auto-adds to `.gitignore`**. Override with `--config`/`$XANO_CONFIG`, the OAuth host with
 `--origin`/`$XANO_ORIGIN`, and the loopback port with `--port`.
 
+**Global credentials** — pass `--global` to `login` to cache tokens in a **shared**
+`~/.sidestep/auth.json` instead, reusable from any project directory. Every other command
+resolves credentials **project-local first, global as a fallback**: it uses `./.xano/auth.json`
+when present, otherwise `~/.sidestep/auth.json` — so a single `sidestep login --global` covers
+directories that have no local cache. An explicit `--config`/`$XANO_CONFIG` always wins over both.
+
 `sandbox deploy <file>` runs the exact same pipeline as `export` (including `xano.lock`
 seeding and merge), then `POST`s the bundle to `/api:meta/sandbox/bundle` (`?reset=true`
 with `--reset`). `sandbox deploy --bundle <path>` skips the compile and uploads a bundle a
-previous `export` wrote (handy in CI). The endpoint's JSON response prints to stdout; the
-instance's public URL echoes to stderr.
+previous `export` wrote (handy in CI). A **projected, secret-free summary** prints to stdout
+as JSON — `baseUrl` plus the workspace `id`/`name`, and the static URL when `--static` is
+used — while the human-readable progress (and the live URLs) echoes to stderr. The raw
+workspace blob is deliberately never dumped: it carries per-tenant secrets that must not land
+in shell history or CI logs.
 
 **Where it goes** — the sandbox workspace of the instance your **token is bound to**
 (the token's `aud`), never a flag. `deploy` never creates or selects any other workspace,

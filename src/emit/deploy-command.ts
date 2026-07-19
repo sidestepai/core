@@ -30,11 +30,24 @@ import { existsSync, readFileSync } from "node:fs";
 import { exportBundleJson, type ParsedArgs } from "./cli.js";
 import { getAccessToken, type ResolvedAuth } from "../auth/token.js";
 import { postDeploy } from "../deploy/client.js";
+import { step, success, warn, detail } from "./ui.js";
 
 const SANDBOX_DEPLOY_PATH = "/api:meta/sandbox/bundle";
 
 /** Exit code for a post-commit static failure (the backend deploy itself succeeded). */
 const EXIT_STATIC_FAILED = 3;
+
+/**
+ * The projected, safe-to-print deploy result written to stdout as JSON. Mirrors
+ * `sandbox details` / `profile me`: only the stable, useful fields — never the
+ * raw workspace blob, which carries per-tenant secrets (crypto keys, salts,
+ * documentation tokens) that must not land in shell history or CI logs.
+ */
+interface DeploySummary {
+  baseUrl: string | undefined;
+  workspace: { id: number | undefined; name: string | undefined } | undefined;
+  static?: { url: string | undefined };
+}
 
 /** Produce the bundle: from `--bundle <path>` or by compiling an entry `<file>` (mutually exclusive). */
 async function loadBundle(args: ParsedArgs): Promise<{ bundle: string; source: string }> {
@@ -59,10 +72,11 @@ async function loadBundle(args: ParsedArgs): Promise<{ bundle: string; source: s
  * bearer — the sandbox tenant does not serve static hosting, so the frontend
  * lives on the real workspace.
  */
-async function deployParentStatic(dir: string, auth: ResolvedAuth): Promise<void> {
+async function deployParentStatic(dir: string, auth: ResolvedAuth): Promise<DeploySummary["static"]> {
   const { resolveScopedWorkspaceId } = await import("../deploy/workspace.js");
   const { deployStaticHost } = await import("../deploy/static-host.js");
 
+  step(`Deploying static frontend ${dir}`);
   const workspaceId = await resolveScopedWorkspaceId(auth);
   const sh = await deployStaticHost({
     dir,
@@ -70,17 +84,18 @@ async function deployParentStatic(dir: string, auth: ResolvedAuth): Promise<void
     baseUrl: auth.instance,
     accessToken: auth.access_token,
   });
-  if (sh.url) process.stderr.write(`Static host deployed: ${sh.url}\n`);
-  process.stdout.write(sh.raw + "\n");
+  success("Static host deployed");
+  if (sh.url) detail(sh.url);
+  return { url: sh.url };
 }
 
 export async function runDeployCommand(args: ParsedArgs): Promise<void> {
   const { bundle, source } = await loadBundle(args);
 
-  process.stderr.write(
+  step(
     args.reset
-      ? `Deploying ${source} -> sandbox; --reset REPLACES the sandbox workspace (clears it first).\n`
-      : `Deploying ${source} -> sandbox (merges into the sandbox workspace).\n`,
+      ? `Deploying ${source} → sandbox (reset: clears the workspace, then imports)`
+      : `Deploying ${source} → sandbox (merge)`,
   );
 
   const query: Record<string, string> = {};
@@ -89,18 +104,25 @@ export async function runDeployCommand(args: ParsedArgs): Promise<void> {
   const auth = await getAccessToken(args);
   const resp = await postDeploy({ bundle, endpointPath: SANDBOX_DEPLOY_PATH, auth, query });
 
-  if (resp.baseUrl) process.stderr.write(`Deployed: ${resp.baseUrl}\n`);
-  process.stdout.write(resp.raw + "\n");
+  success("Backend deployed");
+  if (resp.baseUrl) detail(resp.baseUrl);
 
-  if (args.static === undefined) return;
+  const summary: DeploySummary = {
+    baseUrl: resp.baseUrl,
+    workspace: resp.workspace ? { id: resp.workspace.id, name: resp.workspace.name } : undefined,
+  };
 
-  try {
-    await deployParentStatic(args.static, auth);
-  } catch (err) {
-    process.stderr.write(
-      `Backend deployed, but the static-host upload failed:\n  ${err instanceof Error ? err.message : String(err)}\n` +
-        `Re-run \`sidestep sandbox deploy --static ${args.static}\` to retry only the static step.\n`,
-    );
-    process.exitCode = EXIT_STATIC_FAILED;
+  if (args.static !== undefined) {
+    try {
+      summary.static = await deployParentStatic(args.static, auth);
+    } catch (err) {
+      warn("Backend deployed, but the static-host upload failed:");
+      detail(err instanceof Error ? err.message : String(err));
+      detail(`Retry just the static step: sidestep sandbox deploy --static ${args.static}`);
+      process.exitCode = EXIT_STATIC_FAILED;
+    }
   }
+
+  // The one machine-readable line: a projected, secret-free summary on stdout.
+  process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
 }

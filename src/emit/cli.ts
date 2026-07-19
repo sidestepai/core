@@ -44,6 +44,7 @@ import {
 } from "../lock/lock.js";
 import { readLockFile, writeLockFile } from "../lock/io.js";
 import { resetLockOverrides, seedLockOverrides } from "../lock/store.js";
+import { warn, detail } from "./ui.js";
 
 export interface ParsedArgs {
   command: string | undefined;
@@ -75,6 +76,13 @@ export interface ParsedArgs {
   authHost: string | undefined;
   /** `--config <path>`: project-local token cache. Default: $XANO_CONFIG, then ./.xano/auth.json. */
   authFile: string | undefined;
+  /**
+   * `--global`: use the shared `~/.sidestep/auth.json` cache instead of the
+   * project-local `./.xano/auth.json`. `login --global` writes there; other
+   * commands read it when the project has no local cache (reads always try the
+   * project-local cache first, then fall back to the global one).
+   */
+  global: boolean;
   /** `login --port <n>`: fixed loopback callback port (default: an ephemeral port). */
   port: number | undefined;
   /** `login --scope "<space list>"`: OAuth scopes to request (default: the built-in xano-cli set). */
@@ -113,6 +121,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let staticDir: string | undefined;
   let authHost: string | undefined;
   let authFile: string | undefined;
+  let global = false;
   let port: number | undefined;
   let scope: string | undefined;
   const positionals: string[] = [];
@@ -147,6 +156,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
       authFile = rest[++i];
     } else if (arg.startsWith("--config=")) {
       authFile = arg.slice("--config=".length);
+    } else if (arg === "--global") {
+      global = true;
     } else if (arg === "--port") {
       port = parsePort(rest[++i]);
     } else if (arg.startsWith("--port=")) {
@@ -195,6 +206,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     static: staticDir,
     authHost,
     authFile,
+    global,
     port,
     scope,
   };
@@ -274,11 +286,11 @@ export async function loadDefault(file: string): Promise<unknown> {
 
 const USAGE =
   "Usage: sidestep <compile|export> <file> [--out <path>] [--lock[=<path>]] [--frozen-lock] | " +
-  "sidestep login [--origin <origin>] [--config <path>] [--port <n>] | " +
-  "sidestep logout [--config <path>] | " +
-  "sidestep sandbox deploy <file>|--bundle <path> [--reset] [--static <dir>] [--config <path>] | " +
-  "sidestep sandbox details [--config <path>] | " +
-  "sidestep profile me [--config <path>] | " +
+  "sidestep login [--origin <origin>] [--config <path>] [--global] [--port <n>] | " +
+  "sidestep logout [--config <path>] [--global] | " +
+  "sidestep sandbox deploy <file>|--bundle <path> [--reset] [--static <dir>] [--config <path>] [--global] | " +
+  "sidestep sandbox details [--config <path>] [--global] | " +
+  "sidestep profile me [--config <path>] [--global] | " +
   "sidestep lock <rename|prune|adopt> …";
 
 /** Quote a name for a suggested shell command when it needs it. */
@@ -301,9 +313,9 @@ function warnOrphans(
 ): void {
   for (const key of orphans) {
     if (key === WORKSPACE_KEY || key === WORKSPACE_REALTIME_KEY) {
-      process.stderr.write(
-        `sidestep: xano.lock entry "${key}" matched nothing this export (no workspace canonical ` +
-          `emitted). Run \`sidestep lock prune\` if that is intentional.\n`,
+      warn(
+        `xano.lock entry "${key}" matched nothing this export (no workspace canonical emitted). ` +
+          `Run \`sidestep lock prune\` if that is intentional.`,
       );
       continue;
     }
@@ -314,24 +326,22 @@ function warnOrphans(
       .filter((k) => k.startsWith(`${payloadKey}:`) && !(k in previous.objects))
       .map((k) => k.slice(payloadKey.length + 1));
     const hint = newcomers.length > 0 ? ` (new ${payloadKey} names this export: ${newcomers.join(", ")})` : "";
-    process.stderr.write(
-      `sidestep: xano.lock entry "${key}" matches no exported object — if this was a rename, the ` +
-        `next sync would delete+create unless the entry moves with it.\n` +
-        `  renamed? run: sidestep lock rename ${payloadKey} ${shellName(name)} <new-name>${hint}\n` +
-        `  deleted? run: sidestep lock prune\n`,
+    warn(
+      `xano.lock entry "${key}" matches no exported object — if this was a rename, the next sync ` +
+        `would delete+create unless the entry moves with it.`,
     );
+    detail(`renamed? run: sidestep lock rename ${payloadKey} ${shellName(name)} <new-name>${hint}`);
+    detail("deleted? run: sidestep lock prune");
   }
   for (const key of dropped) {
-    process.stderr.write(
-      `sidestep: dropped stale lock entry "${key}" — its identity reappeared under a live name ` +
-        `(a reverted rename).\n`,
+    warn(
+      `Dropped stale lock entry "${key}" — its identity reappeared under a live name (a reverted rename).`,
     );
   }
   for (const key of cededCanonicals) {
-    process.stderr.write(
-      `sidestep: lock entry "${key}" kept its guid but ceded its canonical to a live object that ` +
-        `now emits it (an explicit in-code canonical). If "${key}" was renamed, run the ` +
-        `\`sidestep lock rename\` fix-up shown above.\n`,
+    warn(
+      `Lock entry "${key}" kept its guid but ceded its canonical to a live object that now emits it ` +
+        `(an explicit in-code canonical). If "${key}" was renamed, run the \`sidestep lock rename\` fix-up shown above.`,
     );
   }
 }
@@ -478,9 +488,9 @@ export async function exportBundleJson(args: ParsedArgs): Promise<string> {
         `and commit it.`,
     );
   } else {
-    process.stderr.write(
-      `sidestep: exporting without xano.lock — identities derive from names, so a rename becomes ` +
-        `delete+create on sync. Pass --lock to freeze them.\n`,
+    warn(
+      `Exporting without xano.lock — identities derive from names, so a rename becomes delete+create ` +
+        `on sync. Pass --lock to freeze them.`,
     );
   }
 

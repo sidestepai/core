@@ -1,6 +1,6 @@
 {
   "name": "sidestep",
-  "version": "2.0.0",
+  "version": "2.2.0",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
@@ -9560,29 +9560,33 @@
         {
           "flag": "--config <path>",
           "description": "Project-local token cache (default: $XANO_CONFIG, then ./.xano/auth.json)."
+        },
+        {
+          "flag": "--global",
+          "description": "Read credentials from the shared ~/.sidestep/auth.json cache. Reads always try ./.xano/auth.json first, then fall back to the global cache."
         }
       ],
-      "description": "Deploy the compiled workspace to your sandbox (replaces the removed `push`), optionally with a static frontend. The sandbox is the only deploy target. Never writes SERVER identities back into xano.lock (the compile step still maintains it exactly as `export` does)."
+      "description": "Deploy the compiled workspace to your sandbox (replaces the removed `push`), optionally with a static frontend. Prints a projected, secret-free summary as JSON on stdout (baseUrl + workspace id/name, plus the static URL when --static is used). The sandbox is the only deploy target. Never writes SERVER identities back into xano.lock (the compile step still maintains it exactly as `export` does)."
     },
     {
       "command": "sandbox details",
-      "args": "[--config <path>]",
+      "args": "[--config <path>] [--global]",
       "description": "Print the sandbox tenant as JSON, headlined by its public `baseUrl` — read it to point a frontend at the deployed backend without re-running a deploy. Projects only safe fields (never the raw tenant blob)."
     },
     {
       "command": "profile me",
-      "args": "[--config <path>]",
+      "args": "[--config <path>] [--global]",
       "description": "Print the scoped user and the instance base URL as JSON — read `instance` to configure a frontend's API base before a --static upload."
     },
     {
       "command": "login",
-      "args": "[--origin <origin>] [--config <path>] [--port <n>] [--scope <list>]",
-      "description": "OAuth sign-in (browser consent; pick the instance at consent). Caches tokens in ./.xano/auth.json. For CI, set $XANO_REFRESH_TOKEN + $XANO_CLIENT_ID instead."
+      "args": "[--origin <origin>] [--config <path>] [--global] [--port <n>] [--scope <list>]",
+      "description": "OAuth sign-in (browser consent; pick the instance at consent). Caches tokens in ./.xano/auth.json, or in the shared ~/.sidestep/auth.json with --global. For CI, set $XANO_REFRESH_TOKEN + $XANO_CLIENT_ID instead."
     },
     {
       "command": "logout",
-      "args": "[--config <path>]",
-      "description": "Revoke the refresh token and delete the cached credentials."
+      "args": "[--config <path>] [--global]",
+      "description": "Revoke the refresh token and delete the cached credentials (add --global to clear the shared ~/.sidestep cache)."
     },
     {
       "command": "lock",

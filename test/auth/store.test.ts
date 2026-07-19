@@ -40,6 +40,7 @@ describe("auth store", () => {
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
     delete process.env.XANO_CONFIG;
+    delete process.env.XANO_GLOBAL_CONFIG;
   });
 
   it("round-trips a token record through write/read", () => {
@@ -94,16 +95,51 @@ describe("auth store", () => {
     expect(readTokens(path)?.access_token).toBe("acc2");
   });
 
-  it("resolveAuthFilePath honors flag > env > default", () => {
-    const flag = parseArgs(["push", "--config", "/tmp/flag.json"]);
+  it("resolveAuthFilePath honors flag > env > --global > default", () => {
+    // An explicit --config wins over everything, including --global.
+    const flag = parseArgs(["push", "--config", "/tmp/flag.json", "--global"]);
     expect(resolveAuthFilePath(flag)).toBe("/tmp/flag.json");
 
+    // $XANO_CONFIG wins over --global too.
     process.env.XANO_CONFIG = "/tmp/env.json";
-    expect(resolveAuthFilePath(parseArgs(["push"]))).toBe("/tmp/env.json");
-
+    expect(resolveAuthFilePath(parseArgs(["push", "--global"]))).toBe("/tmp/env.json");
     delete process.env.XANO_CONFIG;
-    const def = resolveAuthFilePath(parseArgs(["push"]));
+
+    // --global (no explicit path) resolves the shared cache.
+    process.env.XANO_GLOBAL_CONFIG = join(dir, "global-auth.json");
+    expect(resolveAuthFilePath(parseArgs(["push", "--global"]))).toBe(join(dir, "global-auth.json"));
+    delete process.env.XANO_GLOBAL_CONFIG;
+
+    // The default (write mode) is always the project-local cache.
+    const def = resolveAuthFilePath(parseArgs(["push"]), "write");
     expect(def.endsWith(join(".xano", "auth.json"))).toBe(true);
+  });
+
+  it("read mode prefers the project-local cache, then falls back to the global one", () => {
+    const cwd = process.cwd();
+    const globalPath = join(dir, "global", "auth.json");
+    const localDir = join(dir, "project");
+    mkdirSync(localDir, { recursive: true });
+    process.env.XANO_GLOBAL_CONFIG = globalPath;
+    try {
+      process.chdir(localDir);
+      // Compute the local path from the realpath-resolved cwd (macOS maps
+      // /var/folders → /private/var/folders), matching what resolve() returns.
+      const localPath = join(process.cwd(), ".xano", "auth.json");
+
+      // Neither exists yet → return the local path so errors point there.
+      expect(resolveAuthFilePath(parseArgs(["push"]))).toBe(localPath);
+
+      // Only the global cache exists → fall back to it.
+      writeTokens(globalPath, record);
+      expect(resolveAuthFilePath(parseArgs(["push"]))).toBe(globalPath);
+
+      // A project-local cache takes precedence over the global one.
+      writeTokens(localPath, record);
+      expect(resolveAuthFilePath(parseArgs(["push"]))).toBe(localPath);
+    } finally {
+      process.chdir(cwd);
+    }
   });
 
   describe("ensureGitignored", () => {
