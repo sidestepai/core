@@ -24,8 +24,8 @@
  * positional). `--frozen-lock` is the CI guard: fail instead of changing the
  * lock, so canonicals minted in CI are never silently discarded.
  */
-import { pathToFileURL } from "node:url";
-import { existsSync, writeFileSync } from "node:fs";
+import { pathToFileURL, fileURLToPath } from "node:url";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { emit, serializeBundle } from "./emit.js";
 import { writeArtifact } from "./write.js";
@@ -300,8 +300,35 @@ export async function loadDefault(file: string): Promise<unknown> {
   }
 }
 
+/**
+ * Resolve this package's version for `sidestep version`. Walks up from the running
+ * module to the package root's `package.json` (`dist/cli.js` → `../`, the
+ * `src/emit/cli.ts` source → `../../`), matching on the package NAME so a stray
+ * ancestor `package.json` can't shadow it. Best-effort: returns `"unknown"` rather
+ * than throwing when it can't be located, since a version print must never fail.
+ */
+function readVersion(): string {
+  let dir = dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 6; i++) {
+    const p = join(dir, "package.json");
+    if (existsSync(p)) {
+      try {
+        const pkg = JSON.parse(readFileSync(p, "utf8")) as { name?: string; version?: string };
+        if (pkg.name === "@sidestep/core" && typeof pkg.version === "string") return pkg.version;
+      } catch {
+        /* unreadable or not JSON — keep walking up */
+      }
+    }
+    const up = dirname(dir);
+    if (up === dir) break; // reached the filesystem root
+    dir = up;
+  }
+  return "unknown";
+}
+
 const USAGE =
   "Usage: sidestep <compile|export> <file> [--out <path>] [--lock[=<path>]] [--frozen-lock] | " +
+  "sidestep version | " +
   "sidestep login [--origin <origin>] [--config <path>] [--global] [--port <n>] | " +
   "sidestep logout [--config <path>] [--global] | " +
   "sidestep sandbox deploy <file>|--bundle <path> [--reset] [--static <dir>] [--static-env KEY=VALUE] [--config <path>] [--global] | " +
@@ -366,6 +393,10 @@ export async function run(argv: string[]): Promise<void> {
   const args = parseArgs(argv);
   const { command, out } = args;
 
+  if (command === "version" || command === "--version" || command === "-v") {
+    process.stdout.write(`${readVersion()}\n`);
+    return;
+  }
   if (command === "lock") {
     const { runLockCommand } = await import("./lock-commands.js");
     return runLockCommand(args);

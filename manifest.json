@@ -1,6 +1,6 @@
 {
   "name": "sidestep",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
@@ -9555,7 +9555,11 @@
         },
         {
           "flag": "--static <dir>",
-          "description": "Archive a built frontend directory and deploy it to your workspace's static host (auto-deployed to dev) after the backend import."
+          "description": "Archive a built frontend directory and deploy it to your workspace's static host (auto-deployed to dev) after the backend import. The backend URL is auto-injected into the build's root index.html as `window.XANO_HOST`, so the frontend needs no rebuild to target a sandbox."
+        },
+        {
+          "flag": "--static-env KEY=VALUE",
+          "description": "Repeatable. Bake extra PUBLIC config into the static build's index.html as `window.<KEY>` globals (base URLs, publishable keys). Merged over the auto-seeded XANO_HOST; a static host serves these verbatim, so never put secrets here."
         },
         {
           "flag": "--config <path>",
@@ -9592,6 +9596,11 @@
       "command": "lock",
       "args": "<rename|prune|adopt> …",
       "description": "xano.lock identity maintenance (rename an object, prune stale entries, adopt an existing live bundle)."
+    },
+    {
+      "command": "version",
+      "args": "",
+      "description": "Print the installed @sidestep/core version to stdout (also `--version` / `-v`). Handy for debugging which build is running."
     }
   ]
 }

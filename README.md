@@ -415,10 +415,12 @@ sidestep login                               # OAuth sign-in (once) — pick the
 sidestep sandbox deploy ./xano/index.ts      # compile + import into your sandbox (the dev loop)
 sidestep sandbox deploy ./xano/index.ts --reset            # clear the sandbox first, then import
 sidestep sandbox deploy ./xano/index.ts --static ./dist    # also deploy a static frontend
+sidestep sandbox deploy ./xano/index.ts --static ./dist --static-env PK=pk_live_1   # + extra public config
 sidestep sandbox deploy --bundle ws.json     # deploy an already-exported bundle
 sidestep sandbox details                     # print the sandbox base URL + tenant details (JSON)
 sidestep profile me                          # print the scoped user + instance base URL (JSON)
 sidestep logout                              # revoke the refresh token + delete the local cache
+sidestep version                             # print the installed @sidestep/core version
 ```
 
 Emitters that write to disk (and the programmatic CLI) are Node-only — import them from
