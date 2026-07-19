@@ -19,11 +19,12 @@ export const createLink = query({
   stack: [
     // Reject a non-http(s) URL at the boundary with a real 400 (badrequest),
     // NOT a 200 `s.throw` body a client could mistake for success (see #21).
-    // `fl.istarts_with` pipes the SUBJECT (the url); the arg is the prefix (#22).
-    // An `http` prefix rejects the dangerous schemes (`javascript:`/`data:`); for
-    // a strict scheme match use `fl.regex_test` (`^https?://`, pattern-piped).
+    // `fl.regex_test` runs PHP `preg_match(pattern, subject)` and is PATTERN-piped:
+    // the piped value is the regex, the arg is the text — the REVERSE of
+    // `istarts_with` (#22). `~^https?://~i` (PCRE delimiters, case-insensitive)
+    // matches http/https and rejects `javascript:`/`data:`/`httpfoo://` alike.
     s.precondition({
-      expr: expr(withFilters(inp("url"), fl.istarts_with(c.text("http"))), "=", c.bool(true)),
+      expr: expr(withFilters(c.text("~^https?://~i"), fl.regex_test(inp("url"))), "=", c.bool(true)),
       error_type: "badrequest",
       error: c.text("url must be an http(s) URL"),
     }),

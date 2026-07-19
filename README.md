@@ -425,12 +425,12 @@ guard the scheme before persisting:
 import { s, c, inp, expr, withFilters, fl } from "@sidestep/core";
 
 s.precondition({
-  // `fl.istarts_with` pipes the SUBJECT (the url); the arg is the prefix. An
-  // `http` prefix rejects the dangerous schemes (`javascript:`/`data:` don't
-  // start with it). For a strict scheme match (excluding `httpfoo://` lookalikes)
-  // reach for `fl.regex_test` with a `^https?://` pattern — note it is
-  // pattern-piped, the reverse of `istarts_with` (#22).
-  expr: expr(withFilters(inp("url"), fl.istarts_with(c.text("http"))), "=", c.bool(true)),
+  // `fl.regex_test` runs PHP `preg_match(pattern, subject)`. It is PATTERN-piped:
+  // the piped value is the regex, the arg is the text tested — the REVERSE of
+  // `istarts_with`, whose piped value is the subject (#22). The pattern needs
+  // PCRE delimiters (`~…~i` = case-insensitive); `^https?://` matches http/https
+  // and rejects `javascript:`, `data:`, and `httpfoo://` lookalikes alike.
+  expr: expr(withFilters(c.text("~^https?://~i"), fl.regex_test(inp("url"))), "=", c.bool(true)),
   error_type: "badrequest",                       // → HTTP 400 (not a 200 throw)
   error: c.text("url must be an http(s) URL"),
 })
