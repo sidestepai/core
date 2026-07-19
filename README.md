@@ -493,6 +493,15 @@ failure) when the archive has no root `index.html` with a `<head>` to anchor to;
 `<`-escaped so one containing `</script>` can't break out of the element. This is why a
 prebuilt `./dist` can retarget any sandbox with no rebuild.
 
+> **Caching — verify with a cache buster.** The static host serves `index.html` with
+> `Cache-Control: public, max-age=3600`, so a browser (or CDN) that loaded the page before
+> your latest deploy can hold the old HTML — including a *pre-injection* `<script>`-less
+> version — for up to an hour. If `window.XANO_HOST` looks missing, it's almost always this:
+> hard-reload (Cmd/Ctrl+Shift+R) or open DevTools with "Disable cache" checked. When
+> verifying from a script or agent, append a throwaway query param so you never read a cached
+> copy — `curl -s "$URL/?nocache=$(date +%s)"` — and check the fetched HTML for the injected
+> `window.XANO_HOST` line rather than retrying the same cached URL.
+
 `sidestep sandbox details` prints the same **sandbox base URL** (`GET /api:meta/sandbox/me`,
 projected to JSON) out of band, for cases where you'd rather bake it in at build time.
 (`sidestep profile me` prints the *instance* base URL, i.e. the account's origin rather than
