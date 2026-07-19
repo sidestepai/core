@@ -84,21 +84,34 @@ command** — point `--static` at your built frontend and it archives and upload
 sandbox's edge-served static host, right after the backend import, in the same run:
 
 ```bash
-npm run build                                          # build your React/Vue/Angular app → ./dist
+# 1. Get the sandbox's backend base URL (stable per account) and bake it into the
+#    build. `sandbox details` prints the sandbox tenant URL your APIs live at.
+BASE=$(npx sidestep sandbox details | jq -r .baseUrl)
 
-npx sidestep sandbox deploy ./xano/index.ts \
-    --static ./dist                                    # backend + frontend, live, together
+# 2. Build your app against it. The env-var NAME is your framework's convention
+#    (Vite shown); the VALUE is the sandbox base URL from step 1.
+VITE_XANO_HOST="$BASE" npm run build                   # → ./dist, pointed at the sandbox
+
+# 3. Ship backend + frontend, live, together.
+npx sidestep sandbox deploy ./xano/index.ts --static ./dist
 ```
 
 ```
 Deploying ./xano/index.ts -> sandbox (merges into the sandbox workspace).
-Deployed:              https://x8ki-letl.n7.xano.io               ← backend, live
-Static host deployed:  https://my-app.xano.io                     ← frontend, live
+Deployed:              https://x8ki-letl.n7.xano.io/tenant/sbx-ab12   ← backend, live
+Static host deployed:  https://my-app.xano.io                         ← frontend, live
 ```
 
 One authenticated call ships your database schema, your APIs, your functions and
 triggers, **and** your compiled web app. No separate frontend host to configure, no CI
 glue wiring the two together.
+
+> **Wiring the frontend to the backend.** The compiled app needs the sandbox's backend
+> URL baked in *at build time*, so fetch it first with `sidestep sandbox details` (the
+> `baseUrl` field) and pass it to your build as an env var — as in step 1–2 above. That
+> `baseUrl` is the **sandbox tenant** URL your deployed APIs answer at; it is *not* the same
+> as `sidestep profile me`, which prints your account's instance origin. The sandbox is a
+> singleton per account, so its `baseUrl` is stable — fetch it once and reuse it.
 
 **Two modes**, so you're always in control:
 
@@ -195,7 +208,9 @@ npx sidestep login                 # opens your browser; you pick the instance
 # 4. Deploy to your sandbox — this is the dev loop
 npx sidestep sandbox deploy ./xano/index.ts
 
-# 5. Ship a built frontend alongside it
+# 5. Ship a built frontend alongside it — point it at the sandbox backend first
+BASE=$(npx sidestep sandbox details | jq -r .baseUrl)   # the sandbox's backend URL
+VITE_XANO_HOST="$BASE" npm run build                    # bake it into ./dist
 npx sidestep sandbox deploy ./xano/index.ts --static ./dist
 ```
 
