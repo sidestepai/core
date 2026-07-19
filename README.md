@@ -430,13 +430,13 @@ take a partial `row: { … }`; only `s.db.query` takes a `where` comparison buil
 
 **Runtime behavior.** Knowing what these return matters for typing your endpoint responses:
 
-- `s.db.get` **throws** `NotFound` (HTTP 404) when no row matches — it does *not* return `null`.
-  On a hit it binds the full row. When a row may be absent, check with `s.db.has` first or
-  wrap the get in `s.try_catch`.
+- `s.db.get` binds **`null`** when no row matches — it does *not* throw. So its response type
+  is `InferRow<typeof table> | null`; null-check it. On a hit it binds the full row.
+  (`s.db.has` is the boolean existence test.)
 - `s.db.edit` binds the **full, post-mutation row** (the freshly-written values), `s.db.del`
   the **full deleted row**, and `s.db.add` the **full inserted row** (including the
   auto-assigned `id`/`created_at`). So `InferRow<typeof table>` is the correct response type
-  for all three. `edit`/`del` also throw `NotFound` when nothing matches.
+  for those three. Unlike `get`, `edit`/`del` **throw** `NotFound` (404) when nothing matches.
 
 **Values** — `c.int/text/bool/decimal/null/obj/array`, `ref(var)`, `inp(input)`,
 `col(name)`, plus context refs `auth(path?)`, `env(name)`, `setting(name)`.
