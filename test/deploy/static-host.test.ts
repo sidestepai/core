@@ -76,6 +76,69 @@ describe("deployStaticHost", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it("bakes env into the root index.html as window.<KEY> globals before the app bundle", async () => {
+    const dir = tmpDirWith({
+      "index.html": '<!doctype html><head><script type="module" src="/app.js"></script></head><body></body>',
+      "app.js": "console.log(window.XANO_HOST)",
+    });
+    let sent: Buffer | undefined;
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(async (_url, init) => {
+      const file = (init!.body as FormData).get("file") as Blob;
+      sent = Buffer.from(await file.arrayBuffer());
+      return new Response('{"default_url":"https://d.xano.io"}', { status: 200 });
+    });
+
+    const out = await deployStaticHost({
+      dir,
+      workspaceId: 1,
+      baseUrl: AUTH.instance,
+      accessToken: AUTH.access_token,
+      env: { XANO_HOST: "https://sbx.xano.io/tenant/sbx-1", PK: "pk_live_1" },
+    });
+
+    expect(out.envInjected).toBe(true);
+    const tar = gunzipSync(sent!).toString("utf8");
+    expect(tar).toContain('window["XANO_HOST"]="https://sbx.xano.io/tenant/sbx-1";');
+    expect(tar).toContain('window["PK"]="pk_live_1";');
+    // Injected at the top of <head>, i.e. before the app's module script.
+    expect(tar.indexOf("window[")).toBeLessThan(tar.indexOf('src="/app.js"'));
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("escapes a value containing </script> so it cannot break out of the bootstrap element", async () => {
+    const dir = tmpDirWith({ "index.html": "<head></head>" });
+    let sent: Buffer | undefined;
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(async (_url, init) => {
+      sent = Buffer.from(await ((init!.body as FormData).get("file") as Blob).arrayBuffer());
+      return new Response("{}", { status: 200 });
+    });
+    await deployStaticHost({
+      dir,
+      workspaceId: 1,
+      baseUrl: AUTH.instance,
+      accessToken: AUTH.access_token,
+      env: { X: "a</script><script>alert(1)" },
+    });
+    const tar = gunzipSync(sent!).toString("utf8");
+    expect(tar).not.toContain("</script><script>alert(1)");
+    expect(tar).toContain("\\u003c/script>");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("skips injection (envInjected=false) when there is no root index.html, without throwing", async () => {
+    const dir = tmpDirWith({ "assets/app.js": "console.log(1)" });
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response("{}", { status: 200 }));
+    const out = await deployStaticHost({
+      dir,
+      workspaceId: 1,
+      baseUrl: AUTH.instance,
+      accessToken: AUTH.access_token,
+      env: { XANO_HOST: "https://d.xano.io" },
+    });
+    expect(out.envInjected).toBe(false);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it("errors when the directory is missing", async () => {
     await expect(deployStaticHost({ dir: "/no/such/dir", workspaceId: 1, baseUrl: AUTH.instance, accessToken: AUTH.access_token })).rejects.toThrow(/directory not found/);
   });

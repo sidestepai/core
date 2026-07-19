@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -90,6 +90,34 @@ describe("CLI", () => {
       command: "lock",
       positionals: ["rename", "function", "a", "b"],
     });
+  });
+
+  it("parseArgs collects repeatable --static-env KEY=VALUE pairs (= in the value is kept)", () => {
+    expect(
+      parseArgs(["sandbox", "deploy", "f.ts", "--static", "./dist", "--static-env", "PK=pk_1", "--static-env=Q=a=b"]),
+    ).toMatchObject({
+      command: "sandbox",
+      subcommand: "deploy",
+      file: "f.ts",
+      static: "./dist",
+      staticEnv: { PK: "pk_1", Q: "a=b" },
+    });
+  });
+
+  it("parseArgs rejects a --static-env without KEY=VALUE", () => {
+    expect(() => parseArgs(["sandbox", "deploy", "f.ts", "--static-env", "NOPE"])).toThrow(/KEY=VALUE/);
+    expect(() => parseArgs(["sandbox", "deploy", "f.ts", "--static-env", "=v"])).toThrow(/KEY=VALUE/);
+  });
+
+  it("`version` (and --version / -v) prints the package.json version to stdout", async () => {
+    const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
+    const { version } = JSON.parse(readFileSync(pkgPath, "utf8")) as { version: string };
+    for (const cmd of ["version", "--version", "-v"]) {
+      const spy = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+      await run([cmd]);
+      expect(spy).toHaveBeenCalledWith(`${version}\n`);
+      spy.mockRestore();
+    }
   });
 
   it("compiling the example module writes the expected JSON to --out", async () => {

@@ -102,11 +102,24 @@ export interface StaticHostRequest {
   /** Static-host NAME, used verbatim in the build path. The meta build route
    *  auto-creates it only when it is `default`. Defaults to `default`. */
   host?: string;
+  /**
+   * Public config baked into the archive's root `index.html` as `window.<KEY>`
+   * globals, evaluated before the app bundle runs. The deploy layer seeds
+   * `XANO_HOST` with the sandbox backend URL and merges any `--static-env`.
+   *
+   * A static host has no server runtime: every value here is served to the
+   * browser verbatim, so it is **public** — base URLs and publishable keys only,
+   * never secrets. When there is no root `index.html` to anchor to, injection is
+   * skipped and `envInjected` is false.
+   */
+  env?: Record<string, string>;
 }
 
 export interface StaticHostResult {
   /** The deployed build's live URL, if the endpoint reports one. */
   url: string | undefined;
+  /** True when `env` was non-empty AND a root `index.html` received the config script. */
+  envInjected: boolean;
   raw: string;
 }
 
@@ -129,6 +142,32 @@ function pickUrl(parsed: Record<string, unknown>): string | undefined {
 }
 
 /**
+ * Build the inline bootstrap `<script>` that assigns each env entry to a window
+ * global. Bracket-notation assignment tolerates any key (including ones that
+ * aren't valid identifiers), and `<`-escaping the whole payload keeps a
+ * value that contains `</script>` from closing the element early.
+ */
+function envScript(env: Record<string, string>): string {
+  const body = Object.entries(env)
+    .map(([k, v]) => `window[${JSON.stringify(k)}]=${JSON.stringify(v)};`)
+    .join("")
+    .replace(/</g, "\\u003c");
+  return `<script>${body}</script>`;
+}
+
+/**
+ * Inject the bootstrap script at the very top of `<head>` so it runs before any
+ * app bundle. Returns the rewritten HTML, or `undefined` when there is no `<head>`
+ * to anchor to (the caller then treats config as not injected).
+ */
+function injectEnv(html: string, script: string): string | undefined {
+  const head = /<head[^>]*>/i.exec(html);
+  if (!head) return undefined;
+  const at = head.index + head[0].length;
+  return html.slice(0, at) + script + html.slice(at);
+}
+
+/**
  * Archive `dir` and POST it to the meta static-host build endpoint for the given
  * (parent) workspace. The route auto-creates the `default` host and auto-deploys
  * to `dev`, returning the live URL — a single call, no lookup or publish step.
@@ -141,6 +180,20 @@ export async function deployStaticHost(req: StaticHostRequest): Promise<StaticHo
   if (files.length === 0) {
     throw new Error(`--static ${req.dir}: no files to deploy (directory is empty).`);
   }
+
+  // Bake public config into the root index.html as window.<KEY> globals. Skipped
+  // (envInjected stays false) when there is no config or no index.html to anchor to.
+  let envInjected = false;
+  const env = req.env ?? {};
+  if (Object.keys(env).length > 0) {
+    const index = files.find((f) => f.path === "index.html");
+    const rewritten = index && injectEnv(index.data.toString("utf8"), envScript(env));
+    if (index && rewritten !== undefined) {
+      index.data = Buffer.from(rewritten, "utf8");
+      envInjected = true;
+    }
+  }
+
   const archive = tarGz(files);
   if (archive.length > MAX_ARCHIVE_BYTES) {
     throw new Error(`--static ${req.dir}: archive is ${archive.length} bytes, over the ${MAX_ARCHIVE_BYTES}-byte cap.`);
@@ -171,5 +224,5 @@ export async function deployStaticHost(req: StaticHostRequest): Promise<StaticHo
   } catch {
     /* non-JSON — surface verbatim, url stays undefined */
   }
-  return { url: pickUrl(parsed), raw: text };
+  return { url: pickUrl(parsed), envInjected, raw: text };
 }
