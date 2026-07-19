@@ -4,7 +4,8 @@ import { defineFunction } from "../../src/function/define.js";
 import { apiGroup } from "../../src/kinds/api-group.js";
 import { table } from "../../src/kinds/table.js";
 import { f } from "../../src/fields/catalog.js";
-import { ref } from "../../src/values/value.js";
+import { ref, c } from "../../src/values/value.js";
+import { s } from "../../src/statements/s.js";
 import type { InferResponse } from "../../src/responses/infer.js";
 import type { InferRow } from "../../src/kinds/table.js";
 
@@ -112,8 +113,109 @@ describe("InferResponse (type-level)", () => {
     void r;
   });
 
-  it("single-variable response with no trace yet → unknown (U5 will trace it)", () => {
+  it("single-variable response with an empty/absent stack → unknown", () => {
     expectTypeOf<InferResponse<typeof singleVar>>().toEqualTypeOf<unknown>();
+  });
+});
+
+// U5 — the single-variable trace against the branded stack. These are the
+// headline testbed patterns that previously required hand-asserted return types.
+const listLinksTraced = query({
+  verb: "GET",
+  apiGroup: links,
+  name: "list_links_traced",
+  stack: [s.db.query({ table: link, as: "rows" })],
+  response: ref("rows"),
+});
+
+const getLinkTraced = query({
+  verb: "GET",
+  apiGroup: links,
+  name: "get_link_traced",
+  stack: [s.db.get({ table: link, fieldValue: c.int(1), as: "row" })],
+  response: ref("row"),
+});
+
+const getNarrowed = query({
+  verb: "GET",
+  apiGroup: links,
+  name: "get_narrowed",
+  stack: [s.db.get({ table: link, fieldValue: c.int(1), output: ["id", "slug"], as: "row" })],
+  response: ref("row"),
+});
+
+const objectTraced = query({
+  verb: "GET",
+  apiGroup: links,
+  name: "object_traced",
+  stack: [s.db.get({ table: link, fieldValue: c.int(1), as: "row" })],
+  response: { item: ref("row") },
+});
+
+const unresolvableRef = query({
+  verb: "GET",
+  apiGroup: links,
+  name: "unresolvable_ref",
+  stack: [s.db.get({ table: link, fieldValue: c.int(1), as: "row" })],
+  response: ref("nope"),
+});
+
+const setVarResponse = query({
+  verb: "GET",
+  apiGroup: links,
+  name: "set_var_response",
+  stack: [s.set_var("computed", c.int(1))],
+  response: ref("computed"),
+});
+
+describe("InferResponse — single-variable trace (U5, type-level)", () => {
+  it("list: db.query result returned → InferRow<typeof link>[]", () => {
+    expectTypeOf<InferResponse<typeof listLinksTraced>>().toEqualTypeOf<
+      InferRow<typeof link>[]
+    >();
+  });
+
+  it("get: db.get result returned → InferRow<typeof link>", () => {
+    expectTypeOf<InferResponse<typeof getLinkTraced>>().toEqualTypeOf<InferRow<typeof link>>();
+  });
+
+  it("column-narrowed get → Pick of the selected columns", () => {
+    expectTypeOf<InferResponse<typeof getNarrowed>>().toEqualTypeOf<
+      Pick<InferRow<typeof link>, "id" | "slug">
+    >();
+  });
+
+  it("object-literal response with a traceable value resolves that key's shape", () => {
+    expectTypeOf<InferResponse<typeof objectTraced>>().toEqualTypeOf<{
+      item: InferRow<typeof link>;
+    }>();
+  });
+
+  it("a ref with no matching statement → unknown", () => {
+    expectTypeOf<InferResponse<typeof unresolvableRef>>().toEqualTypeOf<unknown>();
+  });
+
+  it("a ref to a set_var (unbranded) var → unknown (engine-faithful)", () => {
+    expectTypeOf<InferResponse<typeof setVarResponse>>().toEqualTypeOf<unknown>();
+  });
+
+  it("traces the correct statement in a deeper mixed stack (recursion smoke test)", () => {
+    const deep = query({
+      verb: "GET",
+      apiGroup: links,
+      name: "deep_stack",
+      stack: [
+        s.set_var("a", c.int(1)),
+        s.db.query({ table: link, as: "listing" }),
+        s.set_var("b", c.text("x")),
+        s.db.get({ table: link, fieldValue: c.int(1), output: ["id"], as: "target" }),
+        s.set_var("c", c.bool(true)),
+      ],
+      response: ref("target"),
+    });
+    expectTypeOf<InferResponse<typeof deep>>().toEqualTypeOf<
+      Pick<InferRow<typeof link>, "id">
+    >();
   });
 
   it("defineFunction carries a declared responseShape identically", () => {

@@ -25,7 +25,7 @@
  *      `set_var`, function-produced vars, streams) resolves to `unknown`, which
  *      the author narrows or overrides via `responseShape`.
  */
-import type { Value } from "../values/value.js";
+import type { Value, RefValue } from "../values/value.js";
 
 /**
  * The author-declared response shape, read from a def's `responseShape` field
@@ -45,30 +45,48 @@ type DeclaredResponse<Q> = Q extends { responseShape?: infer R }
   : never;
 
 /**
- * Resolve one response {@link Value} to its type. A stub (`unknown`) here;
- * extended in U5 (trace a `ref` to the branded `db.get`/`db.query` that produced
- * it) and U6 (degrade a filtered value to `unknown`). Until then every value is
- * `unknown` — the honest floor, matching the engine's `json` fallback.
+ * Search a branded stack tuple `S` for the read statement that bound the
+ * variable `Name` (its phantom `__as`), returning that statement's `__shape`.
+ * Mirrors the engine's `findVarSchema`: a one-hop, top-level match. Statements
+ * without the `__as`/`__shape` brand (`set_var`, control flow, function calls)
+ * are skipped, so a ref into one of those falls through to `unknown` — exactly
+ * where the engine falls back to `json`. A widened (non-tuple) stack matches no
+ * head and yields `unknown` too.
  */
-type ResolveValue<_V> = unknown;
+type TraceVar<Name extends string, S> = S extends readonly [infer Head, ...infer Tail]
+  ? Head extends { __as: infer As extends string; __shape: infer Shape }
+    ? As extends Name
+      ? Name extends As
+        ? Shape
+        : TraceVar<Name, Tail>
+      : TraceVar<Name, Tail>
+    : TraceVar<Name, Tail>
+  : unknown;
+
+/**
+ * Resolve one response {@link Value} to its type against the branded stack `S`.
+ * A branded `ref` traces to the statement that produced it ({@link TraceVar});
+ * anything else (a non-ref value, an untraceable ref) is `unknown` — the honest
+ * floor. U6 additionally degrades a filtered value to `unknown`.
+ */
+type ResolveValue<V, S> = V extends RefValue<infer Name> ? TraceVar<Name, S> : unknown;
 
 /**
  * Best-effort automatic derivation of a response shape from the def's `response`
- * field. Mirrors the Xano engine's static walk:
- *   - a record response (object literal) → an object with **those keys** (values
- *     resolved individually via {@link ResolveValue}); the keys are statically
- *     known regardless of whether the values can be traced;
- *   - a single {@link Value} response → {@link ResolveValue} of it;
+ * field and branded `stack`. Mirrors the Xano engine's static walk:
+ *   - a record response (object literal) → an object with **those keys** (each
+ *     value resolved individually); keys are known regardless of traceability;
+ *   - a single {@link Value} response → resolve it against the stack;
  *   - no response / an unresolvable shape → `unknown`.
  * Kept separate from {@link DeclaredResponse} so the user override always wins.
  */
-export type DeriveResponse<Q> = Q extends { response?: infer Resp }
+export type DeriveResponse<Q> = Q extends { response?: infer Resp; stack?: infer S }
   ? [Resp] extends [undefined]
     ? unknown
     : Resp extends Value
-      ? ResolveValue<Resp>
+      ? ResolveValue<Resp, S>
       : Resp extends Record<string, Value>
-        ? { -readonly [K in keyof Resp]: ResolveValue<Resp[K]> }
+        ? { -readonly [K in keyof Resp]: ResolveValue<Resp[K], S> }
         : unknown
   : unknown;
 
