@@ -13,12 +13,13 @@ import type { ParsedArgs } from "./cli.js";
 import { OpenIdProvider } from "../auth/oauth.js";
 import { readTokens, clearTokens, resolveAuthFilePath } from "../auth/store.js";
 import { resolveScope } from "../auth/config.js";
+import { success, warn, detail, hostLabel } from "./ui.js";
 
 export async function runLogoutCommand(args: ParsedArgs): Promise<void> {
   const authFilePath = resolveAuthFilePath(args);
   const saved = readTokens(authFilePath);
   if (!saved) {
-    process.stderr.write(`Not signed in (no token cache at ${authFilePath}). Nothing to do.\n`);
+    detail(`Not signed in (no token cache at ${authFilePath}). Nothing to do.`);
     return;
   }
 
@@ -34,13 +35,14 @@ export async function runLogoutCommand(args: ParsedArgs): Promise<void> {
     try {
       await provider.revoke(saved.refresh_token);
     } catch (err) {
-      process.stderr.write(
-        `Warning: could not revoke the refresh token at ${saved.auth_host} ` +
-          `(${err instanceof Error ? err.message : String(err)}). Clearing local credentials anyway.\n`,
+      warn(
+        `Could not revoke the refresh token at ${hostLabel(saved.auth_host)} ` +
+          `(${err instanceof Error ? err.message : String(err)}). Clearing local credentials anyway.`,
       );
     }
   }
 
   clearTokens(authFilePath);
-  process.stderr.write(`Signed out of ${saved.instance}. Removed ${authFilePath}.\n`);
+  success(`Signed out of ${hostLabel(saved.instance)}`);
+  detail(`Removed ${authFilePath}`);
 }
