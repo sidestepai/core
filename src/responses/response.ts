@@ -11,8 +11,8 @@ import type { Statement } from "../statements/statement.js";
 export type ResponseDef = Value | Record<string, Value>;
 
 /**
- * Warn when a response-bearing def (query/function) ends work with a top-level
- * `s.return(...)` (`mvp:return`) but declares no `response`. In these kinds the
+ * Warn when a response-bearing def (query/function) has a top-level
+ * `s.return(...)` (`mvp:return`) in its stack but declares no `response`. In these kinds the
  * response is driven **only** by the `response` field — `s.return` in the stack
  * does not populate it — so the def compiles cleanly into an endpoint whose
  * `result` is empty and that returns nothing, with no other signal. This is the
