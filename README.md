@@ -285,7 +285,8 @@ async function login(email: string, password: string) {
 - **`InferRow<typeof postTable>`** is the read-side counterpart: the row type of a
   table whose schema is a `FieldMap` (`{ title: f.text(), … }`), derived from the same
   field brands. Every declared column is present (`nullable` adds `| null`, `f.list`
-  → `T[]`), plus the auto-injected system columns `id: number` and `created_at: number`.
+  → `T[]`), plus the auto-injected system columns `id` and `created_at: number`
+  (`id: number`, or `id: string` when the table sets `idType: "uuid"`).
   Type your response usage against it instead of hand-copying the table, and a column
   rename/retype lights up every consumer — closing the loop `InferInput` opens on the
   request side.
@@ -302,6 +303,14 @@ async function login(email: string, password: string) {
   `unknown`. (Response-level inference from a query — `InferResponse<typeof listPosts>`
   — is a planned follow-up; for now derive the row from the table and wrap it as the
   endpoint returns it, e.g. `InferRow<typeof post>[]`.)
+
+  `InferRow` is the table's **full declared row**, not a specific endpoint's payload —
+  an endpoint returns whatever its `response`/`output` selects. In particular
+  `created_at` is `access:"private"`, which the engine drops from a *default,
+  auto-shaped* read, so that payload omits it even though `InferRow` lists it; a
+  response that explicitly selects `created_at` returns it. Narrow with
+  `Omit<InferRow<typeof post>, "created_at">` on the auto-shaped path if you need the
+  exact shape.
 
 **Browser-safe.** The `@sidestep/core` entry has no Node built-in dependencies, so
 importing a query def (and its transitive workspace graph) into an Angular/React
