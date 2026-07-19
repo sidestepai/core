@@ -284,8 +284,8 @@ export type {
   ViewDef,
   ViewXdo,
 } from "./kinds/table.js";
-export { query, queryKind, encodeQuery } from "./kinds/query.js";
-export type { QueryDef, QueryHandle, QueryXdo, HttpVerb } from "./kinds/query.js";
+export { query, queryKind, encodeQuery, toSearchParams } from "./kinds/query.js";
+export type { QueryDef, QueryHandle, QueryXdo, HttpVerb, SearchParamValue } from "./kinds/query.js";
 export { apiGroup, apiGroupKind, encodeApiGroup } from "./kinds/api-group.js";
 export type { ApiGroupDef, ApiGroupXdo, CorsConfig } from "./kinds/api-group.js";
 export { task, taskKind, encodeTask, encodeSchedule } from "./kinds/task.js";

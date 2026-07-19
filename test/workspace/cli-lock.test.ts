@@ -206,10 +206,14 @@ export default new Xano()
     expect(existsSync(outPath)).toBe(false);
   });
 
-  it("missing lock without --lock warns on stderr and exports unlocked", async () => {
+  it("missing lock without --lock prints an FYI on stderr and exports unlocked", async () => {
     const entry = writeWorkspace("sayHello");
     await run(["export", entry, "--out", join(dir, "b.json")]);
+    // Guidance, not a problem: an info `i` line, NOT the warning `!` glyph, so a
+    // clean lockless export doesn't scan as a warning in CI logs (#8).
     expect(stderrText()).toContain("Exporting without xano.lock");
+    expect(stderrText()).toMatch(/i Exporting without xano\.lock/);
+    expect(stderrText()).not.toMatch(/! Exporting without xano\.lock/);
     expect(existsSync(join(dir, "xano.lock"))).toBe(false);
     const bundle = JSON.parse(readFileSync(join(dir, "b.json"), "utf8"));
     expect(bundle.payload.app[0].canonical).toBe(""); // no minting when unlocked

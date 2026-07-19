@@ -43,6 +43,15 @@ export function warn(msg: string): void {
   process.stderr.write(`${style.yellow("!")} ${msg}\n`);
 }
 
+/**
+ * An informational FYI (`i …`, cyan) — guidance, not a problem. Distinct from
+ * {@link warn}'s yellow `!` so a clean run's advisories don't scan as warnings
+ * in CI logs. Still on stderr, so stdout stays a clean data channel.
+ */
+export function info(msg: string): void {
+  process.stderr.write(`${style.cyan("i")} ${msg}\n`);
+}
+
 /** A dim, indented detail line under the preceding step/outcome. */
 export function detail(msg: string): void {
   process.stderr.write(`  ${style.dim(msg)}\n`);

@@ -32,3 +32,19 @@ export function login(email: string, password: string): Promise<Response> {
     body: JSON.stringify(payload),
   });
 }
+
+// A GET query carries its inputs in the query string, not a JSON body.
+export const getSnippet = query({
+  name: "get_snippet",
+  verb: "GET",
+  apiGroup: auth,
+  input: { id: input.int({ required: true }) },
+});
+
+export type GetSnippetPayload = InferInput<typeof getSnippet>; // { id: number }
+
+export function fetchSnippet(id: number): Promise<Response> {
+  const params = { id } satisfies GetSnippetPayload;
+  // `query.toSearchParams` is the GET transport counterpart to `InferInput`.
+  return fetch(`${BASE}${getSnippet.getPath()}?${query.toSearchParams(params)}`);
+}

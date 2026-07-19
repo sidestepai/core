@@ -44,7 +44,7 @@ import {
 } from "../lock/lock.js";
 import { readLockFile, writeLockFile } from "../lock/io.js";
 import { resetLockOverrides, seedLockOverrides } from "../lock/store.js";
-import { warn, detail } from "./ui.js";
+import { warn, info, detail } from "./ui.js";
 
 export interface ParsedArgs {
   command: string | undefined;
@@ -535,7 +535,7 @@ export async function exportBundleJson(args: ParsedArgs): Promise<string> {
         `and commit it.`,
     );
   } else {
-    warn(
+    info(
       `Exporting without xano.lock — identities derive from names, so a rename becomes delete+create ` +
         `on sync. Pass --lock to freeze them.`,
     );

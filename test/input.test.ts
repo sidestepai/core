@@ -75,6 +75,16 @@ describe("encodeInput", () => {
     expect(encodeInput("u", input.uuid()).type).toBe("uuid");
   });
 
+  it("input.url encodes to the engine `text` type (no native url type) and keeps text methods (#12)", () => {
+    // There is no engine `url` type — a fake one would be rejected at push (cf.
+    // the #15 unique-index bug). `input.url()` is a text field; http(s)
+    // enforcement is a boundary guard, not the type.
+    expect(encodeInput("link", input.url()).type).toBe("text");
+    expect(encodeInput("link", input.url({ required: true, methods: ["trim"] })).methods).toEqual([
+      { name: "trim", arg: [], disabled: false },
+    ]);
+  });
+
   it("enum carries its values and requires a non-empty list", () => {
     const enc = encodeInput("status", input.enum(["active", "archived"]));
     expect(enc.type).toBe("enum");

@@ -262,8 +262,26 @@ async function fetchPosts(): Promise<Post[]> {
 - **`InferInput<typeof someQuery>`** → the request-payload type, derived from a query's
   `input` map at compile time. Required inputs are required keys; enums become literal
   unions; nested objects and lists carry through. **No codegen, always in sync.**
+- **`query.toSearchParams(input)`** → the GET transport counterpart to `InferInput`:
+  serialize an input map into a `URLSearchParams` (scalars stringify, arrays repeat the
+  key, `null`/`undefined` are dropped) instead of hand-building `?id=…`.
 - **`InferRow<typeof post>`** → the table's row type. Rename or retype a column and every
   consumer breaks at compile time — exactly where you want it.
+
+A GET endpoint carries its inputs in the query string rather than a JSON body:
+
+```ts
+import { getSnippet } from "../xano/index.js";
+import { query, type InferInput } from "@sidestep/core";
+
+const BASE = "https://your-instance.xano.io";
+
+async function fetchSnippet(id: number) {
+  const params = { id } satisfies InferInput<typeof getSnippet>;   // { id: number }
+  const res = await fetch(`${BASE}${getSnippet.getPath()}?${query.toSearchParams(params)}`);
+  return res.json();
+}
+```
 
 The `@sidestep/core` entry has **zero Node dependencies**, so importing your workspace
 graph into a browser bundle just works. The `node:fs`-backed emitters live in the
@@ -393,7 +411,30 @@ take a partial `row: { … }`; only `s.db.query` takes a `where` comparison buil
 
 **Inputs** — `input.*` mirrors `f.*` exactly: every engine-legal field type is a valid
 function/query input. Use `input.object(children)` and `input.list(element)` for structured
-shapes. **Comparisons** use `= != > < >= <=` (JS `== === !==` are normalized).
+shapes. `input.url()` names a URL-typed text field. **Comparisons** use `= != > < >= <=`
+(JS `== === !==` are normalized).
+
+**Validate input at the boundary.** Field types don't enforce arbitrary rules, so reject
+bad input in the stack with `s.precondition` — it raises a **status-bearing** error
+(`error_type: "badrequest"` → HTTP 400) a client can detect via `res.ok`, unlike `s.throw`,
+which returns 200 with an error body. Example: a link shortener stores user URLs and later
+navigates to them, so a `javascript:`/`data:` URL is a stored-XSS / open-redirect vector —
+guard the scheme before persisting:
+
+```ts
+import { s, c, inp, expr, withFilters, fl } from "@sidestep/core";
+
+s.precondition({
+  // `fl.regex_test` runs PHP `preg_match(pattern, subject)`. It is PATTERN-piped:
+  // the piped value is the regex, the arg is the text tested — the REVERSE of
+  // `istarts_with`, whose piped value is the subject (#22). The pattern needs
+  // PCRE delimiters (`~…~i` = case-insensitive); `^https?://` matches http/https
+  // and rejects `javascript:`, `data:`, and `httpfoo://` lookalikes alike.
+  expr: expr(withFilters(c.text("~^https?://~i"), fl.regex_test(inp("url"))), "=", c.bool(true)),
+  error_type: "badrequest",                       // → HTTP 400 (not a 200 throw)
+  error: c.text("url must be an http(s) URL"),
+})
+```
 
 </details>
 

@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { encodeQuery, queryKind } from "../../src/kinds/query.js";
+import {
+  encodeQuery,
+  queryKind,
+  query,
+  toSearchParams,
+  type SearchParamValue,
+} from "../../src/kinds/query.js";
 import { encodeApiGroup, apiGroupKind } from "../../src/kinds/api-group.js";
 import { Xano } from "../../src/workspace/xano.js";
 import { input } from "../../src/inputs/input.js";
@@ -124,5 +130,49 @@ describe("query + api_group on Xano", () => {
     expect(q.find((x) => x.name === "byDef").app.id).toBe(groupGuid);
     expect(q.find((x) => x.name === "byName").app.id).toBe(groupGuid);
     expect(q.find((x) => x.name === "explicitWins").app.id).toBe(9); // numeric override wins
+  });
+
+  describe("toSearchParams (GET transport, #6)", () => {
+    it("serializes scalars, stringifying numbers and booleans", () => {
+      const p = toSearchParams({ id: 7, active: true, q: "hi there" });
+      expect(p.toString()).toBe("id=7&active=true&q=hi+there");
+    });
+
+    it("keeps falsy-but-present scalars (false, 0) — only null/undefined drop", () => {
+      const p = toSearchParams({ active: false, count: 0 });
+      expect(p.get("active")).toBe("false");
+      expect(p.get("count")).toBe("0");
+    });
+
+    it("repeats the key for array values and omits null/undefined", () => {
+      const p = toSearchParams({ tag: ["a", "b"], skip: undefined, none: null, page: 2 });
+      expect(p.getAll("tag")).toEqual(["a", "b"]);
+      expect(p.has("skip")).toBe(false);
+      expect(p.has("none")).toBe(false);
+      expect(p.get("page")).toBe("2");
+    });
+
+    it("skips null/undefined interior array elements and omits an empty array", () => {
+      const p = toSearchParams({ tag: ["a", null, "b", undefined], empty: [] });
+      expect(p.getAll("tag")).toEqual(["a", "b"]);
+      expect(p.has("empty")).toBe(false);
+    });
+
+    it("throws rather than serializing a non-finite number or a non-scalar", () => {
+      expect(() => toSearchParams({ n: NaN })).toThrow(/finite/);
+      expect(() => toSearchParams({ n: Infinity })).toThrow(/finite/);
+      // A non-scalar that slipped past the type via `any` fails loud, not "[object Object]".
+      expect(() => toSearchParams({ o: {} as never })).toThrow(/not a scalar/);
+    });
+
+    it("is reachable as a static on `query`", () => {
+      expect(query.toSearchParams).toBe(toSearchParams);
+      expect(query.toSearchParams({ id: 1 }).toString()).toBe("id=1");
+    });
+
+    it("accepts a `SearchParamValue`-typed map (exported type stays in the barrel)", () => {
+      const one: SearchParamValue = ["a", 1, true, null];
+      expect(toSearchParams({ k: one }).getAll("k")).toEqual(["a", "1", "true"]);
+    });
   });
 });
