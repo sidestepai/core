@@ -4,7 +4,8 @@ import { defineFunction } from "../../src/function/define.js";
 import { apiGroup } from "../../src/kinds/api-group.js";
 import { table } from "../../src/kinds/table.js";
 import { f } from "../../src/fields/catalog.js";
-import { ref, c } from "../../src/values/value.js";
+import { ref, c, withFilters } from "../../src/values/value.js";
+import { fl } from "../../src/values/generated/filters.generated.js";
 import { s } from "../../src/statements/s.js";
 import type { InferResponse } from "../../src/responses/infer.js";
 import type { InferRow } from "../../src/kinds/table.js";
@@ -197,6 +198,31 @@ describe("InferResponse — single-variable trace (U5, type-level)", () => {
 
   it("a ref to a set_var (unbranded) var → unknown (engine-faithful)", () => {
     expectTypeOf<InferResponse<typeof setVarResponse>>().toEqualTypeOf<unknown>();
+  });
+
+  it("a filtered response value degrades to unknown, even when its ref is traceable", () => {
+    const filtered = query({
+      verb: "GET",
+      apiGroup: links,
+      name: "filtered_resp",
+      stack: [s.db.get({ table: link, fieldValue: c.int(1), as: "row" })],
+      response: withFilters(ref("row"), fl.first()),
+    });
+    expectTypeOf<InferResponse<typeof filtered>>().toEqualTypeOf<unknown>();
+  });
+
+  it("in a record response, a filtered key is unknown while sibling refs still trace", () => {
+    const mixed = query({
+      verb: "GET",
+      apiGroup: links,
+      name: "mixed_resp",
+      stack: [s.db.get({ table: link, fieldValue: c.int(1), as: "row" })],
+      response: { raw: ref("row"), munged: withFilters(ref("row"), fl.first()) },
+    });
+    expectTypeOf<InferResponse<typeof mixed>>().toEqualTypeOf<{
+      raw: InferRow<typeof link>;
+      munged: unknown;
+    }>();
   });
 
   it("traces the correct statement in a deeper mixed stack (recursion smoke test)", () => {

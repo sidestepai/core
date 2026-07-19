@@ -18,6 +18,16 @@ export type Value = TaggedValue;
  */
 export type RefValue<Name extends string = string> = Value & { readonly __ref: Name };
 
+/**
+ * A {@link Value} that has had a filter chain attached (`withFilters(...)`).
+ * The `__filtered` carrier is phantom (type-only). A filter can reshape the
+ * value arbitrarily at runtime — turn an object into a scalar, add or drop keys
+ * — with no static signal, so `InferResponse` treats a filtered response value
+ * as `unknown` (the honest floor, matching how the Xano engine degrades a
+ * filtered result to `json`). Overriding via `responseShape` remains available.
+ */
+export type FilteredValue = Value & { readonly __filtered: true };
+
 function val(value: string, tag: Tag, filters: FilterXdo[] = []): Value {
   return { value, tag, filters };
 }
@@ -116,6 +126,9 @@ export function filter(name: string, ...args: (Value | undefined)[]): FilterXdo 
  * either spread (`withFilters(v, fl.trim(), fl.lower())`) or as an array
  * (`withFilters(v, [fl.trim(), fl.lower()])`) — both are flattened.
  */
-export function withFilters(value: Value, ...filters: (FilterXdo | FilterXdo[])[]): Value {
-  return { ...value, filters: [...value.filters, ...filters.flat()] };
+export function withFilters(value: Value, ...filters: (FilterXdo | FilterXdo[])[]): FilteredValue {
+  // `__filtered` is a phantom carrier — the runtime object is the plain
+  // `{value, tag, filters}` Value; the cast marks the type as filter-reshaped so
+  // `InferResponse` degrades it to `unknown`.
+  return { ...value, filters: [...value.filters, ...filters.flat()] } as FilteredValue;
 }

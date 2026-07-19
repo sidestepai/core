@@ -25,7 +25,7 @@
  *      `set_var`, function-produced vars, streams) resolves to `unknown`, which
  *      the author narrows or overrides via `responseShape`.
  */
-import type { Value, RefValue } from "../values/value.js";
+import type { Value, RefValue, FilteredValue } from "../values/value.js";
 
 /**
  * The author-declared response shape, read from a def's `responseShape` field
@@ -65,11 +65,16 @@ type TraceVar<Name extends string, S> = S extends readonly [infer Head, ...infer
 
 /**
  * Resolve one response {@link Value} to its type against the branded stack `S`.
- * A branded `ref` traces to the statement that produced it ({@link TraceVar});
- * anything else (a non-ref value, an untraceable ref) is `unknown` — the honest
- * floor. U6 additionally degrades a filtered value to `unknown`.
+ * A filtered value degrades to `unknown` first (a filter can reshape it with no
+ * static signal); otherwise a branded `ref` traces to the statement that
+ * produced it ({@link TraceVar}); anything else (a non-ref value, an untraceable
+ * ref) is `unknown` — the honest floor.
  */
-type ResolveValue<V, S> = V extends RefValue<infer Name> ? TraceVar<Name, S> : unknown;
+type ResolveValue<V, S> = V extends FilteredValue
+  ? unknown
+  : V extends RefValue<infer Name>
+    ? TraceVar<Name, S>
+    : unknown;
 
 /**
  * Best-effort automatic derivation of a response shape from the def's `response`
