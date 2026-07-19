@@ -9555,7 +9555,7 @@
         },
         {
           "flag": "--static <dir>",
-          "description": "Archive a built frontend directory and deploy it to the sandbox's static host after the backend import."
+          "description": "Archive a built frontend directory and deploy it to your workspace's static host (auto-deployed to dev) after the backend import."
         },
         {
           "flag": "--config <path>",

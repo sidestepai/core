@@ -32,56 +32,64 @@ describe("tarGz", () => {
 describe("deployStaticHost", () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it("resolves the numeric static-host id via search, then POSTs multipart to the build endpoint", async () => {
+  it("POSTs the archive to the meta build endpoint on the parent workspace and returns the live URL", async () => {
     const dir = tmpDirWith({ "index.html": "<h1>hi</h1>", "assets/app.js": "console.log(1)" });
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
-      // 1) static_host/search — resolves (auto-creates) the numeric id
-      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [{ id: 5, name: "default" }] }), { status: 200 }))
-      // 2) the build upload itself
-      .mockResolvedValueOnce(new Response('{"url":"https://site.dev"}', { status: 200 }));
+      .mockResolvedValueOnce(new Response('{"default_url":"https://default-dev-abc.xano.io","custom_url":null}', { status: 200 }));
 
-    const out = await deployStaticHost({ dir, workspaceId: 42, baseUrl: AUTH.instance, accessToken: AUTH.access_token, headers: { "X-Tenant": "sbx-1" } });
+    const out = await deployStaticHost({ dir, workspaceId: 9, baseUrl: AUTH.instance, accessToken: AUTH.access_token });
 
-    const [searchUrl, searchInit] = fetchMock.mock.calls[0]!;
-    expect(searchUrl).toBe("https://inst.example.com/api:meta/workspace/42/static_host/search");
-    expect(((searchInit as RequestInit).headers as Record<string, string>)["X-Tenant"]).toBe("sbx-1");
-
-    // The build URL must carry the numeric id from search (5), not a name like "default".
-    const [url, init] = fetchMock.mock.calls[1]!;
-    expect(url).toBe("https://inst.example.com/api:meta/workspace/42/static_host/5/build");
+    // Exactly one call: the meta build (auto-creates default + auto-deploys). No lookup, no publish.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe("https://inst.example.com/api:meta/workspace/9/static_host/default/build");
     expect((init as RequestInit).method).toBe("POST");
     expect(((init as RequestInit).headers as Record<string, string>).Authorization).toBe("Bearer acc-1");
+    // No tenant-routing header — this is the caller's own workspace.
+    expect(((init as RequestInit).headers as Record<string, string>)["X-Tenant"]).toBeUndefined();
     expect((init as RequestInit).body).toBeInstanceOf(FormData);
-    expect(out.url).toBe("https://site.dev");
+    expect(out.url).toBe("https://default-dev-abc.xano.io"); // from default_url
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it("errors when search returns no static host (and none was auto-created)", async () => {
+  it("prefers a custom domain, and builds a URL from a bare dev.host", async () => {
     const dir = tmpDirWith({ "index.html": "hi" });
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ items: [] }), { status: 200 }));
-    await expect(
-      deployStaticHost({ dir, workspaceId: 1, baseUrl: AUTH.instance, accessToken: AUTH.access_token, headers: { "X-Tenant": "sbx-1" } }),
-    ).rejects.toThrow(/has no static host to deploy into/);
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response('{"custom_url":"https://app.acme.com","default_url":"https://d.xano.io"}', { status: 200 }));
+    const a = await deployStaticHost({ dir, workspaceId: 1, baseUrl: AUTH.instance, accessToken: AUTH.access_token });
+    expect(a.url).toBe("https://app.acme.com");
+
+    vi.restoreAllMocks();
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response('{"dev":{"host":"default-dev-abc.xano.io","custom":""}}', { status: 200 }));
+    const b = await deployStaticHost({ dir, workspaceId: 1, baseUrl: AUTH.instance, accessToken: AUTH.access_token });
+    expect(b.url).toBe("https://default-dev-abc.xano.io");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("uses a custom host name in the build path when one is given", async () => {
+    const dir = tmpDirWith({ "index.html": "hi" });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response("{}", { status: 200 }));
+    await deployStaticHost({ dir, workspaceId: 7, baseUrl: AUTH.instance, accessToken: AUTH.access_token, host: "my site" });
+    expect(fetchMock.mock.calls[0]![0]).toBe("https://inst.example.com/api:meta/workspace/7/static_host/my%20site/build");
     rmSync(dir, { recursive: true, force: true });
   });
 
   it("errors when the directory is missing", async () => {
-    await expect(deployStaticHost({ dir: "/no/such/dir", workspaceId: 1, baseUrl: AUTH.instance, accessToken: AUTH.access_token, headers: { "X-Tenant": "sbx-1" } })).rejects.toThrow(/directory not found/);
+    await expect(deployStaticHost({ dir: "/no/such/dir", workspaceId: 1, baseUrl: AUTH.instance, accessToken: AUTH.access_token })).rejects.toThrow(/directory not found/);
   });
 
   it("errors when the directory is empty", async () => {
     const dir = mkdtempSync(join(tmpdir(), "sidestep-empty-"));
-    await expect(deployStaticHost({ dir, workspaceId: 1, baseUrl: AUTH.instance, accessToken: AUTH.access_token, headers: { "X-Tenant": "sbx-1" } })).rejects.toThrow(/no files to deploy/);
+    await expect(deployStaticHost({ dir, workspaceId: 1, baseUrl: AUTH.instance, accessToken: AUTH.access_token })).rejects.toThrow(/no files to deploy/);
     rmSync(dir, { recursive: true, force: true });
   });
 
   it("surfaces a non-2xx build response as an error", async () => {
     const dir = tmpDirWith({ "index.html": "hi" });
-    vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [{ id: 5, name: "default" }] }), { status: 200 }))
-      .mockResolvedValueOnce(new Response("boom", { status: 500, statusText: "ERR" }));
-    await expect(deployStaticHost({ dir, workspaceId: 1, baseUrl: AUTH.instance, accessToken: AUTH.access_token, headers: { "X-Tenant": "sbx-1" } })).rejects.toThrow(/Static-host build failed \(500/);
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response("boom", { status: 500, statusText: "ERR" }));
+    await expect(deployStaticHost({ dir, workspaceId: 1, baseUrl: AUTH.instance, accessToken: AUTH.access_token })).rejects.toThrow(/Static-host build failed \(500/);
     rmSync(dir, { recursive: true, force: true });
   });
 });

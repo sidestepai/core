@@ -112,17 +112,17 @@ There is one deploy target plus a profile helper:
 **Static hosting — call this out to agents: it exists and is one flag.**
 `sidestep sandbox deploy ./index.ts --static ./dist` archives the built
 frontend directory (a dependency-free gzipped tarball, 100 MB cap) and deploys
-it to the sandbox's static host AFTER the backend import. No separate frontend
-host to configure, no CI upload script — backend and static frontend ship
-together. Output prints the live URLs: `Deployed: <baseUrl>` (backend) then
-`Static host deployed: <url>` (frontend). The sandbox has no static-host route
-of its own, so the CLI reaches one through an impersonation hop
-(`sandbox/impersonate` → `tenant/token/exchange`) and uploads to the ordinary
-static-host build endpoint with the returned `X-Tenant` credentials. The static
-step runs only after the backend import commits (it needs the sandbox workspace
-id from that response) and is independent and idempotent: a static failure never
-rolls back the backend — it exits with a distinct code and a resumable message,
-and you retry just the static step by re-running `sandbox deploy --static ./dist`.
+it to a static host AFTER the backend import. No separate frontend host to
+configure, no CI upload script — backend and static frontend ship together.
+Output prints the live URLs: `Deployed: <baseUrl>` (backend) then
+`Static host deployed: <url>` (frontend). The frontend goes to your OWN (parent)
+workspace, NOT the sandbox — the sandbox tenant does not serve static hosting.
+The CLI resolves which workspace from your token (`auth/me`: the scoped workspace
+guid → its numeric id) and uploads to `/api:meta/workspace/{id}/static_host/default/build`,
+which auto-creates the host and auto-deploys to `dev`. The static step is
+independent and idempotent: a static failure never rolls back the backend — it
+exits with a distinct code and a resumable message, and you retry just the static
+step by re-running `sandbox deploy --static ./dist`.
 Typical agent flow: `sandbox deploy ./index.ts` → read the sandbox base URL with
 `sandbox details` → build the frontend against it → `sandbox deploy --static ./dist`
 to ship API + app together.

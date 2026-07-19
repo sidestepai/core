@@ -188,7 +188,7 @@ describe("sidestep sandbox deploy (OAuth, replaces push)", () => {
     ).rejects.toThrow(/not both/);
   });
 
-  it("--static runs the impersonation hop and uploads with the sandbox's X-Tenant header", async () => {
+  it("--static resolves the parent workspace from the token and uploads with the caller's own bearer", async () => {
     const authFile = writeTokenFile(dir);
     const staticDir = join(dir, "site");
     mkdirSync(staticDir, { recursive: true });
@@ -196,59 +196,58 @@ describe("sidestep sandbox deploy (OAuth, replaces push)", () => {
 
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(jsonResponse({ base_url: "https://x.dev/tenant/sbx-1", workspace: { id: 7 } }))
-      .mockResolvedValueOnce(jsonResponse({ _ti: "ott-1" }))
+      // 1) backend deploy to the sandbox
+      .mockResolvedValueOnce(jsonResponse({ base_url: "https://x.dev/tenant/sbx-1", workspace: { id: 1 } }))
+      // 2) auth/me — resolves the token's scoped workspace guid to numeric id 9
       .mockResolvedValueOnce(
-        jsonResponse({ name: "sbx-1", _authToken: "imp-tok", baseUrl: `${INSTANCE}/`, headers: { "X-Tenant": "sbx-1" } }),
+        jsonResponse({ extras: { oauth: { workspace: "guid-B" }, instance: { membership: { workspace: [{ guid: "guid-B", id: 9 }] } } } }),
       )
-      .mockResolvedValueOnce(jsonResponse({ items: [{ id: 9, name: "default" }] }))
-      .mockResolvedValueOnce(jsonResponse({ url: "https://sbx-1.static.dev" }));
+      // 3) the meta build upload on the parent workspace (auto-deploys)
+      .mockResolvedValueOnce(jsonResponse({ default_url: "https://default-dev-abc.xano.io" }));
 
     await run(["sandbox", "deploy", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile, "--static", staticDir]);
 
-    expect(fetchMock.mock.calls[1]![0]).toBe(`${INSTANCE}/api:meta/sandbox/impersonate`);
-    expect(fetchMock.mock.calls[2]![0]).toBe(`${INSTANCE}/api:meta/tenant/token/exchange`);
-    // The static-host id is a NUMERIC id fetched via search (auto-creates default),
-    // not the literal string "default" the build route would reject.
-    expect(fetchMock.mock.calls[3]![0]).toBe(`${INSTANCE}/api:meta/workspace/7/static_host/search`);
-
-    // The upload must use the sandbox's OWN workspace id (7, from the deploy
-    // response) + the resolved numeric host id (9), and carry X-Tenant — without
-    // it the build lands on the caller's real workspace instead of the sandbox.
-    const [staticUrl, staticInit] = fetchMock.mock.calls[4]!;
-    expect(staticUrl).toBe(`${INSTANCE}/api:meta/workspace/7/static_host/9/build`);
+    expect(fetchMock.mock.calls[1]![0]).toBe(`${INSTANCE}/api:meta/auth/me`);
+    // The upload targets the caller's OWN (parent) workspace (9, resolved from the
+    // token), NOT the sandbox — and carries the caller's own bearer, no X-Tenant.
+    const [staticUrl, staticInit] = fetchMock.mock.calls[2]!;
+    expect(staticUrl).toBe(`${INSTANCE}/api:meta/workspace/9/static_host/default/build`);
     const headers = (staticInit as RequestInit).headers as Record<string, string>;
-    expect(headers["X-Tenant"]).toBe("sbx-1");
-    expect(headers.Authorization).toBe("Bearer imp-tok");
+    expect(headers["X-Tenant"]).toBeUndefined();
+    expect(headers.Authorization).toBe("Bearer acc-cached");
   });
 
-  it("--static skips the upload with exit 3 when the deploy response carries no workspace id", async () => {
+  it("--static fails the static step (exit 3), not the deploy, when the workspace can't be resolved", async () => {
     const authFile = writeTokenFile(dir);
     const staticDir = join(dir, "site3");
     mkdirSync(staticDir, { recursive: true });
     writeFileSync(join(staticDir, "index.html"), "<h1>hi</h1>");
 
-    // Backend deploy succeeds but omits `workspace.id`, so the static step has no
-    // id to target — it must be skipped (not crash) and reported as resumable.
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(jsonResponse({ base_url: "https://x.dev/tenant/sbx-1" }));
+    // Backend deploy commits; then auth/me is ambiguous (no scoped guid, >1 workspace),
+    // so the static step fails resumably rather than crashing or guessing.
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse({ base_url: "https://x.dev/tenant/sbx-1", workspace: { id: 1 } }))
+      .mockResolvedValueOnce(
+        jsonResponse({ extras: { oauth: {}, instance: { membership: { workspace: [{ guid: "a", id: 3 }, { guid: "b", id: 9 }] } } } }),
+      );
 
     await run(["sandbox", "deploy", "--bundle", bundlePathWith(dir, "{}"), "--config", authFile, "--static", staticDir]);
-
-    expect(fetchMock).toHaveBeenCalledOnce(); // no impersonation/search/build attempted
     expect(process.exitCode).toBe(3);
     process.exitCode = 0;
   });
 
-  it("--static fails the static step, not the deploy, when the exchange returns no tenant headers", async () => {
+  it("--static fails the static step, not the deploy, when the build upload returns non-2xx", async () => {
     const authFile = writeTokenFile(dir);
     const staticDir = join(dir, "site2");
     mkdirSync(staticDir, { recursive: true });
     writeFileSync(join(staticDir, "index.html"), "<h1>hi</h1>");
 
     vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(jsonResponse({ base_url: "https://x.dev/tenant/sbx-1", workspace: { id: 7 } }))
-      .mockResolvedValueOnce(jsonResponse({ _ti: "ott-1" }))
-      .mockResolvedValueOnce(jsonResponse({ _authToken: "imp-tok", baseUrl: `${INSTANCE}/`, headers: {} }));
+      .mockResolvedValueOnce(jsonResponse({ base_url: "https://x.dev/tenant/sbx-1", workspace: { id: 1 } }))
+      .mockResolvedValueOnce(
+        jsonResponse({ extras: { oauth: { workspace: "guid-B" }, instance: { membership: { workspace: [{ guid: "guid-B", id: 9 }] } } } }),
+      )
+      .mockResolvedValueOnce(new Response("boom", { status: 500, statusText: "ERR" }));
 
     // The backend deploy already committed, so this must not throw — it reports
     // a resumable static failure via the exit code instead.

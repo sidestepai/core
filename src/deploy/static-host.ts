@@ -1,19 +1,23 @@
 /**
  * Node-only static-host deploy: archive a local directory and POST it to the
- * existing static-host build endpoint
- * (`/api:meta/workspace/{workspace_id}/static_host/{host}/build`), which ingests
- * the build and deploys it to the `dev` environment.
+ * static-host build endpoint, which ingests the build AND deploys it to the `dev`
+ * environment in one call.
  *
- * There is no sandbox-specific static-host route, so this targets the ordinary
- * meta endpoint using the credentials from the sandbox impersonation hop
- * (`impersonateSandbox`). The caller passes `baseUrl`, `accessToken` and the
- * tenant-routing `headers` explicitly; the `workspace_id` is the sandbox's own
- * workspace id, which `sandbox/bundle` returns in its response.
+ * TARGET — the caller's own (parent) workspace, NOT the sandbox tenant. The
+ * sandbox tenant does not serve static hosting (its impersonated `mvp-admin`
+ * build publishes but the host answers `503`), so the frontend lives on the
+ * caller's real workspace instead. The `workspaceId` is resolved from the OAuth
+ * token's scoped workspace (see `./workspace.js`), and requests carry the
+ * caller's ordinary OAuth bearer — no impersonation, no `X-Tenant` routing.
  *
- * The build route's `{static_host_id}` path segment is a NUMERIC id, not a name.
- * The sandbox may have no static host yet, so we first `POST .../static_host/search`
- * (empty body) — that endpoint auto-creates a `default` host when the workspace has
- * none and returns the list — and use the resolved host's numeric id in the build URL.
+ * The `api:meta` build route keys the host by NAME and auto-creates a `default`
+ * host when the workspace has none, so a single call suffices — no lookup step:
+ *
+ *   `POST /api:meta/workspace/{id}/static_host/default/build`  (multipart) -> URLs
+ *
+ * Unlike the `mvp-admin` build route, the meta route auto-deploys to `dev` and
+ * returns the live URL (`default_url`/`custom_url`). Matches the reference
+ * `xano static_host build push` CLI.
  *
  * Archive format: a gzipped USTAR tarball, built dependency-free (the SDK stays
  * lean). The build endpoint dispatches on the uploaded filename's extension and
@@ -89,57 +93,15 @@ export function tarGz(files: ArchiveEntry[]): Buffer {
 export interface StaticHostRequest {
   /** Local directory to archive and deploy. */
   dir: string;
-  /** Numeric workspace id — the sandbox's own, as returned by `sandbox/bundle`. */
+  /** Numeric id of the caller's (parent) workspace — resolved from the token (see `./workspace.js`). */
   workspaceId: number;
-  /** Origin to resolve the meta-API path against. */
+  /** Instance origin to resolve the meta-API path against. */
   baseUrl: string;
-  /** Bearer token to send. */
+  /** The caller's OAuth bearer token. */
   accessToken: string;
-  /**
-   * Tenant-routing headers from the impersonation hop (`X-Tenant`). Sent verbatim;
-   * without them the upload lands on the caller's real workspace, not the sandbox.
-   */
-  headers: Record<string, string>;
-  /** Static-host name to deploy into. Resolved to a numeric id via search (which
-   *  auto-creates it when the workspace has none). Defaults to `default`. */
+  /** Static-host NAME, used verbatim in the build path. The meta build route
+   *  auto-creates it only when it is `default`. Defaults to `default`. */
   host?: string;
-}
-
-/**
- * Resolve the sandbox's static host to a numeric id. The build route wants a
- * numeric `{static_host_id}`, and the sandbox may have no host yet — the search
- * endpoint auto-creates a `default` host when the workspace has none, so an empty
- * search reliably returns at least that one.
- */
-async function resolveStaticHostId(req: StaticHostRequest): Promise<number> {
-  const name = req.host ?? "default";
-  const url = new URL(`/api:meta/workspace/${req.workspaceId}/static_host/search`, req.baseUrl);
-  const res = await fetch(url.href, {
-    method: "POST",
-    headers: { ...req.headers, "Content-Type": "application/json", Authorization: `Bearer ${req.accessToken}` },
-    body: "{}",
-    signal: AbortSignal.timeout(STATIC_TIMEOUT_MS),
-  });
-  const text = await res.text();
-  if (!res.ok) {
-    throw new Error(`Static-host lookup failed (${res.status} ${res.statusText}):\n${text}`);
-  }
-  let parsed: Record<string, unknown> = {};
-  try {
-    parsed = JSON.parse(text) as Record<string, unknown>;
-  } catch {
-    /* non-JSON — fall through to the empty-list error below */
-  }
-  const items = Array.isArray(parsed.items) ? (parsed.items as Array<Record<string, unknown>>) : [];
-  const match = items.find((h) => h.name === name) ?? items[0];
-  const id = match?.id;
-  if (typeof id !== "number") {
-    throw new Error(
-      `Static-host lookup: the sandbox workspace has no static host to deploy into ` +
-        `(expected \`static_host/search\` to auto-create "default").`,
-    );
-  }
-  return id;
 }
 
 export interface StaticHostResult {
@@ -148,7 +110,29 @@ export interface StaticHostResult {
   raw: string;
 }
 
-/** Archive `dir` and POST it to the static-host build endpoint for the given workspace. */
+/**
+ * Pick the live URL out of the meta build response. `StaticHosting::packageUrls`
+ * emits `default_url`/`custom_url` (built as `https://{env.host|custom}`); older
+ * shapes nested them under `dev` or exposed a bare `host`. Prefer a custom domain,
+ * then the default URL, and prefix a bare host with https as a last resort.
+ */
+function pickUrl(parsed: Record<string, unknown>): string | undefined {
+  const dev = parsed.dev as
+    | { host?: unknown; custom?: unknown; url?: unknown; default_url?: unknown; custom_url?: unknown }
+    | undefined;
+  const direct = [parsed.custom_url, parsed.default_url, parsed.url, dev?.custom_url, dev?.default_url, dev?.url].find(
+    (c): c is string => typeof c === "string" && c !== "",
+  );
+  if (direct !== undefined) return /^https?:\/\//.test(direct) ? direct : `https://${direct}`;
+  const host = [dev?.custom, dev?.host].find((c): c is string => typeof c === "string" && c !== "");
+  return host !== undefined ? `https://${host}` : undefined;
+}
+
+/**
+ * Archive `dir` and POST it to the meta static-host build endpoint for the given
+ * (parent) workspace. The route auto-creates the `default` host and auto-deploys
+ * to `dev`, returning the live URL — a single call, no lookup or publish step.
+ */
 export async function deployStaticHost(req: StaticHostRequest): Promise<StaticHostResult> {
   if (!existsSync(req.dir)) {
     throw new Error(`--static ${req.dir}: directory not found.`);
@@ -162,15 +146,18 @@ export async function deployStaticHost(req: StaticHostRequest): Promise<StaticHo
     throw new Error(`--static ${req.dir}: archive is ${archive.length} bytes, over the ${MAX_ARCHIVE_BYTES}-byte cap.`);
   }
 
-  const staticHostId = await resolveStaticHostId(req);
-  const url = new URL(`/api:meta/workspace/${req.workspaceId}/static_host/${staticHostId}/build`, req.baseUrl);
+  const host = req.host ?? "default";
+  const url = new URL(
+    `/api:meta/workspace/${req.workspaceId}/static_host/${encodeURIComponent(host)}/build`,
+    req.baseUrl,
+  );
   const form = new FormData();
   form.append("name", "sidestep-deploy");
   form.append("file", new Blob([archive], { type: "application/gzip" }), "build.tar.gz");
 
   const res = await fetch(url.href, {
     method: "POST",
-    headers: { ...req.headers, Authorization: `Bearer ${req.accessToken}` },
+    headers: { Authorization: `Bearer ${req.accessToken}` },
     body: form,
     signal: AbortSignal.timeout(STATIC_TIMEOUT_MS),
   });
@@ -182,9 +169,7 @@ export async function deployStaticHost(req: StaticHostRequest): Promise<StaticHo
   try {
     parsed = JSON.parse(text) as Record<string, unknown>;
   } catch {
-    /* non-JSON — surface verbatim */
+    /* non-JSON — surface verbatim, url stays undefined */
   }
-  const dev = (parsed.dev as { url?: unknown } | undefined)?.url;
-  const built = typeof parsed.url === "string" ? parsed.url : typeof dev === "string" ? dev : undefined;
-  return { url: built, raw: text };
+  return { url: pickUrl(parsed), raw: text };
 }

@@ -14,11 +14,11 @@
  * is passed). That write is local-identity bookkeeping, unrelated to the deploy.
  * `--bundle <path>` skips compiling entirely and so never touches the lock.
  *
- * `--static <dir>` reaches static hosting through the impersonation hop in
- * `../deploy/impersonate.js`, because the sandbox has no static-host route of its
- * own — see that module for why the returned `X-Tenant` header is load-bearing.
- * The workspace id the static path needs is the one `sandbox/bundle` returns, so
- * the backend deploy always runs first.
+ * `--static <dir>` deploys the frontend to the caller's OWN (parent) workspace,
+ * NOT the sandbox — the sandbox tenant does not serve static hosting (see
+ * `../deploy/static-host.js`). The target workspace id is resolved from the OAuth
+ * token (`../deploy/workspace.js`) and the upload uses the caller's ordinary
+ * bearer, so the static step is independent of the backend deploy.
  *
  * Both steps are independently idempotent: a static failure after a committed
  * backend deploy exits with a distinct code and a resumable message rather than
@@ -54,21 +54,21 @@ async function loadBundle(args: ParsedArgs): Promise<{ bundle: string; source: s
 }
 
 /**
- * Upload `dir` to the sandbox's static host. Runs the impersonation hop first so
- * the upload is routed into the sandbox tenant rather than the caller's own
- * workspace.
+ * Upload `dir` to the caller's (parent) workspace static host. Resolves the
+ * target workspace id from the OAuth token, then uploads with the caller's own
+ * bearer — the sandbox tenant does not serve static hosting, so the frontend
+ * lives on the real workspace.
  */
-async function deploySandboxStatic(dir: string, workspaceId: number, auth: ResolvedAuth): Promise<void> {
-  const { impersonateSandbox } = await import("../deploy/impersonate.js");
+async function deployParentStatic(dir: string, auth: ResolvedAuth): Promise<void> {
+  const { resolveScopedWorkspaceId } = await import("../deploy/workspace.js");
   const { deployStaticHost } = await import("../deploy/static-host.js");
 
-  const creds = await impersonateSandbox(auth);
+  const workspaceId = await resolveScopedWorkspaceId(auth);
   const sh = await deployStaticHost({
     dir,
     workspaceId,
-    baseUrl: creds.baseUrl,
-    accessToken: creds.accessToken,
-    headers: creds.headers,
+    baseUrl: auth.instance,
+    accessToken: auth.access_token,
   });
   if (sh.url) process.stderr.write(`Static host deployed: ${sh.url}\n`);
   process.stdout.write(sh.raw + "\n");
@@ -94,20 +94,8 @@ export async function runDeployCommand(args: ParsedArgs): Promise<void> {
 
   if (args.static === undefined) return;
 
-  // The static host lives in the sandbox's OWN workspace, whose id only the
-  // deploy response carries — there is no client-side way to derive it.
-  const workspaceId = resp.workspace?.id;
-  if (typeof workspaceId !== "number") {
-    process.stderr.write(
-      `Backend deployed, but the response carried no workspace id, so the static upload was skipped.\n` +
-        `Re-run \`sidestep sandbox deploy --static ${args.static}\` once the endpoint returns \`workspace.id\`.\n`,
-    );
-    process.exitCode = EXIT_STATIC_FAILED;
-    return;
-  }
-
   try {
-    await deploySandboxStatic(args.static, workspaceId, auth);
+    await deployParentStatic(args.static, auth);
   } catch (err) {
     process.stderr.write(
       `Backend deployed, but the static-host upload failed:\n  ${err instanceof Error ? err.message : String(err)}\n` +

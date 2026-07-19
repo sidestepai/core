@@ -430,15 +430,15 @@ instance's public URL echoes to stderr.
 (the token's `aud`), never a flag. `deploy` never creates or selects any other workspace,
 and there is no deploy path to a real workspace.
 
-**Static host** — `sandbox deploy --static <dir>` archives a directory and deploys it to
-the sandbox's static host after the backend import. The sandbox has no static-host route of
-its own, so the CLI does a two-step impersonation hop: `GET /api:meta/sandbox/impersonate`
-returns a one-time `_ti` ticket, `POST /api:meta/tenant/token/exchange` trades it for
-`{_authToken, baseUrl, headers}`, and the returned `X-Tenant` header routes the upload into
-the sandbox tenant. The archive then goes to the ordinary
-`/api:meta/workspace/{id}/static_host/{host}/build` route. The workspace id is the
-**sandbox's own**, which comes back in the `sandbox/bundle` response (`workspace.id`) —
-so the backend deploy always runs first.
+**Static host** — `sandbox deploy --static <dir>` archives a directory and deploys it to a
+static host after the backend import. It targets your **own (parent) workspace**, not the
+sandbox: the sandbox tenant does not serve static hosting, so the frontend lives on your
+real workspace. The CLI resolves which workspace from your token (`GET /api:meta/auth/me` —
+the scoped workspace guid mapped to its numeric id) and uploads the archive to
+`/api:meta/workspace/{id}/static_host/default/build` with your ordinary bearer. That route
+auto-creates the `default` host and **auto-deploys to `dev`**, returning the live URL — so
+the static step is independent of the backend deploy (the backend still runs first because
+it's the primary action).
 
 Pair it with `sidestep sandbox details`, which prints the **sandbox's own base URL**
 (`GET /api:meta/sandbox/me`, projected to JSON) an agent can bake into the frontend's API
