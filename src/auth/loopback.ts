@@ -12,7 +12,7 @@
  */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { spawn } from "node:child_process";
-import type { AddressInfo } from "node:net";
+import type { AddressInfo, Socket } from "node:net";
 
 /** How long to wait for the browser redirect before giving up (ms). */
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
@@ -78,7 +78,7 @@ export function startCallbackServer(opts: CallbackOptions): Promise<CallbackList
     const server = createServer((req: IncomingMessage, res: ServerResponse) => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
       if (url.pathname !== callbackPath) {
-        res.writeHead(404).end("Not found");
+        respond(res, 404, "Not found");
         return;
       }
       // Validate state FIRST and do NOT settle the one-shot server on a
@@ -96,28 +96,48 @@ export function startCallbackServer(opts: CallbackOptions): Promise<CallbackList
       // stderr only.
       const error = url.searchParams.get("error");
       if (error) {
-        respond(res, 400, "Authorization failed. Check the terminal for details.");
         // Carry the raw code on `.error` (openid-client's convention) so callers
         // can recover from an authorize-time `invalid_client` the same way they
-        // recover from one at the token endpoint.
+        // recover from one at the token endpoint. Settle only after the page has
+        // flushed (see `finish` — it destroys the socket).
         const authError: Error & { error?: string } = new Error(
           `Authorization server returned error: ${error}`,
         );
         authError.error = error;
-        finish(authError);
+        respond(res, 400, "Authorization failed. Check the terminal for details.", () => finish(authError));
         return;
       }
       const code = url.searchParams.get("code");
       if (!code) {
-        respond(res, 400, "Missing authorization code.");
-        finish(new Error("Callback carried no authorization code."));
+        respond(res, 400, "Missing authorization code.", () =>
+          finish(new Error("Callback carried no authorization code.")),
+        );
         return;
       }
-      res.writeHead(200, { "Content-Type": "text/html" }).end(CLOSE_TAB_HTML);
-      // Rebuild the callback URL against the registered redirect_uri (not the raw
-      // socket address) so its origin+path matches exactly, preserving every AS
-      // query param (code, state, iss) for openid-client to validate.
-      finish(undefined, { code, callbackUrl: `${redirectUri}?${url.searchParams.toString()}` });
+      res.writeHead(200, { "Content-Type": "text/html", Connection: "close" }).end(CLOSE_TAB_HTML, () => {
+        // Rebuild the callback URL against the registered redirect_uri (not the raw
+        // socket address) so its origin+path matches exactly, preserving every AS
+        // query param (code, state, iss) for openid-client to validate. Settle from
+        // the flush callback so the "close this tab" page reaches the browser before
+        // `finish` tears the socket down.
+        finish(undefined, { code, callbackUrl: `${redirectUri}?${url.searchParams.toString()}` });
+      });
+    });
+
+    // Track live sockets so `finish` can destroy them. `server.close()` only stops
+    // accepting NEW connections; the browser keeps the callback socket (and any
+    // speculative preconnect sockets) open with keep-alive, and those linger long
+    // enough to keep Node's event loop alive — so the CLI would appear to hang for
+    // ~seconds after a successful login. Destroying them lets the process exit at
+    // once. Terminal responses settle from their flush callback, so the page is
+    // already sent by the time we destroy.
+    const sockets = new Set<Socket>();
+    server.on("connection", (socket) => {
+      sockets.add(socket);
+      socket.on("close", () => sockets.delete(socket));
+      // A one-shot server that closes right after responding can leave a socket
+      // mid-flight; swallow those resets so they don't surface as unhandled errors.
+      socket.on("error", () => {});
     });
 
     // One-shot: after the first (in)valid callback, resolve/reject and close.
@@ -132,6 +152,9 @@ export function startCallbackServer(opts: CallbackOptions): Promise<CallbackList
       settled = true;
       clearTimeout(timer);
       server.close();
+      // Actively tear down every remaining socket (keep-alive callback + idle
+      // preconnects) so the event loop drains and the CLI exits promptly.
+      for (const socket of sockets) socket.destroy();
       if (err) rejectResult(err);
       else resolveResult(result!);
     }
@@ -139,9 +162,6 @@ export function startCallbackServer(opts: CallbackOptions): Promise<CallbackList
     server.on("error", (err) => {
       if (!settled) rejectListener(err);
     });
-    // A one-shot server that closes right after responding can leave a socket
-    // mid-flight; swallow those resets so they don't surface as unhandled errors.
-    server.on("connection", (socket) => socket.on("error", () => {}));
 
     server.listen(port ?? 0, "127.0.0.1", () => {
       // NOTE: an ephemeral port produces a *ported* redirect_uri
@@ -160,9 +180,12 @@ export function startCallbackServer(opts: CallbackOptions): Promise<CallbackList
   });
 }
 
-function respond(res: ServerResponse, status: number, message: string): void {
-  res.writeHead(status, { "Content-Type": "text/html" }).end(
+function respond(res: ServerResponse, status: number, message: string, onFlush?: () => void): void {
+  // `Connection: close` tells the browser not to keep this socket alive, so it is
+  // torn down once the response is read rather than lingering against server exit.
+  res.writeHead(status, { "Content-Type": "text/html", Connection: "close" }).end(
     `<!doctype html><meta charset=utf-8><body style="font-family:system-ui;padding:3rem;text-align:center">${message}</body>`,
+    onFlush,
   );
 }
 
