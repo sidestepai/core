@@ -9,7 +9,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { fl, FILTER_NAMES } from "../../src/values/generated/filters.generated.js";
+import { fl, FILTER_NAMES, FILTER_SPECS } from "../../src/values/generated/filters.generated.js";
 import { c } from "../../src/values/value.js";
 
 const ROOT = join(import.meta.dirname, "../..");
@@ -49,6 +49,20 @@ describe("fl.* filter catalog", () => {
       expect(FILTER_NAMES).toContain(n);
     }
     expect(Object.keys(fl).sort()).toEqual([...FILTER_NAMES].sort());
+  });
+
+  it("direction-sensitive text filters document what the piped value means (#22)", () => {
+    // Subject-piped: the piped value is the text, the arg is the needle.
+    for (const n of ["starts_with", "istarts_with", "ends_with", "iends_with", "contains", "icontains"]) {
+      expect(FILTER_SPECS[n]?.description).toMatch(/piped value is the subject text/);
+    }
+    // Pattern-piped: the piped value is the regex, the `subject` arg is the text —
+    // the inverted convention that silently flips a guard if mixed up.
+    for (const n of ["regex_test", "regex_match", "regex_replace"]) {
+      expect(FILTER_SPECS[n]?.description).toMatch(/piped value is the regex PATTERN/);
+    }
+    // A direction-neutral filter carries no such note.
+    expect(FILTER_SPECS["to_upper"]?.description ?? "").not.toMatch(/Direction:/);
   });
 
   it("the committed generated file is fresh vs the vendor snapshot", () => {
