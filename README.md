@@ -389,8 +389,8 @@ you're signed in to is always whatever you chose at consent.
 
 The resulting tokens (access + refresh) are cached in a **project-local** file,
 `./.xano/auth.json`, which `login` **auto-adds to your `.gitignore`** so
-credentials never get committed. Override the cache location with `--auth-file` /
-`$XANO_AUTH_FILE`, the OAuth host with `--auth-host` / `$XANO_AUTH_HOST` (default
+credentials never get committed. Override the cache location with `--config` /
+`$XANO_CONFIG`, the OAuth host with `--origin` / `$XANO_ORIGIN` (default
 `https://app.xano.com`), and the loopback port with `--port` (default `47100`).
 
 **Then push:**
@@ -427,7 +427,7 @@ instance is always the one your cached token is bound to (chosen at `login`).
 at the Xano control plane (so a leaked cache file can't be replayed) and then
 deletes the project-local `./.xano/auth.json`. A revocation that fails at the
 server never blocks the local delete — your credentials are removed from disk
-either way. Point it at a non-default cache with `--auth-file` / `$XANO_AUTH_FILE`.
+either way. Point it at a non-default cache with `--config` / `$XANO_CONFIG`.
 
 **CI and agents** can't open a browser, so `push` runs fully non-interactively
 from two env vars — `$XANO_REFRESH_TOKEN` and `$XANO_CLIENT_ID` (both copied once

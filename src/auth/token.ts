@@ -75,7 +75,7 @@ export async function getAccessToken(args: ParsedArgs): Promise<ResolvedAuth> {
 
   if (envRefresh) {
     const authHost = resolveAuthHost(args);
-    assertHttpsOrigin(authHost, "--auth-host");
+    assertHttpsOrigin(authHost, "--origin");
     const clientId = process.env.XANO_CLIENT_ID;
     if (!clientId) {
       throw new Error(

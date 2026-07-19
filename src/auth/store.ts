@@ -34,12 +34,12 @@ export interface TokenRecord {
 const DEFAULT_AUTH_FILE = join(".xano", "auth.json");
 
 /**
- * Resolve the token cache path: `--auth-file` → `$XANO_AUTH_FILE` → the
+ * Resolve the token cache path: `--config` → `$XANO_CONFIG` → the
  * project-local default `./.xano/auth.json`. Mirrors the flag→env→default
  * precedence used elsewhere in the CLI.
  */
 export function resolveAuthFilePath(args: ParsedArgs): string {
-  const raw = args.authFile ?? process.env.XANO_AUTH_FILE ?? DEFAULT_AUTH_FILE;
+  const raw = args.authFile ?? process.env.XANO_CONFIG ?? DEFAULT_AUTH_FILE;
   return resolve(raw);
 }
 
@@ -83,7 +83,7 @@ function isTokenRecord(v: unknown): v is TokenRecord {
  * a crash never leaves a half-written or world-readable credential file.
  */
 export function writeTokens(path: string, tokens: TokenRecord): void {
-  // Guard against an `--auth-file` typo clobbering an unrelated file (e.g.
+  // Guard against an `--config` typo clobbering an unrelated file (e.g.
   // package.json): if the target already exists, it must already be a token
   // cache before we overwrite it.
   if (existsSync(path)) {
@@ -96,7 +96,7 @@ export function writeTokens(path: string, tokens: TokenRecord): void {
     if (!isTokenRecord(existing)) {
       throw new Error(
         `Refusing to overwrite ${path}: it exists but is not a sidestep token cache. ` +
-          `Choose a different --auth-file/$XANO_AUTH_FILE path.`,
+          `Choose a different --config/$XANO_CONFIG path.`,
       );
     }
   }
@@ -107,7 +107,7 @@ export function writeTokens(path: string, tokens: TokenRecord): void {
 /**
  * Delete the token cache (logout). Returns true when a file was removed, false
  * when there was nothing to remove. Refuses to delete a file that isn't a
- * sidestep token cache, so an `--auth-file` typo can't `rm` an unrelated file.
+ * sidestep token cache, so a `--config` typo can't `rm` an unrelated file.
  */
 export function clearTokens(path: string): boolean {
   if (!existsSync(path)) return false;
@@ -120,7 +120,7 @@ export function clearTokens(path: string): boolean {
   if (!isTokenRecord(existing)) {
     throw new Error(
       `Refusing to delete ${path}: it exists but is not a sidestep token cache. ` +
-        `Choose a different --auth-file/$XANO_AUTH_FILE path.`,
+        `Choose a different --config/$XANO_CONFIG path.`,
     );
   }
   rmSync(path);
@@ -145,7 +145,7 @@ function findGitRoot(startDir: string): string | undefined {
  *
  * The entry is the file's containing directory (e.g. `.xano/`) when that dir is
  * below the git root, otherwise the bare filename — so a dedicated `.xano/`
- * cache is ignored wholesale while a root-level custom `--auth-file` ignores
+ * cache is ignored wholesale while a root-level custom `--config` ignores
  * just that file. A token file outside the repo tree (e.g. under $HOME) is left
  * alone: there is nothing to gitignore.
  */
