@@ -1,16 +1,27 @@
 /**
- * OAuth 2.1 primitives for the CLI's login/push flows, targeting the
- * cloud-master control-plane authorization server. Pure and HTTP-only — PKCE
- * generation plus `fetch` calls to the discovery, token, and refresh endpoints;
- * no file, server, or browser I/O (those live in `store.ts`/`loopback.ts`). This
- * is the easily unit-testable heart of the flow.
+ * OAuth 2.1 protocol layer for the CLI's login/push/logout flows, targeting the
+ * cloud-master control-plane authorization server. Backed by `openid-client`
+ * (OpenID-certified) — the same library the sidestep dashboard's BFF uses — so
+ * the two share one battle-tested implementation of RFC 8414 discovery, PKCE,
+ * the authorization-code grant, refresh (with rotation), and revocation.
  *
- * Node-only (uses `node:crypto`). The repo's `util/hash.ts` reimplements hashes
- * over Web Crypto because they must run in a frontend bundle — that constraint
- * does NOT apply here, so `node:crypto` is the correct, idiomatic choice for
- * PKCE. Do not move this crypto into `util/hash.ts`.
+ * The CLI differs from the dashboard in two ways, both handled here:
+ *   - the redirect target is a loopback URL with a runtime-bound port (see
+ *     `loopback.ts`), not a fixed config value;
+ *   - the DCR client registration is cached per (auth host + redirect URI) in a
+ *     global machine file (`client-store.ts`), reused across projects.
+ *
+ * Like the dashboard, the user picks the target instance at the hosted consent
+ * screen; the binding is read back from the token's `aud` claim (see
+ * `decodeAudience`), so there is no instance pre-selection to plumb through.
+ *
+ * `discover`, `registerClient`, and `decodeAudience` stay as pure/HTTP-only
+ * helpers (fetch + decode, no openid-client) because they're both trivially
+ * unit-testable and needed before a `Configuration` exists. Node-only; never
+ * reachable from the browser-safe `index.ts` surface.
  */
-import { createHash, randomBytes } from "node:crypto";
+import * as client from "openid-client";
+import { getOrRegisterClient, clearClient } from "./client-store.js";
 
 /**
  * The loopback path the callback server listens on and the client registers as
@@ -48,7 +59,7 @@ const DISCOVERY_PATH = "/.well-known/oauth-authorization-server";
 /** Bound every OAuth HTTP call so a stalled endpoint can't hang the CLI/CI forever. */
 const NETWORK_TIMEOUT_MS = 30_000;
 
-/** The OAuth endpoints the CLI drives, resolved from discovery. */
+/** The OAuth endpoints resolved from discovery (for the DCR pre-step). */
 export interface Endpoints {
   authorization_endpoint: string;
   token_endpoint: string;
@@ -56,35 +67,16 @@ export interface Endpoints {
   registration_endpoint?: string;
 }
 
-/** A PKCE verifier/challenge pair (S256). */
-export interface Pkce {
-  verifier: string;
-  challenge: string;
-}
-
-/** Normalized token-endpoint response, with an absolute expiry stamped on. */
-export interface TokenSet {
+/**
+ * The token-endpoint response as openid-client surfaces it, before we stamp an
+ * absolute `expires_at` (that happens in `token.ts`/`login-command.ts`, where an
+ * injectable clock lives).
+ */
+export interface RawTokens {
   access_token: string;
   refresh_token?: string;
+  expires_in?: number;
   scope?: string;
-  /** Epoch milliseconds after which `access_token` is no longer valid. */
-  expires_at: number;
-}
-
-function base64url(buf: Buffer): string {
-  return buf.toString("base64url");
-}
-
-/** Generate a PKCE verifier and its S256 challenge. */
-export function generatePkce(): Pkce {
-  const verifier = base64url(randomBytes(32));
-  const challenge = base64url(createHash("sha256").update(verifier).digest());
-  return { verifier, challenge };
-}
-
-/** A high-entropy `state` value for CSRF protection on the authorize round-trip. */
-export function randomState(): string {
-  return base64url(randomBytes(16));
 }
 
 /** Fetch and validate the authorization-server metadata for `authHost`. */
@@ -113,8 +105,9 @@ export async function discover(authHost: string): Promise<Endpoints> {
  * EXACTLY the loopback callback we will use, so the authorize server's
  * exact-match check passes without relying on loopback-port normalization.
  *
- * Two Xano-specific quirks (mirroring sidestep-dashboard's registrar): the server
- * answers 200 (not RFC 7591's 201), and it reads a `scopes` ARRAY rather than a
+ * Two Xano-specific quirks (mirroring sidestep-dashboard's registrar, and the
+ * reason we POST directly rather than via openid-client): the server answers 200
+ * (not RFC 7591's 201), and it reads a `scopes` ARRAY rather than a
  * space-separated `scope` string.
  */
 export async function registerClient(params: {
@@ -165,116 +158,168 @@ export function decodeAudience(accessToken: string): string | undefined {
   }
 }
 
-/** Parameters for the authorize redirect. */
-export interface AuthorizeUrlParams {
-  authorizationEndpoint: string;
-  clientId: string;
-  redirectUri: string;
-  /** Optional RFC 8707 `resource` to pre-select the target instance. When
-   *  omitted, the user chooses the instance at the hosted consent screen and the
-   *  binding is read back from the token's `aud` claim. */
-  instance?: string;
-  scope: string;
-  state: string;
-  codeChallenge: string;
-}
-
-/** Build the browser authorize URL (authorization-code + PKCE, S256). */
-export function buildAuthorizeUrl(p: AuthorizeUrlParams): string {
-  const url = new URL(p.authorizationEndpoint);
-  url.searchParams.set("client_id", p.clientId);
-  url.searchParams.set("response_type", "code");
-  url.searchParams.set("redirect_uri", p.redirectUri);
-  url.searchParams.set("code_challenge", p.codeChallenge);
-  url.searchParams.set("code_challenge_method", "S256");
-  if (p.instance) url.searchParams.set("resource", p.instance);
-  url.searchParams.set("scope", p.scope);
-  url.searchParams.set("state", p.state);
-  return url.href;
-}
-
-/** Raw token-endpoint payload before we stamp `expires_at`. */
-interface RawTokenResponse {
-  access_token?: string;
-  refresh_token?: string;
-  scope?: string;
-  expires_in?: number;
-  error?: string;
-  error_description?: string;
-}
-
-async function postToken(tokenEndpoint: string, body: URLSearchParams): Promise<TokenSet> {
-  const res = await fetch(tokenEndpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
-    signal: AbortSignal.timeout(NETWORK_TIMEOUT_MS),
-  });
-  const text = await res.text();
-  let json: RawTokenResponse;
-  try {
-    json = JSON.parse(text) as RawTokenResponse;
-  } catch {
-    throw new Error(`Token endpoint returned non-JSON (${res.status} ${res.statusText}):\n${text}`);
+/** Extract the OAuth error code from an openid-client error, if present. */
+export function oauthErrorCode(err: unknown): string | undefined {
+  if (err && typeof err === "object" && "error" in err) {
+    const code = (err as { error?: unknown }).error;
+    if (typeof code === "string") return code;
   }
-  if (!res.ok || !json.access_token) {
-    const detail = json.error ? `${json.error}${json.error_description ? `: ${json.error_description}` : ""}` : text;
-    throw new Error(`Token request failed (${res.status} ${res.statusText}): ${detail}`);
-  }
-  return {
-    access_token: json.access_token,
-    refresh_token: json.refresh_token,
-    scope: json.scope,
-    expires_at: Date.now() + (json.expires_in ?? 0) * 1000,
-  };
-}
-
-/** Parameters for the authorization-code exchange. */
-export interface ExchangeCodeParams {
-  tokenEndpoint: string;
-  clientId: string;
-  code: string;
-  codeVerifier: string;
-  redirectUri: string;
-  /** Optional `resource`; must match the authorize request when it was sent. */
-  instance?: string;
-}
-
-/** Exchange an authorization code (+ PKCE verifier) for a token set. */
-export function exchangeCode(p: ExchangeCodeParams): Promise<TokenSet> {
-  const body = new URLSearchParams({
-    grant_type: "authorization_code",
-    code: p.code,
-    code_verifier: p.codeVerifier,
-    client_id: p.clientId,
-    redirect_uri: p.redirectUri,
-  });
-  if (p.instance) body.set("resource", p.instance);
-  return postToken(p.tokenEndpoint, body);
-}
-
-/** Parameters for a refresh-token exchange. */
-export interface RefreshParams {
-  tokenEndpoint: string;
-  clientId: string;
-  refreshToken: string;
-  /** Optional `resource` — the instance the fresh token should be bound to. */
-  instance?: string;
-  scope?: string;
+  return undefined;
 }
 
 /**
- * Exchange a refresh token for a fresh access token. The server ROTATES the
- * refresh token on every call, so callers MUST persist the returned
- * `refresh_token` — the one passed in is now spent.
+ * The protocol surface the CLI commands drive. Fakeable in tests (as in the
+ * dashboard) so callers can be exercised without a live authorization server.
  */
-export function refresh(p: RefreshParams): Promise<TokenSet> {
-  const body = new URLSearchParams({
-    grant_type: "refresh_token",
-    refresh_token: p.refreshToken,
-    client_id: p.clientId,
-  });
-  if (p.instance) body.set("resource", p.instance);
-  if (p.scope) body.set("scope", p.scope);
-  return postToken(p.tokenEndpoint, body);
+export interface TokenProvider {
+  /** Build the browser authorize URL (authorization-code + PKCE, S256). */
+  buildAuthUrl(p: { verifier: string; state: string }): Promise<string>;
+  /** Exchange the loopback callback URL for a token set. */
+  exchange(callbackUrl: string, p: { verifier: string; state: string }): Promise<RawTokens>;
+  /** Refresh — the server ROTATES the refresh token, so persist the new one. */
+  refresh(refreshToken: string, opts?: { scope?: string }): Promise<RawTokens>;
+  /** Revoke the refresh token at the AS (logout). */
+  revoke(refreshToken: string): Promise<void>;
+  /** Drop the cached config + DCR registration (e.g. after `invalid_client`). */
+  reset(): Promise<void>;
+}
+
+export interface OpenIdProviderOptions {
+  authHost: string;
+  /** Loopback redirect URI — required for authorize/exchange, unused for refresh/revoke. */
+  redirectUri?: string;
+  scope: string;
+  /**
+   * A pre-known `client_id` (the refresh/logout paths read it from the token
+   * cache). When set, discovery skips DCR entirely — we already have a client.
+   */
+  clientId?: string;
+}
+
+/**
+ * openid-client-backed provider. Lazily builds (and memoizes) a `Configuration`
+ * — discovery + a DCR registration when no `client_id` is known — then delegates
+ * PKCE, the code grant, refresh, and revocation to openid-client.
+ */
+export class OpenIdProvider implements TokenProvider {
+  private configPromise?: Promise<client.Configuration>;
+  /** The client_id the resolved config uses — set once `build()` completes. */
+  private resolvedClientId?: string;
+
+  constructor(private readonly opts: OpenIdProviderOptions) {}
+
+  private redirectUri(): string {
+    if (!this.opts.redirectUri) {
+      throw new Error("OpenIdProvider: redirectUri is required for the authorize/exchange flow.");
+    }
+    return this.opts.redirectUri;
+  }
+
+  /**
+   * The client_id this provider registered or reused. Only valid after the
+   * config has resolved (e.g. after `buildAuthUrl`/`exchange`); throws otherwise
+   * so a caller never records an empty client_id.
+   */
+  clientId(): string {
+    if (!this.resolvedClientId) {
+      throw new Error("OpenIdProvider.clientId() called before the configuration was resolved.");
+    }
+    return this.resolvedClientId;
+  }
+
+  private async build(): Promise<client.Configuration> {
+    const server = new URL(this.opts.authHost);
+    // Allow plain-HTTP only when the target itself is http (local cloud-master).
+    const options =
+      server.protocol === "http:" ? { execute: [client.allowInsecureRequests] } : undefined;
+
+    let clientId = this.opts.clientId;
+    if (!clientId) {
+      const { registration_endpoint } = await discover(this.opts.authHost);
+      if (!registration_endpoint) {
+        throw new Error(
+          `The OAuth server at ${this.opts.authHost} does not advertise a registration ` +
+            `endpoint, so sidestep can't register its loopback client. Check --auth-host.`,
+        );
+      }
+      clientId = await getOrRegisterClient({
+        authHost: this.opts.authHost,
+        redirectUri: this.redirectUri(),
+        registrationEndpoint: registration_endpoint,
+        scope: this.opts.scope,
+      });
+    }
+    this.resolvedClientId = clientId;
+    return client.discovery(
+      server,
+      clientId,
+      { token_endpoint_auth_method: "none" },
+      client.None(),
+      options,
+    );
+  }
+
+  private config(): Promise<client.Configuration> {
+    return (this.configPromise ??= this.build());
+  }
+
+  async reset(): Promise<void> {
+    this.configPromise = undefined;
+    this.resolvedClientId = undefined;
+    if (this.opts.redirectUri) {
+      clearClient({ authHost: this.opts.authHost, redirectUri: this.opts.redirectUri });
+    }
+  }
+
+  async buildAuthUrl({ verifier, state }: { verifier: string; state: string }): Promise<string> {
+    const config = await this.config();
+    const code_challenge = await client.calculatePKCECodeChallenge(verifier);
+    return client.buildAuthorizationUrl(config, {
+      redirect_uri: this.redirectUri(),
+      scope: this.opts.scope,
+      code_challenge,
+      code_challenge_method: "S256",
+      state,
+    }).href;
+  }
+
+  async exchange(
+    callbackUrl: string,
+    { verifier, state }: { verifier: string; state: string },
+  ): Promise<RawTokens> {
+    const config = await this.config();
+    const tokens = await client.authorizationCodeGrant(config, new URL(callbackUrl), {
+      // We don't request `openid`, so no ID Token is expected.
+      pkceCodeVerifier: verifier,
+      expectedState: state,
+      idTokenExpected: false,
+    });
+    return pick(tokens);
+  }
+
+  async refresh(refreshToken: string, opts?: { scope?: string }): Promise<RawTokens> {
+    const config = await this.config();
+    const params: Record<string, string> = {};
+    if (opts?.scope) params.scope = opts.scope;
+    return pick(await client.refreshTokenGrant(config, refreshToken, params));
+  }
+
+  async revoke(refreshToken: string): Promise<void> {
+    const config = await this.config();
+    await client.tokenRevocation(config, refreshToken, { token_type_hint: "refresh_token" });
+  }
+}
+
+function pick(t: {
+  access_token: string;
+  refresh_token?: string;
+  expires_in?: number;
+  scope?: string;
+}): RawTokens {
+  return {
+    access_token: t.access_token,
+    refresh_token: t.refresh_token,
+    expires_in: t.expires_in,
+    scope: t.scope,
+  };
 }

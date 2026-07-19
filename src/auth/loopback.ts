@@ -17,12 +17,25 @@ import type { AddressInfo } from "node:net";
 /** How long to wait for the browser redirect before giving up (ms). */
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 
+/** The redirect the browser lands on once the user authorizes. */
+export interface CallbackResult {
+  /** The authorization `code` (already state-validated). */
+  code: string;
+  /**
+   * The full callback URL (`redirectUri` + the AS's query string), preserving
+   * `state`/`iss` alongside `code`. openid-client's `authorizationCodeGrant`
+   * derives the token-request `redirect_uri` from this URL's origin+path, so it
+   * is reconstructed against `redirectUri` exactly — never the ephemeral socket.
+   */
+  callbackUrl: string;
+}
+
 /** A listening loopback callback server awaiting one authorization redirect. */
 export interface CallbackListener {
   /** The exact `redirect_uri` to send in the authorize request (with bound port). */
   redirectUri: string;
-  /** Resolves with the authorization `code` once the browser redirects back. */
-  waitForCode: Promise<string>;
+  /** Resolves with the callback once the browser redirects back. */
+  waitForCallback: Promise<CallbackResult>;
   /** Tear the server down (safe to call more than once). */
   close(): void;
 }
@@ -45,19 +58,22 @@ const CLOSE_TAB_HTML =
 
 /**
  * Start the loopback server and begin listening. Resolves once the socket is
- * bound (so `redirectUri` carries the real port) — the `waitForCode` promise
- * resolves later, when the browser redirect arrives.
+ * bound (so `redirectUri` carries the real port) — the `waitForCallback`
+ * promise resolves later, when the browser redirect arrives.
  */
 export function startCallbackServer(opts: CallbackOptions): Promise<CallbackListener> {
   const { callbackPath, expectedState, port, timeoutMs = DEFAULT_TIMEOUT_MS } = opts;
 
   return new Promise<CallbackListener>((resolveListener, rejectListener) => {
-    let resolveCode!: (code: string) => void;
-    let rejectCode!: (err: Error) => void;
-    const waitForCode = new Promise<string>((res, rej) => {
-      resolveCode = res;
-      rejectCode = rej;
+    let resolveResult!: (result: CallbackResult) => void;
+    let rejectResult!: (err: Error) => void;
+    const waitForCallback = new Promise<CallbackResult>((res, rej) => {
+      resolveResult = res;
+      rejectResult = rej;
     });
+    // Set once the socket is bound; the callback URL is rebuilt against this so
+    // its origin+path matches the registered redirect_uri exactly.
+    let redirectUri = "";
 
     const server = createServer((req: IncomingMessage, res: ServerResponse) => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -81,7 +97,14 @@ export function startCallbackServer(opts: CallbackOptions): Promise<CallbackList
       const error = url.searchParams.get("error");
       if (error) {
         respond(res, 400, "Authorization failed. Check the terminal for details.");
-        finish(new Error(`Authorization server returned error: ${error}`));
+        // Carry the raw code on `.error` (openid-client's convention) so callers
+        // can recover from an authorize-time `invalid_client` the same way they
+        // recover from one at the token endpoint.
+        const authError: Error & { error?: string } = new Error(
+          `Authorization server returned error: ${error}`,
+        );
+        authError.error = error;
+        finish(authError);
         return;
       }
       const code = url.searchParams.get("code");
@@ -91,7 +114,10 @@ export function startCallbackServer(opts: CallbackOptions): Promise<CallbackList
         return;
       }
       res.writeHead(200, { "Content-Type": "text/html" }).end(CLOSE_TAB_HTML);
-      finish(undefined, code);
+      // Rebuild the callback URL against the registered redirect_uri (not the raw
+      // socket address) so its origin+path matches exactly, preserving every AS
+      // query param (code, state, iss) for openid-client to validate.
+      finish(undefined, { code, callbackUrl: `${redirectUri}?${url.searchParams.toString()}` });
     });
 
     // One-shot: after the first (in)valid callback, resolve/reject and close.
@@ -101,13 +127,13 @@ export function startCallbackServer(opts: CallbackOptions): Promise<CallbackList
     timer.unref?.();
 
     let settled = false;
-    function finish(err?: Error, code?: string): void {
+    function finish(err?: Error, result?: CallbackResult): void {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       server.close();
-      if (err) rejectCode(err);
-      else resolveCode(code!);
+      if (err) rejectResult(err);
+      else resolveResult(result!);
     }
 
     server.on("error", (err) => {
@@ -124,9 +150,10 @@ export function startCallbackServer(opts: CallbackOptions): Promise<CallbackList
       // ports per RFC 8252 §7.3. If it does exact-match instead, pass a fixed
       // --port matching the registration. See the plan's loopback-redirect risk.
       const boundPort = (server.address() as AddressInfo).port;
+      redirectUri = `http://127.0.0.1:${boundPort}${callbackPath}`;
       resolveListener({
-        redirectUri: `http://127.0.0.1:${boundPort}${callbackPath}`,
-        waitForCode,
+        redirectUri,
+        waitForCallback,
         close: () => finish(new Error("Login cancelled.")),
       });
     });
