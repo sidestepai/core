@@ -1,6 +1,6 @@
 {
   "name": "sidestep",
-  "version": "1.2.0",
+  "version": "2.0.0",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
@@ -9522,6 +9522,94 @@
       "result": "text",
       "group": "transform",
       "description": "Encodes the value and returns the result as yaml text"
+    }
+  ],
+  "cli": [
+    {
+      "command": "compile",
+      "args": "<file> [--out <path>]",
+      "description": "Emit one function's importable JSON to --out (or stdout)."
+    },
+    {
+      "command": "export",
+      "args": "<file> [--out <path>]",
+      "flags": [
+        {
+          "flag": "--lock[=<path>]",
+          "description": "Freeze object guids into a committed xano.lock (default: beside the entry)."
+        },
+        {
+          "flag": "--frozen-lock",
+          "description": "CI guard: fail instead of changing the lock."
+        }
+      ],
+      "description": "Compile the default-exported Xano registry into the aggregate workspace bundle."
+    },
+    {
+      "command": "workspace deploy",
+      "args": "<file> | --bundle <path>",
+      "flags": [
+        {
+          "flag": "--prune",
+          "description": "Also remove server objects absent from the bundle (table records kept)."
+        },
+        {
+          "flag": "--reset",
+          "description": "From-scratch rebuild — wipes objects AND records. Needs confirmation."
+        },
+        {
+          "flag": "--static <dir>",
+          "description": "Archive a built frontend directory and deploy it to the workspace's edge static host after the backend import."
+        },
+        {
+          "flag": "--confirm-workspace <name>",
+          "description": "Non-interactive --reset confirmation; must match the resolved workspace name."
+        },
+        {
+          "flag": "--adopt-workspace",
+          "description": "Rebind the lock's workspace identity to the server's on a canonical mismatch."
+        },
+        {
+          "flag": "--config <path>",
+          "description": "Project-local token cache (default: $XANO_CONFIG, then ./.xano/auth.json)."
+        }
+      ],
+      "description": "Deploy the compiled workspace to the token-scoped REAL workspace (upsert-in-place by identity), optionally with a static frontend. Reconciles xano.lock from the server's authoritative response."
+    },
+    {
+      "command": "sandbox deploy",
+      "args": "<file> | --bundle <path>",
+      "flags": [
+        {
+          "flag": "--reset",
+          "description": "Clear the sandbox workspace first for a full replace (default merges)."
+        },
+        {
+          "flag": "--config <path>",
+          "description": "Project-local token cache (default: $XANO_CONFIG, then ./.xano/auth.json)."
+        }
+      ],
+      "description": "Throwaway dev-loop deploy to the sandbox workspace (replaces the removed `push`). Never writes xano.lock."
+    },
+    {
+      "command": "profile me",
+      "args": "[--config <path>]",
+      "description": "Print the scoped user, workspace {id, name}, and the instance base URL as JSON — read `instance` to configure a frontend's API base before a --static upload."
+    },
+    {
+      "command": "login",
+      "args": "[--origin <origin>] [--config <path>] [--port <n>] [--scope <list>]",
+      "description": "OAuth sign-in (browser consent; pick the instance at consent). Caches tokens in ./.xano/auth.json. For CI, set $XANO_REFRESH_TOKEN + $XANO_CLIENT_ID instead."
+    },
+    {
+      "command": "logout",
+      "args": "[--config <path>]",
+      "description": "Revoke the refresh token and delete the cached credentials."
+    },
+    {
+      "command": "lock",
+      "args": "<rename|prune|adopt> …",
+      "description": "xano.lock identity maintenance (rename an object, prune stale entries, adopt an existing live bundle)."
     }
   ]
 }
