@@ -84,13 +84,36 @@ type AddonAlias<S extends string> = S extends `${string}.${infer Rest}`
   ? AddonAlias<Rest>
   : S;
 
+/** True only for `unknown` (not `any`, not a concrete type) — guards the graft narrowing below. */
+type IsUnknown<T> = 0 extends 1 & T ? false : unknown extends T ? true : false;
+
+/**
+ * Narrow a graft `G` to the attachment's `output` column whitelist `O`. The
+ * runtime intersects the def's selected columns with the attachment whitelist
+ * (`whitelistOutput`), so the type picks `O ∩ keyof G`. Applied to the element
+ * of a list graft (`Shape[]`) or a single graft (`Shape`). An `unknown` graft
+ * (bare-name reference, or a def with no typed `output`) stays `unknown` — never
+ * collapse it to `{}`.
+ */
+type NarrowGraft<G, O extends readonly string[]> = IsUnknown<G> extends true
+  ? unknown
+  : G extends readonly (infer E)[]
+    ? Prettify<Pick<E, Extract<O[number], keyof E>>>[]
+    : Prettify<Pick<G, Extract<O[number], keyof G>>>;
+
 /**
  * The graft shape one attached addon lands on the row. A typed
  * {@link AddonDef} handle carries its shape (`Pick<row, output>`, an object or
  * array per its cardinality); a bare name/`ObjectRef` reference carries none, so
- * it grafts `unknown` — the honest floor (narrow it at the call site).
+ * it grafts `unknown` — the honest floor (narrow it at the call site). An
+ * attachment-level `output` further restricts the graft to those columns
+ * ({@link NarrowGraft}).
  */
-type GraftOf<H> = H extends { addon: AddonDef<infer G> } ? G : unknown;
+type GraftOf<H> = H extends { addon: AddonDef<infer G> }
+  ? H extends { output: infer O extends readonly string[] }
+    ? NarrowGraft<G, O>
+    : G
+  : unknown;
 
 /**
  * The keys a set of attached addons graft onto each returned row. Each addon's

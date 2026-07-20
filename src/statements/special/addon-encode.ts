@@ -47,7 +47,7 @@ export interface AddonSpec<Graft = unknown> {
   as: string;
   /** Addon input bindings, name → value (use {@link out} for parent-row columns). */
   input?: Record<string, Value>;
-  /** Restrict the addon's returned columns. Narrows the graft at runtime; not yet reflected in the grafted type. */
+  /** Restrict the addon's returned columns. Narrows the graft at runtime and in the grafted type (to `output ∩ the addon's columns`). */
   output?: readonly string[];
   /** Nested addons (recursive). */
   children?: AddonSpec[];

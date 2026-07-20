@@ -138,6 +138,54 @@ describe("addon() typed authoring — graft types on db.query", () => {
     expect(() => s.db.query({ table: "chirp", addon: [{ addon: "author", as: "text" }], as: "rows" })).not.toThrow();
   });
 
+  it("attachment output narrows a list graft to the whitelisted columns", () => {
+    const q = query({
+      verb: "GET",
+      apiGroup: group,
+      name: "q4",
+      stack: [
+        s.db.query({
+          table: chirp,
+          addon: [{ addon: authorAddon, as: "_author", input: { user_id: out("author") }, output: ["name"] }],
+          as: "rows",
+        }),
+      ],
+      response: ref("rows"),
+    });
+    type Row = InferResponse<typeof q>[number];
+    expectTypeOf<Row["_author"]>().toEqualTypeOf<{ name: string }[]>();
+  });
+
+  it("attachment output narrows a single graft to the whitelisted columns", () => {
+    const q = query({
+      verb: "GET",
+      apiGroup: group,
+      name: "q5",
+      stack: [
+        s.db.query({
+          table: chirp,
+          addon: [{ addon: authorSingle, as: "_author", input: { user_id: out("author") }, output: ["id"] }],
+          as: "rows",
+        }),
+      ],
+      response: ref("rows"),
+    });
+    type Row = InferResponse<typeof q>[number];
+    expectTypeOf<Row["_author"]>().toEqualTypeOf<{ id: number }>();
+  });
+
+  it("attachment output on a bare-name addon stays unknown (never collapses to {})", () => {
+    const q = query({
+      verb: "GET",
+      apiGroup: group,
+      name: "q6",
+      stack: [s.db.query({ table: chirp, addon: [{ addon: "author", as: "_author", output: ["name"] }], as: "rows" })],
+      response: ref("rows"),
+    });
+    type Row = InferResponse<typeof q>[number];
+    expectTypeOf<Row["_author"]>().toEqualTypeOf<unknown>();
+  });
+
   it("bare-name addon → graft stays unknown", () => {
     const q = query({
       verb: "GET",

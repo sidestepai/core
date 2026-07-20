@@ -537,10 +537,11 @@ s.db.query({
 When you attach a typed `addon({ table, output })` handle, its **alias** (the
 last segment of its `as` — here `_author`) is merged onto the row shape in
 `InferResponse` with the addon's **graft shape** (`{ id; name }` for `single`,
-`{ id; name }[]` for the default list) — no cast needed. A **bare-name**
-reference still grafts `unknown` (the SDK can't shape it), so narrow it at the
-call site. With `paging` the alias lands inside each `items[]` element; without
-it, on each bare row.
+`{ id; name }[]` for the default list) — no cast needed. An attachment-level
+`output` narrows that shape further (`output: ["name"]` → `{ name }[]`). A
+**bare-name** reference still grafts `unknown` (the SDK can't shape it), so
+narrow it at the call site. With `paging` the alias lands inside each `items[]`
+element; without it, on each bare row.
 
 If an addon's alias **shadows an existing column** on the queried table, the
 build throws — the engine would silently overwrite that column at runtime.
