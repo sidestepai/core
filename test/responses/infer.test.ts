@@ -259,6 +259,112 @@ describe("InferResponse — single-variable trace (U5, type-level)", () => {
     >();
   });
 
+  it("add: db.add result returned → InferRow<typeof link> (issue #48, no cast)", () => {
+    const createLink = query({
+      verb: "POST",
+      apiGroup: links,
+      name: "create_link",
+      stack: [s.db.add({ table: link, row: { slug: c.text("a"), url: c.text("u") }, as: "created" })],
+      response: ref("created"),
+    });
+    expect(createLink.name).toBe("create_link");
+    expectTypeOf<InferResponse<typeof createLink>>().toEqualTypeOf<InferRow<typeof link>>();
+  });
+
+  it("edit: db.edit post-mutation result returned → InferRow<typeof link>", () => {
+    const updateLink = query({
+      verb: "POST",
+      apiGroup: links,
+      name: "update_link",
+      stack: [s.db.edit({ table: link, fieldValue: c.int(1), row: { clicks: c.int(2) }, as: "updated" })],
+      response: ref("updated"),
+    });
+    expect(updateLink.name).toBe("update_link");
+    expectTypeOf<InferResponse<typeof updateLink>>().toEqualTypeOf<InferRow<typeof link>>();
+  });
+
+  it("del: db.del is unbranded (engine returns no row) → unknown", () => {
+    const deleteLink = query({
+      verb: "DELETE",
+      apiGroup: links,
+      name: "delete_link",
+      stack: [s.db.del({ table: link, fieldValue: c.int(1), as: "removed" })],
+      response: ref("removed"),
+    });
+    expect(deleteLink.name).toBe("delete_link");
+    // `dbo_delby` declares no output schema and its `process()` returns nothing,
+    // so the `as` var holds `null`; the honest derived type is `unknown`.
+    expectTypeOf<InferResponse<typeof deleteLink>>().toEqualTypeOf<unknown>();
+  });
+
+  it("patch: db.patch post-patch result returned → InferRow<typeof link>", () => {
+    const patchLink = query({
+      verb: "POST",
+      apiGroup: links,
+      name: "patch_link",
+      stack: [s.db.patch({ table: link, fieldValue: c.int(1), data: c.obj({}), as: "patched" })],
+      response: ref("patched"),
+    });
+    expect(patchLink.name).toBe("patch_link");
+    expectTypeOf<InferResponse<typeof patchLink>>().toEqualTypeOf<InferRow<typeof link>>();
+  });
+
+  it("add_or_edit: db.add_or_edit upserted result returned → InferRow<typeof link>", () => {
+    const upsertLink = query({
+      verb: "POST",
+      apiGroup: links,
+      name: "upsert_link",
+      stack: [s.db.add_or_edit({ table: link, fieldValue: c.int(1), row: { slug: c.text("a") }, as: "upserted" })],
+      response: ref("upserted"),
+    });
+    expect(upsertLink.name).toBe("upsert_link");
+    expectTypeOf<InferResponse<typeof upsertLink>>().toEqualTypeOf<InferRow<typeof link>>();
+  });
+
+  it("has: db.has existence result returned → boolean", () => {
+    const hasLink = query({
+      verb: "GET",
+      apiGroup: links,
+      name: "has_link",
+      stack: [s.db.has({ table: link, fieldValue: c.int(1), as: "exists" })],
+      response: ref("exists"),
+    });
+    expect(hasLink.name).toBe("has_link");
+    expectTypeOf<InferResponse<typeof hasLink>>().toEqualTypeOf<boolean>();
+  });
+
+  it("bulk.patch → row list, bulk.delete → count number", () => {
+    const bulkPatchLinks = query({
+      verb: "POST",
+      apiGroup: links,
+      name: "bulk_patch_links",
+      stack: [s.db.bulk.patch({ table: link, items: c.array([]), as: "patched" })],
+      response: ref("patched"),
+    });
+    const bulkDeleteLinks = query({
+      verb: "DELETE",
+      apiGroup: links,
+      name: "bulk_delete_links",
+      stack: [s.db.bulk.delete({ table: link, as: "count" })],
+      response: ref("count"),
+    });
+    expect([bulkPatchLinks.name, bulkDeleteLinks.name].every((n) => n.length > 0)).toBe(true);
+    expectTypeOf<InferResponse<typeof bulkPatchLinks>>().toEqualTypeOf<InferRow<typeof link>[]>();
+    expectTypeOf<InferResponse<typeof bulkDeleteLinks>>().toEqualTypeOf<number>();
+  });
+
+  it("bulk.add/bulk.update return unknown (engine declares no output schema)", () => {
+    const bulkAddLinks = query({
+      verb: "POST",
+      apiGroup: links,
+      name: "bulk_add_links",
+      stack: [s.db.bulk.add({ table: link, items: c.array([]), as: "added" })],
+      response: ref("added"),
+    });
+    expect(bulkAddLinks.name).toBe("bulk_add_links");
+    expectTypeOf<InferResponse<typeof bulkAddLinks>>().toEqualTypeOf<unknown>();
+  });
+
   it("defineFunction carries a declared responseShape identically", () => {
     expectTypeOf<InferResponse<typeof computeStats>>().toEqualTypeOf<{ total: number }>();
   });
