@@ -61,10 +61,11 @@ type RowShapeOf<T extends ObjectRef, Cols extends readonly string[]> = [
 
 /**
  * The full-row shape a single-record write binds — `db.add` (inserted row),
- * `db.edit` (post-mutation row), `db.del` (deleted row). Always the whole
- * {@link InferRow} (these ops don't take a column selection), or `unknown` for an
- * unbranded bare-name table. Expressed via {@link RowShapeOf} with an empty
- * `Cols` so the `never`→`unknown` guard is shared with the reads.
+ * `db.edit` (post-mutation row), `db.patch`/`db.add_or_edit` (upserted row).
+ * Always the whole {@link InferRow} (these ops don't take a column selection), or
+ * `unknown` for an unbranded bare-name table. Expressed via {@link RowShapeOf}
+ * with an empty `Cols` so the `never`→`unknown` guard is shared with the reads.
+ * (`db.del` is deliberately *not* here — it binds `null`; see {@link dbDel}.)
  */
 type FullRowShapeOf<T extends ObjectRef> = RowShapeOf<T, readonly []>;
 
@@ -178,25 +179,30 @@ export function dbGet<
   ) as DbResult<As, RowShapeOf<T, Cols>>;
 }
 
-export interface DbDelArgs<T extends ObjectRef = ObjectRef, As extends string = string> {
+export interface DbDelArgs<T extends ObjectRef = ObjectRef> {
   table: T;
   fieldName?: ColsOf<T>;
   fieldValue: Value;
-  /** Capture the deleted row into this stack variable. Captured literally so
-   * `InferResponse` can trace a `ref` back to this statement. */
-  as?: As;
+  as?: string;
 }
 
-/** `db.del <table>` — delete a single record by a field match (`mvp:dbo_delby`).
- * Binds the **full deleted row**, so it's branded with `as` + the row shape for
- * `InferResponse` (throws `NotFound`/404 when nothing matches). */
-export function dbDel<T extends ObjectRef, const As extends string = "">(
-  args: DbDelArgs<T, As>,
-): DbResult<As, FullRowShapeOf<T>> {
+/**
+ * `db.del <table>` — delete a single record by a field match (`mvp:dbo_delby`);
+ * throws `NotFound`/404 when nothing matches.
+ *
+ * Left **unbranded** (plain {@link Statement}), unlike the other single-record
+ * writes: `dbo_delby` declares an empty `getOutputSchema` and its `process()`
+ * returns nothing after `$inst->delete()`, so the bound `as` variable holds
+ * **`null`**, not the deleted row. `InferResponse` therefore resolves a returned
+ * del var to `unknown` — matching where the engine's own OpenAPI walk falls back
+ * to `json`. (Contrast `db.add`/`edit`/`patch`/`add_or_edit`, which each
+ * `return $inst->toArray()` and so bind the full row.)
+ */
+export function dbDel<T extends ObjectRef>(args: DbDelArgs<T>): Statement {
   return dboStatement("mvp:dbo_delby", args.table, args.as, [
     entry("field_name", c.text(args.fieldName ?? "id")),
     entry("field_value", args.fieldValue),
-  ]) as DbResult<As, FullRowShapeOf<T>>;
+  ]);
 }
 
 export interface DbHasArgs<T extends ObjectRef = ObjectRef, As extends string = string> {
@@ -615,6 +621,10 @@ export function dbBulkDelete<const As extends string = "">(
 ): DbResult<As, number> {
   const context: Record<string, unknown> = { dbo: { id: resolveRef("dbo", args.table) } };
   if (args.where) context.search = args.where;
+  // Double-cast is compiler-forced, not sloppiness: this literal's `context`
+  // (`Record<string, unknown>` local) and `input: never[]` don't overlap
+  // `DbResult` closely enough for a direct `as` (TS2352). The brand is phantom,
+  // so the runtime literal is a plain `Statement` regardless.
   return { name: "mvp:dbo_bulkdelete", context, as: args.as ?? "", input: [] } as unknown as DbResult<
     As,
     number

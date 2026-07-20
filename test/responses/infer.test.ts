@@ -283,7 +283,7 @@ describe("InferResponse — single-variable trace (U5, type-level)", () => {
     expectTypeOf<InferResponse<typeof updateLink>>().toEqualTypeOf<InferRow<typeof link>>();
   });
 
-  it("del: db.del deleted-row result returned → InferRow<typeof link>", () => {
+  it("del: db.del is unbranded (engine returns no row) → unknown", () => {
     const deleteLink = query({
       verb: "DELETE",
       apiGroup: links,
@@ -292,7 +292,9 @@ describe("InferResponse — single-variable trace (U5, type-level)", () => {
       response: ref("removed"),
     });
     expect(deleteLink.name).toBe("delete_link");
-    expectTypeOf<InferResponse<typeof deleteLink>>().toEqualTypeOf<InferRow<typeof link>>();
+    // `dbo_delby` declares no output schema and its `process()` returns nothing,
+    // so the `as` var holds `null`; the honest derived type is `unknown`.
+    expectTypeOf<InferResponse<typeof deleteLink>>().toEqualTypeOf<unknown>();
   });
 
   it("patch: db.patch post-patch result returned → InferRow<typeof link>", () => {

@@ -286,11 +286,11 @@ async function fetchPosts(): Promise<Post[]> {
 - **`InferResponse<typeof someQuery>`** → the endpoint's **response** type, closing the round
   trip. It auto-derives the common shapes with no codegen: an object-literal response yields
   those keys, and a query that returns a variable filled by a db op derives that op's result —
-  the full row for `db.get`/`db.add`/`db.edit`/`db.del`/`db.patch`/`db.add_or_edit` (→ `Row`),
+  the full row for `db.get`/`db.add`/`db.edit`/`db.patch`/`db.add_or_edit` (→ `Row`),
   a row list for `db.query`/`db.bulk.patch` (→ `Row[]`), a `boolean` for `db.has`, a `number`
   count for `db.bulk.delete`, and a `get`/`query` `output: [...]` selection narrows to a `Pick`.
   Where the shape isn't statically knowable — a value reshaped by a filter/lambda, built by
-  control flow, or from an op the engine itself leaves untyped (`db.bulk.add`/`bulk.update`,
+  control flow, or from an op the engine itself leaves untyped (`db.del`, `db.bulk.add`/`bulk.update`,
   raw `direct_query`) — it resolves to `unknown`; declare `responseShape` to close it.
 
 ```ts
@@ -494,12 +494,12 @@ array (ANDed) and branch on the result, rather than pushing the check to the cli
 - `s.db.get` binds **`null`** when no row matches — it does *not* throw. So its response type
   is `InferRow<typeof table> | null`; null-check it. On a hit it binds the full row.
   (`s.db.has` is the boolean existence test.)
-- `s.db.edit` binds the **full, post-mutation row** (the freshly-written values), `s.db.del`
-  the **full deleted row**, and `s.db.add` the **full inserted row** (including the
-  auto-assigned `id`/`created_at`). So `InferRow<typeof table>` is the correct response type
-  for those three — and `InferResponse` derives it automatically when the query returns that
-  bound variable, no `responseShape` needed (issue #48). Unlike `get`, `edit`/`del` **throw**
-  `NotFound` (404) when nothing matches.
+- `s.db.edit` binds the **full, post-mutation row** (the freshly-written values) and `s.db.add`
+  the **full inserted row** (including the auto-assigned `id`/`created_at`). So
+  `InferRow<typeof table>` is the correct response type for those two — and `InferResponse`
+  derives it automatically when the query returns that bound variable, no `responseShape` needed
+  (issue #48). `s.db.del` **binds `null`** (the engine deletes and returns no value), so it stays
+  `unknown`. Unlike `get`, `edit`/`del` **throw** `NotFound` (404) when nothing matches.
 
 **Values** — `c.int/text/bool/decimal/null/obj/array`, `ref(var)`, `inp(input)`,
 `col(name)`, plus context refs `auth(path?)`, `env(name)`, `setting(name)`. `c.obj`/`c.array`
