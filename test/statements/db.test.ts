@@ -242,14 +242,55 @@ describe("db !map:dbo family — byte-shape vs transform-temp goldens", () => {
       expect(input.filter((e) => e.ignore).map((e) => e.name)).toEqual(["id"]);
     });
 
-    it("db.edit ignores id + created_at (system columns) on the expanded row", () => {
+    it("db.edit ignores system columns AND unmentioned columns (partial edit, issue #33)", () => {
       const input = inputOf(
         encodeStatement(dbEdit({ table: users, fieldValue: c.int(1), row: { name: c.text("x") } })),
       );
+      // A partial edit writes only the supplied column; every other column —
+      // system (id/created_at) or merely unmentioned (tags/meta) — is emitted
+      // with ignore:true so the stored value is preserved, not nulled.
       const ignored = input.filter((e) => e.ignore).map((e) => e.name);
-      expect(ignored).toEqual(["id", "created_at"]);
+      expect(ignored).toEqual(["id", "created_at", "tags", "meta"]);
+      const written = input.filter((e) => e.name !== "field_name" && e.name !== "field_value" && !e.ignore);
+      expect(written.map((e) => e.name)).toEqual(["name"]);
       // lookup pair still leads, then the expanded columns
       expect(input.slice(0, 2).map((e) => e.name)).toEqual(["field_name", "field_value"]);
+    });
+
+    it("db.edit treats an explicitly supplied null as a write, not an omission (issue #33)", () => {
+      // The crux of the fix: `supplied` is `row[col.name] !== undefined`, so an
+      // author who writes `{ tags: null }` sets the column to null (ignore:false,
+      // the null emitted), whereas omitting `tags` preserves the stored value
+      // (ignore:true). A nullish `??` check would conflate the two.
+      const input = inputOf(
+        encodeStatement(dbEdit({ table: users, fieldValue: c.int(1), row: { tags: c.null() } })),
+      );
+      const tags = input.find((e) => e.name === "tags")!;
+      expect(tags.ignore).toBe(false); // supplied → written, NOT preserved
+      expect([tags.value, tags.tag]).toEqual(["null", "const:null"]); // author's null, not a type default
+      // an unmentioned column is still ignored (stored value preserved)
+      expect(input.find((e) => e.name === "meta")!.ignore).toBe(true);
+    });
+
+    it("db.edit with an empty row ignores every column (writes nothing)", () => {
+      const input = inputOf(encodeStatement(dbEdit({ table: users, fieldValue: c.int(1), row: {} })));
+      const written = input.filter(
+        (e) => e.name !== "field_name" && e.name !== "field_value" && !e.ignore,
+      );
+      expect(written).toEqual([]);
+    });
+
+    it("db.edit that supplies every column ignores only the system columns", () => {
+      const input = inputOf(
+        encodeStatement(
+          dbEdit({
+            table: users,
+            fieldValue: c.int(1),
+            row: { name: c.text("a"), tags: c.array([]), meta: c.obj({}) },
+          }),
+        ),
+      );
+      expect(input.filter((e) => e.ignore).map((e) => e.name)).toEqual(["id", "created_at"]);
     });
 
     it("rejects a row key that is not a column (typo guard)", () => {
