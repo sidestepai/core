@@ -253,7 +253,11 @@ function rowEntries(data: DbField[]): RichInput[] {
  */
 export type RowCell = Value & { readonly __col?: never };
 
-/** A partial row keyed by column name — the values to write; unspecified columns get a type default. */
+/**
+ * A partial row keyed by column name — the values to write. Unspecified columns
+ * get a type default on `db.add`; on `db.edit` they are marked `ignore:true` and
+ * keep their stored value instead (issue #33 — see `expandRow`).
+ */
 export type RowMap<C extends string = string> = Partial<Record<C, RowCell>>;
 
 /**
@@ -262,7 +266,9 @@ export type RowMap<C extends string = string> = Partial<Record<C, RowCell>>;
  * Authoring `data: DbField[]` gives exact control over every entry; passing
  * `row: { … }` instead lets sidestep expand a *partial* row against the table's
  * own declared columns: it emits one entry per column (in schema order), using
- * the author's value where given and a documented type default otherwise.
+ * the author's value where given and, for unmentioned columns, a documented type
+ * default on `add` — or `ignore:true` on `edit` (preserving the stored value; see
+ * the `ignore` heuristic below).
  *
  * This is **not** a byte-for-byte clone of the engine's editor template. That
  * template (column ordering, the injected `@meta` system column, and the per-op
