@@ -544,7 +544,16 @@ export function dbBulkUpdate(args: DbBulkWriteArgs): Statement {
 /** Sort direction for a {@link SortDirective}. */
 export type SortDir = "asc" | "desc";
 
-/** One sort directive: order by `sortBy`, ascending or descending. */
+/**
+ * One sort directive: order by `sortBy`, ascending or descending.
+ *
+ * ⚠ **Not yet applied by the engine (silent no-op).** `db.query` (`mvp:dbo_view`)
+ * is structural and byte-**unverified** — a `sort` is emitted into `context.sort`
+ * in a well-formed shape, but the live engine does not currently apply it, so rows
+ * come back in Postgres heap order (see issue #34). Until a `dbo_view` golden is
+ * vendored and the shape is confirmed, **sort client-side** if order matters. The
+ * same caveat applies to {@link DbPaging}.
+ */
 export interface SortDirective<C extends string = string> {
   /** The column (or dot-path) to sort by. */
   sortBy: C;
@@ -597,7 +606,9 @@ export interface DbQueryArgs<
   where?: DbWhere;
   /** Additional filter ANDed with `where` (same forms as `where`). */
   additionalWhere?: DbWhere;
-  /** Sort directives (`[{ sortBy, dir }]`). */
+  /** Sort directives (`[{ sortBy, dir }]`). ⚠ Emitted but **not yet applied by
+   * the engine** — a silent no-op until `dbo_view` is byte-verified; sort
+   * client-side if order matters (see {@link SortDirective} and issue #34). */
   sort?: SortDirective<ColsOf<T>>[];
   /** Acquire row locks. */
   lock?: boolean;
@@ -618,6 +629,10 @@ export interface DbQueryArgs<
  * comparison `where` is encoded into the operand-based `{expression:[…]}` shape
  * (shared with conditionals/trigger search); a raw `Value` is passed through.
  * Structural until a `dbo_view` golden is vendored.
+ *
+ * ⚠ **`sort` and `paging` are emitted but not yet applied by the live engine**
+ * (silent no-op — see {@link SortDirective} and issue #34). Sort/page client-side
+ * until this surface is byte-verified.
  */
 export function dbQuery<
   T extends ObjectRef,

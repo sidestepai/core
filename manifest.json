@@ -95,8 +95,8 @@
       },
       {
         "name": "withFilters",
-        "signature": "(value: Value, filters: FilterXdo[]) => Value",
-        "description": "Attach a filter chain to a value."
+        "signature": "(value: Value, ...filters: FilterXdo[]) => Value",
+        "description": "Attach a filter chain to a value (filters passed spread; an array is also accepted)."
       }
     ],
     "tags": [
