@@ -489,6 +489,27 @@ and paging numbers are plain ints). The field-match ops take a **single** field 
 two-column lookup (e.g. dedupe a `(habit, date)` check-in), use `s.db.query` with a `where`
 array (ANDed) and branch on the result, rather than pushing the check to the client.
 
+**Addons** — enrich each returned row with related data by attaching addons to
+`s.db.query`/`get`/`add`/`edit`/`patch` (the row-returning ops). Reference the
+addon by name (or def handle), map its inputs (bind a parent-row column with
+`out(col)`), optionally restrict its output columns, and land it on the row at a
+dotted `as` (`offset.alias`). Addons nest via `children`:
+
+```ts
+s.db.query({
+  table: post,
+  addon: [
+    { addon: "author", as: "items._author", input: { user_id: out("user_id") }, output: ["name"] },
+  ],
+  as: "rows",
+}),
+```
+
+Note: addon-added fields (here `_author`) are **not** merged into the
+`InferResponse` row shape yet — reach them as runtime-present fields rather than
+casting the whole row to `any`. The `s.db.add_or_edit`/`del`/`has`/`truncate` ops
+do not take an `addon` (no row to enrich / lean envelope).
+
 **Runtime behavior.** Knowing what these return matters for typing your endpoint responses:
 
 - `s.db.get` binds **`null`** when no row matches — it does *not* throw. So its response type
@@ -502,7 +523,8 @@ array (ANDed) and branch on the result, rather than pushing the check to the cli
   `unknown`. Unlike `get`, `edit`/`del` **throw** `NotFound` (404) when nothing matches.
 
 **Values** — `c.int/text/bool/decimal/null/obj/array`, `ref(var)`, `inp(input)`,
-`col(name)`, plus context refs `auth(path?)`, `env(name)`, `setting(name)`. `c.obj`/`c.array`
+`col(name)`, plus context refs `auth(path?)`, `env(name)`, `setting(name)`, `out(name)`
+(a parent-row column, for addon inputs). `c.obj`/`c.array`
 take **plain JSON literals only** — a nested tagged value (`inp`/`ref`/`auth`/`c.*`) is a
 compile error; for a computed object response use a record of values, not `c.obj` (issue #42).
 `withFilters(value, fl.a(), fl.b())` attaches the value pipeline via a typed catalog `fl.*`
