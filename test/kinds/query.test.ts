@@ -174,5 +174,20 @@ describe("query + api_group on Xano", () => {
       const one: SearchParamValue = ["a", 1, true, null];
       expect(toSearchParams({ k: one }).getAll("k")).toEqual(["a", "1", "true"]);
     });
+
+    it("accepts a generic `Record<string, unknown>` input map without a cast (#49)", () => {
+      // A generic transport holds its endpoint input opaquely; the wide overload
+      // takes it directly — no `as Record<string, SearchParamValue>` needed.
+      const opaque: Record<string, unknown> = { id: 7, tag: ["a", "b"], skip: undefined };
+      const p = toSearchParams(opaque);
+      expect(p.get("id")).toBe("7");
+      expect(p.getAll("tag")).toEqual(["a", "b"]);
+      expect(p.has("skip")).toBe(false);
+    });
+
+    it("still throws at runtime on a non-scalar reaching it via the wide overload", () => {
+      const opaque: Record<string, unknown> = { o: { nested: true } };
+      expect(() => toSearchParams(opaque)).toThrow(/not a scalar/);
+    });
   });
 });
