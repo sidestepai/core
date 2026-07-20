@@ -56,10 +56,18 @@ export interface QueryDef<
    * public (no-auth) endpoint. Pass the auth `table()` def — the table marked
    * `table({ auth: true })` — and `export()` resolves it to that table's guid
    * (the engine remaps guid→local id on import), so the binding is stable across
-   * syncs. A bare table name resolves the same way; a raw numeric `dbo.id` is an
-   * escape hatch that wins when given. Xano supports any number of auth tables,
-   * so name the one this endpoint authenticates against. Once set, read the
+   * syncs. A bare table name resolves the same way, but pass the def handle when
+   * the table pins an explicit `guid`: a bare name derives its guid from the name
+   * alone and would diverge from the pinned identity. A raw numeric `dbo.id` is
+   * an escape hatch that wins when given. Xano supports any number of auth
+   * tables, so name the one this endpoint authenticates against; `export()`
+   * rejects a reference that isn't a registered auth table. Once set, read the
    * authenticated record inside the stack with the `auth("path")` value ref.
+   *
+   * Unlike `apiGroup`, the numeric escape hatch lives in this same field rather
+   * than a separate `authId`: `auth` is a single terminal value with no second
+   * consumer (the `apiGroup` handle also feeds `getPath()`'s `canonical`, which
+   * is why *it* needs the symbolic ref and the raw id to coexist as two fields).
    */
   auth?: false | TableDef | string | number;
   description?: string;
@@ -167,6 +175,12 @@ function defaultCache(override?: Partial<CacheXdo>): CacheXdo {
  * auth tables coexist (the endpoint names the one it authenticates against). A
  * bare boolean is rejected: the engine can't store `true` (the importer's loose
  * `==` mis-resolves it to a template table), so it must name a table.
+ *
+ * This runs per-def with no registry visibility, so it validates only what a
+ * single def can prove: a `TableDef` handle carries its own `auth` flag (a
+ * non-auth table is rejected here, by name), and a number must at least be a
+ * plausible id. A *bare-name* reference can't be checked here — `Xano.export()`
+ * cross-checks the resolved guid against the registered auth tables.
  */
 function resolveAuth(name: string, auth: QueryDef["auth"]): false | number | string {
   if (auth === undefined || auth === false) return false;
@@ -178,7 +192,26 @@ function resolveAuth(name: string, auth: QueryDef["auth"]): false | number | str
         `(e.g. \`auth: user\` for a \`table({ auth: true })\`) or its numeric id.`,
     );
   }
-  if (typeof auth === "number") return auth;
+  if (typeof auth === "number") {
+    // The raw `dbo.id` escape hatch. sidestep can't resolve a table id against
+    // the registry, but it can reject values that could never be one — a
+    // fat-fingered id should fail here, not with an opaque engine error at deploy.
+    if (!Number.isInteger(auth) || auth <= 0) {
+      throw new Error(
+        `query "${name}": numeric \`auth\` must be a positive integer \`dbo.id\` (got ${auth}). ` +
+          `Use \`false\` for a public endpoint, or pass the auth table def/name.`,
+      );
+    }
+    return auth;
+  }
+  // A `TableDef` handle carries its `auth` flag — reject a non-auth table at the
+  // source, with its name. (A bare-name string has no flag to inspect here.)
+  if (typeof auth === "object" && auth.auth !== true) {
+    throw new Error(
+      `query "${name}": table "${auth.name}" is not an auth table. ` +
+        `Mark it with \`table({ auth: true })\`, or pass a different table.`,
+    );
+  }
   return resolveRef("dbo", auth);
 }
 
