@@ -55,8 +55,8 @@
       },
       {
         "name": "ref",
-        "signature": "(name: string) => Value",
-        "description": "Reference a stack variable → tag \"var\"."
+        "signature": "(name: string, opts?: { safe?: boolean }) => Value",
+        "description": "Reference a stack variable → tag \"var\". Pass { safe: true } for null-safe nested access — a dotted ref(\"owner.user_id\", { safe: true }) compiles through the get filter so it resolves to null instead of raising \"Unable to locate var\" when the base is null (issue #47)."
       },
       {
         "name": "inp",
