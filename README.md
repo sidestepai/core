@@ -298,6 +298,12 @@ type Posts = InferResponse<typeof listPosts>;   // Post[] — derived from the d
 type Post  = InferResponse<typeof getPost>;      // Post   — derived from the db.get it returns
 ```
 
+For a **computed or multi-key object response**, author it as a *record of values* —
+`response: { success: c.bool(true), id: inp("id") }` — **not** `c.obj({ ... })`. `c.obj` builds
+a JSON *constant* by stringifying its argument, so a tagged value nested inside it serializes as
+internal representation the engine can't decode (a runtime 500); nesting one is now a compile
+error that points you at the record form (issue #42).
+
 When a response is filtered, computed, or otherwise opaque to the static walk, declare it once
 on the query and every caller derives from that single source of truth:
 
@@ -487,7 +493,9 @@ array (ANDed) and branch on the result, rather than pushing the check to the cli
   for those three. Unlike `get`, `edit`/`del` **throw** `NotFound` (404) when nothing matches.
 
 **Values** — `c.int/text/bool/decimal/null/obj/array`, `ref(var)`, `inp(input)`,
-`col(name)`, plus context refs `auth(path?)`, `env(name)`, `setting(name)`.
+`col(name)`, plus context refs `auth(path?)`, `env(name)`, `setting(name)`. `c.obj`/`c.array`
+take **plain JSON literals only** — a nested tagged value (`inp`/`ref`/`auth`/`c.*`) is a
+compile error; for a computed object response use a record of values, not `c.obj` (issue #42).
 `withFilters(value, fl.a(), fl.b())` attaches the value pipeline via a typed catalog `fl.*`
 (377 filters generated from the engine's own sources; pass filters spread — the array form
 `withFilters(v, [fl.a(), fl.b()])` also works but the spread form is canonical). To

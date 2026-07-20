@@ -4,6 +4,7 @@
  * filters}` shape. Built and tested once here, reused everywhere.
  */
 import type { FilterXdo, TaggedValue, Tag } from "../types/xdo.js";
+import { TAGS } from "../types/xdo.js";
 
 /** A sidestep authored value is just the stored tagged-value shape. */
 export type Value = TaggedValue;
@@ -39,6 +40,76 @@ export type FilteredValue = Value & { readonly __filtered: true };
  */
 export type ColValue = Value & { readonly __col: true };
 
+/**
+ * The error branch surfaced when a tagged {@link Value} is nested inside a
+ * `c.obj`/`c.array` literal (issue #42). The long message is the *property key*
+ * so TypeScript prints it verbatim in the "property … is missing" diagnostic; a
+ * `Value` has no such key, so intersecting it here makes the offending position
+ * fail to type-check. The runtime guard ({@link assertPlainJson}) carries the
+ * same guidance for JS/`any`-typed callers the type can't reach.
+ */
+type TaggedValueNotAllowed = {
+  "❌ c.obj/c.array take plain JSON only — a tagged value (inp/ref/auth/col/c.*) can't be nested. For a computed object response use a record of values: `response: { key: value }` (not c.obj). See issue #42.": never;
+};
+
+/**
+ * Recursively reject any nested {@link Value} in a plain-JSON literal `T`. A
+ * member assignable to `Value` maps to {@link TaggedValueNotAllowed}; plain JSON
+ * (primitives, arrays, objects) passes through unchanged. Used intersected with
+ * a naked `T` (`o: T & RejectValues<T>`) so `T` stays inferrable while the
+ * rejection rides along. Structural `extends Value` detection — not a `JsonLiteral`
+ * constraint — so it survives a future `TaggedValue` interface→alias refactor.
+ */
+type RejectValues<T> = T extends Value
+  ? TaggedValueNotAllowed
+  : T extends readonly (infer E)[]
+    ? readonly RejectValues<E>[]
+    : T extends object
+      ? { [K in keyof T]: RejectValues<T[K]> }
+      : T;
+
+/** Runtime-guard message (issue #42). Context-neutral: `c.obj`/`c.array` are
+ * general constant constructors, used well beyond responses. */
+const REJECT_TAGGED_VALUE =
+  "c.obj/c.array embed a plain JSON constant and cannot contain a tagged value " +
+  "(inp/ref/auth/col/env/c.int/c.text/c.bool/…) — those serialize as internal " +
+  "representation the engine can't decode. For a computed object response, use a " +
+  "record of values — `response: { key: value }` — not `c.obj({ key: value })`. (issue #42)";
+
+/**
+ * Shape check matching {@link Value}: a `{value, tag, filters}` object whose
+ * `tag` is an actual {@link Tag}. Requiring a valid tag (not merely any string)
+ * keeps the runtime guard in lockstep with the compile-time `extends Value`
+ * check, so a plain-JSON literal that happens to use `tag`/`value`/`filters` as
+ * keys with an unrecognized tag is not falsely rejected. Mirrors the `isValue`
+ * predicate in `responses/response.ts`.
+ */
+function isTaggedValue(x: unknown): boolean {
+  return (
+    typeof x === "object" &&
+    x !== null &&
+    "value" in x &&
+    "filters" in x &&
+    Array.isArray((x as { filters?: unknown }).filters) &&
+    (TAGS as readonly string[]).includes((x as { tag?: unknown }).tag as string)
+  );
+}
+
+/**
+ * Throw if a tagged {@link Value} is nested anywhere in a `c.obj`/`c.array`
+ * argument (issue #42). The compile-time {@link RejectValues} type is the first
+ * line of defense; this guard catches JS callers and `any`-typed values that
+ * erase the type, failing loudly at construction instead of 500ing at runtime.
+ */
+function assertPlainJson(x: unknown): void {
+  if (isTaggedValue(x)) throw new Error(REJECT_TAGGED_VALUE);
+  if (Array.isArray(x)) {
+    for (const el of x) assertPlainJson(el);
+  } else if (typeof x === "object" && x !== null) {
+    for (const v of Object.values(x)) assertPlainJson(v);
+  }
+}
+
 function val(value: string, tag: Tag, filters: FilterXdo[] = []): Value {
   return { value, tag, filters };
 }
@@ -65,12 +136,25 @@ export const c = {
   null(): Value {
     return val("null", "const:null");
   },
-  /** Object constant → JSON-string value with `tag:"const:obj"`. */
-  obj(o: Record<string, unknown>): Value {
+  /**
+   * Object constant → JSON-string value with `tag:"const:obj"`. Takes **plain
+   * JSON literals only**: nesting a tagged value (`inp`/`ref`/`auth`/`c.*`) is a
+   * compile error and throws at runtime — it would serialize as internal
+   * representation the engine can't decode. For a computed/multi-key object
+   * response use a record of values (`response: { key: value }`), not `c.obj`.
+   * See issue #42.
+   */
+  obj<const T>(o: T & RejectValues<T>): Value {
+    assertPlainJson(o);
     return val(JSON.stringify(o), "const:obj");
   },
-  /** Array constant → JSON-string value with `tag:"const:array"`. */
-  array(a: unknown[]): Value {
+  /**
+   * Array constant → JSON-string value with `tag:"const:array"`. Takes **plain
+   * JSON literals only** — like {@link obj}, a nested tagged value is a compile
+   * error and throws at runtime. See issue #42.
+   */
+  array<const T extends readonly unknown[]>(a: T & RejectValues<T>): Value {
+    assertPlainJson(a);
     return val(JSON.stringify(a), "const:array");
   },
 };

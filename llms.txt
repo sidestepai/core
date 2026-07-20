@@ -318,8 +318,8 @@ response-bearing triggers) maps to the stored `result[]`:
 - `c.decimal(n: number) => Value` — Decimal constant → tag "const:decimal".
 - `c.bool(b: boolean) => Value` — Boolean constant → tag "const:bool".
 - `c.null() => Value` — Null constant → tag "const:null".
-- `c.obj(o: Record<string, unknown>) => Value` — Object constant (JSON string) → tag "const:obj".
-- `c.array(a: unknown[]) => Value` — Array constant (JSON string) → tag "const:array".
+- `c.obj(o: Json) => Value` — Object constant (JSON string) → tag "const:obj". Plain JSON literals only — a nested tagged value (inp/ref/auth/c.*) is rejected; for a computed object response use a record of values, not c.obj (issue #42).
+- `c.array(a: Json[]) => Value` — Array constant (JSON string) → tag "const:array". Plain JSON literals only — a nested tagged value is rejected, same as c.obj (issue #42).
 - `ref(name: string) => Value` — Reference a stack variable → tag "var".
 - `inp(name: string) => Value` — Reference a function input → tag "input".
 - `col(name: string) => Value` — Reference a table column → tag "col".
