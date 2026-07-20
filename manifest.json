@@ -45,13 +45,13 @@
       },
       {
         "name": "c.obj",
-        "signature": "(o: Record<string, unknown>) => Value",
-        "description": "Object constant (JSON string) → tag \"const:obj\"."
+        "signature": "(o: Json) => Value",
+        "description": "Object constant (JSON string) → tag \"const:obj\". Plain JSON literals only — a nested tagged value (inp/ref/auth/c.*) is rejected; for a computed object response use a record of values, not c.obj (issue #42)."
       },
       {
         "name": "c.array",
-        "signature": "(a: unknown[]) => Value",
-        "description": "Array constant (JSON string) → tag \"const:array\"."
+        "signature": "(a: Json[]) => Value",
+        "description": "Array constant (JSON string) → tag \"const:array\". Plain JSON literals only — a nested tagged value is rejected, same as c.obj (issue #42)."
       },
       {
         "name": "ref",
