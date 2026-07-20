@@ -9,7 +9,7 @@
  * generic `register(kindName, …)`. More sugar is added as each kind lands.
  */
 import { getKind, encodeObject } from "../kinds/kind.js";
-import { deriveGuid, REFERENCEABLE_KINDS } from "../refs/guid.js";
+import { deriveGuid, resolveRef, REFERENCEABLE_KINDS } from "../refs/guid.js";
 import { buildBundle } from "./export.js";
 import type { Bundle, BundleType, PayloadArrayKey } from "./export.js";
 import { lockKey, mintCanonical, recordObserved, WORKSPACE_KEY, WORKSPACE_REALTIME_KEY } from "../lock/lock.js";
@@ -172,38 +172,12 @@ export class Xano {
         return { ...encoded, import: { mode: "standard" } };
       });
     }
-    // Resolve a query's ergonomic `auth: true` to the workspace's auth-table
-    // guid. The engine stores a query's `auth` as a reference to the auth table
-    // (`Migrate::importQuery` runs it through `importDboId`/`exportDboId`), so a
-    // bare boolean `true` is not a valid auth value — on import it falls through
-    // to the importer's legacy numeric-id `switch`, whose loose `==` comparison
-    // matches `"1075"` and mis-resolves to an unrelated template table
-    // ("Invalid database reference"). `false` correctly means "no auth".
-    const queries = sections["query"];
-    if (Array.isArray(queries)) {
-      const authTables = this.tableDefs.filter((d) => d.auth === true);
-      for (const q of queries) {
-        if (!q || typeof q !== "object") continue;
-        const qo = q as Record<string, unknown>;
-        if (qo.auth !== true) continue;
-        if (authTables.length === 0) {
-          throw new Error(
-            `query "${String(qo.name)}" sets auth: true, but no registered table is an auth table. ` +
-              `Mark your auth table with table({ auth: true }).`,
-          );
-        }
-        if (authTables.length > 1) {
-          throw new Error(
-            `query "${String(qo.name)}" sets auth: true, but the workspace has multiple auth tables ` +
-              `(${authTables.map((t) => t.name).join(", ")}). Disambiguate by passing the auth table's ` +
-              `numeric id as \`auth\` instead of \`true\`.`,
-          );
-        }
-        const [authTable] = authTables;
-        if (!authTable) continue; // unreachable (length === 1), narrows the type
-        qo.auth = authTable.guid ?? deriveGuid("dbo", authTable.name);
-      }
-    }
+    // A query's `auth` is resolved to its stored guid at encode time in
+    // `encodeQuery` (see `resolveAuth`); here — where the table registry is
+    // known — we confirm each resolved reference actually names a registered
+    // auth table. Xano supports any number of auth tables; each endpoint names
+    // the one it authenticates against.
+    this.validateQueryAuth(sections);
     if (lockCtx) this.applyLock(lockCtx, sections);
     return buildBundle({
       type: this.bundleType,
@@ -211,6 +185,52 @@ export class Xano {
       sections,
       lock: lockCtx?.lock,
     });
+  }
+
+  /**
+   * Cross-check every query's resolved `auth` against the registered auth tables.
+   *
+   * `resolveAuth` (in `encodeQuery`) turns a table ref into a guid with no
+   * registry visibility, so a bare-name typo — or a name that resolves to a
+   * table that isn't `table({ auth: true })` — produces a valid-looking guid
+   * that only fails at deploy with an opaque engine error. Here we have the
+   * registry, so we catch it at export and name the offending query. A numeric
+   * `auth` (raw `dbo.id` escape hatch) references a table by id sidestep never
+   * sees, so it's left as-is; `false` is a public endpoint. A table that pins an
+   * explicit `guid` referenced by bare name lands in the "not registered" branch
+   * (its name-derived guid diverges from the pinned one) — pass the def instead.
+   */
+  private validateQueryAuth(sections: Partial<Record<PayloadArrayKey, unknown[]>>): void {
+    // The query kind's `payloadKey` (see `queryKind`); referenced literally so
+    // this doesn't depend on the query kind being registered in every workspace.
+    const queries = sections["query" as PayloadArrayKey];
+    if (!Array.isArray(queries) || queries.length === 0) return;
+    // Every registered table's guid → name, and the subset that are auth tables.
+    // Resolved via the same `resolveRef("dbo", …)` a query's `auth` flows through,
+    // so an explicit-guid table matches by def-handle reference.
+    const tableNameByGuid = new Map<string, string>();
+    const authGuids = new Set<string>();
+    for (const def of this.tableDefs) {
+      const guid = resolveRef("dbo", def);
+      tableNameByGuid.set(guid, def.name);
+      if (def.auth === true) authGuids.add(guid);
+    }
+    for (const q of queries) {
+      if (!q || typeof q !== "object") continue;
+      const auth = (q as { auth?: unknown }).auth;
+      // Only a guid (string) needs the registry; `false`/number carry no name.
+      if (typeof auth !== "string" || authGuids.has(auth)) continue;
+      const name = String((q as { name?: unknown }).name ?? "?");
+      const known = tableNameByGuid.get(auth);
+      throw new Error(
+        known
+          ? `query "${name}": \`auth\` references table "${known}", which is not an auth table. ` +
+              `Mark it with \`table({ auth: true })\`.`
+          : `query "${name}": \`auth\` references a table that isn't registered on this workspace. ` +
+              `Check for a typo, or register the auth table; if it pins an explicit \`guid\`, pass the ` +
+              `table def rather than its name.`,
+      );
+    }
   }
 
   /**

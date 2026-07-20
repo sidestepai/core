@@ -199,6 +199,29 @@ describe("lock-aware export", () => {
     expect(merged.objects["app:old"]).toEqual({ guid: pinned, canonical: "KeptTok1" });
   });
 
+  it("a query's `auth` reference tracks a locked auth-table guid (stable across a rename)", () => {
+    // The auth table's identity is frozen in the lock (e.g. it was renamed and
+    // `lock rename`d). The query authenticates against it by def handle, so its
+    // stored `auth` must resolve to the SAME pinned guid the table emits —
+    // otherwise a re-sync would orphan the auth binding.
+    const pinned = "a".repeat(32);
+    const lock = lockWith({ "dbo:user": { guid: pinned } });
+    seedLockOverrides(lock);
+    const ctx = createLockContext(lock);
+    const user = table({ name: "user", auth: true, schema: {} });
+    const bundle = new Xano()
+      .registerWorkspace({ name: "example" })
+      .registerTables([user])
+      .registerQueries([query({ name: "login", verb: "POST", auth: user })])
+      .export({ lock: ctx });
+    const dboGuid = (bundle.payload.dbo as Array<{ name: string; guid: string }>).find(
+      (d) => d.name === "user",
+    )!.guid;
+    const authRef = (bundle.payload.query as Array<{ auth: string }>)[0]!.auth;
+    expect(dboGuid).toBe(pinned);
+    expect(authRef).toBe(pinned); // reference and target agree on the frozen guid
+  });
+
   it("export() without options stays lock-free (canonicals empty, nothing observed)", () => {
     const bundle = buildWorkspace().export();
     const app = (bundle.payload.app as Array<{ canonical: string }>)[0]!;

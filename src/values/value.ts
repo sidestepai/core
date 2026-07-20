@@ -228,7 +228,8 @@ export function col(name: string): ColValue {
  * Reference the authenticated identity (`{tag:"auth", value}`). Pass a path to
  * drill into the auth record — `auth("id")` is the authenticated row id
  * (Xano's `$auth.id`); bare `auth()` is the whole record. Use it to bind the
- * caller into a row write on an `auth: true` endpoint, e.g.
+ * caller into a row write on an authenticated endpoint (one whose `auth` names
+ * an auth table), e.g.
  * `s.db.add({ table: post, row: { author_id: auth("id") } })`.
  */
 export function auth(path = ""): Value {

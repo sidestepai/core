@@ -16,6 +16,7 @@ import type { ObjectKind } from "./kind.js";
 import { emptyMiddleware, defaultHistory, encodeTags } from "./common.js";
 import type { MiddlewareBlock } from "./common.js";
 import type { ApiGroupDef } from "./api-group.js";
+import type { TableDef } from "./table.js";
 import { resolveRef } from "../refs/guid.js";
 import { lockKey } from "../lock/lock.js";
 import { getLockedCanonical } from "../lock/store.js";
@@ -50,8 +51,25 @@ export interface QueryDef<
   apiGroup?: ApiGroupDef | string;
   /** Escape hatch: a raw numeric `app.id`. Takes precedence over `apiGroup`. */
   apiGroupId?: number;
-  /** false (no auth) or an auth table id. */
-  auth?: boolean | number;
+  /**
+   * The authentication table backing this endpoint, or `false`/omitted for a
+   * public (no-auth) endpoint. Pass the auth `table()` def — the table marked
+   * `table({ auth: true })` — and `export()` resolves it to that table's guid
+   * (the engine remaps guid→local id on import), so the binding is stable across
+   * syncs. A bare table name resolves the same way, but pass the def handle when
+   * the table pins an explicit `guid`: a bare name derives its guid from the name
+   * alone and would diverge from the pinned identity. A raw numeric `dbo.id` is
+   * an escape hatch that wins when given. Xano supports any number of auth
+   * tables, so name the one this endpoint authenticates against; `export()`
+   * rejects a reference that isn't a registered auth table. Once set, read the
+   * authenticated record inside the stack with the `auth("path")` value ref.
+   *
+   * Unlike `apiGroup`, the numeric escape hatch lives in this same field rather
+   * than a separate `authId`: `auth` is a single terminal value with no second
+   * consumer (the `apiGroup` handle also feeds `getPath()`'s `canonical`, which
+   * is why *it* needs the symbolic ref and the raw id to coexist as two fields).
+   */
+  auth?: false | TableDef | string | number;
   description?: string;
   docs?: string;
   responseType?: "standard" | "stream";
@@ -115,7 +133,8 @@ export interface QueryXdo {
   description: string;
   docs: string;
   api_enabled: boolean;
-  auth: boolean | number;
+  /** `false` (no auth), the auth table's guid, or a raw numeric `dbo.id`. */
+  auth: false | number | string;
   response_type: string;
   verb: HttpVerb;
   disabled: boolean;
@@ -148,6 +167,54 @@ function defaultCache(override?: Partial<CacheXdo>): CacheXdo {
   };
 }
 
+/**
+ * Resolve a query's `auth` to what the engine stores: `false` (no auth), a raw
+ * numeric `dbo.id` (escape hatch), or the auth table's guid. A `TableDef` handle
+ * or bare table name flows through `resolveRef("dbo", …)` — the same guid path
+ * `apiGroup` uses — so the reference stays stable across syncs and any number of
+ * auth tables coexist (the endpoint names the one it authenticates against). A
+ * bare boolean is rejected: the engine can't store `true` (the importer's loose
+ * `==` mis-resolves it to a template table), so it must name a table.
+ *
+ * This runs per-def with no registry visibility, so it validates only what a
+ * single def can prove: a `TableDef` handle carries its own `auth` flag (a
+ * non-auth table is rejected here, by name), and a number must at least be a
+ * plausible id. A *bare-name* reference can't be checked here — `Xano.export()`
+ * cross-checks the resolved guid against the registered auth tables.
+ */
+function resolveAuth(name: string, auth: QueryDef["auth"]): false | number | string {
+  if (auth === undefined || auth === false) return false;
+  // Guard the retired boolean shorthand for untyped (JS) callers — `true` isn't
+  // in the param's type, so the cast is what lets the comparison narrow.
+  if ((auth as unknown) === true) {
+    throw new Error(
+      `query "${name}": \`auth: true\` is no longer supported. Pass the auth table ` +
+        `(e.g. \`auth: user\` for a \`table({ auth: true })\`) or its numeric id.`,
+    );
+  }
+  if (typeof auth === "number") {
+    // The raw `dbo.id` escape hatch. sidestep can't resolve a table id against
+    // the registry, but it can reject values that could never be one — a
+    // fat-fingered id should fail here, not with an opaque engine error at deploy.
+    if (!Number.isInteger(auth) || auth <= 0) {
+      throw new Error(
+        `query "${name}": numeric \`auth\` must be a positive integer \`dbo.id\` (got ${auth}). ` +
+          `Use \`false\` for a public endpoint, or pass the auth table def/name.`,
+      );
+    }
+    return auth;
+  }
+  // A `TableDef` handle carries its `auth` flag — reject a non-auth table at the
+  // source, with its name. (A bare-name string has no flag to inspect here.)
+  if (typeof auth === "object" && auth.auth !== true) {
+    throw new Error(
+      `query "${name}": table "${auth.name}" is not an auth table. ` +
+        `Mark it with \`table({ auth: true })\`, or pass a different table.`,
+    );
+  }
+  return resolveRef("dbo", auth);
+}
+
 export function encodeQuery(def: QueryDef<Record<string, InputDescriptor>, unknown>): QueryXdo {
   if (!def.name) throw new Error("query: `name` is required.");
   if (!def.verb) throw new Error("query: `verb` is required.");
@@ -157,7 +224,7 @@ export function encodeQuery(def: QueryDef<Record<string, InputDescriptor>, unkno
     description: def.description ?? "",
     docs: def.docs ?? "",
     api_enabled: def.apiEnabled ?? true,
-    auth: def.auth ?? false,
+    auth: resolveAuth(def.name, def.auth),
     response_type: def.responseType ?? "standard",
     verb: def.verb,
     disabled: def.disabled ?? false,

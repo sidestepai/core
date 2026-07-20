@@ -7,10 +7,13 @@ import {
   type SearchParamValue,
 } from "../../src/kinds/query.js";
 import { encodeApiGroup, apiGroupKind } from "../../src/kinds/api-group.js";
+import { table } from "../../src/kinds/table.js";
 import { Xano } from "../../src/workspace/xano.js";
 import { input } from "../../src/inputs/input.js";
 import { setVar } from "../../src/statements/set-var.js";
 import { c, ref } from "../../src/values/value.js";
+import { f } from "../../src/fields/catalog.js";
+import { resolveRef } from "../../src/refs/guid.js";
 
 describe("query kind", () => {
   it("encodes the HTTP/function-like envelope", () => {
@@ -52,6 +55,51 @@ describe("query kind", () => {
     expect(q.auth).toBe(3);
     expect(q.response_type).toBe("stream");
     expect(q.cache.active).toBe(true);
+  });
+
+  it("auth omitted or false resolves to no-auth", () => {
+    expect(encodeQuery({ name: "x", verb: "GET" }).auth).toBe(false);
+    expect(encodeQuery({ name: "x", verb: "GET", auth: false }).auth).toBe(false);
+  });
+
+  it("auth resolves an auth-table def (or its name) to the table's guid", () => {
+    const user = table({ name: "user", auth: true, schema: { email: f.email() } });
+    const byDef = encodeQuery({ name: "x", verb: "POST", auth: user });
+    const byName = encodeQuery({ name: "x", verb: "POST", auth: "user" });
+    const guid = resolveRef("dbo", user);
+    expect(byDef.auth).toBe(guid);
+    expect(byName.auth).toBe(guid);
+    expect(typeof byDef.auth).toBe("string");
+  });
+
+  it("multiple auth tables coexist — each endpoint names its own", () => {
+    const user = table({ name: "user", auth: true, schema: { email: f.email() } });
+    const admin = table({ name: "admin", auth: true, schema: { email: f.email() } });
+    expect(encodeQuery({ name: "x", verb: "POST", auth: user }).auth).toBe(resolveRef("dbo", user));
+    expect(encodeQuery({ name: "y", verb: "POST", auth: admin }).auth).toBe(resolveRef("dbo", admin));
+  });
+
+  it("rejects the retired `auth: true` shorthand with a migration hint", () => {
+    // @ts-expect-error - `true` is no longer an accepted auth value
+    expect(() => encodeQuery({ name: "create_link", verb: "POST", auth: true })).toThrow(
+      /auth: true.*no longer supported/,
+    );
+  });
+
+  it("rejects a numeric `auth` that can't be a `dbo.id`", () => {
+    // 0 is the no-api-group sentinel elsewhere; it is NOT no-auth (that's false).
+    for (const bad of [0, -1, 1.5, NaN]) {
+      expect(() => encodeQuery({ name: "x", verb: "POST", auth: bad })).toThrow(
+        /numeric `auth` must be a positive integer/,
+      );
+    }
+  });
+
+  it("rejects a non-auth table def at the source, naming the table", () => {
+    const posts = table({ name: "posts", schema: { body: f.text() } }); // no auth: true
+    expect(() => encodeQuery({ name: "x", verb: "POST", auth: posts })).toThrow(
+      /table "posts" is not an auth table/,
+    );
   });
 
   it("requires name and verb", () => {
@@ -130,6 +178,55 @@ describe("query + api_group on Xano", () => {
     expect(q.find((x) => x.name === "byDef").app.id).toBe(groupGuid);
     expect(q.find((x) => x.name === "byName").app.id).toBe(groupGuid);
     expect(q.find((x) => x.name === "explicitWins").app.id).toBe(9); // numeric override wins
+  });
+
+  it("binds a query's `auth` to the co-registered auth table's own emitted guid", () => {
+    const user = table({ name: "user", auth: true, schema: { email: f.email() } });
+    const bundle = new Xano()
+      .registerTables([user])
+      .registerQueries([
+        { name: "byDef", verb: "POST", auth: user },
+        { name: "byName", verb: "POST", auth: "user" },
+      ])
+      .export();
+    const q = bundle.payload.query as any[];
+    // The engine matches references by guid, so a query's stored `auth` must be
+    // the exact guid the auth table emits into the `dbo` section.
+    const userGuid = (bundle.payload.dbo as any[]).find((d) => d.name === "user").guid;
+    expect(q.find((x) => x.name === "byDef").auth).toBe(userGuid);
+    expect(q.find((x) => x.name === "byName").auth).toBe(userGuid);
+  });
+
+  it("export rejects an `auth` name that resolves to a non-auth table", () => {
+    const posts = table({ name: "posts", schema: { body: f.text() } });
+    const x = new Xano()
+      .registerTables([posts])
+      .registerQueries([{ name: "create_post", verb: "POST", auth: "posts" }]);
+    expect(() => x.export()).toThrow(/references table "posts", which is not an auth table/);
+  });
+
+  it("export rejects an `auth` name that matches no registered table (typo)", () => {
+    const user = table({ name: "user", auth: true, schema: { email: f.email() } });
+    const x = new Xano()
+      .registerTables([user])
+      .registerQueries([{ name: "login", verb: "POST", auth: "usr" }]); // typo
+    expect(() => x.export()).toThrow(/isn't registered on this workspace/);
+  });
+
+  it("export flags a bare-name `auth` reference to a table that pins an explicit guid", () => {
+    // The table's identity is its pinned guid, but a bare name derives its guid
+    // from the name alone — so the reference diverges and must be caught.
+    const user = table({ name: "user", auth: true, guid: "pinned-user-guid", schema: { email: f.email() } });
+    const byName = new Xano()
+      .registerTables([user])
+      .registerQueries([{ name: "login", verb: "POST", auth: "user" }]);
+    expect(() => byName.export()).toThrow(/isn't registered on this workspace/);
+    // Passing the def handle carries the pinned guid, so it resolves and validates.
+    const byDef = new Xano()
+      .registerTables([user])
+      .registerQueries([{ name: "login", verb: "POST", auth: user }])
+      .export();
+    expect((byDef.payload.query as any[])[0].auth).toBe("pinned-user-guid");
   });
 
   describe("toSearchParams (GET transport, #6)", () => {
