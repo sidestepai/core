@@ -60,12 +60,11 @@ describe("middleware kind", () => {
 });
 
 describe("addon kind", () => {
-  it("encodes input/run + output block", () => {
-    const a = encodeAddon({ name: "totals", input: { id: input.int() }, stack: [setVar("x1", c.int(1))] });
+  it("encodes input + output block (an addon is its context, not a stack)", () => {
+    const a = encodeAddon({ name: "totals", input: { id: input.int() } });
     expect(a.output).toEqual({ customize: false, items: [] });
     expect(a.context).toEqual({});
     expect(a.input).toHaveLength(1);
-    expect(a.run).toHaveLength(1);
     expect(addonKind.payloadKey).toBe("addon");
   });
 });
