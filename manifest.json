@@ -12,8 +12,8 @@
       "total": 214
     },
     "filters": {
-      "typed": 161,
-      "total": 377
+      "typed": 134,
+      "total": 345
     }
   },
   "values": {
@@ -5610,14 +5610,6 @@
       "description": "Get the property keys of an object/array as a numerically indexed array."
     },
     {
-      "name": "array_length",
-      "fl": "fl.array_length",
-      "typed": false,
-      "result": "int",
-      "group": "array",
-      "description": "Returns the number of items"
-    },
-    {
       "name": "array_max",
       "fl": "fl.array_max",
       "typed": false,
@@ -5854,24 +5846,6 @@
       "name": "between",
       "fl": "fl.between",
       "typed": false
-    },
-    {
-      "name": "between_filter",
-      "fl": "fl.between_filter",
-      "typed": true,
-      "args": [
-        {
-          "name": "left",
-          "type": "any"
-        },
-        {
-          "name": "right",
-          "type": "any"
-        }
-      ],
-      "result": "bool",
-      "group": "comparison",
-      "description": "Determines if a value is between 2 other values"
     },
     {
       "name": "bin2hex",
@@ -6495,66 +6469,6 @@
       "description": "Get the property entries of an object/array as a numerically indexed array of key/value pairs."
     },
     {
-      "name": "epochms_add_day",
-      "fl": "fl.epochms_add_day",
-      "typed": true,
-      "args": [
-        {
-          "name": "amount",
-          "type": "decimal",
-          "optional": true
-        }
-      ],
-      "result": "epochms",
-      "group": "timestamp",
-      "description": "Add a number of days to the timestamp"
-    },
-    {
-      "name": "epochms_add_hour",
-      "fl": "fl.epochms_add_hour",
-      "typed": true,
-      "args": [
-        {
-          "name": "amount",
-          "type": "decimal",
-          "optional": true
-        }
-      ],
-      "result": "epochms",
-      "group": "timestamp",
-      "description": "Add a number of hours to the timestamp"
-    },
-    {
-      "name": "epochms_add_minute",
-      "fl": "fl.epochms_add_minute",
-      "typed": true,
-      "args": [
-        {
-          "name": "amount",
-          "type": "decimal",
-          "optional": true
-        }
-      ],
-      "result": "epochms",
-      "group": "timestamp",
-      "description": "Add a number of minutes to the timestamp"
-    },
-    {
-      "name": "epochms_add_month",
-      "fl": "fl.epochms_add_month",
-      "typed": true,
-      "args": [
-        {
-          "name": "amount",
-          "type": "decimal",
-          "optional": true
-        }
-      ],
-      "result": "epochms",
-      "group": "timestamp",
-      "description": "Add a number of months to the timestamp"
-    },
-    {
       "name": "epochms_add_ms",
       "fl": "fl.epochms_add_ms",
       "typed": true,
@@ -6569,21 +6483,6 @@
       "description": "Add milliseconds to a timestamp. (negative values are ok)"
     },
     {
-      "name": "epochms_add_sec",
-      "fl": "fl.epochms_add_sec",
-      "typed": true,
-      "args": [
-        {
-          "name": "amount",
-          "type": "decimal",
-          "optional": true
-        }
-      ],
-      "result": "epochms",
-      "group": "timestamp",
-      "description": "Add a number of seconds to the timestamp"
-    },
-    {
       "name": "epochms_add_secs",
       "fl": "fl.epochms_add_secs",
       "typed": true,
@@ -6596,21 +6495,6 @@
       "result": "epochms",
       "group": "timestamp",
       "description": "Add seconds to a timestamp. (negative values are ok)"
-    },
-    {
-      "name": "epochms_add_year",
-      "fl": "fl.epochms_add_year",
-      "typed": true,
-      "args": [
-        {
-          "name": "amount",
-          "type": "decimal",
-          "optional": true
-        }
-      ],
-      "result": "epochms",
-      "group": "timestamp",
-      "description": "Add a number of years to the timestamp"
     },
     {
       "name": "epochms_date",
@@ -6632,83 +6516,6 @@
       "description": "Converts a timestamp into a human readable formatted date based on"
     },
     {
-      "name": "epochms_day",
-      "fl": "fl.epochms_day",
-      "typed": true,
-      "args": [
-        {
-          "name": "timezone",
-          "type": "text",
-          "optional": true
-        }
-      ],
-      "result": "int",
-      "group": "timestamp",
-      "description": "Get day of month from timestamp"
-    },
-    {
-      "name": "epochms_dow",
-      "fl": "fl.epochms_dow",
-      "typed": true,
-      "args": [
-        {
-          "name": "timezone",
-          "type": "text",
-          "optional": true
-        }
-      ],
-      "result": "int",
-      "group": "timestamp",
-      "description": "Get day of week from timestamp"
-    },
-    {
-      "name": "epochms_doy",
-      "fl": "fl.epochms_doy",
-      "typed": true,
-      "args": [
-        {
-          "name": "timezone",
-          "type": "text",
-          "optional": true
-        }
-      ],
-      "result": "int",
-      "group": "timestamp",
-      "description": "Get day of year from timestamp"
-    },
-    {
-      "name": "epochms_epoch_day",
-      "fl": "fl.epochms_epoch_day",
-      "typed": false,
-      "result": "int",
-      "group": "timestamp",
-      "description": "Get the number of days since the unix epoch"
-    },
-    {
-      "name": "epochms_epoch_hour",
-      "fl": "fl.epochms_epoch_hour",
-      "typed": false,
-      "result": "int",
-      "group": "timestamp",
-      "description": "Get the number of hours since the unix epoch"
-    },
-    {
-      "name": "epochms_epoch_minute",
-      "fl": "fl.epochms_epoch_minute",
-      "typed": false,
-      "result": "int",
-      "group": "timestamp",
-      "description": "Get the number of minutes since the unix epoch"
-    },
-    {
-      "name": "epochms_epoch_sec",
-      "fl": "fl.epochms_epoch_sec",
-      "typed": false,
-      "result": "int",
-      "group": "timestamp",
-      "description": "Get the number of seconds since the unix epoch"
-    },
-    {
       "name": "epochms_from_format",
       "fl": "fl.epochms_from_format",
       "typed": true,
@@ -6728,141 +6535,6 @@
       "description": "Parse a timestamp from a flexible format."
     },
     {
-      "name": "epochms_hour",
-      "fl": "fl.epochms_hour",
-      "typed": true,
-      "args": [
-        {
-          "name": "timezone",
-          "type": "text",
-          "optional": true
-        }
-      ],
-      "result": "int",
-      "group": "timestamp",
-      "description": "Get hour from timestamp"
-    },
-    {
-      "name": "epochms_minute",
-      "fl": "fl.epochms_minute",
-      "typed": true,
-      "args": [
-        {
-          "name": "timezone",
-          "type": "text",
-          "optional": true
-        }
-      ],
-      "result": "int",
-      "group": "timestamp",
-      "description": "Get minute from timestamp"
-    },
-    {
-      "name": "epochms_month",
-      "fl": "fl.epochms_month",
-      "typed": true,
-      "args": [
-        {
-          "name": "timezone",
-          "type": "text",
-          "optional": true
-        }
-      ],
-      "result": "int",
-      "group": "timestamp",
-      "description": "Get month from timestamp"
-    },
-    {
-      "name": "epochms_sub_day",
-      "fl": "fl.epochms_sub_day",
-      "typed": true,
-      "args": [
-        {
-          "name": "amount",
-          "type": "decimal",
-          "optional": true
-        }
-      ],
-      "result": "epochms",
-      "group": "timestamp",
-      "description": "Subtract a number of days from the timestamp"
-    },
-    {
-      "name": "epochms_sub_hour",
-      "fl": "fl.epochms_sub_hour",
-      "typed": true,
-      "args": [
-        {
-          "name": "amount",
-          "type": "decimal",
-          "optional": true
-        }
-      ],
-      "result": "epochms",
-      "group": "timestamp",
-      "description": "Subtract a number of hours from the timestamp"
-    },
-    {
-      "name": "epochms_sub_minute",
-      "fl": "fl.epochms_sub_minute",
-      "typed": true,
-      "args": [
-        {
-          "name": "amount",
-          "type": "decimal",
-          "optional": true
-        }
-      ],
-      "result": "epochms",
-      "group": "timestamp",
-      "description": "Subtract a number of minutes from the timestamp"
-    },
-    {
-      "name": "epochms_sub_month",
-      "fl": "fl.epochms_sub_month",
-      "typed": true,
-      "args": [
-        {
-          "name": "amount",
-          "type": "decimal",
-          "optional": true
-        }
-      ],
-      "result": "epochms",
-      "group": "timestamp",
-      "description": "Subtract a number of months from the timestamp"
-    },
-    {
-      "name": "epochms_sub_sec",
-      "fl": "fl.epochms_sub_sec",
-      "typed": true,
-      "args": [
-        {
-          "name": "amount",
-          "type": "decimal",
-          "optional": true
-        }
-      ],
-      "result": "epochms",
-      "group": "timestamp",
-      "description": "Subtract a number of seconds from the timestamp"
-    },
-    {
-      "name": "epochms_sub_year",
-      "fl": "fl.epochms_sub_year",
-      "typed": true,
-      "args": [
-        {
-          "name": "amount",
-          "type": "decimal",
-          "optional": true
-        }
-      ],
-      "result": "epochms",
-      "group": "timestamp",
-      "description": "Subtract a number of years from the timestamp"
-    },
-    {
       "name": "epochms_transform",
       "fl": "fl.epochms_transform",
       "typed": true,
@@ -6880,36 +6552,6 @@
       "result": "text",
       "group": "timestamp",
       "description": "Takes a timestamp and applies a relative transformation to it. Ex."
-    },
-    {
-      "name": "epochms_week",
-      "fl": "fl.epochms_week",
-      "typed": true,
-      "args": [
-        {
-          "name": "timezone",
-          "type": "text",
-          "optional": true
-        }
-      ],
-      "result": "int",
-      "group": "timestamp",
-      "description": "Get week from timestamp"
-    },
-    {
-      "name": "epochms_year",
-      "fl": "fl.epochms_year",
-      "typed": true,
-      "args": [
-        {
-          "name": "timezone",
-          "type": "text",
-          "optional": true
-        }
-      ],
-      "result": "int",
-      "group": "timestamp",
-      "description": "Get year from timestamp"
     },
     {
       "name": "eq",
@@ -9396,90 +9038,6 @@
       "fl": "fl.values",
       "typed": false,
       "description": "Get the property values of an object/array as a numerically indexed array"
-    },
-    {
-      "name": "vector_cos_distance",
-      "fl": "fl.vector_cos_distance",
-      "typed": true,
-      "args": [
-        {
-          "name": "vector",
-          "type": "decimal[]"
-        }
-      ],
-      "result": "decimal",
-      "group": "vector",
-      "description": "Provides the cosine distance between two vectors"
-    },
-    {
-      "name": "vector_cos_similarity",
-      "fl": "fl.vector_cos_similarity",
-      "typed": true,
-      "args": [
-        {
-          "name": "vector",
-          "type": "decimal[]"
-        }
-      ],
-      "result": "decimal",
-      "group": "vector",
-      "description": "Provides the cosine similarity between two vectors"
-    },
-    {
-      "name": "vector_inner_product",
-      "fl": "fl.vector_inner_product",
-      "typed": true,
-      "args": [
-        {
-          "name": "vector",
-          "type": "decimal[]"
-        }
-      ],
-      "result": "decimal",
-      "group": "vector",
-      "description": "Provides the inner product between two vectors"
-    },
-    {
-      "name": "vector_l1_distance",
-      "fl": "fl.vector_l1_distance",
-      "typed": true,
-      "args": [
-        {
-          "name": "vector",
-          "type": "decimal[]"
-        }
-      ],
-      "result": "decimal",
-      "group": "vector",
-      "description": "Provides the L1 distance between two vectors"
-    },
-    {
-      "name": "vector_l2_distance",
-      "fl": "fl.vector_l2_distance",
-      "typed": true,
-      "args": [
-        {
-          "name": "vector",
-          "type": "decimal[]"
-        }
-      ],
-      "result": "decimal",
-      "group": "vector",
-      "description": "Provides the L2 distance between two vectors"
-    },
-    {
-      "name": "vector_negative_inner_product",
-      "fl": "fl.vector_negative_inner_product",
-      "typed": true,
-      "args": [
-        {
-          "name": "vector",
-          "type": "decimal[]"
-        }
-      ],
-      "result": "decimal",
-      "group": "vector",
-      "description": "Provides the negative inner product between two vectors"
     },
     {
       "name": "within",
