@@ -4,6 +4,7 @@
  * filters}` shape. Built and tested once here, reused everywhere.
  */
 import type { FilterXdo, TaggedValue, Tag } from "../types/xdo.js";
+import { TAGS } from "../types/xdo.js";
 
 /** A sidestep authored value is just the stored tagged-value shape. */
 export type Value = TaggedValue;
@@ -75,16 +76,22 @@ const REJECT_TAGGED_VALUE =
   "representation the engine can't decode. For a computed object response, use a " +
   "record of values — `response: { key: value }` — not `c.obj({ key: value })`. (issue #42)";
 
-/** Shape check matching {@link Value}: a `{value, tag, filters}` object. Mirrors
- * the `isValue` predicate in `responses/response.ts`. */
+/**
+ * Shape check matching {@link Value}: a `{value, tag, filters}` object whose
+ * `tag` is an actual {@link Tag}. Requiring a valid tag (not merely any string)
+ * keeps the runtime guard in lockstep with the compile-time `extends Value`
+ * check, so a plain-JSON literal that happens to use `tag`/`value`/`filters` as
+ * keys with an unrecognized tag is not falsely rejected. Mirrors the `isValue`
+ * predicate in `responses/response.ts`.
+ */
 function isTaggedValue(x: unknown): boolean {
   return (
     typeof x === "object" &&
     x !== null &&
-    typeof (x as { tag?: unknown }).tag === "string" &&
     "value" in x &&
     "filters" in x &&
-    Array.isArray((x as { filters?: unknown }).filters)
+    Array.isArray((x as { filters?: unknown }).filters) &&
+    (TAGS as readonly string[]).includes((x as { tag?: unknown }).tag as string)
   );
 }
 

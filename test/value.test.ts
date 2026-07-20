@@ -85,6 +85,15 @@ describe("c.obj/c.array reject nested tagged Values (issue #42)", () => {
     expect(() => c.obj({})).not.toThrow();
     expect(() => c.array([])).not.toThrow();
   });
+
+  it("does not reject a plain-JSON literal that merely reuses tag/value/filters keys", () => {
+    // The guard requires a *valid* Tag, matching the compile-time `extends Value`
+    // check — so JSON data shaped like a Value but with an unrecognized tag is
+    // fine (`"meta"` is not a Tag). This keeps the runtime guard from over-firing.
+    const v = c.obj({ tag: "meta", value: "x", filters: [] });
+    expect(v.tag).toBe("const:obj");
+    expect(JSON.parse(v.value)).toEqual({ tag: "meta", value: "x", filters: [] });
+  });
 });
 
 describe("references", () => {
