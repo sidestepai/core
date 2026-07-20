@@ -100,6 +100,12 @@ describe("encodeAddons", () => {
     expect(a.id).toBe("abc123");
   });
 
+  it("throws on a self-referential `children` cycle instead of overflowing the stack", () => {
+    const cyclic: AddonSpec = { addon: "transaction", as: "_book" };
+    cyclic.children = [cyclic];
+    expect(() => encodeAddons([cyclic])).toThrow(/cycle detected/);
+  });
+
   it("returns [] for an omitted or empty addon list", () => {
     expect(encodeAddons()).toEqual([]);
     expect(encodeAddons([])).toEqual([]);

@@ -23,6 +23,8 @@
 import type { Value } from "../../values/value.js";
 import { resolveRef } from "../../refs/guid.js";
 import type { ObjectRef } from "../../refs/guid.js";
+import { leanInput } from "../lean-input.js";
+import type { LeanInput } from "../lean-input.js";
 
 /**
  * One addon attached to a db statement.
@@ -46,14 +48,6 @@ export interface AddonSpec {
   children?: AddonSpec[];
 }
 
-/** A lean input binding — the shape addon `input[]` entries take (no ignore/expand/children). */
-interface LeanInput {
-  name: string;
-  tag: string;
-  value: string;
-  filters: unknown[];
-}
-
 /** The stored/export form of one attached addon. */
 interface StoredAddon {
   id: string;
@@ -67,12 +61,7 @@ interface StoredAddon {
 /** Map an addon `input` object into the lean `{name,tag,value,filters}[]` form. */
 function encodeInput(input?: Record<string, Value>): LeanInput[] {
   if (!input) return [];
-  return Object.entries(input).map(([name, v]) => ({
-    name,
-    tag: v.tag,
-    value: v.value,
-    filters: v.filters,
-  }));
+  return Object.entries(input).map(([name, v]) => leanInput(name, v));
 }
 
 /**
@@ -109,8 +98,16 @@ function splitAs(as: string): { offset?: string; as: string } {
   return { offset, as: alias };
 }
 
-/** Encode one addon spec into its stored form (recursing into `children`). */
-function encodeOne(spec: AddonSpec): StoredAddon {
+/**
+ * Encode one addon spec into its stored form (recursing into `children`). `path`
+ * carries the spec objects on the current branch so a spec that (transitively)
+ * lists itself under `children` throws a clear error instead of recursing until
+ * the stack overflows — near-impossible in normal authoring, but cheap to reject.
+ */
+function encodeOne(spec: AddonSpec, path: readonly AddonSpec[]): StoredAddon {
+  if (path.includes(spec)) {
+    throw new Error("addon: `children` cannot reference an ancestor addon spec (cycle detected).");
+  }
   const { offset, as } = splitAs(spec.as);
   const stored: StoredAddon = {
     id: resolveRef("addon", spec.addon),
@@ -120,7 +117,10 @@ function encodeOne(spec: AddonSpec): StoredAddon {
   if (offset !== undefined) stored.offset = offset;
   const output = encodeOutput(spec.output);
   if (output !== undefined) stored.output = output;
-  if (spec.children?.length) stored.children = spec.children.map(encodeOne);
+  if (spec.children?.length) {
+    const nextPath = [...path, spec];
+    stored.children = spec.children.map((child) => encodeOne(child, nextPath));
+  }
   return stored;
 }
 
@@ -131,5 +131,5 @@ function encodeOne(spec: AddonSpec): StoredAddon {
  */
 export function encodeAddons(specs?: readonly AddonSpec[]): StoredAddon[] {
   if (!specs?.length) return [];
-  return specs.map(encodeOne);
+  return specs.map((spec) => encodeOne(spec, []));
 }

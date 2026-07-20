@@ -34,6 +34,8 @@ import { resolveRef } from "../../refs/guid.js";
 import type { ObjectRef } from "../../refs/guid.js";
 import { encodeAddons } from "./addon-encode.js";
 import type { AddonSpec } from "./addon-encode.js";
+import { leanInput } from "../lean-input.js";
+import type { LeanInput } from "../lean-input.js";
 import { tableColumns } from "../../kinds/table.js";
 import type { ColumnDef, TableDef, InferRow } from "../../kinds/table.js";
 import { encodeSearchExpression } from "../conditional.js";
@@ -95,15 +97,26 @@ function entry(name: string, v: Value, ignore = false): RichInput {
 }
 
 /**
+ * Optional envelope extras for a db op: `output` restricts the returned columns;
+ * `addon` attaches addons. Both default to absent (full record, empty `addon:[]`).
+ * Grouped into one options bag so a statement that wants only `addon` needn't
+ * thread a positional `undefined` past `output`.
+ */
+interface EnvelopeOpts {
+  output?: readonly string[];
+  addon?: readonly AddonSpec[];
+}
+
+/**
  * The shared db-op envelope fields (everything except name/context/as/input).
- * `outputCols` switches the output block to the engine's customized form —
+ * `output` switches the output block to the engine's customized form —
  * `{customize:true, items:[{name,children:[]}]}` (byte shape per the
  * `schema:query-auth-me` golden); omitted, it stays the full-record default.
  */
 function envelope(
-  outputCols?: readonly string[],
-  addons?: readonly AddonSpec[],
+  opts: EnvelopeOpts = {},
 ): Pick<Statement, "description" | "settings_registry" | "output" | "addon"> {
+  const { output: outputCols, addon: addons } = opts;
   return {
     description: "",
     settings_registry: [],
@@ -124,15 +137,14 @@ function dboStatement(
   table: ObjectRef,
   as: string | undefined,
   input: RichInput[],
-  outputCols?: readonly string[],
-  addons?: readonly AddonSpec[],
+  opts: EnvelopeOpts = {},
 ): Statement {
   return {
     name,
     context: { dbo: { id: resolveRef("dbo", table) } },
     as: as ?? "",
     input,
-    ...envelope(outputCols, addons),
+    ...envelope(opts),
   };
 }
 
@@ -184,8 +196,7 @@ export function dbGet<
       entry("field_value", args.fieldValue),
       entry("lock", c.bool(args.lock ?? false)),
     ],
-    args.output,
-    args.addon,
+    { output: args.output, addon: args.addon },
   ) as DbResult<As, RowShapeOf<T, Cols>>;
 }
 
@@ -264,8 +275,7 @@ export function dbPatch<T extends ObjectRef, const As extends string = "">(
       entry("field_value", args.fieldValue),
       entry("item", args.data),
     ],
-    undefined,
-    args.addon,
+    { addon: args.addon },
   ) as DbResult<As, FullRowShapeOf<T>>;
 }
 
@@ -417,8 +427,7 @@ export function dbAdd<T extends ObjectRef, const As extends string = "">(
     args.table,
     args.as,
     rowEntries(data),
-    undefined,
-    args.addon,
+    { addon: args.addon },
   ) as DbResult<As, FullRowShapeOf<T>>;
 }
 
@@ -460,8 +469,7 @@ export function dbEdit<T extends ObjectRef, const As extends string = "">(
       entry("field_value", args.fieldValue),
       ...rowEntries(data),
     ],
-    undefined,
-    args.addon,
+    { addon: args.addon },
   ) as DbResult<As, FullRowShapeOf<T>>;
 }
 
@@ -479,16 +487,6 @@ export function dbEdit<T extends ObjectRef, const As extends string = "">(
  * Matched correct-by-construction against the golden, same posture as the rest
  * of the db family.
  */
-interface LeanInput {
-  name: string;
-  value: string;
-  tag: string;
-  filters: unknown[];
-}
-
-function leanEntry(name: string, v: Value): LeanInput {
-  return { name, value: v.value, tag: v.tag, filters: v.filters };
-}
 
 export interface DbAddOrEditArgs<T extends ObjectRef = ObjectRef, As extends string = string> {
   table: T;
@@ -514,9 +512,9 @@ export function dbAddOrEdit<T extends ObjectRef, const As extends string = "">(
   const tableName = typeof args.table === "string" ? args.table : args.table.name;
   const data = args.row !== undefined ? expandRow(args.table, args.row, "edit") : (args.data ?? []);
   const input: Array<LeanInput & { ignore?: boolean }> = [
-    leanEntry("field_name", c.text(args.fieldName ?? "id")),
-    leanEntry("field_value", args.fieldValue),
-    ...data.map((f) => ({ ignore: f.ignore ?? false, ...leanEntry(f.name, f.value) })),
+    leanInput("field_name", c.text(args.fieldName ?? "id")),
+    leanInput("field_value", args.fieldValue),
+    ...data.map((f) => ({ ignore: f.ignore ?? false, ...leanInput(f.name, f.value) })),
   ];
   return {
     name: "mvp:dbo_addoreditby",
@@ -623,8 +621,8 @@ function bulkStatement(
 /** `db.bulk.add <table>` — insert many rows (`mvp:dbo_bulkadd`). */
 export function dbBulkAdd(args: DbBulkAddArgs): Statement {
   return bulkStatement("mvp:dbo_bulkadd", args.table, args.as, [
-    leanEntry("allow_id_field", c.bool(args.allowIdField ?? false)),
-    leanEntry("items", args.items),
+    leanInput("allow_id_field", c.bool(args.allowIdField ?? false)),
+    leanInput("items", args.items),
   ]);
 }
 
@@ -681,7 +679,7 @@ export function dbBulkPatch<T extends ObjectRef, const As extends string = "">(
   args: DbBulkWriteArgs<T, As>,
 ): DbResult<As, FullRowShapeOf<T>[]> {
   return bulkStatement("mvp:dbo_bulkpatch", args.table, args.as, [
-    leanEntry("items", args.items),
+    leanInput("items", args.items),
   ]) as DbResult<As, FullRowShapeOf<T>[]>;
 }
 
@@ -695,7 +693,7 @@ export function dbBulkPatch<T extends ObjectRef, const As extends string = "">(
  * `bulk.patch` (row list) and `bulk.delete` (count) carry a static output schema.
  */
 export function dbBulkUpdate(args: DbBulkWriteArgs): Statement {
-  return bulkStatement("mvp:dbo_bulkupdate", args.table, args.as, [leanEntry("items", args.items)]);
+  return bulkStatement("mvp:dbo_bulkupdate", args.table, args.as, [leanInput("items", args.items)]);
 }
 
 /** Sort direction for a {@link SortDirective} — the engine's `orderBy` values. */
@@ -863,7 +861,7 @@ export function dbQuery<
     context,
     as: args.as ?? "",
     input: [],
-    ...envelope(args.output, args.addon),
+    ...envelope({ output: args.output, addon: args.addon }),
   } as unknown as DbResult<As, RowShapeOf<T, Cols>[]>;
 }
 
