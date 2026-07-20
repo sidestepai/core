@@ -43,36 +43,36 @@ describe("encodeAddons", () => {
   });
 
   it("splits a dotted `as` at the last dot into offset + as", () => {
-    const [a] = encodeAddons([{ addon: "transaction", as: "items._book" }]);
+    const a = encodeAddons([{ addon: "transaction", as: "items._book" }])[0]!;
     expect(a).toMatchObject({ offset: "items", as: "_book" });
   });
 
   it("omits `offset` when `as` has no dot", () => {
-    const [a] = encodeAddons([{ addon: "transaction", as: "_book" }]);
+    const a = encodeAddons([{ addon: "transaction", as: "_book" }])[0]!;
     expect(a).not.toHaveProperty("offset");
     expect(a).toMatchObject({ as: "_book" });
   });
 
   it("omits `output` when no columns are given", () => {
-    const [a] = encodeAddons([{ addon: "transaction", as: "_book" }]);
+    const a = encodeAddons([{ addon: "transaction", as: "_book" }])[0]!;
     expect(a).not.toHaveProperty("output");
   });
 
   it("emits the addon `output` block WITHOUT a `filters` key (O1)", () => {
-    const [a] = encodeAddons([{ addon: "transaction", as: "_book", output: ["name"] }]);
+    const a = encodeAddons([{ addon: "transaction", as: "_book", output: ["name"] }])[0]!;
     expect(a.output).toEqual({ customize: true, items: [{ name: "name", children: [] }] });
     expect(a.output).not.toHaveProperty("filters");
   });
 
   it("emits a lean empty `input: []` when no inputs are given", () => {
-    const [a] = encodeAddons([{ addon: "transaction", as: "_book" }]);
+    const a = encodeAddons([{ addon: "transaction", as: "_book" }])[0]!;
     expect(a.input).toEqual([]);
   });
 
   it("passes an input value's tag through unchanged (out -> output, env -> env)", () => {
-    const [a] = encodeAddons([
+    const a = encodeAddons([
       { addon: "transaction", as: "_book", input: { a: out("x"), b: env("K") } },
-    ]);
+    ])[0]!;
     expect(a.input).toEqual([
       { name: "a", tag: "output", value: "x", filters: [] },
       { name: "b", tag: "env", value: "K", filters: [] },
@@ -80,12 +80,12 @@ describe("encodeAddons", () => {
   });
 
   it("resolves a bare name to deriveGuid('addon', name) as the `id`", () => {
-    const [a] = encodeAddons([{ addon: "orders", as: "_o" }]);
+    const a = encodeAddons([{ addon: "orders", as: "_o" }])[0]!;
     expect(a.id).toBe(deriveGuid("addon", "orders"));
   });
 
   it("uses a def handle's explicit guid verbatim as the `id`", () => {
-    const [a] = encodeAddons([{ addon: { name: "orders", guid: "abc123" }, as: "_o" }]);
+    const a = encodeAddons([{ addon: { name: "orders", guid: "abc123" }, as: "_o" }])[0]!;
     expect(a.id).toBe("abc123");
   });
 

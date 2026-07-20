@@ -32,6 +32,8 @@ import type { Value } from "../../values/value.js";
 import { c } from "../../values/value.js";
 import { resolveRef } from "../../refs/guid.js";
 import type { ObjectRef } from "../../refs/guid.js";
+import { encodeAddons } from "./addon-encode.js";
+import type { AddonSpec } from "./addon-encode.js";
 import { tableColumns } from "../../kinds/table.js";
 import type { ColumnDef, TableDef, InferRow } from "../../kinds/table.js";
 import { encodeSearchExpression } from "../conditional.js";
@@ -100,6 +102,7 @@ function entry(name: string, v: Value, ignore = false): RichInput {
  */
 function envelope(
   outputCols?: readonly string[],
+  addons?: readonly AddonSpec[],
 ): Pick<Statement, "description" | "settings_registry" | "output" | "addon"> {
   return {
     description: "",
@@ -109,7 +112,9 @@ function envelope(
     output: outputCols?.length
       ? { customize: true, filters: [], items: outputCols.map((name) => ({ name, children: [] })) }
       : { customize: false, filters: [], items: [] },
-    addon: [],
+    // `encodeAddons` returns `[]` when omitted, preserving the empty-`addon:[]`
+    // default byte-for-byte for statements that attach none.
+    addon: encodeAddons(addons),
   };
 }
 
@@ -120,13 +125,14 @@ function dboStatement(
   as: string | undefined,
   input: RichInput[],
   outputCols?: readonly string[],
+  addons?: readonly AddonSpec[],
 ): Statement {
   return {
     name,
     context: { dbo: { id: resolveRef("dbo", table) } },
     as: as ?? "",
     input,
-    ...envelope(outputCols),
+    ...envelope(outputCols, addons),
   };
 }
 
@@ -153,6 +159,9 @@ export interface DbGetArgs<
    * `InferResponse` narrows a traced row to exactly these columns.
    */
   output?: Cols;
+  /** Attach addons to enrich each returned row (see {@link AddonSpec}). Note:
+   * addon-added fields are not merged into the `InferResponse` row shape yet. */
+  addon?: AddonSpec[];
   /** Capture the row into this stack variable. Captured literally so
    * `InferResponse` can trace a `ref` back to this statement. */
   as?: As;
@@ -176,6 +185,7 @@ export function dbGet<
       entry("lock", c.bool(args.lock ?? false)),
     ],
     args.output,
+    args.addon,
   ) as DbResult<As, RowShapeOf<T, Cols>>;
 }
 
@@ -232,6 +242,8 @@ export interface DbPatchArgs<T extends ObjectRef = ObjectRef, As extends string 
   fieldValue: Value;
   /** The partial row to merge (an object value). */
   data: Value;
+  /** Attach addons to enrich the returned row (see {@link AddonSpec}). */
+  addon?: AddonSpec[];
   /** Capture the post-patch row into this stack variable. Captured literally so
    * `InferResponse` can trace a `ref` back to this statement. */
   as?: As;
@@ -243,11 +255,18 @@ export interface DbPatchArgs<T extends ObjectRef = ObjectRef, As extends string 
 export function dbPatch<T extends ObjectRef, const As extends string = "">(
   args: DbPatchArgs<T, As>,
 ): DbResult<As, FullRowShapeOf<T>> {
-  return dboStatement("mvp:dbo_patch", args.table, args.as, [
-    entry("field_name", c.text(args.fieldName ?? "id")),
-    entry("field_value", args.fieldValue),
-    entry("item", args.data),
-  ]) as DbResult<As, FullRowShapeOf<T>>;
+  return dboStatement(
+    "mvp:dbo_patch",
+    args.table,
+    args.as,
+    [
+      entry("field_name", c.text(args.fieldName ?? "id")),
+      entry("field_value", args.fieldValue),
+      entry("item", args.data),
+    ],
+    undefined,
+    args.addon,
+  ) as DbResult<As, FullRowShapeOf<T>>;
 }
 
 export interface DbTruncateArgs {
@@ -379,6 +398,8 @@ export interface DbAddArgs<T extends ObjectRef = ObjectRef, As extends string = 
   data?: DbField[];
   /** A partial row keyed by column name; expanded against the table's declared columns. */
   row?: RowMap<ColsOf<T>>;
+  /** Attach addons to enrich the returned row (see {@link AddonSpec}). */
+  addon?: AddonSpec[];
   /** Capture the inserted row into this stack variable. Captured literally so
    * `InferResponse` can trace a `ref` back to this statement. */
   as?: As;
@@ -391,10 +412,14 @@ export function dbAdd<T extends ObjectRef, const As extends string = "">(
   args: DbAddArgs<T, As>,
 ): DbResult<As, FullRowShapeOf<T>> {
   const data = args.row !== undefined ? expandRow(args.table, args.row, "add") : (args.data ?? []);
-  return dboStatement("mvp:dbo_add", args.table, args.as, rowEntries(data)) as DbResult<
-    As,
-    FullRowShapeOf<T>
-  >;
+  return dboStatement(
+    "mvp:dbo_add",
+    args.table,
+    args.as,
+    rowEntries(data),
+    undefined,
+    args.addon,
+  ) as DbResult<As, FullRowShapeOf<T>>;
 }
 
 export interface DbEditArgs<T extends ObjectRef = ObjectRef, As extends string = string> {
@@ -411,6 +436,8 @@ export interface DbEditArgs<T extends ObjectRef = ObjectRef, As extends string =
    * columns. Use `data` for byte-exact control over each entry's `ignore` flag.
    */
   row?: RowMap<ColsOf<T>>;
+  /** Attach addons to enrich the returned row (see {@link AddonSpec}). */
+  addon?: AddonSpec[];
   /** Capture the post-mutation row into this stack variable. Captured literally so
    * `InferResponse` can trace a `ref` back to this statement. */
   as?: As;
@@ -424,11 +451,18 @@ export function dbEdit<T extends ObjectRef, const As extends string = "">(
   args: DbEditArgs<T, As>,
 ): DbResult<As, FullRowShapeOf<T>> {
   const data = args.row !== undefined ? expandRow(args.table, args.row, "edit") : (args.data ?? []);
-  return dboStatement("mvp:dbo_editby", args.table, args.as, [
-    entry("field_name", c.text(args.fieldName ?? "id")),
-    entry("field_value", args.fieldValue),
-    ...rowEntries(data),
-  ]) as DbResult<As, FullRowShapeOf<T>>;
+  return dboStatement(
+    "mvp:dbo_editby",
+    args.table,
+    args.as,
+    [
+      entry("field_name", c.text(args.fieldName ?? "id")),
+      entry("field_value", args.fieldValue),
+      ...rowEntries(data),
+    ],
+    undefined,
+    args.addon,
+  ) as DbResult<As, FullRowShapeOf<T>>;
 }
 
 /**
@@ -793,6 +827,9 @@ export interface DbQueryArgs<
   /** Restrict returned columns. Captured literally so `InferResponse` narrows
    * the traced row list to exactly these columns. */
   output?: Cols;
+  /** Attach addons to enrich each returned row (see {@link AddonSpec}). Note:
+   * addon-added fields are not merged into the `InferResponse` row shape yet. */
+  addon?: AddonSpec[];
   /** Capture the result list into this stack variable. Captured literally so
    * `InferResponse` can trace a `ref` back to this statement. */
   as?: As;
@@ -826,7 +863,7 @@ export function dbQuery<
     context,
     as: args.as ?? "",
     input: [],
-    ...envelope(args.output),
+    ...envelope(args.output, args.addon),
   } as unknown as DbResult<As, RowShapeOf<T, Cols>[]>;
 }
 
