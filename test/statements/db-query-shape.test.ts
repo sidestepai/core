@@ -21,13 +21,14 @@ import { dbQuery } from "../../src/statements/special/db.js";
 import { encodeStatement } from "../../src/statements/statement.js";
 import { deriveGuid } from "../../src/refs/guid.js";
 import { table } from "../../src/kinds/table.js";
+import { f } from "../../src/fields/catalog.js";
 import { c, col, auth } from "../../src/values/value.js";
 import { expr } from "../../src/statements/conditional.js";
 import { normalize, loadFixture } from "../conformance/harness.js";
 
 const note = table({
   name: "note",
-  schema: { user_id: { type: "int" }, title: { type: "text" }, body: { type: "text" } },
+  schema: { user_id: f.int(), title: f.text(), body: f.text() },
 });
 
 /** Deep-equal a built dbo_view against a derived fixture, with the table id aligned to the guid. */
