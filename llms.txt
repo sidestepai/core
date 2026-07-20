@@ -1,4 +1,4 @@
-# sidestep v3.0.0
+# sidestep v3.1.0
 
 > TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.
 
