@@ -172,38 +172,10 @@ export class Xano {
         return { ...encoded, import: { mode: "standard" } };
       });
     }
-    // Resolve a query's ergonomic `auth: true` to the workspace's auth-table
-    // guid. The engine stores a query's `auth` as a reference to the auth table
-    // (`Migrate::importQuery` runs it through `importDboId`/`exportDboId`), so a
-    // bare boolean `true` is not a valid auth value — on import it falls through
-    // to the importer's legacy numeric-id `switch`, whose loose `==` comparison
-    // matches `"1075"` and mis-resolves to an unrelated template table
-    // ("Invalid database reference"). `false` correctly means "no auth".
-    const queries = sections["query"];
-    if (Array.isArray(queries)) {
-      const authTables = this.tableDefs.filter((d) => d.auth === true);
-      for (const q of queries) {
-        if (!q || typeof q !== "object") continue;
-        const qo = q as Record<string, unknown>;
-        if (qo.auth !== true) continue;
-        if (authTables.length === 0) {
-          throw new Error(
-            `query "${String(qo.name)}" sets auth: true, but no registered table is an auth table. ` +
-              `Mark your auth table with table({ auth: true }).`,
-          );
-        }
-        if (authTables.length > 1) {
-          throw new Error(
-            `query "${String(qo.name)}" sets auth: true, but the workspace has multiple auth tables ` +
-              `(${authTables.map((t) => t.name).join(", ")}). Disambiguate by passing the auth table's ` +
-              `numeric id as \`auth\` instead of \`true\`.`,
-          );
-        }
-        const [authTable] = authTables;
-        if (!authTable) continue; // unreachable (length === 1), narrows the type
-        qo.auth = authTable.guid ?? deriveGuid("dbo", authTable.name);
-      }
-    }
+    // A query's `auth` (an auth-table reference, or `false`) is resolved to its
+    // stored guid at encode time in `encodeQuery` — see `resolveAuth` — so no
+    // post-pass is needed here. Xano supports any number of auth tables; each
+    // endpoint names the one it authenticates against.
     if (lockCtx) this.applyLock(lockCtx, sections);
     return buildBundle({
       type: this.bundleType,

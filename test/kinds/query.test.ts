@@ -7,10 +7,13 @@ import {
   type SearchParamValue,
 } from "../../src/kinds/query.js";
 import { encodeApiGroup, apiGroupKind } from "../../src/kinds/api-group.js";
+import { table } from "../../src/kinds/table.js";
 import { Xano } from "../../src/workspace/xano.js";
 import { input } from "../../src/inputs/input.js";
 import { setVar } from "../../src/statements/set-var.js";
 import { c, ref } from "../../src/values/value.js";
+import { f } from "../../src/fields/catalog.js";
+import { resolveRef } from "../../src/refs/guid.js";
 
 describe("query kind", () => {
   it("encodes the HTTP/function-like envelope", () => {
@@ -52,6 +55,35 @@ describe("query kind", () => {
     expect(q.auth).toBe(3);
     expect(q.response_type).toBe("stream");
     expect(q.cache.active).toBe(true);
+  });
+
+  it("auth omitted or false resolves to no-auth", () => {
+    expect(encodeQuery({ name: "x", verb: "GET" }).auth).toBe(false);
+    expect(encodeQuery({ name: "x", verb: "GET", auth: false }).auth).toBe(false);
+  });
+
+  it("auth resolves an auth-table def (or its name) to the table's guid", () => {
+    const user = table({ name: "user", auth: true, schema: { email: f.email() } });
+    const byDef = encodeQuery({ name: "x", verb: "POST", auth: user });
+    const byName = encodeQuery({ name: "x", verb: "POST", auth: "user" });
+    const guid = resolveRef("dbo", user);
+    expect(byDef.auth).toBe(guid);
+    expect(byName.auth).toBe(guid);
+    expect(typeof byDef.auth).toBe("string");
+  });
+
+  it("multiple auth tables coexist — each endpoint names its own", () => {
+    const user = table({ name: "user", auth: true, schema: { email: f.email() } });
+    const admin = table({ name: "admin", auth: true, schema: { email: f.email() } });
+    expect(encodeQuery({ name: "x", verb: "POST", auth: user }).auth).toBe(resolveRef("dbo", user));
+    expect(encodeQuery({ name: "y", verb: "POST", auth: admin }).auth).toBe(resolveRef("dbo", admin));
+  });
+
+  it("rejects the retired `auth: true` shorthand with a migration hint", () => {
+    // @ts-expect-error - `true` is no longer an accepted auth value
+    expect(() => encodeQuery({ name: "create_link", verb: "POST", auth: true })).toThrow(
+      /auth: true.*no longer supported/,
+    );
   });
 
   it("requires name and verb", () => {

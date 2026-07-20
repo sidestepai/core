@@ -426,7 +426,7 @@ export function renderLlmsTxt(m: Manifest): string {
     'const api = apiGroup({ name: "blog" });',
     "",
     "const createPost = query({",
-    '  name: "create_post", verb: "POST", apiGroup: api, auth: true,',
+    '  name: "create_post", verb: "POST", apiGroup: api, auth: users, // the auth table',
     "  input: { body: input.text({ required: true }) },",
     "  stack: [",
     '    s.db.add({ table: posts, row: { author: auth("id"), body: inp("body") }, as: "post" }),',
