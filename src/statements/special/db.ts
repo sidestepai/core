@@ -243,8 +243,18 @@ function rowEntries(data: DbField[]): RichInput[] {
   return data.map((f) => entry(f.name, f.value, f.ignore ?? false));
 }
 
+/**
+ * A row cell: any authored {@link Value} **except** a `col()` reference. A `col()`
+ * (bare or wrapped in `withFilters`) does not resolve to the row's stored value
+ * inside a `db.edit`/`db.add` `row` — it evaluates to `null` at runtime and a
+ * following `fl.add(1)` aborts the engine (issue #32). The `__col?: never` bound
+ * turns that live-only failure into a compile error; read the row first and pipe
+ * `ref("...")` through the filter instead.
+ */
+export type RowCell = Value & { readonly __col?: never };
+
 /** A partial row keyed by column name — the values to write; unspecified columns get a type default. */
-export type RowMap<C extends string = string> = Partial<Record<C, Value>>;
+export type RowMap<C extends string = string> = Partial<Record<C, RowCell>>;
 
 /**
  * Schema-driven row expansion (DX convenience — *reachable, not byte-verified*).

@@ -24,7 +24,7 @@ import { deriveGuid } from "../../src/refs/guid.js";
 import { Xano } from "../../src/workspace/xano.js";
 import { defineFunction } from "../../src/function/define.js";
 import { table } from "../../src/kinds/table.js";
-import { c, filter, withFilters } from "../../src/values/value.js";
+import { c, col, ref, filter, withFilters } from "../../src/values/value.js";
 import { f } from "../../src/fields/catalog.js";
 import { normalize, loadFixture } from "../conformance/harness.js";
 
@@ -254,6 +254,24 @@ describe("db !map:dbo family — byte-shape vs transform-temp goldens", () => {
 
     it("rejects a row key that is not a column (typo guard)", () => {
       expect(() => dbAdd({ table: users, row: { nope: c.text("x") } })).toThrow(/not a column/);
+    });
+
+    it("rejects col() in a row at the type level — the issue #32 footgun", () => {
+      // `col()` (and any filter chain built from it) does not resolve to the
+      // stored value inside a db.edit/db.add `row` — it evaluates to null at
+      // runtime and the engine aborts. The `__col` brand turns that live-only
+      // failure into a compile error. These builds still succeed at runtime
+      // (nothing throws); the assertions are the @ts-expect-error markers.
+      // @ts-expect-error — bare col() is not a legal row cell
+      dbEdit({ table: users, fieldValue: c.int(1), row: { name: col("name") } });
+      // @ts-expect-error — the actual reported form: col() wrapped in withFilters
+      dbEdit({ table: users, fieldValue: c.int(1), row: { name: withFilters(col("name"), filter("add", c.int(1))) } });
+      // The documented fix (read-back via ref) stays legal.
+      dbEdit({
+        table: users,
+        fieldValue: c.int(1),
+        row: { name: withFilters(ref("current.name"), filter("add", c.int(1))) },
+      });
     });
 
     it("requires the table definition (a bare name carries no schema)", () => {
