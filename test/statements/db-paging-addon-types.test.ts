@@ -1,4 +1,4 @@
-import { describe, it, expectTypeOf } from "vitest";
+import { describe, it, expect, expectTypeOf } from "vitest";
 import { query } from "../../src/kinds/query.js";
 import { apiGroup } from "../../src/kinds/api-group.js";
 import { table } from "../../src/kinds/table.js";
@@ -172,6 +172,22 @@ describe("db.query paging envelope + addon response typing", () => {
     type Row = InferResponse<typeof q>;
     expectTypeOf<Row>().toMatchTypeOf<Book>();
     expectTypeOf<Row["_author"]>().toEqualTypeOf<unknown>();
+  });
+
+  // Issue #61: an addon alias that shadows an existing column is almost always a
+  // mistake — the engine grafts over that field at runtime and desyncs the row.
+  // On a typed table the SDK detects it at author time and throws (the issue's
+  // preferred fix); the type-level override (WithAddons) is the belt-and-suspenders
+  // for bare-name tables whose columns can't be enumerated.
+  it("addon alias shadowing a base column throws at author time", () => {
+    expect(() =>
+      s.db.query({
+        table: book,
+        // `name` already exists on the table; the addon would graft over it.
+        addon: [{ addon: "author", as: "name", input: { id: out("id") } }],
+        as: "rows",
+      }),
+    ).toThrow(/shadows an existing "book" column/);
   });
 
   it("db.get without an addon → row shape unchanged", () => {

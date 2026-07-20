@@ -497,27 +497,55 @@ when `totals: true` — instead of a bare `Row[]`, and `InferResponse` reflects 
 `paging` at all, the result stays a bare `Row[]`.
 
 **Addons** — enrich each returned row with related data by attaching addons to
-`s.db.query`/`get`/`add`/`edit`/`patch` (the row-returning ops). Reference the
-addon by name (or def handle), map its inputs (bind a parent-row column with
-`out(col)`), optionally restrict its output columns, and land it on the row at a
+`s.db.query`/`get`/`add`/`edit`/`patch` (the row-returning ops).
+
+*Authoring an addon.* Use `addon({ table, output })` — the `table` handle
+auto-fills the `context.dbo` binding, and `output` names the columns it returns.
+`cardinality: "single"` grafts a single object (Xano's Single toggle); the
+default lists an array. Register it with `.registerAddons([...])`:
+
+```ts
+import { addon, s, inp, input } from "@sidestep/core";
+import { userTable } from "@sidestep/auth";
+
+export const authorAddon = addon({
+  name: "author",
+  table: userTable,                       // → context.dbo binding
+  output: ["id", "name"],                 // → typed graft, restricted columns
+  cardinality: "single",                  // → one object, not a 1-element array
+  input: { user_id: input.int({ required: true }) },
+  stack: [
+    s.db.get({ table: userTable, fieldValue: inp("user_id"), output: ["id", "name"], as: "author" }),
+  ],
+});
+```
+
+*Attaching it.* Reference the addon by its handle (or a bare name), map its
+inputs (bind a parent-row column with `out(col)`), and land it on the row at a
 dotted `as` (`offset.alias`). Addons nest via `children`:
 
 ```ts
 s.db.query({
   table: post,
   addon: [
-    { addon: "author", as: "items._author", input: { user_id: out("user_id") }, output: ["name"] },
+    { addon: authorAddon, as: "items._author", input: { user_id: out("author") } },
   ],
   as: "rows",
 }),
 ```
 
-Each addon's **alias** (the last segment of its `as` — here `_author`) is now
-merged onto the row shape in `InferResponse` as an **`unknown`-typed** key: the SDK
-references addons by name/guid and can't know the target addon's return columns, so
-`unknown` is the honest floor — narrow it at the call site (`(row._author as
-Author)`) rather than casting the whole row to `any`. With `paging` the alias lands
-inside each `items[]` element; without it, on each bare row. The
+When you attach a typed `addon({ table, output })` handle, its **alias** (the
+last segment of its `as` — here `_author`) is merged onto the row shape in
+`InferResponse` with the addon's **graft shape** (`{ id; name }` for `single`,
+`{ id; name }[]` for the default list) — no cast needed. An attachment-level
+`output` narrows that shape further (`output: ["name"]` → `{ name }[]`). A
+**bare-name** reference still grafts `unknown` (the SDK can't shape it), so
+narrow it at the call site. With `paging` the alias lands inside each `items[]`
+element; without it, on each bare row.
+
+If an addon's alias **shadows an existing column** on the queried table, the
+build throws — the engine would silently overwrite that column at runtime.
+Rename the alias (Xano convention: a `_` prefix). The
 `s.db.add_or_edit`/`del`/`has`/`truncate` ops do not take an `addon` (no row to
 enrich / lean envelope).
 
