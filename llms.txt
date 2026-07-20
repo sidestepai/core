@@ -1,4 +1,4 @@
-# sidestep v2.4.0
+# sidestep v2.5.0
 
 > TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.
 
@@ -607,7 +607,7 @@ primary key `id`):
 - `s.db.edit({ table, fieldName?, fieldValue, row?, data?, as? })` — update by field match.
 - `s.db.patch({ table, fieldName?, fieldValue, data, as? })` — merge a partial (`data` is an object value).
 - `s.db.add_or_edit({ table, fieldName?, fieldValue, row?, data?, as? })` — upsert.
-- `s.db.query({ table, where?, additionalWhere?, sort?, paging?, output?, lock?, as? })` — search; `where` is `expr(...)` / `expr[]` (ANDed) / raw `Value`. `sort` is `[{ sortBy: <col>, dir?: "asc"|"desc" }]`; `paging` is `{ page?, per_page?, offset?, ... }` (each a `Value`). ⚠ Structural/byte-unverified: `sort` and `paging` are emitted but NOT yet applied by the live engine (silent no-op, issue #34) — sort/page client-side until verified.
+- `s.db.query({ table, where?, additionalWhere?, sort?, paging?, output?, lock?, as? })` — search; `where` is `expr(...)` / `expr[]` (ANDed) / raw `Value`. `sort` is `[{ sortBy: <col>, dir?: "asc"|"desc"|"rand" }]`; `paging` is `{ page?, per_page?, offset?, totals?, metadata? }` (plain numbers/flags). `where`/`additionalWhere`/`sort`/`paging`/`output` are all applied by the engine — the filter rides `context.search`, sort/paging ride `context.return.list` (#41/#34/#36).
 - `s.db.truncate({ table, reset?, as? })` · `s.db.schema({ table, path, as? })`.
 - `s.db.direct_query({ sql, responseType?, args?, as? })` — `sql` is a **raw string** (not a `Value`); binds go in `args: Value[]`.
 - `s.db.transaction({ body })` — run a `Statement[]` atomically.
