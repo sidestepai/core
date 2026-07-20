@@ -507,9 +507,11 @@ counter, push the arithmetic into the database with a single `s.db.direct_query`
 `UPDATE … SET clicks = clicks + 1 WHERE …`.
 
 ⚠ **`direct_query` needs the table's *physical* Postgres name, which the typed surface does
-not expose.** The engine names tables `x<workspace_id>_<table_id>` (e.g. `x6_203970`) — the
-numeric ids are assigned by the engine at import, so they aren't knowable from a `table()`
-def (which carries only a name + guid), and `sql_name` is persisted empty. There is currently
+not expose.** The engine assigns each table a physical name derived from its workspace and
+table ids (of the form `x<workspace_id>_<table_id>`, e.g. `x6_203970`); those numeric ids are
+assigned at import, so the physical name isn't knowable from a `table()` def (whose identity
+is a name + guid, neither of which is the engine's numeric id), and `sql_name` is persisted
+empty. There is currently
 no typed way to reach that name, so the "safe" counter drops you out of the typed surface
 entirely: you must hardcode the physical name after inspecting the deployed table. A typed
 atomic path — either a dedicated increment statement or a table-reference token the engine

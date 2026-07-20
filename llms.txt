@@ -397,9 +397,10 @@ database with a single `s.db.direct_query` UPDATE (`SET clicks = clicks + 1 WHER
 which the DB applies atomically. Reserve the pipeline form for low-contention counters
 where a rare lost update is acceptable.
 ⚠ `direct_query` needs the table's PHYSICAL Postgres name, which the typed surface
-does NOT expose: the engine names tables `x<workspace_id>_<table_id>` (e.g. `x6_203970`),
-ids assigned at import — not knowable from a `table()` def (name + guid only), and
-`sql_name` persists empty. So the safe counter drops out of the typed surface: hardcode
+does NOT expose: the engine derives a physical name from workspace + table ids (of the
+form `x<workspace_id>_<table_id>`, e.g. `x6_203970`), ids assigned at import — not knowable
+from a `table()` def (identity is a name + guid, not the numeric id), and `sql_name`
+persists empty. So the safe counter drops out of the typed surface: hardcode
 the physical name after inspecting the deployed table. A typed atomic path needs an
 engine change (issue #35).
 
