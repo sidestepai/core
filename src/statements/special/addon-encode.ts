@@ -87,11 +87,26 @@ function encodeOutput(
   return { customize: true, items: cols.map((name) => ({ name, children: [] as [] })) };
 }
 
-/** Split a dotted `as` at the last dot → `{ offset, as }` (offset omitted with no dot). */
+/**
+ * Split a dotted `as` at the last dot → `{ offset, as }` (offset omitted with no
+ * dot). Rejects degenerate destinations — an empty string, a leading dot
+ * (`.book`, empty offset), or a trailing dot (`book.`, empty alias) — since the
+ * engine accepts them into the bundle but cannot graft the addon onto the row.
+ */
 function splitAs(as: string): { offset?: string; as: string } {
+  if (!as) {
+    throw new Error('addon: `as` must be a non-empty destination, e.g. "items._book" or "_book".');
+  }
   const dot = as.lastIndexOf(".");
   if (dot === -1) return { as };
-  return { offset: as.slice(0, dot), as: as.slice(dot + 1) };
+  const offset = as.slice(0, dot);
+  const alias = as.slice(dot + 1);
+  if (!offset || !alias) {
+    throw new Error(
+      `addon: \`as\` "${as}" has an empty offset or alias segment — use "offset.alias" (e.g. "items._book") or a bare alias ("_book").`,
+    );
+  }
+  return { offset, as: alias };
 }
 
 /** Encode one addon spec into its stored form (recursing into `children`). */

@@ -47,6 +47,17 @@ describe("encodeAddons", () => {
     expect(a).toMatchObject({ offset: "items", as: "_book" });
   });
 
+  it("splits a multi-segment `as` at the LAST dot (nested offset)", () => {
+    const a = encodeAddons([{ addon: "transaction", as: "items.book._author" }])[0]!;
+    expect(a).toMatchObject({ offset: "items.book", as: "_author" });
+  });
+
+  it("throws on a degenerate `as` (empty, leading dot, or trailing dot)", () => {
+    expect(() => encodeAddons([{ addon: "transaction", as: "" }])).toThrow(/non-empty destination/);
+    expect(() => encodeAddons([{ addon: "transaction", as: ".book" }])).toThrow(/empty offset or alias/);
+    expect(() => encodeAddons([{ addon: "transaction", as: "book." }])).toThrow(/empty offset or alias/);
+  });
+
   it("omits `offset` when `as` has no dot", () => {
     const a = encodeAddons([{ addon: "transaction", as: "_book" }])[0]!;
     expect(a).not.toHaveProperty("offset");
