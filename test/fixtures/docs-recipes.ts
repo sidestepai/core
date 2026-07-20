@@ -62,7 +62,7 @@ export const bumpClicks = query({
     s.db.query({
       table: links,
       sort: [{ sortBy: "created_at", dir: "desc" }],
-      paging: { page: c.int(1), per_page: c.int(25) },
+      paging: { page: 1, per_page: 25 },
       as: "recent",
     }),
   ],
