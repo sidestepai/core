@@ -23,6 +23,7 @@
 import type { Value } from "../../values/value.js";
 import { resolveRef } from "../../refs/guid.js";
 import type { ObjectRef } from "../../refs/guid.js";
+import type { AddonDef } from "../../kinds/addon.js";
 import { leanInput } from "../lean-input.js";
 import type { LeanInput } from "../lean-input.js";
 
@@ -35,14 +36,18 @@ import type { LeanInput } from "../lean-input.js";
  * {@link out} (`{ user_id: out("id") }`). `output` restricts the addon's returned
  * columns. `children` nests further addons (recursive).
  */
-export interface AddonSpec {
-  /** The target addon (def handle or bare name), resolved to a guid. */
-  addon: ObjectRef;
+export interface AddonSpec<Graft = unknown> {
+  /**
+   * The target addon. A typed {@link AddonDef} handle (from {@link addon}) carries
+   * its graft shape into the parent row's response type; a bare name/`ObjectRef`
+   * resolves to a guid but grafts `unknown`.
+   */
+  addon: ObjectRef | AddonDef<Graft>;
   /** Dotted destination on the row, e.g. `"items._book"` (offset + alias). */
   as: string;
   /** Addon input bindings, name → value (use {@link out} for parent-row columns). */
   input?: Record<string, Value>;
-  /** Restrict the addon's returned columns. */
+  /** Restrict the addon's returned columns. Narrows the graft at runtime; not yet reflected in the grafted type. */
   output?: readonly string[];
   /** Nested addons (recursive). */
   children?: AddonSpec[];

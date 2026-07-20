@@ -34,6 +34,7 @@ import { resolveRef } from "../../refs/guid.js";
 import type { ObjectRef } from "../../refs/guid.js";
 import { encodeAddons } from "./addon-encode.js";
 import type { AddonSpec } from "./addon-encode.js";
+import type { AddonDef } from "../../kinds/addon.js";
 import { leanInput } from "../lean-input.js";
 import type { LeanInput } from "../lean-input.js";
 import { tableColumns } from "../../kinds/table.js";
@@ -84,20 +85,26 @@ type AddonAlias<S extends string> = S extends `${string}.${infer Rest}`
   : S;
 
 /**
+ * The graft shape one attached addon lands on the row. A typed
+ * {@link AddonDef} handle carries its shape (`Pick<row, output>`, an object or
+ * array per its cardinality); a bare name/`ObjectRef` reference carries none, so
+ * it grafts `unknown` — the honest floor (narrow it at the call site).
+ */
+type GraftOf<H> = H extends { addon: AddonDef<infer G> } ? G : unknown;
+
+/**
  * The keys a set of attached addons graft onto each returned row. Each addon's
- * alias (the last segment of its `as`) becomes a key valued `unknown`: the SDK
- * references addons by name/guid and cannot know the target addon's return
- * columns' types, so `unknown` is the honest floor (narrow it at the call site).
+ * alias (the last segment of its `as`) becomes a key valued by {@link GraftOf}.
  *
  * Mirrors the engine's `applyAddOnSchema` placement — the alias always lands on
  * the *row element*. With paging the engine wraps rows under `items` (returnAs),
  * so `as:"items._book"` puts `_book` inside each `items[]` element = each row;
  * without paging `as:"_book"` puts it on each bare row. Both reduce to "the row
  * gains the alias key". Nested `children` addons enrich the addon's own result
- * (under the `unknown` alias), so they add no parent-visible keys.
+ * (under the alias), so they add no parent-visible keys.
  */
 type AddonFields<A> = A extends readonly [infer H, ...infer Rest]
-  ? (H extends { as: infer S extends string } ? { [K in AddonAlias<S>]: unknown } : object) &
+  ? (H extends { as: infer S extends string } ? { [K in AddonAlias<S>]: GraftOf<H> } : object) &
       AddonFields<Rest>
   : object;
 
@@ -105,10 +112,17 @@ type AddonFields<A> = A extends readonly [infer H, ...infer Rest]
  * A row shape augmented with any addon-grafted alias keys. With no addons
  * (`A = readonly []`) it is the row unchanged, so the non-addon path — and every
  * existing caller — keeps its exact shape.
+ *
+ * The graft **overrides** any base column of the same name rather than
+ * intersecting with it (`Omit<Row, alias> & AddonFields`): the engine overwrites
+ * the field with the addon result at runtime, so when an alias shadows an
+ * existing column the honest type is the graft (`unknown`), not the base column.
+ * An intersection would collapse `unknown & string` back to the base column and
+ * silently desync the type from runtime (issue #61).
  */
 type WithAddons<Row, A> = [keyof AddonFields<A>] extends [never]
   ? Row
-  : Prettify<Row & AddonFields<A>>;
+  : Prettify<Omit<Row, keyof AddonFields<A>> & AddonFields<A>>;
 
 /**
  * The paging metadata envelope a `db.query` returns when `paging` is set with
@@ -207,6 +221,32 @@ function envelope(
   };
 }
 
+/**
+ * Reject an addon whose alias (the final `as` segment) shadows a column already
+ * on the queried table. The engine grafts the addon result over that field at
+ * runtime, so the base column silently disappears — almost always a mistake
+ * (issue #61). Only top-level aliases are checked against the query's table;
+ * a bare-name table (no schema) is skipped since its columns are unknown, and
+ * nested `children` graft onto their own addon's shape (not this table).
+ */
+function assertNoAddonShadow(table: ObjectRef, addons?: readonly AddonSpec[]): void {
+  if (!addons?.length) return;
+  if (typeof table === "string" || !("schema" in table)) return;
+  const cols = new Set(tableColumns(table as TableDef).map((col) => col.name));
+  for (const spec of addons) {
+    const as = spec.as;
+    const dot = as.lastIndexOf(".");
+    const alias = dot === -1 ? as : as.slice(dot + 1);
+    if (cols.has(alias)) {
+      throw new Error(
+        `addon: alias "${alias}" (from as:"${as}") shadows an existing "${table.name}" column — ` +
+          `the graft overwrites it at runtime and desyncs the row type. Rename the alias ` +
+          `(Xano convention: a "_" prefix, e.g. as:"${dot === -1 ? "" : as.slice(0, dot + 1)}_${alias}").`,
+      );
+    }
+  }
+}
+
 /** Assemble a `!map:dbo` statement: table ref → `context.dbo.id` guid + rich envelope. */
 function dboStatement(
   name: string,
@@ -215,6 +255,7 @@ function dboStatement(
   input: RichInput[],
   opts: EnvelopeOpts = {},
 ): Statement {
+  assertNoAddonShadow(table, opts.addon);
   return {
     name,
     context: { dbo: { id: resolveRef("dbo", table) } },
@@ -250,7 +291,8 @@ export interface DbGetArgs<
   output?: Cols;
   /** Attach addons to enrich the returned row (see {@link AddonSpec}). Each
    * addon's alias (the last segment of its `as`) is merged onto the row shape in
-   * `InferResponse` as an `unknown`-typed key — narrow it at the call site. */
+   * `InferResponse` — typed from the addon's graft shape when it's a typed
+   * `addon({ table, output })` handle, or `unknown` for a bare-name reference. */
   addon?: A;
   /** Capture the row into this stack variable. Captured literally so
    * `InferResponse` can trace a `ref` back to this statement. */
@@ -338,7 +380,8 @@ export interface DbPatchArgs<
   data: Value;
   /** Attach addons to enrich the returned row (see {@link AddonSpec}). Each
    * addon's alias (the last segment of its `as`) is merged onto the row shape in
-   * `InferResponse` as an `unknown`-typed key — narrow it at the call site. */
+   * `InferResponse` — typed from the addon's graft shape when it's a typed
+   * `addon({ table, output })` handle, or `unknown` for a bare-name reference. */
   addon?: A;
   /** Capture the post-patch row into this stack variable. Captured literally so
    * `InferResponse` can trace a `ref` back to this statement. */
@@ -501,7 +544,8 @@ export interface DbAddArgs<
   row?: RowMap<ColsOf<T>>;
   /** Attach addons to enrich the returned row (see {@link AddonSpec}). Each
    * addon's alias (the last segment of its `as`) is merged onto the row shape in
-   * `InferResponse` as an `unknown`-typed key — narrow it at the call site. */
+   * `InferResponse` — typed from the addon's graft shape when it's a typed
+   * `addon({ table, output })` handle, or `unknown` for a bare-name reference. */
   addon?: A;
   /** Capture the inserted row into this stack variable. Captured literally so
    * `InferResponse` can trace a `ref` back to this statement. */
@@ -546,7 +590,8 @@ export interface DbEditArgs<
   row?: RowMap<ColsOf<T>>;
   /** Attach addons to enrich the returned row (see {@link AddonSpec}). Each
    * addon's alias (the last segment of its `as`) is merged onto the row shape in
-   * `InferResponse` as an `unknown`-typed key — narrow it at the call site. */
+   * `InferResponse` — typed from the addon's graft shape when it's a typed
+   * `addon({ table, output })` handle, or `unknown` for a bare-name reference. */
   addon?: A;
   /** Capture the post-mutation row into this stack variable. Captured literally so
    * `InferResponse` can trace a `ref` back to this statement. */
@@ -967,6 +1012,7 @@ export function dbQuery<
 >(
   args: DbQueryArgs<T, As, Cols, A, P>,
 ): DbResult<As, QueryResult<RowShapeOf<T, Cols>, A, P>> {
+  assertNoAddonShadow(args.table, args.addon);
   const context: Record<string, unknown> = { dbo: { id: resolveRef("dbo", args.table) } };
   const search = encodeSearch(args.where, args.additionalWhere);
   if (search !== undefined) context.search = search;
