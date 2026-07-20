@@ -80,6 +80,55 @@ describe("table kind", () => {
     expect(() => encodeTable({ schema: [] })).toThrow(/name/);
   });
 
+  // 4-byte column defaults (issue #45): the engine's default pipeline mangles an
+  // astral-plane character (> U+FFFF) into invalid UTF-8, so an emoji default
+  // exports cleanly then 500s at deploy with Postgres 22021. Verified against the
+  // engine's UTF8 Postgres image — BMP characters store fine; only 4-byte break.
+  it("rejects a 4-byte column default, naming the table/column/character", () => {
+    expect(() =>
+      encodeTable({ name: "habit", schema: [{ name: "emoji", type: "text", default: "🌱" }] }),
+    ).toThrow(/table "habit", column "emoji".*4-byte.*U\+1F331.*22021/s);
+  });
+
+  it("rejects a 4-byte character hidden in the middle of a BMP string", () => {
+    expect(() =>
+      encodeTable({ name: "t", schema: [{ name: "c", type: "text", default: "seed 𠀀 me" }] }),
+    ).toThrow(/U\+20000/);
+  });
+
+  it("accepts BMP non-ASCII defaults (accents, CJK, €) — they deploy fine on the UTF8 DB", () => {
+    expect(() =>
+      encodeTable({
+        name: "t",
+        schema: [
+          { name: "accent", type: "text", default: "café" },
+          { name: "cjk", type: "text", default: "中" },
+          { name: "euro", type: "text", default: "€" },
+        ],
+      }),
+    ).not.toThrow();
+  });
+
+  it("accepts ASCII column defaults (string, number, boolean)", () => {
+    expect(() =>
+      encodeTable({
+        name: "t",
+        schema: [
+          { name: "s", type: "text", default: "hello" },
+          { name: "n", type: "int", default: 0 },
+          { name: "b", type: "bool", default: false },
+        ],
+      }),
+    ).not.toThrow();
+  });
+
+  it("scopes the guard to encodeTable — the shared field encoder still accepts 4-byte defaults", () => {
+    // encodeColumn/encodeField are shared with function inputs, whose defaults
+    // bind at runtime (not DDL) and accept any character. The guard lives in
+    // encodeTable, so the low-level encoder must not reject on its own.
+    expect(() => encodeColumn({ name: "emoji", type: "text", default: "🌱" })).not.toThrow();
+  });
+
   it("registers on Xano under payload.dbo", () => {
     const bundle = new Xano()
       .register("table", { name: "user", schema: [{ name: "id", type: "int", required: true }] })
