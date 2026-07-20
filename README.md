@@ -469,9 +469,10 @@ take a partial `row: { … }` — an `s.db.edit` writes **only** the columns you
 every unmentioned column at its stored value (a `{ votes }` edit bumps `votes` alone, it does
 not null the rest); only `s.db.query` takes a `where` comparison built with
 `expr(...)` (plus `sort: [{ sortBy, dir? }]` and `paging: { page?, per_page?, offset? }`).
-⚠ `s.db.query` is structural/byte-**unverified**: `sort` and `paging` are emitted but **not
-yet applied by the live engine** (a silent no-op — see issue #34), so **sort/page client-side**
-until this surface is verified. The field-match ops take a **single** field — there's no composite `(a, b)` form. For a
+`s.db.query`'s `where`, `additionalWhere`, `sort`, `paging`, and `output` are all
+**applied by the engine** — the filter narrows the read, sort orders it, paging
+pages it (`sort`/`paging` land in `context.return.list`; `dir` is `asc`/`desc`/`rand`,
+and paging numbers are plain ints). The field-match ops take a **single** field — there's no composite `(a, b)` form. For a
 two-column lookup (e.g. dedupe a `(habit, date)` check-in), use `s.db.query` with a `where`
 array (ANDed) and branch on the result, rather than pushing the check to the client.
 

@@ -497,11 +497,14 @@ export function dbDirectQuery(args: DbDirectQueryArgs): Statement {
 //   (context.dbo.id + LEAN input[items/allow_id_field], no rich envelope). Still
 //   unconfirmed without a golden: input[] entry order, and whether `as` is stored.
 //   bulk.delete uses context.search (see its own @TODO — search shape unknown).
-//   db.query (mvp:dbo_view) — context-vs-input split for where/sort/paging is still
-//   a GUESS; the engine's `schema:query:all` uses a `search.expression` array with
-//   `operand` (NOT the persisted `value`), so the persisted shape is unknown.
-//   The 5 external-SQL engines are likewise modeled. No dbo_bulk*/dbo_view/
-//   dbo_external_* goldens exist in the corpus — capture one before trusting bytes.
+//   db.query (mvp:dbo_view) is now grounded in the cloud-client MVP schema +
+//   converter (cloud-client MVP/xs/type/mvp/{Context,Search,Sort,Return,Statement}
+//   + MVP::convertContextToConfig): filter → context.search {expression[]}, sort +
+//   paging → context.return.list.{sort,paging}, output → statement output envelope
+//   (issue #41/#34/#36). Derived-from-source, not a vendored golden — the emit-shape
+//   fixtures cite those files; behavior is confirmed by the live cross-user repro.
+//   The 5 external-SQL engines are still modeled. No dbo_bulk*/dbo_external_* goldens
+//   exist in the corpus — capture one before trusting bytes.
 // ---------------------------------------------------------------------------
 
 export interface DbBulkAddArgs {
@@ -576,36 +579,41 @@ export function dbBulkUpdate(args: DbBulkWriteArgs): Statement {
   return bulkStatement("mvp:dbo_bulkupdate", args.table, args.as, [leanEntry("items", args.items)]);
 }
 
-/** Sort direction for a {@link SortDirective}. */
-export type SortDir = "asc" | "desc";
+/** Sort direction for a {@link SortDirective} — the engine's `orderBy` values. */
+export type SortDir = "asc" | "desc" | "rand";
 
 /**
- * One sort directive: order by `sortBy`, ascending or descending.
- *
- * ⚠ **Not yet applied by the engine (silent no-op).** `db.query` (`mvp:dbo_view`)
- * is structural and byte-**unverified** — a `sort` is emitted into `context.sort`
- * in a well-formed shape, but the live engine does not currently apply it, so rows
- * come back in Postgres heap order (see issue #34). Until a `dbo_view` golden is
- * vendored and the shape is confirmed, **sort client-side** if order matters. The
- * same caveat applies to {@link DbPaging}.
+ * One sort directive: order the returned rows by `sortBy`, ascending, descending,
+ * or random. Applied by the engine — the directive lands in `context.return.list.sort`
+ * as `{ sortBy, orderBy }`, the shape the `mvp:dbo_view` converter
+ * (`MVP::convertContextToConfig`) reads. `dir` maps to the engine's `orderBy`.
  */
 export interface SortDirective<C extends string = string> {
   /** The column (or dot-path) to sort by. */
   sortBy: C;
-  /** Direction (`"asc"` | `"desc"`); defaults to ascending. */
+  /** Direction (`"asc"` | `"desc"` | `"rand"`); defaults to ascending. */
   dir?: SortDir;
 }
 
 /**
- * Paging controls for `db.query`. `page`/`per_page`/`offset` are values (may
- * reference inputs/vars); `totals`/`metadata` are plain flags. Mirrors the
- * engine schema's `return.paging` block (`page=1`, `per_page=25`, `offset=0`,
- * `totals=false`, `metadata=true`).
+ * Static paging controls for `db.query`. Applied by the engine — these land in
+ * `context.return.list.paging` (with `enabled:true`) and mirror the engine
+ * schema's `return.list.paging` block: `page=1`, `per_page=25`, `offset=0`,
+ * `totals=false`, `metadata=true`.
+ *
+ * Values are plain numbers, not {@link Value}s: the engine's `return.list.paging`
+ * fields are typed `int`. Dynamic, input-bound paging (a `per_page` fed from a
+ * request input) is a separate engine surface (`simpleExternal`/`external`) that
+ * is out of scope here.
+ *
+ * Note `metadata:true` (the default) wraps the result in a paging envelope
+ * (`{ items, curPage, nextPage, … }`) rather than returning a bare row list; pass
+ * `metadata:false` to keep the bare array `db.query` otherwise types.
  */
 export interface DbPaging {
-  page?: Value;
-  per_page?: Value;
-  offset?: Value;
+  page?: number;
+  per_page?: number;
+  offset?: number;
   totals?: boolean;
   metadata?: boolean;
 }
@@ -624,11 +632,61 @@ function isComparison(w: DbWhere): w is Comparison {
   return typeof w === "object" && w !== null && !Array.isArray(w) && "op" in w && "left" in w;
 }
 
-/** Encode a `where`/`additionalWhere` into context: comparisons → search expression, raw Value passthrough. */
-function encodeWhere(w: DbWhere): unknown {
-  if (Array.isArray(w)) return encodeSearchExpression(w);
-  if (isComparison(w)) return encodeSearchExpression([w]);
-  return w;
+/** Normalize a `DbWhere` to `Comparison[]`, or `null` for the raw-`Value` escape hatch. */
+function toComparisons(w: DbWhere): Comparison[] | null {
+  if (Array.isArray(w)) return w;
+  if (isComparison(w)) return [w];
+  return null;
+}
+
+/**
+ * Encode `where` + `additionalWhere` into the single `context.search` the engine
+ * reads (`mvp_search` = `{ expression: [...] }`). Comparison clauses from both
+ * args concatenate into one `expression[]`, ANDed (`or:false`) — the engine has
+ * exactly one `search`, so there is no separate `additional_where`. A raw `Value`
+ * (escape hatch) passes through as `context.search` directly, but cannot be
+ * combined with comparison clauses.
+ */
+function encodeSearch(where?: DbWhere, additionalWhere?: DbWhere): unknown {
+  const clauses: Comparison[] = [];
+  let raw: unknown;
+  for (const w of [where, additionalWhere]) {
+    if (!w) continue;
+    const cmps = toComparisons(w);
+    if (cmps) clauses.push(...cmps);
+    else raw = w;
+  }
+  if (raw !== undefined && clauses.length) {
+    throw new Error(
+      "db.query: a raw Value `where` cannot be combined with `expr(...)` clauses — " +
+        "use one form or the other.",
+    );
+  }
+  if (clauses.length) return encodeSearchExpression(clauses);
+  if (raw !== undefined) return raw;
+  return undefined;
+}
+
+/**
+ * Build `context.return` for a list query — the block the engine's converter
+ * reads for sort (`return.list.sort`) and paging (`return.list.paging`, applied
+ * only when `enabled:true`). `db.query` is always a list read; sort maps
+ * `{ sortBy, dir }` → `{ sortBy, orderBy }`, and paging fills the engine's
+ * `page=1`/`offset=0`/`per_page=25`/`metadata=true`/`totals=false` defaults.
+ */
+function encodeReturn(sort?: SortDirective[], paging?: DbPaging): unknown {
+  const sortEls = (sort ?? []).map((s) => ({ sortBy: s.sortBy, orderBy: s.dir ?? "asc" }));
+  const pagingObj = paging
+    ? {
+        enabled: true,
+        page: paging.page ?? 1,
+        offset: paging.offset ?? 0,
+        per_page: paging.per_page ?? 25,
+        metadata: paging.metadata ?? true,
+        totals: paging.totals ?? false,
+      }
+    : { enabled: false, page: 1, offset: 0, per_page: 25, metadata: true, totals: false };
+  return { type: "list", list: { distinct: "auto", sort: sortEls, paging: pagingObj } };
 }
 
 export interface DbQueryArgs<
@@ -641,13 +699,11 @@ export interface DbQueryArgs<
   where?: DbWhere;
   /** Additional filter ANDed with `where` (same forms as `where`). */
   additionalWhere?: DbWhere;
-  /** Sort directives (`[{ sortBy, dir }]`). ⚠ Emitted but **not yet applied by
-   * the engine** — a silent no-op until `dbo_view` is byte-verified; sort
-   * client-side if order matters (see {@link SortDirective} and issue #34). */
+  /** Sort directives (`[{ sortBy, dir }]`) — applied by the engine. */
   sort?: SortDirective<ColsOf<T>>[];
   /** Acquire row locks. */
   lock?: boolean;
-  /** Paging controls (page/per_page/offset/totals/metadata). */
+  /** Paging controls (`page`/`per_page`/`offset`/`totals`/`metadata`) — applied by the engine. */
   paging?: DbPaging;
   /** Restrict returned columns. Captured literally so `InferResponse` narrows
    * the traced row list to exactly these columns. */
@@ -658,16 +714,15 @@ export interface DbQueryArgs<
 }
 
 /**
- * `db.query <table>` — the query-all search builder (`mvp:dbo_view`). The engine
- * transform is the structural `schema:query:all`; this emits the table ref plus
- * the provided search clauses into `context` (omitting absent ones). A
- * comparison `where` is encoded into the operand-based `{expression:[…]}` shape
- * (shared with conditionals/trigger search); a raw `Value` is passed through.
- * Structural until a `dbo_view` golden is vendored.
+ * `db.query <table>` — the query-all search builder (`mvp:dbo_view`). Emits the
+ * cloud-client context the engine actually reads (`MVP::convertContextToConfig`):
+ * the filter under `context.search` (`{expression:[…]}`, the same operand-based
+ * shape as conditionals/trigger search), sort + paging under
+ * `context.return.list`, and output-column restriction via the statement `output`
+ * envelope. `where`/`sort`/`paging`/`output` are all applied by the engine.
  *
- * ⚠ **`sort` and `paging` are emitted but not yet applied by the live engine**
- * (silent no-op — see {@link SortDirective} and issue #34). Sort/page client-side
- * until this surface is byte-verified.
+ * A comparison `where` (plus `additionalWhere`) encodes into one ANDed
+ * `expression[]`; a raw `Value` is passed through as `context.search`.
  */
 export function dbQuery<
   T extends ObjectRef,
@@ -675,16 +730,19 @@ export function dbQuery<
   const Cols extends readonly ColsOf<T>[] = readonly [],
 >(args: DbQueryArgs<T, As, Cols>): DbResult<As, RowShapeOf<T, Cols>[]> {
   const context: Record<string, unknown> = { dbo: { id: resolveRef("dbo", args.table) } };
-  if (args.where) context.where = encodeWhere(args.where);
-  if (args.additionalWhere) context.additional_where = encodeWhere(args.additionalWhere);
-  if (args.sort) context.sort = args.sort;
-  if (args.lock !== undefined) context.lock = args.lock;
-  if (args.paging) context.paging = args.paging;
-  if (args.output) context.output = args.output;
-  return { name: "mvp:dbo_view", context, as: args.as ?? "", input: [], ...envelope() } as unknown as DbResult<
-    As,
-    RowShapeOf<T, Cols>[]
-  >;
+  const search = encodeSearch(args.where, args.additionalWhere);
+  if (search !== undefined) context.search = search;
+  // Row lock rides `context.lock` as a tagged value (`{value, tag, filters}`),
+  // not a bare bool — the shape `MVP::convertLockToConfig` reads.
+  if (args.lock !== undefined) context.lock = c.bool(args.lock);
+  context.return = encodeReturn(args.sort, args.paging);
+  return {
+    name: "mvp:dbo_view",
+    context,
+    as: args.as ?? "",
+    input: [],
+    ...envelope(args.output),
+  } as unknown as DbResult<As, RowShapeOf<T, Cols>[]>;
 }
 
 export interface DbTransactionArgs {

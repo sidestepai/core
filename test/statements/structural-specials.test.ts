@@ -30,11 +30,19 @@ describe("structural db specials", () => {
     expect(s.db.bulk.update({ table: T, items: c.array([]) }).name).toBe("mvp:dbo_bulkupdate");
   });
 
-  it("db.query (dbo_view) omits unset clauses", () => {
+  it("db.query (dbo_view) emits filter under context.search + a list return, not the old keys", () => {
     const enc = encodeStatement(s.db.query({ table: T, where: c.text("id > 0") }));
     expect(enc.name).toBe("mvp:dbo_view");
-    expect(enc.context).toHaveProperty("where");
+    // Filter rides context.search (raw Value escape hatch passes through) — the
+    // engine never reads the old context.where key (issue #41).
+    expect(enc.context).toHaveProperty("search");
+    expect(enc.context).not.toHaveProperty("where");
+    expect(enc.context).not.toHaveProperty("additional_where");
+    expect(enc.context).not.toHaveProperty("sort");
     expect(enc.context).not.toHaveProperty("paging");
+    expect(enc.context).not.toHaveProperty("output");
+    // sort/paging live under context.return.list, always present for a list read.
+    expect((enc.context as { return: { type: string } }).return.type).toBe("list");
   });
 
   it("db.transaction nests an encoded run[] stack", () => {
