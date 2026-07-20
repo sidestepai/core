@@ -630,7 +630,7 @@ export function dbQuery<
   if (args.sort) context.sort = args.sort;
   if (args.lock !== undefined) context.lock = args.lock;
   if (args.paging) context.paging = args.paging;
-  if (args.output) context.output = args.output as unknown as string[];
+  if (args.output) context.output = args.output;
   return { name: "mvp:dbo_view", context, as: args.as ?? "", input: [], ...envelope() } as unknown as DbResult<
     As,
     RowShapeOf<T, Cols>[]
