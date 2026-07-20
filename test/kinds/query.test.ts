@@ -174,5 +174,34 @@ describe("query + api_group on Xano", () => {
       const one: SearchParamValue = ["a", 1, true, null];
       expect(toSearchParams({ k: one }).getAll("k")).toEqual(["a", "1", "true"]);
     });
+
+    it("accepts a generic `Record<string, unknown>` input map without a cast (#49)", () => {
+      // A generic transport holds its endpoint input opaquely; the wide overload
+      // takes it directly — no `as Record<string, SearchParamValue>` needed.
+      const opaque: Record<string, unknown> = { id: 7, tag: ["a", "b"], skip: undefined };
+      const p = toSearchParams(opaque);
+      expect(p.get("id")).toBe("7");
+      expect(p.getAll("tag")).toEqual(["a", "b"]);
+      expect(p.has("skip")).toBe(false);
+    });
+
+    it("still throws at runtime on a non-scalar reaching it via the wide overload", () => {
+      const opaque: Record<string, unknown> = { o: { nested: true } };
+      expect(() => toSearchParams(opaque)).toThrow(/not a scalar/);
+    });
+
+    it("still throws at runtime on a bigint reaching it via the wide overload", () => {
+      // bigint isn't a `SearchParamValue`, but the wide overload lets it in; the
+      // runtime guard rejects it rather than emitting `String(10n)` → "10".
+      const opaque: Record<string, unknown> = { id: 10n };
+      expect(() => toSearchParams(opaque)).toThrow(/not a scalar/);
+    });
+
+    it("does not compile-guard a bad literal — the runtime is the only check", () => {
+      // The wide overload accepts everything the strict one rejects, so a nested
+      // object literal type-checks and is caught only at runtime (see toSearchParams
+      // doc). A `@ts-expect-error` here would FAIL, pinning that documented tradeoff.
+      expect(() => toSearchParams({ o: { nested: true } })).toThrow(/not a scalar/);
+    });
   });
 });
