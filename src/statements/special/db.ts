@@ -60,6 +60,15 @@ type RowShapeOf<T extends ObjectRef, Cols extends readonly string[]> = [
     : Pick<InferRow<T>, Extract<Cols[number], keyof InferRow<T>>>;
 
 /**
+ * The full-row shape a single-record write binds — `db.add` (inserted row),
+ * `db.edit` (post-mutation row), `db.del` (deleted row). Always the whole
+ * {@link InferRow} (these ops don't take a column selection), or `unknown` for an
+ * unbranded bare-name table. Expressed via {@link RowShapeOf} with an empty
+ * `Cols` so the `never`→`unknown` guard is shared with the reads.
+ */
+type FullRowShapeOf<T extends ObjectRef> = RowShapeOf<T, readonly []>;
+
+/**
  * A db read statement branded — **at the type level only** — via the shared
  * {@link AsShapeBrand} contract (the stack variable it binds + the shape it
  * produces). The runtime statement is a plain {@link Statement}, so
@@ -169,19 +178,25 @@ export function dbGet<
   ) as DbResult<As, RowShapeOf<T, Cols>>;
 }
 
-export interface DbDelArgs<T extends ObjectRef = ObjectRef> {
+export interface DbDelArgs<T extends ObjectRef = ObjectRef, As extends string = string> {
   table: T;
   fieldName?: ColsOf<T>;
   fieldValue: Value;
-  as?: string;
+  /** Capture the deleted row into this stack variable. Captured literally so
+   * `InferResponse` can trace a `ref` back to this statement. */
+  as?: As;
 }
 
-/** `db.del <table>` — delete a single record by a field match (`mvp:dbo_delby`). */
-export function dbDel<T extends ObjectRef>(args: DbDelArgs<T>): Statement {
+/** `db.del <table>` — delete a single record by a field match (`mvp:dbo_delby`).
+ * Binds the **full deleted row**, so it's branded with `as` + the row shape for
+ * `InferResponse` (throws `NotFound`/404 when nothing matches). */
+export function dbDel<T extends ObjectRef, const As extends string = "">(
+  args: DbDelArgs<T, As>,
+): DbResult<As, FullRowShapeOf<T>> {
   return dboStatement("mvp:dbo_delby", args.table, args.as, [
     entry("field_name", c.text(args.fieldName ?? "id")),
     entry("field_value", args.fieldValue),
-  ]);
+  ]) as DbResult<As, FullRowShapeOf<T>>;
 }
 
 export interface DbHasArgs<T extends ObjectRef = ObjectRef> {
@@ -340,22 +355,31 @@ function expandRow(table: ObjectRef, row: RowMap, op: "add" | "edit"): DbField[]
   });
 }
 
-export interface DbAddArgs<T extends ObjectRef = ObjectRef> {
+export interface DbAddArgs<T extends ObjectRef = ObjectRef, As extends string = string> {
   table: T;
   /** The row to insert as explicit entries (exact control over each field + `ignore`). */
   data?: DbField[];
   /** A partial row keyed by column name; expanded against the table's declared columns. */
   row?: RowMap<ColsOf<T>>;
-  as?: string;
+  /** Capture the inserted row into this stack variable. Captured literally so
+   * `InferResponse` can trace a `ref` back to this statement. */
+  as?: As;
 }
 
-/** `db.add <table>` — insert a record (`mvp:dbo_add`). */
-export function dbAdd<T extends ObjectRef>(args: DbAddArgs<T>): Statement {
+/** `db.add <table>` — insert a record (`mvp:dbo_add`). Binds the **full inserted
+ * row** (including the auto-assigned `id`/`created_at`), so it's branded with
+ * `as` + the row shape for `InferResponse`. */
+export function dbAdd<T extends ObjectRef, const As extends string = "">(
+  args: DbAddArgs<T, As>,
+): DbResult<As, FullRowShapeOf<T>> {
   const data = args.row !== undefined ? expandRow(args.table, args.row, "add") : (args.data ?? []);
-  return dboStatement("mvp:dbo_add", args.table, args.as, rowEntries(data));
+  return dboStatement("mvp:dbo_add", args.table, args.as, rowEntries(data)) as DbResult<
+    As,
+    FullRowShapeOf<T>
+  >;
 }
 
-export interface DbEditArgs<T extends ObjectRef = ObjectRef> {
+export interface DbEditArgs<T extends ObjectRef = ObjectRef, As extends string = string> {
   table: T;
   fieldName?: ColsOf<T>;
   fieldValue: Value;
@@ -369,17 +393,24 @@ export interface DbEditArgs<T extends ObjectRef = ObjectRef> {
    * columns. Use `data` for byte-exact control over each entry's `ignore` flag.
    */
   row?: RowMap<ColsOf<T>>;
-  as?: string;
+  /** Capture the post-mutation row into this stack variable. Captured literally so
+   * `InferResponse` can trace a `ref` back to this statement. */
+  as?: As;
 }
 
-/** `db.edit <table>` — update a record matched by a field (`mvp:dbo_editby`). */
-export function dbEdit<T extends ObjectRef>(args: DbEditArgs<T>): Statement {
+/** `db.edit <table>` — update a record matched by a field (`mvp:dbo_editby`).
+ * Binds the **full post-mutation row** (the freshly-written values), so it's
+ * branded with `as` + the row shape for `InferResponse` (throws `NotFound`/404
+ * when nothing matches). */
+export function dbEdit<T extends ObjectRef, const As extends string = "">(
+  args: DbEditArgs<T, As>,
+): DbResult<As, FullRowShapeOf<T>> {
   const data = args.row !== undefined ? expandRow(args.table, args.row, "edit") : (args.data ?? []);
   return dboStatement("mvp:dbo_editby", args.table, args.as, [
     entry("field_name", c.text(args.fieldName ?? "id")),
     entry("field_value", args.fieldValue),
     ...rowEntries(data),
-  ]);
+  ]) as DbResult<As, FullRowShapeOf<T>>;
 }
 
 /**

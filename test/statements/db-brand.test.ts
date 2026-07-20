@@ -1,7 +1,7 @@
 import { describe, it, expect, expectTypeOf } from "vitest";
 import { table } from "../../src/kinds/table.js";
 import { f } from "../../src/fields/catalog.js";
-import { dbGet, dbQuery } from "../../src/statements/special/db.js";
+import { dbGet, dbQuery, dbAdd, dbEdit, dbDel } from "../../src/statements/special/db.js";
 import { c } from "../../src/values/value.js";
 import { encodeStatement } from "../../src/statements/statement.js";
 import type { Statement } from "../../src/statements/statement.js";
@@ -40,9 +40,40 @@ describe("db read statement brands (type-level)", () => {
     expectTypeOf(stmt.__shape).toEqualTypeOf<InferRow<typeof user>[]>();
   });
 
+  it("db.add captures `as` and the full inserted-row shape", () => {
+    const stmt = dbAdd({ table: user, row: { username: c.text("a") }, as: "created" });
+    expectTypeOf(stmt.__as).toEqualTypeOf<"created">();
+    expectTypeOf(stmt.__shape).toEqualTypeOf<InferRow<typeof user>>();
+  });
+
+  it("db.edit captures `as` and the full post-mutation row shape", () => {
+    const stmt = dbEdit({ table: user, fieldValue: c.int(1), row: { username: c.text("a") }, as: "updated" });
+    expectTypeOf(stmt.__as).toEqualTypeOf<"updated">();
+    expectTypeOf(stmt.__shape).toEqualTypeOf<InferRow<typeof user>>();
+  });
+
+  it("db.del captures `as` and the full deleted-row shape", () => {
+    const stmt = dbDel({ table: user, fieldValue: c.int(1), as: "removed" });
+    expectTypeOf(stmt.__as).toEqualTypeOf<"removed">();
+    expectTypeOf(stmt.__shape).toEqualTypeOf<InferRow<typeof user>>();
+  });
+
   it("a bare-name table yields an `unknown` shape (nothing to infer)", () => {
     const stmt = dbGet({ table: "user", fieldValue: c.int(1), as: "u" });
     expectTypeOf(stmt.__shape).toEqualTypeOf<unknown>();
+    // Writes against a bare-name table are equally unbranded.
+    expectTypeOf(dbDel({ table: "user", fieldValue: c.int(1), as: "d" }).__shape).toEqualTypeOf<unknown>();
+  });
+
+  it("write brands are phantom — the encoded statement is unchanged", () => {
+    const stmt = dbAdd({ table: user, row: { username: c.text("a") }, as: "created" });
+    const asStatement: Statement = stmt;
+    void asStatement;
+    const xdo = encodeStatement(stmt) as unknown as Record<string, unknown>;
+    expect("__as" in xdo).toBe(false);
+    expect("__shape" in xdo).toBe(false);
+    expect(xdo.name).toBe("mvp:dbo_add");
+    expect(xdo.as).toBe("created");
   });
 
   it("a branded statement is still a plain Statement and encodes unchanged", () => {

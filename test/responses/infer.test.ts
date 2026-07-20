@@ -259,6 +259,42 @@ describe("InferResponse — single-variable trace (U5, type-level)", () => {
     >();
   });
 
+  it("add: db.add result returned → InferRow<typeof link> (issue #48, no cast)", () => {
+    const createLink = query({
+      verb: "POST",
+      apiGroup: links,
+      name: "create_link",
+      stack: [s.db.add({ table: link, row: { slug: c.text("a"), url: c.text("u") }, as: "created" })],
+      response: ref("created"),
+    });
+    expect(createLink.name).toBe("create_link");
+    expectTypeOf<InferResponse<typeof createLink>>().toEqualTypeOf<InferRow<typeof link>>();
+  });
+
+  it("edit: db.edit post-mutation result returned → InferRow<typeof link>", () => {
+    const updateLink = query({
+      verb: "POST",
+      apiGroup: links,
+      name: "update_link",
+      stack: [s.db.edit({ table: link, fieldValue: c.int(1), row: { clicks: c.int(2) }, as: "updated" })],
+      response: ref("updated"),
+    });
+    expect(updateLink.name).toBe("update_link");
+    expectTypeOf<InferResponse<typeof updateLink>>().toEqualTypeOf<InferRow<typeof link>>();
+  });
+
+  it("del: db.del deleted-row result returned → InferRow<typeof link>", () => {
+    const deleteLink = query({
+      verb: "DELETE",
+      apiGroup: links,
+      name: "delete_link",
+      stack: [s.db.del({ table: link, fieldValue: c.int(1), as: "removed" })],
+      response: ref("removed"),
+    });
+    expect(deleteLink.name).toBe("delete_link");
+    expectTypeOf<InferResponse<typeof deleteLink>>().toEqualTypeOf<InferRow<typeof link>>();
+  });
+
   it("defineFunction carries a declared responseShape identically", () => {
     expectTypeOf<InferResponse<typeof computeStats>>().toEqualTypeOf<{ total: number }>();
   });

@@ -285,10 +285,12 @@ async function fetchPosts(): Promise<Post[]> {
   consumer breaks at compile time — exactly where you want it.
 - **`InferResponse<typeof someQuery>`** → the endpoint's **response** type, closing the round
   trip. It auto-derives the common shapes with no codegen: an object-literal response yields
-  those keys, and a query that returns a variable filled by a `db.get`/`db.query` derives that
-  table's row (a list → `Row[]`, a single get → `Row`, an `output: [...]` selection narrows to
-  a `Pick`). Where the shape isn't statically knowable — a value reshaped by a filter/lambda,
-  or built by control flow — it resolves to `unknown`; declare `responseShape` to close it.
+  those keys, and a query that returns a variable filled by a `db.get`/`db.query`/`db.add`/
+  `db.edit`/`db.del` derives that table's row (a `db.query` list → `Row[]`; a single `get`,
+  or the full row an `add`/`edit`/`del` binds → `Row`; a `get`/`query` `output: [...]`
+  selection narrows to a `Pick`). Where the shape isn't statically knowable — a value reshaped
+  by a filter/lambda, or built by control flow — it resolves to `unknown`; declare
+  `responseShape` to close it.
 
 ```ts
 import { listPosts, getPost } from "../xano/index.js";
@@ -494,7 +496,9 @@ array (ANDed) and branch on the result, rather than pushing the check to the cli
 - `s.db.edit` binds the **full, post-mutation row** (the freshly-written values), `s.db.del`
   the **full deleted row**, and `s.db.add` the **full inserted row** (including the
   auto-assigned `id`/`created_at`). So `InferRow<typeof table>` is the correct response type
-  for those three. Unlike `get`, `edit`/`del` **throw** `NotFound` (404) when nothing matches.
+  for those three — and `InferResponse` derives it automatically when the query returns that
+  bound variable, no `responseShape` needed (issue #48). Unlike `get`, `edit`/`del` **throw**
+  `NotFound` (404) when nothing matches.
 
 **Values** — `c.int/text/bool/decimal/null/obj/array`, `ref(var)`, `inp(input)`,
 `col(name)`, plus context refs `auth(path?)`, `env(name)`, `setting(name)`. `c.obj`/`c.array`
