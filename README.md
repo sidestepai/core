@@ -489,6 +489,13 @@ and paging numbers are plain ints). The field-match ops take a **single** field 
 two-column lookup (e.g. dedupe a `(habit, date)` check-in), use `s.db.query` with a `where`
 array (ANDed) and branch on the result, rather than pushing the check to the client.
 
+**Paging changes the response shape.** Supplying `paging` with metadata on (the
+default) makes `s.db.query` return a **paging envelope** — `{ items: Row[], curPage,
+nextPage, prevPage, offset, perPage, itemsReceived }`, plus `itemsTotal`/`pageTotal`
+when `totals: true` — instead of a bare `Row[]`, and `InferResponse` reflects that
+(issue #58). Pass `paging: { …, metadata: false }` to keep the bare array. Without
+`paging` at all, the result stays a bare `Row[]`.
+
 **Addons** — enrich each returned row with related data by attaching addons to
 `s.db.query`/`get`/`add`/`edit`/`patch` (the row-returning ops). Reference the
 addon by name (or def handle), map its inputs (bind a parent-row column with
@@ -505,10 +512,14 @@ s.db.query({
 }),
 ```
 
-Note: addon-added fields (here `_author`) are **not** merged into the
-`InferResponse` row shape yet — reach them as runtime-present fields rather than
-casting the whole row to `any`. The `s.db.add_or_edit`/`del`/`has`/`truncate` ops
-do not take an `addon` (no row to enrich / lean envelope).
+Each addon's **alias** (the last segment of its `as` — here `_author`) is now
+merged onto the row shape in `InferResponse` as an **`unknown`-typed** key: the SDK
+references addons by name/guid and can't know the target addon's return columns, so
+`unknown` is the honest floor — narrow it at the call site (`(row._author as
+Author)`) rather than casting the whole row to `any`. With `paging` the alias lands
+inside each `items[]` element; without it, on each bare row. The
+`s.db.add_or_edit`/`del`/`has`/`truncate` ops do not take an `addon` (no row to
+enrich / lean envelope).
 
 **Runtime behavior.** Knowing what these return matters for typing your endpoint responses:
 
