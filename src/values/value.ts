@@ -122,9 +122,9 @@ export function filter(name: string, ...args: (Value | undefined)[]): FilterXdo 
 }
 
 /**
- * Attach a filter chain to a value, returning a new value. Accepts filters
- * either spread (`withFilters(v, fl.trim(), fl.lower())`) or as an array
- * (`withFilters(v, [fl.trim(), fl.lower()])`) — both are flattened.
+ * Attach a filter chain to a value, returning a new value. Pass filters spread
+ * (the canonical form, `withFilters(v, fl.trim(), fl.lower())`); the array form
+ * (`withFilters(v, [fl.trim(), fl.lower()])`) is also accepted — both are flattened.
  */
 export function withFilters(value: Value, ...filters: (FilterXdo | FilterXdo[])[]): FilteredValue {
   // `__filtered` is a phantom carrier — the runtime object is the plain

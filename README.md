@@ -467,7 +467,9 @@ resolves the cross-object reference at export. The **db family** (`s.db.add`/`s.
 reads/mutations match one field (`{ fieldName, fieldValue }`, defaulting to `id`); writes
 take a partial `row: { … }`; only `s.db.query` takes a `where` comparison built with
 `expr(...)` (plus `sort: [{ sortBy, dir? }]` and `paging: { page?, per_page?, offset? }`).
-The field-match ops take a **single** field — there's no composite `(a, b)` form. For a
+⚠ `s.db.query` is structural/byte-**unverified**: `sort` and `paging` are emitted but **not
+yet applied by the live engine** (a silent no-op — see issue #34), so **sort/page client-side**
+until this surface is verified. The field-match ops take a **single** field — there's no composite `(a, b)` form. For a
 two-column lookup (e.g. dedupe a `(habit, date)` check-in), use `s.db.query` with a `where`
 array (ANDed) and branch on the result, rather than pushing the check to the client.
 
@@ -483,14 +485,22 @@ array (ANDed) and branch on the result, rather than pushing the check to the cli
 
 **Values** — `c.int/text/bool/decimal/null/obj/array`, `ref(var)`, `inp(input)`,
 `col(name)`, plus context refs `auth(path?)`, `env(name)`, `setting(name)`.
-`withFilters(value, ...filters)` attaches the value pipeline via a typed catalog `fl.*`
-(377 filters generated from the engine's own sources). To **read-modify-write a column from
-its current value** — e.g. increment a counter — pipe it through a filter:
-`s.db.edit({ table, fieldValue, row: { clicks: withFilters(col("clicks"), fl.add(c.int(1))) } })`,
-or `withFilters(ref("row.clicks"), fl.add(c.int(1)))` off a row you already read. Note this
-read-modify-write is **not atomic** — concurrent writers can lose an increment; there's no
-dedicated atomic-increment statement. For a concurrency-safe counter, do the arithmetic in
-the database with a single `s.db.direct_query` `UPDATE … SET clicks = clicks + 1 WHERE …`.
+`withFilters(value, fl.a(), fl.b())` attaches the value pipeline via a typed catalog `fl.*`
+(377 filters generated from the engine's own sources; pass filters spread — the array form
+`withFilters(v, [fl.a(), fl.b()])` also works but the spread form is canonical). To
+**read-modify-write a column from its current value** — e.g. increment a counter — you must
+**`db.get` the row first** and pipe its bound value through a filter; `col()` does *not*
+resolve to the stored value inside a `db.edit` `row` (it evaluates to `null`, so
+`fl.add(1)` computes `null + 1` and the engine aborts — see issue #32):
+
+```ts
+s.db.get({ table, fieldValue: inp("id"), as: "current" }),
+s.db.edit({ table, fieldValue: inp("id"), row: { clicks: withFilters(ref("current.clicks"), fl.add(c.int(1))) } }),
+```
+
+Note this read-modify-write is **not atomic** — concurrent writers can lose an increment;
+there's no dedicated atomic-increment statement. For a concurrency-safe counter, do the
+arithmetic in the database with a single `s.db.direct_query` `UPDATE … SET clicks = clicks + 1 WHERE …`.
 
 **Inputs** — `input.*` mirrors `f.*` exactly: every engine-legal field type is a valid
 function/query input. Use `input.object(children)` and `input.list(element)` for structured

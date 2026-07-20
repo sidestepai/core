@@ -252,7 +252,7 @@ const VALUE_CONSTRUCTORS: ReadonlyArray<ManifestValue> = [
   { name: "setting", signature: "(name: string) => Value", description: 'Reference a workspace setting → tag "setting".' },
   { name: "filter", signature: "(name: string, ...args: Value[]) => FilterXdo", description: "Build a filter-chain entry by raw name (escape hatch)." },
   { name: "fl.*", signature: "(...args: Value[]) => FilterXdo", description: "Typed value-pipeline filters; see the `filters` catalog." },
-  { name: "withFilters", signature: "(value: Value, filters: FilterXdo[]) => Value", description: "Attach a filter chain to a value." },
+  { name: "withFilters", signature: "(value: Value, ...filters: FilterXdo[]) => Value", description: "Attach a filter chain to a value (filters passed spread; an array is also accepted)." },
 ];
 
 /**
@@ -734,11 +734,16 @@ export function renderLlmsTxt(m: Manifest): string {
 
   lines.push("## Filters", "");
   lines.push(
-    "Attach to a value with `withFilters(v, [fl.name(...)])` — the value `filters[]`",
-    "pipeline. Typed filters carry named args; the rest are variadic by name.",
+    "Attach to a value with `withFilters(v, fl.name(...))` — the value `filters[]`",
+    "pipeline. Filters are passed spread (canonical); the array form",
+    "`withFilters(v, [fl.a(), fl.b()])` is also accepted. Typed filters carry named",
+    "args; the rest are variadic by name.",
     "Read-modify-write a column from its current value with the pipeline: to increment",
-    "a counter, `s.db.edit({ table, fieldValue, row: { clicks: withFilters(col(\"clicks\"), fl.add(c.int(1))) } })`",
-    "(`row` is a partial keyed by column; off a row you already read, `withFilters(ref(\"row.clicks\"), fl.add(c.int(1)))`).",
+    "a counter you MUST `db.get` the row first, then pipe its bound value —",
+    "`col(\"clicks\")` does NOT resolve to the stored value inside a `db.edit` `row`",
+    "(it is `null`, so `fl.add(1)` computes `null + 1` and the engine aborts — issue #32):",
+    "`s.db.get({ table, fieldValue, as: \"current\" })` then",
+    "`s.db.edit({ table, fieldValue, row: { clicks: withFilters(ref(\"current.clicks\"), fl.add(c.int(1))) } })`.",
     "⚠ This read-modify-write is NOT atomic — two concurrent writers can both read the",
     "same value and one increment is lost. There is no dedicated atomic-increment",
     "statement. For a **concurrency-safe** counter, do the arithmetic in the database",
@@ -802,7 +807,7 @@ export function renderLlmsTxt(m: Manifest): string {
     "- `s.db.edit({ table, fieldName?, fieldValue, row?, data?, as? })` — update by field match.",
     "- `s.db.patch({ table, fieldName?, fieldValue, data, as? })` — merge a partial (`data` is an object value).",
     "- `s.db.add_or_edit({ table, fieldName?, fieldValue, row?, data?, as? })` — upsert.",
-    "- `s.db.query({ table, where?, additionalWhere?, sort?, paging?, output?, lock?, as? })` — search; `where` is `expr(...)` / `expr[]` (ANDed) / raw `Value`. `sort` is `[{ sortBy: <col>, dir?: \"asc\"|\"desc\" }]`; `paging` is `{ page?, per_page?, offset?, ... }` (each a `Value`).",
+    "- `s.db.query({ table, where?, additionalWhere?, sort?, paging?, output?, lock?, as? })` — search; `where` is `expr(...)` / `expr[]` (ANDed) / raw `Value`. `sort` is `[{ sortBy: <col>, dir?: \"asc\"|\"desc\" }]`; `paging` is `{ page?, per_page?, offset?, ... }` (each a `Value`). ⚠ Structural/byte-unverified: `sort` and `paging` are emitted but NOT yet applied by the live engine (silent no-op, issue #34) — sort/page client-side until verified.",
     "- `s.db.truncate({ table, reset?, as? })` · `s.db.schema({ table, path, as? })`.",
     "- `s.db.direct_query({ sql, responseType?, args?, as? })` — `sql` is a **raw string** (not a `Value`); binds go in `args: Value[]`.",
     "- `s.db.transaction({ body })` — run a `Statement[]` atomically.",
