@@ -1,0 +1,37 @@
+{
+  "_comment": "Export-form addon block (packageExport shape). Structurally equals the cloud-client `addon-complex` script2json golden's addon block, with the in-workspace numeric `id` replaced by the guid the export path emits (Migrate::exportAddonImpls id->guid). guid = md5(\"addon:transaction\"). Trimmed to the addon block under test.",
+  "addon": [
+    {
+      "id": "9a8ecb916bf2afcdc28e76a97665e019",
+      "as": "_book",
+      "offset": "items",
+      "input": [
+        { "name": "book_id", "tag": "output", "value": "book_name", "filters": [] }
+      ],
+      "output": {
+        "customize": true,
+        "items": [
+          { "name": "name", "children": [] },
+          { "name": "name2", "children": [] }
+        ]
+      },
+      "children": [
+        {
+          "id": "9a8ecb916bf2afcdc28e76a97665e019",
+          "as": "_book2222",
+          "offset": "obj",
+          "input": [
+            { "name": "book_id", "tag": "setting", "value": "API_KEY", "filters": [] }
+          ],
+          "output": {
+            "customize": true,
+            "items": [
+              { "name": "name", "children": [] },
+              { "name": "name2", "children": [] }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -196,6 +196,7 @@ export type {
   SortDirective,
   DbPaging,
 } from "./statements/special/db.js";
+export type { AddonSpec } from "./statements/special/addon-encode.js";
 export { deriveGuid, resolveRef, REFERENCEABLE_KINDS } from "./refs/guid.js";
 export type { ObjectRef } from "./refs/guid.js";
 
