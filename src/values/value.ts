@@ -246,6 +246,18 @@ export function setting(name: string): Value {
   return val(name, "setting");
 }
 
+/**
+ * Reference a column of the **parent statement's output row** (`{tag:"output",
+ * value}`) — the `$output.<col>` reference an addon input binds to. Only
+ * meaningful inside an addon spec's `input` map (see `s.db.query`'s `addon`
+ * arg), where the engine resolves it against each row the parent query returns,
+ * e.g. `addon: [{ addon: transactions, as: "items._txns",
+ * input: { user_id: out("id") } }]`.
+ */
+export function out(name: string): Value {
+  return val(name, "output");
+}
+
 /** Build a `mvp_filter` chain entry: `{name, disabled:false, arg}`. */
 export function filter(name: string, ...args: (Value | undefined)[]): FilterXdo {
   // Drop omitted trailing args. Typed filter factories (fl.*) declare their
