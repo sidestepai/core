@@ -19,6 +19,7 @@ import {
   fl,
   withFilters,
   type InferRow,
+  type InferResponse,
 } from "../../src/index.js";
 
 // Array column → `string[]` in InferRow; tableRef takes standard FieldOptions;
@@ -65,3 +66,40 @@ export const bumpClicks = query({
   // A query's response comes from `response:`, not s.return.
   response: ref("updated"),
 });
+
+// `InferResponse<typeof query>` — the read-side round trip (#5). A list endpoint
+// that returns the `db.query` result variable derives `InferRow<typeof links>[]`
+// with no codegen and no hand-assertion.
+export const listLinks = query({
+  name: "list_links",
+  verb: "GET",
+  apiGroup: api,
+  stack: [s.db.query({ table: links, as: "rows" })],
+  response: ref("rows"),
+});
+export type ListLinksResponse = InferResponse<typeof listLinks>; // InferRow<typeof links>[]
+
+// A `get` that selects specific columns narrows the derived row automatically.
+export const getLinkSlug = query({
+  name: "get_link_slug",
+  verb: "GET",
+  apiGroup: api,
+  input: { id: input.int({ required: true }) },
+  stack: [s.db.get({ table: links, fieldValue: inp("id"), output: ["id", "url"], as: "row" })],
+  response: ref("row"),
+});
+export type GetLinkSlugResponse = InferResponse<typeof getLinkSlug>; // Pick<…, "id" | "url">
+
+// When the response is reshaped by a filter/lambda (or built by control flow),
+// derivation is `unknown` — declare `responseShape` to close the type. A get
+// returns `Row | null`, so the override also carries the nullability.
+export const getLinkOrNull = query({
+  name: "get_link_or_null",
+  verb: "GET",
+  apiGroup: api,
+  input: { id: input.int({ required: true }) },
+  stack: [s.db.get({ table: links, fieldValue: inp("id"), as: "row" })],
+  response: ref("row"),
+  responseShape: null as InferRow<typeof links> | null,
+});
+export type GetLinkOrNullResponse = InferResponse<typeof getLinkOrNull>; // InferRow<typeof links> | null

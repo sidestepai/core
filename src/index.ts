@@ -41,6 +41,10 @@ export type { InputOptions, InputDescriptor } from "./inputs/input.js";
 // inputs (no codegen) — `InferInput<typeof myQuery>`. The read-side counterpart
 // is `InferRow<typeof myTable>` (exported with the table kind below).
 export type { InferInput } from "./inputs/infer.js";
+// Consumer contract: derive a query/function's response type from its declared
+// `responseShape` (override) or its `response`/`stack` (auto-derivation) — the
+// read-side round-trip counterpart of `InferInput`.
+export type { InferResponse } from "./responses/infer.js";
 export type {
   TypeBrand,
   BrandValue,
@@ -71,7 +75,7 @@ export type {
   TableRefMethod,
 } from "./fields/generated/field-methods.generated.js";
 export { c, ref, inp, col, auth, env, setting, filter, withFilters } from "./values/value.js";
-export type { Value } from "./values/value.js";
+export type { Value, RefValue, FilteredValue } from "./values/value.js";
 export { fl, FILTER_NAMES } from "./values/generated/filters.generated.js";
 export { setVar, updateVar } from "./statements/set-var.js";
 export { conditional, expr } from "./statements/conditional.js";

@@ -1,8 +1,15 @@
 import { describe, it, expect, expectTypeOf } from "vitest";
-import { query, apiGroup, input, type InferInput, type InferRow } from "../src/index.js";
+import {
+  query,
+  apiGroup,
+  input,
+  type InferInput,
+  type InferRow,
+  type InferResponse,
+} from "../src/index.js";
 import { meQuery, login, getSnippet, fetchSnippet } from "./fixtures/consumer-example.js";
 import { createLink } from "./fixtures/validate-input-recipe.js";
-import { links, bumpClicks } from "./fixtures/docs-recipes.js";
+import { links, bumpClicks, listLinks, getLinkSlug, getLinkOrNull } from "./fixtures/docs-recipes.js";
 import { Xano } from "../src/workspace/xano.js";
 
 /**
@@ -66,5 +73,20 @@ describe("public consumer surface", () => {
     // System columns are present in InferRow.
     expectTypeOf<InferRow<typeof links>["id"]>().toEqualTypeOf<number>();
     expectTypeOf<InferRow<typeof links>["created_at"]>().toEqualTypeOf<number>();
+  });
+
+  it("the InferResponse recipes derive/override the round-trip type (#5)", () => {
+    // Runtime touch so the fixtures are exercised, not just type-referenced.
+    expect([listLinks.name, getLinkSlug.name, getLinkOrNull.name].every((n) => n.length > 0)).toBe(
+      true,
+    );
+    // list endpoint → row list; column-narrowed get → Pick; override → Row | null.
+    expectTypeOf<InferResponse<typeof listLinks>>().toEqualTypeOf<InferRow<typeof links>[]>();
+    expectTypeOf<InferResponse<typeof getLinkSlug>>().toEqualTypeOf<
+      Pick<InferRow<typeof links>, "id" | "url">
+    >();
+    expectTypeOf<InferResponse<typeof getLinkOrNull>>().toEqualTypeOf<
+      InferRow<typeof links> | null
+    >();
   });
 });

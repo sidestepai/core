@@ -25,7 +25,7 @@ export type ResponseDef = Value | Record<string, Value>;
 export function warnUnboundReturn(
   kind: "query" | "function",
   name: string,
-  stack: Statement[] | undefined,
+  stack: readonly Statement[] | undefined,
   response: ResponseDef | undefined,
 ): void {
   if (response !== undefined) return;

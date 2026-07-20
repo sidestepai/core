@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, expectTypeOf } from "vitest";
 import { c, ref, inp, filter, withFilters } from "../src/values/value.js";
+import type { Value, RefValue } from "../src/values/value.js";
 
 describe("c.* constant constructors", () => {
   it("c.text produces a plain const", () => {
@@ -40,6 +41,14 @@ describe("c.* constant constructors", () => {
 describe("references", () => {
   it("ref produces a var tag", () => {
     expect(ref("x1")).toEqual({ value: "x1", tag: "var", filters: [] });
+  });
+
+  it("ref carries its literal var name at the type level (U5 trace foundation)", () => {
+    // The runtime value is unchanged (asserted above); only the type is branded.
+    expectTypeOf(ref("user")).toEqualTypeOf<RefValue<"user">>();
+    // A branded ref is still assignable wherever a plain Value is expected.
+    const asValue: Value = ref("user");
+    void asValue;
   });
 
   it("inp produces an input tag", () => {
