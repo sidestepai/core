@@ -242,12 +242,17 @@ describe("db !map:dbo family — byte-shape vs transform-temp goldens", () => {
       expect(input.filter((e) => e.ignore).map((e) => e.name)).toEqual(["id"]);
     });
 
-    it("db.edit ignores id + created_at (system columns) on the expanded row", () => {
+    it("db.edit ignores system columns AND unmentioned columns (partial edit, issue #33)", () => {
       const input = inputOf(
         encodeStatement(dbEdit({ table: users, fieldValue: c.int(1), row: { name: c.text("x") } })),
       );
+      // A partial edit writes only the supplied column; every other column —
+      // system (id/created_at) or merely unmentioned (tags/meta) — is emitted
+      // with ignore:true so the stored value is preserved, not nulled.
       const ignored = input.filter((e) => e.ignore).map((e) => e.name);
-      expect(ignored).toEqual(["id", "created_at"]);
+      expect(ignored).toEqual(["id", "created_at", "tags", "meta"]);
+      const written = input.filter((e) => e.name !== "field_name" && e.name !== "field_value" && !e.ignore);
+      expect(written.map((e) => e.name)).toEqual(["name"]);
       // lookup pair still leads, then the expanded columns
       expect(input.slice(0, 2).map((e) => e.name)).toEqual(["field_name", "field_value"]);
     });

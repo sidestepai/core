@@ -274,7 +274,12 @@ export type RowMap<C extends string = string> = Partial<Record<C, RowCell>>;
  * Defaults: the column's declared `default` (as a const) if non-empty, else
  * `[]` for list/array columns, `{}` for `obj`/`json`, else `null`. The `ignore`
  * heuristic marks the primary-key `id` (always) and, on edit, `created_at` —
- * the read-only/system columns the engine never writes.
+ * the read-only/system columns the engine never writes. On **edit**, a column
+ * the author did not mention is *also* marked `ignore:true`: a partial edit
+ * touches only the keys supplied, so an unmentioned column keeps its stored
+ * value instead of being overwritten with a type default (issue #33). On
+ * **add** there is no stored value to preserve, so unmentioned columns still
+ * emit their type default (`ignore:false`) to fill the new row.
  *
  * @TODO(verify): the type-default table and the `ignore` heuristic are DX guesses
  *   (no engine rule produces them). Confirm during the debug loop that a real Xano
@@ -313,12 +318,20 @@ function expandRow(table: ObjectRef, row: RowMap, op: "add" | "edit"): DbField[]
       throw new Error(`db row: "${key}" is not a column of table "${name}".`);
     }
   }
-  const ignore = SYSTEM_IGNORE[op];
-  return cols.map((col) => ({
-    name: col.name,
-    value: row[col.name] ?? defaultCell(col),
-    ignore: ignore.has(col.name),
-  }));
+  const systemIgnore = SYSTEM_IGNORE[op];
+  return cols.map((col) => {
+    const supplied = row[col.name] !== undefined;
+    // On edit, a column the author didn't mention must be left untouched
+    // (`ignore:true`) — otherwise the partial edit overwrites it with a type
+    // default, wiping the stored value (issue #33). On add there is nothing to
+    // preserve, so unmentioned columns still emit their type default.
+    const ignore = systemIgnore.has(col.name) || (op === "edit" && !supplied);
+    return {
+      name: col.name,
+      value: supplied ? row[col.name]! : defaultCell(col),
+      ignore,
+    };
+  });
 }
 
 export interface DbAddArgs<T extends ObjectRef = ObjectRef> {
@@ -342,7 +355,13 @@ export interface DbEditArgs<T extends ObjectRef = ObjectRef> {
   fieldValue: Value;
   /** The new field values as explicit entries (exact control over each field + `ignore`). */
   data?: DbField[];
-  /** A partial row keyed by column name; expanded against the table's declared columns. */
+  /**
+   * A **partial** row keyed by column name: only the columns you list are
+   * written. Columns you omit are emitted with `ignore:true` and keep their
+   * stored value — a `{ votes }` edit updates `votes` alone and leaves every
+   * other column intact (issue #33). Expanded against the table's declared
+   * columns. Use `data` for byte-exact control over each entry's `ignore` flag.
+   */
   row?: RowMap<ColsOf<T>>;
   as?: string;
 }

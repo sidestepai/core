@@ -465,7 +465,9 @@ invokes another workspace object — pass the target's def handle (or name) and 
 resolves the cross-object reference at export. The **db family** (`s.db.add`/`s.db.edit`/
 `s.db.get`/`s.db.query`/`s.db.del`/…) reads and mutates records. Single-record
 reads/mutations match one field (`{ fieldName, fieldValue }`, defaulting to `id`); writes
-take a partial `row: { … }`; only `s.db.query` takes a `where` comparison built with
+take a partial `row: { … }` — an `s.db.edit` writes **only** the columns you list and leaves
+every unmentioned column at its stored value (a `{ votes }` edit bumps `votes` alone, it does
+not null the rest); only `s.db.query` takes a `where` comparison built with
 `expr(...)` (plus `sort: [{ sortBy, dir? }]` and `paging: { page?, per_page?, offset? }`).
 ⚠ `s.db.query` is structural/byte-**unverified**: `sort` and `paging` are emitted but **not
 yet applied by the live engine** (a silent no-op — see issue #34), so **sort/page client-side**
