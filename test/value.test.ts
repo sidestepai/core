@@ -1,5 +1,5 @@
 import { describe, it, expect, expectTypeOf } from "vitest";
-import { c, ref, inp, filter, withFilters } from "../src/values/value.js";
+import { c, ref, inp, auth, filter, withFilters } from "../src/values/value.js";
 import type { Value, RefValue } from "../src/values/value.js";
 
 describe("c.* constant constructors", () => {
@@ -35,6 +35,55 @@ describe("c.* constant constructors", () => {
     const v = c.array([1, "two", true]);
     expect(v.tag).toBe("const:array");
     expect(JSON.parse(v.value)).toEqual([1, "two", true]);
+  });
+});
+
+describe("c.obj/c.array reject nested tagged Values (issue #42)", () => {
+  it("rejects a nested tagged Value at the type level", () => {
+    // Type-only, never invoked: the @ts-expect-error markers ARE the assertions
+    // (an unused directive is itself a compile error, so the typecheck fails if
+    // the rejection stops firing). Invoking would throw via the U2 runtime guard,
+    // so this must stay uncalled — mirrors the col()-in-a-row test (issue #32).
+    function _typeOnly(): void {
+      // @ts-expect-error — a bare input Value cannot be embedded in c.obj (the #42 repro)
+      c.obj({ id: inp("id") });
+      // @ts-expect-error — the full repro: bool + input in an object response
+      c.obj({ success: c.bool(true), id: inp("id") });
+      // @ts-expect-error — a Value nested one level deep is still rejected
+      c.obj({ a: { b: ref("x") } });
+      // @ts-expect-error — an input Value inside an array element
+      c.array([inp("id")]);
+      // @ts-expect-error — a Value nested inside an array-of-objects element
+      c.array([{ id: auth("id") }]);
+    }
+    void _typeOnly;
+    expect(typeof _typeOnly).toBe("function");
+  });
+
+  it("still accepts plain JSON literals (no rejection)", () => {
+    expect(c.obj({ q: "abc" }).tag).toBe("const:obj");
+    expect(c.obj({}).tag).toBe("const:obj");
+    expect(c.obj({ a: { b: 1 }, list: [1, 2] }).tag).toBe("const:obj");
+    expect(c.array([1, "two", true]).tag).toBe("const:array");
+    expect(c.array([]).tag).toBe("const:array");
+    // Return type is unchanged for valid input.
+    expectTypeOf(c.obj({ q: "abc" })).toEqualTypeOf<Value>();
+  });
+
+  it("throws at runtime when a Value is nested (JS/any-typed bypass)", () => {
+    // The compile-time type is erased for `any` callers; the guard is the backstop.
+    expect(() => c.obj({ id: inp("id") } as unknown as Record<string, never>)).toThrow(
+      /record of values|tagged value|response: \{/,
+    );
+    expect(() => c.obj({ a: { b: c.bool(true) } } as unknown as Record<string, never>)).toThrow();
+    expect(() => c.array([inp("id")] as unknown as never[])).toThrow();
+  });
+
+  it("does not throw for plain JSON (preserves existing behavior)", () => {
+    expect(() => c.obj({ q: "abc" })).not.toThrow();
+    expect(() => c.array([1, "two", true])).not.toThrow();
+    expect(() => c.obj({})).not.toThrow();
+    expect(() => c.array([])).not.toThrow();
   });
 });
 
