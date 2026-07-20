@@ -1,7 +1,18 @@
 import { describe, it, expect, expectTypeOf } from "vitest";
 import { table } from "../../src/kinds/table.js";
 import { f } from "../../src/fields/catalog.js";
-import { dbGet, dbQuery, dbAdd, dbEdit, dbDel } from "../../src/statements/special/db.js";
+import {
+  dbGet,
+  dbQuery,
+  dbAdd,
+  dbEdit,
+  dbDel,
+  dbPatch,
+  dbAddOrEdit,
+  dbHas,
+  dbBulkPatch,
+  dbBulkDelete,
+} from "../../src/statements/special/db.js";
 import { c } from "../../src/values/value.js";
 import { encodeStatement } from "../../src/statements/statement.js";
 import type { Statement } from "../../src/statements/statement.js";
@@ -56,6 +67,36 @@ describe("db read statement brands (type-level)", () => {
     const stmt = dbDel({ table: user, fieldValue: c.int(1), as: "removed" });
     expectTypeOf(stmt.__as).toEqualTypeOf<"removed">();
     expectTypeOf(stmt.__shape).toEqualTypeOf<InferRow<typeof user>>();
+  });
+
+  it("db.patch captures `as` and the full post-patch row shape", () => {
+    const stmt = dbPatch({ table: user, fieldValue: c.int(1), data: c.obj({}), as: "patched" });
+    expectTypeOf(stmt.__as).toEqualTypeOf<"patched">();
+    expectTypeOf(stmt.__shape).toEqualTypeOf<InferRow<typeof user>>();
+  });
+
+  it("db.add_or_edit captures `as` and the full upserted row shape", () => {
+    const stmt = dbAddOrEdit({ table: user, fieldValue: c.int(1), row: { username: c.text("a") }, as: "upserted" });
+    expectTypeOf(stmt.__as).toEqualTypeOf<"upserted">();
+    expectTypeOf(stmt.__shape).toEqualTypeOf<InferRow<typeof user>>();
+  });
+
+  it("db.has captures `as` and a boolean shape (table-independent)", () => {
+    const stmt = dbHas({ table: user, fieldValue: c.int(1), as: "exists" });
+    expectTypeOf(stmt.__as).toEqualTypeOf<"exists">();
+    expectTypeOf(stmt.__shape).toEqualTypeOf<boolean>();
+  });
+
+  it("db.bulk.patch captures `as` and a row LIST shape", () => {
+    const stmt = dbBulkPatch({ table: user, items: c.array([]), as: "patched" });
+    expectTypeOf(stmt.__as).toEqualTypeOf<"patched">();
+    expectTypeOf(stmt.__shape).toEqualTypeOf<InferRow<typeof user>[]>();
+  });
+
+  it("db.bulk.delete captures `as` and a number (count) shape", () => {
+    const stmt = dbBulkDelete({ table: user, as: "removed" });
+    expectTypeOf(stmt.__as).toEqualTypeOf<"removed">();
+    expectTypeOf(stmt.__shape).toEqualTypeOf<number>();
   });
 
   it("a bare-name table yields an `unknown` shape (nothing to infer)", () => {

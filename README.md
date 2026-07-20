@@ -285,12 +285,13 @@ async function fetchPosts(): Promise<Post[]> {
   consumer breaks at compile time — exactly where you want it.
 - **`InferResponse<typeof someQuery>`** → the endpoint's **response** type, closing the round
   trip. It auto-derives the common shapes with no codegen: an object-literal response yields
-  those keys, and a query that returns a variable filled by a `db.get`/`db.query`/`db.add`/
-  `db.edit`/`db.del` derives that table's row (a `db.query` list → `Row[]`; a single `get`,
-  or the full row an `add`/`edit`/`del` binds → `Row`; a `get`/`query` `output: [...]`
-  selection narrows to a `Pick`). Where the shape isn't statically knowable — a value reshaped
-  by a filter/lambda, or built by control flow — it resolves to `unknown`; declare
-  `responseShape` to close it.
+  those keys, and a query that returns a variable filled by a db op derives that op's result —
+  the full row for `db.get`/`db.add`/`db.edit`/`db.del`/`db.patch`/`db.add_or_edit` (→ `Row`),
+  a row list for `db.query`/`db.bulk.patch` (→ `Row[]`), a `boolean` for `db.has`, a `number`
+  count for `db.bulk.delete`, and a `get`/`query` `output: [...]` selection narrows to a `Pick`.
+  Where the shape isn't statically knowable — a value reshaped by a filter/lambda, built by
+  control flow, or from an op the engine itself leaves untyped (`db.bulk.add`/`bulk.update`,
+  raw `direct_query`) — it resolves to `unknown`; declare `responseShape` to close it.
 
 ```ts
 import { listPosts, getPost } from "../xano/index.js";
