@@ -421,7 +421,11 @@ column** with `{ array: true }` — `f.text({ array: true })` surfaces as `strin
 `InferRow<typeof table>` (the column analogue of `input.list`). Tables accept a named-map
 schema (`{ email: f.email({ required: true }) }`), filter methods carry args (`"min:8"`), and
 `views[]` (expression/sort/hiddenCols) encode via the shared comparison encoder. Byte-exact
-vs the engine's `Schema::TYPE_MAP`.
+vs the engine's `Schema::TYPE_MAP`. A column **`default` must be ASCII** — it becomes part of
+the column's DDL, which the engine stores on an ASCII-only path, so a non-ASCII default (e.g.
+an emoji) is rejected at export rather than 500ing at deploy with Postgres `22021 CHARACTER
+NOT IN REPERTOIRE`; put the value on an endpoint input (`input.text({ default })`) instead,
+applied at runtime bind (issue #45).
 
 **System columns & indexes** — `id` (int primary key; `idType:"uuid"` for a uuid key) and
 `created_at` (`epochms`, `default:"now"`, `access:"private"`) auto-inject at the head of

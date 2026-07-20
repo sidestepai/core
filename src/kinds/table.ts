@@ -384,8 +384,36 @@ export function encodeColumn(def: ColumnDef): FieldXdo {
   return encodeField(name, type, options, COLUMN_CONTEXT);
 }
 
+/**
+ * Reject a non-ASCII column `default` at author time (issue #45). The engine
+ * stores a column's DDL `DEFAULT` literal on an encoding path that can't
+ * represent characters above ASCII, so a default like an emoji type-checks and
+ * `export`s cleanly but 500s at `deploy` with a raw Postgres `22021 CHARACTER
+ * NOT IN REPERTOIRE` at table-creation time — same "compiles/exports but blows
+ * up later" class as issue #42. Surfacing it here names the offending
+ * table/column before deploy. Column defaults only: *input* defaults bind at
+ * runtime, not as DDL, so they accept any character and never reach this path.
+ */
+function assertAsciiColumnDefault(tableName: string, col: ColumnDef): void {
+  if (col.default === undefined) return;
+  for (const ch of String(col.default)) {
+    const cp = ch.codePointAt(0)!;
+    if (cp > 0x7f) {
+      const u = `U+${cp.toString(16).toUpperCase().padStart(4, "0")}`;
+      throw new Error(
+        `table "${tableName}", column "${col.name}": \`default\` contains a non-ASCII ` +
+          `character (${JSON.stringify(ch)}, ${u}). The engine stores column defaults on a ` +
+          `path that rejects non-ASCII at deploy (Postgres 22021 CHARACTER NOT IN REPERTOIRE). ` +
+          `Use an ASCII default, or move the value onto an endpoint input ` +
+          `(\`input.text({ default })\`), applied at runtime bind. (issue #45)`,
+      );
+    }
+  }
+}
+
 export function encodeTable(def: TableDef): TableXdo {
   if (!def.name) throw new Error("table: `name` is required.");
+  for (const col of tableColumns(def)) assertAsciiColumnDefault(def.name, col);
   return {
     name: def.name,
     description: def.description ?? "",

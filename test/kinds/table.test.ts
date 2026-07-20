@@ -80,6 +80,41 @@ describe("table kind", () => {
     expect(() => encodeTable({ schema: [] })).toThrow(/name/);
   });
 
+  // Non-ASCII column defaults (issue #45): the engine stores a column's DDL
+  // DEFAULT on an ASCII-only encoding path, so an emoji default exports cleanly
+  // then 500s at deploy with Postgres 22021. Reject it at author time.
+  it("rejects a non-ASCII column default, naming the table/column/character", () => {
+    expect(() =>
+      encodeTable({ name: "habit", schema: [{ name: "emoji", type: "text", default: "🌱" }] }),
+    ).toThrow(/table "habit", column "emoji".*non-ASCII.*U\+1F331.*22021/s);
+  });
+
+  it("rejects a non-ASCII default hidden in the middle of an ASCII string", () => {
+    expect(() =>
+      encodeTable({ name: "t", schema: [{ name: "c", type: "text", default: "café" }] }),
+    ).toThrow(/U\+00E9/);
+  });
+
+  it("accepts ASCII column defaults (string, number, boolean) and the system now default", () => {
+    expect(() =>
+      encodeTable({
+        name: "t",
+        schema: [
+          { name: "s", type: "text", default: "hello" },
+          { name: "n", type: "int", default: 0 },
+          { name: "b", type: "bool", default: false },
+        ],
+      }),
+    ).not.toThrow();
+  });
+
+  it("scopes the guard to encodeTable — the shared field encoder still accepts non-ASCII", () => {
+    // encodeColumn/encodeField are shared with function inputs, whose defaults
+    // bind at runtime (not DDL) and accept any character. The guard lives in
+    // encodeTable, so the low-level encoder must not reject on its own.
+    expect(() => encodeColumn({ name: "emoji", type: "text", default: "🌱" })).not.toThrow();
+  });
+
   it("registers on Xano under payload.dbo", () => {
     const bundle = new Xano()
       .register("table", { name: "user", schema: [{ name: "id", type: "int", required: true }] })
