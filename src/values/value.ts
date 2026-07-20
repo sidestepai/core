@@ -159,9 +159,32 @@ export const c = {
   },
 };
 
+/** Options for {@link ref}. */
+export interface RefOptions {
+  /**
+   * Null-safe nested access (opt-in). A dotted `ref("owner.user_id")` normally
+   * compiles to the raw var path `$owner.user_id`, which the engine resolves in
+   * a single lookup — so when the base var `owner` is null (e.g. a `db.get` that
+   * matched no row), it raises a runtime `ERROR_FATAL` "Unable to locate var"
+   * (HTTP 500) instead of yielding null (issue #47).
+   *
+   * With `safe: true` the path compiles through the `get` filter
+   * (`$owner|get:"user_id"`), which walks the remaining path and resolves to
+   * null when the base is null — so an ownership/existence guard evaluates to
+   * `false` cleanly rather than throwing. Has no effect on a plain, dot-free name
+   * (a bare var already resolves to null without error).
+   */
+  safe?: boolean;
+}
+
 /**
  * Reference a **stack variable** — the `as:` output of an earlier statement:
  * `{tag:"var", value}`. e.g. `dbGet({ ..., as: "user" })` then `ref("user")`.
+ *
+ * Pass `{ safe: true }` to make a *nested* path null-safe: `ref("owner.user_id",
+ * { safe: true })` resolves to null instead of 500ing when the base `owner` is
+ * null (issue #47) — the intent-revealing opt-in for drilling into a `db.get`
+ * result that may not exist.
  *
  * Picking a reference helper (these are easy to mix up):
  * - {@link ref} — a stack variable (`as:` output). **Not** a foreign key — that's
@@ -171,7 +194,16 @@ export const c = {
  * - {@link auth} — the authenticated caller (`auth("id")`).
  * - `c.*` — a literal constant (`c.int(1)`, `c.text("x")`).
  */
-export function ref<const Name extends string>(name: Name): RefValue<Name> {
+export function ref<const Name extends string>(name: Name, opts?: RefOptions): RefValue<Name> {
+  const dot = name.indexOf(".");
+  if (opts?.safe && dot !== -1) {
+    // Compile `owner.user_id` → `$owner|get:"user_id"`: reference the base var
+    // (which exists and may be null) and let the `get` filter walk the rest of
+    // the path, resolving to null instead of raising when the base is null (#47).
+    const base = name.slice(0, dot);
+    const path = name.slice(dot + 1);
+    return withFilters(val(base, "var"), filter("get", c.text(path), c.null())) as unknown as RefValue<Name>;
+  }
   // `__ref` is a phantom (type-only) carrier — the runtime object is exactly the
   // plain `{value, tag, filters}` Value; the cast attaches the name to the type.
   return val(name, "var") as RefValue<Name>;

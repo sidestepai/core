@@ -112,6 +112,59 @@ describe("references", () => {
   it("inp produces an input tag", () => {
     expect(inp("name")).toEqual({ value: "name", tag: "input", filters: [] });
   });
+
+  it("a dotted ref stays a raw var path by default (unchanged emit)", () => {
+    // The engine resolves `$owner.user_id` in one lookup — fine when the base is
+    // non-null, a 500 when it is null (issue #47). Opt into `safe` to avoid it.
+    expect(ref("owner.user_id")).toEqual({ value: "owner.user_id", tag: "var", filters: [] });
+  });
+
+  it("ref({ safe: true }) compiles a nested path through the get filter (#47)", () => {
+    // `owner.user_id` → `$owner|get:"user_id"` (default null): reference the base
+    // var (may be null) and let `get` walk the rest, resolving to null instead of
+    // raising "Unable to locate var" when the base is null.
+    expect(ref("owner.user_id", { safe: true })).toEqual({
+      value: "owner",
+      tag: "var",
+      filters: [
+        {
+          name: "get",
+          disabled: false,
+          arg: [
+            { value: "user_id", tag: "const", filters: [] },
+            { value: "null", tag: "const:null", filters: [] },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("ref({ safe: true }) keeps the whole remaining path for a deeper dot chain", () => {
+    // Split on the first dot only — `get` walks the rest ("profile.name").
+    expect(ref("owner.profile.name", { safe: true })).toEqual({
+      value: "owner",
+      tag: "var",
+      filters: [
+        {
+          name: "get",
+          disabled: false,
+          arg: [
+            { value: "profile.name", tag: "const", filters: [] },
+            { value: "null", tag: "const:null", filters: [] },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("ref({ safe: true }) is a no-op for a plain, dot-free name", () => {
+    // A bare var already resolves to null without error — no filter needed.
+    expect(ref("owner", { safe: true })).toEqual({ value: "owner", tag: "var", filters: [] });
+  });
+
+  it("a safe ref stays branded as a RefValue at the type level", () => {
+    expectTypeOf(ref("owner.user_id", { safe: true })).toEqualTypeOf<RefValue<"owner.user_id">>();
+  });
 });
 
 describe("filters", () => {
