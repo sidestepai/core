@@ -24,11 +24,12 @@ export interface FieldOptions {
    * ergonomics (`default: 0`, `default: false`); the engine stores it as a
    * string, so it's coerced at encode time (`0` → `"0"`, `false` → `"false"`).
    *
-   * On a **table column** the default becomes part of the column's DDL, which
-   * the engine stores on an encoding path that only accepts ASCII — a non-ASCII
-   * default (e.g. an emoji) is rejected at export/encode time rather than 500ing
-   * at deploy with Postgres `22021 CHARACTER NOT IN REPERTOIRE` (issue #45). A
-   * *function/endpoint input* default binds at runtime and has no such limit.
+   * On a **table column** the default must stay within the Basic Multilingual
+   * Plane: a 4-byte character (codepoint > U+FFFF — emoji, CJK-extension glyphs)
+   * is mangled into an invalid UTF-8 sequence by the engine's default pipeline
+   * and is rejected at export/encode time rather than 500ing at deploy with
+   * Postgres `22021` (issue #45). BMP characters (accents, `€`, most CJK) store
+   * fine. A *function/endpoint input* default binds at runtime and has no limit.
    */
   default?: string | number | boolean;
   description?: string;

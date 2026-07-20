@@ -385,27 +385,33 @@ export function encodeColumn(def: ColumnDef): FieldXdo {
 }
 
 /**
- * Reject a non-ASCII column `default` at author time (issue #45). The engine
- * stores a column's DDL `DEFAULT` literal on an encoding path that can't
- * represent characters above ASCII, so a default like an emoji type-checks and
- * `export`s cleanly but 500s at `deploy` with a raw Postgres `22021 CHARACTER
- * NOT IN REPERTOIRE` at table-creation time — same "compiles/exports but blows
- * up later" class as issue #42. Surfacing it here names the offending
- * table/column before deploy. Column defaults only: *input* defaults bind at
- * runtime, not as DDL, so they accept any character and never reach this path.
+ * Reject a 4-byte (astral-plane) column `default` at author time (issue #45).
+ * The engine's default pipeline round-trips the value through a surrogate-pair
+ * JSON escape (PHP `json_encode("🌱")` → `"🌱"`) and a downstream
+ * decode emits the surrogate halves as invalid CESU-8 bytes, so a default with
+ * a character above the BMP (codepoint > U+FFFF — emoji, CJK-extension glyphs)
+ * type-checks and `export`s cleanly but 500s at `deploy` with a raw Postgres
+ * `22021` (`invalid byte sequence for encoding "UTF8"`) at table-creation time —
+ * same "compiles/exports but blows up later" class as issue #42. The database
+ * is UTF8, so BMP characters (accents, `€`, most CJK) store fine and are *not*
+ * rejected; only surrogate-pair characters break. Verified against the engine's
+ * Postgres image. Column defaults only: *input* defaults bind at runtime, not as
+ * DDL, so they accept any character and never reach this path.
  */
-function assertAsciiColumnDefault(tableName: string, col: ColumnDef): void {
+function assertBmpColumnDefault(tableName: string, col: ColumnDef): void {
   if (col.default === undefined) return;
   for (const ch of String(col.default)) {
     const cp = ch.codePointAt(0)!;
-    if (cp > 0x7f) {
+    if (cp > 0xffff) {
       const u = `U+${cp.toString(16).toUpperCase().padStart(4, "0")}`;
       throw new Error(
-        `table "${tableName}", column "${col.name}": \`default\` contains a non-ASCII ` +
-          `character (${JSON.stringify(ch)}, ${u}). The engine stores column defaults on a ` +
-          `path that rejects non-ASCII at deploy (Postgres 22021 CHARACTER NOT IN REPERTOIRE). ` +
-          `Use an ASCII default, or move the value onto an endpoint input ` +
-          `(\`input.text({ default })\`), applied at runtime bind. (issue #45)`,
+        `table "${tableName}", column "${col.name}": \`default\` contains a 4-byte ` +
+          `character (${JSON.stringify(ch)}, ${u}). The engine mangles such characters ` +
+          `into an invalid UTF-8 sequence in the column default, failing at deploy with ` +
+          `Postgres 22021 (invalid byte sequence for encoding "UTF8"). Use a default within ` +
+          `the Basic Multilingual Plane (accents, most CJK, and € are fine), or move the ` +
+          `value onto an endpoint input (\`input.text({ default })\`), applied at runtime ` +
+          `bind. (issue #45)`,
       );
     }
   }
@@ -413,7 +419,7 @@ function assertAsciiColumnDefault(tableName: string, col: ColumnDef): void {
 
 export function encodeTable(def: TableDef): TableXdo {
   if (!def.name) throw new Error("table: `name` is required.");
-  for (const col of tableColumns(def)) assertAsciiColumnDefault(def.name, col);
+  for (const col of tableColumns(def)) assertBmpColumnDefault(def.name, col);
   return {
     name: def.name,
     description: def.description ?? "",

@@ -80,22 +80,36 @@ describe("table kind", () => {
     expect(() => encodeTable({ schema: [] })).toThrow(/name/);
   });
 
-  // Non-ASCII column defaults (issue #45): the engine stores a column's DDL
-  // DEFAULT on an ASCII-only encoding path, so an emoji default exports cleanly
-  // then 500s at deploy with Postgres 22021. Reject it at author time.
-  it("rejects a non-ASCII column default, naming the table/column/character", () => {
+  // 4-byte column defaults (issue #45): the engine's default pipeline mangles an
+  // astral-plane character (> U+FFFF) into invalid UTF-8, so an emoji default
+  // exports cleanly then 500s at deploy with Postgres 22021. Verified against the
+  // engine's UTF8 Postgres image — BMP characters store fine; only 4-byte break.
+  it("rejects a 4-byte column default, naming the table/column/character", () => {
     expect(() =>
       encodeTable({ name: "habit", schema: [{ name: "emoji", type: "text", default: "🌱" }] }),
-    ).toThrow(/table "habit", column "emoji".*non-ASCII.*U\+1F331.*22021/s);
+    ).toThrow(/table "habit", column "emoji".*4-byte.*U\+1F331.*22021/s);
   });
 
-  it("rejects a non-ASCII default hidden in the middle of an ASCII string", () => {
+  it("rejects a 4-byte character hidden in the middle of a BMP string", () => {
     expect(() =>
-      encodeTable({ name: "t", schema: [{ name: "c", type: "text", default: "café" }] }),
-    ).toThrow(/U\+00E9/);
+      encodeTable({ name: "t", schema: [{ name: "c", type: "text", default: "seed 𠀀 me" }] }),
+    ).toThrow(/U\+20000/);
   });
 
-  it("accepts ASCII column defaults (string, number, boolean) and the system now default", () => {
+  it("accepts BMP non-ASCII defaults (accents, CJK, €) — they deploy fine on the UTF8 DB", () => {
+    expect(() =>
+      encodeTable({
+        name: "t",
+        schema: [
+          { name: "accent", type: "text", default: "café" },
+          { name: "cjk", type: "text", default: "中" },
+          { name: "euro", type: "text", default: "€" },
+        ],
+      }),
+    ).not.toThrow();
+  });
+
+  it("accepts ASCII column defaults (string, number, boolean)", () => {
     expect(() =>
       encodeTable({
         name: "t",
@@ -108,7 +122,7 @@ describe("table kind", () => {
     ).not.toThrow();
   });
 
-  it("scopes the guard to encodeTable — the shared field encoder still accepts non-ASCII", () => {
+  it("scopes the guard to encodeTable — the shared field encoder still accepts 4-byte defaults", () => {
     // encodeColumn/encodeField are shared with function inputs, whose defaults
     // bind at runtime (not DDL) and accept any character. The guard lives in
     // encodeTable, so the low-level encoder must not reject on its own.
