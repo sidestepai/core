@@ -284,12 +284,15 @@ export type SearchParamValue =
  * via `any`) throws a {@link TypeError} instead of serializing to `"NaN"` /
  * `"[object Object]"`.
  *
- * Two call shapes, one runtime. Authored literals bind to the strict
- * {@link SearchParamValue} overload for the clearest inference. A generic
- * transport that holds its endpoint input opaquely — `Record<string, unknown>`,
- * or an `InferInput<Q>` map behind a generic type param — binds to the wide
- * overload and needs no `as` cast: the runtime scalar check above is the real
- * guard, so a non-serializable value still throws rather than slipping through.
+ * Two call shapes, one runtime. Authored literals get {@link SearchParamValue}
+ * autocomplete from the strict overload, but the wide `Record<string, unknown>`
+ * overload accepts everything the strict one rejects — so a bad literal
+ * type-checks here and is caught only at runtime, not at compile time. That is
+ * deliberate: a generic transport that holds its endpoint input opaquely
+ * (`Record<string, unknown>`, or an `InferInput<Q>` map behind a generic type
+ * param) passes it with no `as` cast, and the runtime scalar guard in the body
+ * below is the real check — a non-serializable value throws rather than slipping
+ * through, whichever overload it came in on.
  *
  * @example
  * const q = query({ name: "get_snippet", verb: "GET", apiGroup: g, input: { id: input.int() } });

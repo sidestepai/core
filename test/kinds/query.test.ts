@@ -189,5 +189,19 @@ describe("query + api_group on Xano", () => {
       const opaque: Record<string, unknown> = { o: { nested: true } };
       expect(() => toSearchParams(opaque)).toThrow(/not a scalar/);
     });
+
+    it("still throws at runtime on a bigint reaching it via the wide overload", () => {
+      // bigint isn't a `SearchParamValue`, but the wide overload lets it in; the
+      // runtime guard rejects it rather than emitting `String(10n)` → "10".
+      const opaque: Record<string, unknown> = { id: 10n };
+      expect(() => toSearchParams(opaque)).toThrow(/not a scalar/);
+    });
+
+    it("does not compile-guard a bad literal — the runtime is the only check", () => {
+      // The wide overload accepts everything the strict one rejects, so a nested
+      // object literal type-checks and is caught only at runtime (see toSearchParams
+      // doc). A `@ts-expect-error` here would FAIL, pinning that documented tradeoff.
+      expect(() => toSearchParams({ o: { nested: true } })).toThrow(/not a scalar/);
+    });
   });
 });
