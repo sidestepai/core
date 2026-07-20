@@ -391,10 +391,18 @@ a counter you MUST `db.get` the row first, then pipe its bound value —
 `s.db.edit({ table, fieldValue, row: { clicks: withFilters(ref("current.clicks"), fl.add(c.int(1))) } })`.
 ⚠ This read-modify-write is NOT atomic — two concurrent writers can both read the
 same value and one increment is lost. There is no dedicated atomic-increment
-statement. For a **concurrency-safe** counter, do the arithmetic in the database
-with a single `s.db.direct_query` UPDATE (`SET clicks = clicks + 1 WHERE …`), which
-the DB applies atomically. Reserve the pipeline form for low-contention counters
+statement, and one CANNOT be synthesized in the SDK (it would compile to this same
+`get` + `edit` pair). For a **concurrency-safe** counter, do the arithmetic in the
+database with a single `s.db.direct_query` UPDATE (`SET clicks = clicks + 1 WHERE …`),
+which the DB applies atomically. Reserve the pipeline form for low-contention counters
 where a rare lost update is acceptable.
+⚠ `direct_query` needs the table's PHYSICAL Postgres name, which the typed surface
+does NOT expose: the engine derives a physical name from workspace + table ids (of the
+form `x<workspace_id>_<table_id>`, e.g. `x6_203970`), ids assigned at import — not knowable
+from a `table()` def (identity is a name + guid, not the numeric id), and `sql_name`
+persists empty. So the safe counter drops out of the typed surface: hardcode
+the physical name after inspecting the deployed table. A typed atomic path needs an
+engine change (issue #35).
 
 - `fl.add(value: decimal): decimal` — Add 2 values together and return the answer
 - `fl.append(value: <T>, path: text): <T>[]` — Push an element on to the end of an array within an object and return the updated object

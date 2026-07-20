@@ -501,8 +501,22 @@ s.db.edit({ table, fieldValue: inp("id"), row: { clicks: withFilters(ref("curren
 ```
 
 Note this read-modify-write is **not atomic** — concurrent writers can lose an increment;
-there's no dedicated atomic-increment statement. For a concurrency-safe counter, do the
-arithmetic in the database with a single `s.db.direct_query` `UPDATE … SET clicks = clicks + 1 WHERE …`.
+there's no dedicated atomic-increment statement, and one can't be synthesized in the SDK
+(it would still compile to this same `get` + `edit` pair). For a genuinely concurrency-safe
+counter, push the arithmetic into the database with a single `s.db.direct_query`
+`UPDATE … SET clicks = clicks + 1 WHERE …`.
+
+⚠ **`direct_query` needs the table's *physical* Postgres name, which the typed surface does
+not expose.** The engine assigns each table a physical name derived from its workspace and
+table ids (of the form `x<workspace_id>_<table_id>`, e.g. `x6_203970`); those numeric ids are
+assigned at import, so the physical name isn't knowable from a `table()` def (whose identity
+is a name + guid, neither of which is the engine's numeric id), and `sql_name` is persisted
+empty. There is currently
+no typed way to reach that name, so the "safe" counter drops you out of the typed surface
+entirely: you must hardcode the physical name after inspecting the deployed table. A typed
+atomic path — either a dedicated increment statement or a table-reference token the engine
+substitutes into `direct_query` SQL — requires an **engine change** (tracked in
+[issue #35](https://github.com/sidestepai/core/issues/35)).
 
 **Inputs** — `input.*` mirrors `f.*` exactly: every engine-legal field type is a valid
 function/query input. Use `input.object(children)` and `input.list(element)` for structured
