@@ -6,7 +6,7 @@ Author a Xano workspace in TypeScript: build typed objects, register them on a
 `new Xano()` instance, and call `.export()` to get one importable bundle. Compile
 with `sidestep export ./xano/index.js`.
 
-Coverage: object kinds 11/24, statement surfaces 214/214, filters 377 (161 typed).
+Coverage: object kinds 11/24, statement surfaces 214/214, filters 345 (134 typed).
 
 ## Quickstart
 
@@ -423,7 +423,6 @@ engine change (issue #35).
 - `fl.array_slice(offset?: int, length?: int): <T>[]` — Extract a section from an array.
 - `fl.array_unshift(value: <T>): <T>[]` — Push an element to the beginning of an array and return the new array
 - `fl.base_convert(from_base: any, to_base: any): text` — Converts a value between two bases
-- `fl.between_filter(left: any, right: any): bool` — Determines if a value is between 2 other values
 - `fl.bitwise_and(value: int): int` — Bitwise AND 2 values together and return the answer
 - `fl.bitwise_or(value: int): int` — Bitwise OR 2 values together and return the answer
 - `fl.bitwise_xor(value: int): int` — Bitwise XOR 2 values together and return the answer
@@ -447,31 +446,11 @@ engine change (issue #35).
 - `fl.div(value: decimal): decimal` — Divides 2 values together and returns the answer
 - `fl.encrypt(algorithm?: enum, key: text, iv: text): text` — Encrypts the value and returns the result in raw binary form.
 - `fl.ends_with(search: text): bool` — Returns whether or not the expression is present at the end Direction: the piped value is the subject text; the argument is the substring searched for.
-- `fl.epochms_add_day(amount?: decimal): epochms` — Add a number of days to the timestamp
-- `fl.epochms_add_hour(amount?: decimal): epochms` — Add a number of hours to the timestamp
-- `fl.epochms_add_minute(amount?: decimal): epochms` — Add a number of minutes to the timestamp
-- `fl.epochms_add_month(amount?: decimal): epochms` — Add a number of months to the timestamp
 - `fl.epochms_add_ms(milliseconds: int): epochms` — Add milliseconds to a timestamp. (negative values are ok)
-- `fl.epochms_add_sec(amount?: decimal): epochms` — Add a number of seconds to the timestamp
 - `fl.epochms_add_secs(seconds: int): epochms` — Add seconds to a timestamp. (negative values are ok)
-- `fl.epochms_add_year(amount?: decimal): epochms` — Add a number of years to the timestamp
 - `fl.epochms_date(format: text, timezone?: text): text` — Converts a timestamp into a human readable formatted date based on
-- `fl.epochms_day(timezone?: text): int` — Get day of month from timestamp
-- `fl.epochms_dow(timezone?: text): int` — Get day of week from timestamp
-- `fl.epochms_doy(timezone?: text): int` — Get day of year from timestamp
 - `fl.epochms_from_format(format: text, timezone?: text): text` — Parse a timestamp from a flexible format.
-- `fl.epochms_hour(timezone?: text): int` — Get hour from timestamp
-- `fl.epochms_minute(timezone?: text): int` — Get minute from timestamp
-- `fl.epochms_month(timezone?: text): int` — Get month from timestamp
-- `fl.epochms_sub_day(amount?: decimal): epochms` — Subtract a number of days from the timestamp
-- `fl.epochms_sub_hour(amount?: decimal): epochms` — Subtract a number of hours from the timestamp
-- `fl.epochms_sub_minute(amount?: decimal): epochms` — Subtract a number of minutes from the timestamp
-- `fl.epochms_sub_month(amount?: decimal): epochms` — Subtract a number of months from the timestamp
-- `fl.epochms_sub_sec(amount?: decimal): epochms` — Subtract a number of seconds from the timestamp
-- `fl.epochms_sub_year(amount?: decimal): epochms` — Subtract a number of years from the timestamp
 - `fl.epochms_transform(format: text, timezone?: text): text` — Takes a timestamp and applies a relative transformation to it. Ex.
-- `fl.epochms_week(timezone?: text): int` — Get week from timestamp
-- `fl.epochms_year(timezone?: text): int` — Get year from timestamp
 - `fl.eq(value: <T>): bool` — Returns a boolean if both values are equal
 - `fl.every(code: text, timeout?: int): any[]` — Checks if all elements in the array pass the test implemented by the provided function.
 - `fl.filter(code: text, timeout?: int): any[]` — Filters the elements of an array based on the code block returning true to keep the element or false to skip it.
@@ -562,15 +541,9 @@ engine change (issue #35).
 - `fl.url_delarg(key: text): text` — Parses a URL and returns an updated version with the supplied argument removed
 - `fl.url_getarg(key: text, default?: text): text` — Gets the argument's value from a URL
 - `fl.url_hasarg(key: text): text` — Returns the existence of a argument in the URL
-- `fl.vector_cos_distance(vector: decimal[]): decimal` — Provides the cosine distance between two vectors
-- `fl.vector_cos_similarity(vector: decimal[]): decimal` — Provides the cosine similarity between two vectors
-- `fl.vector_inner_product(vector: decimal[]): decimal` — Provides the inner product between two vectors
-- `fl.vector_l1_distance(vector: decimal[]): decimal` — Provides the L1 distance between two vectors
-- `fl.vector_l2_distance(vector: decimal[]): decimal` — Provides the L2 distance between two vectors
-- `fl.vector_negative_inner_product(vector: decimal[]): decimal` — Provides the negative inner product between two vectors
 - `fl.within(geometry: geo_point, distance: decimal): bool` — Determines if one geometry is within the supplied radius of another geometry
 
-Other filters (reachable as `fl.<name>`, variadic): abs, acos, acosh, add_ms_to_timestamp, add_secs_to_timestamp, addslashes, alphaOk, array_entries, array_keys, array_length, array_max, array_min, array_pop, array_shift, array_shuffle, array_values, asin, asinh, atan, atanh, avg, base64_decode, base64_decode_urlsafe, base64_encode, base64_encode_urlsafe, between, bin2hex, bindec, bitwise_not, capitalize, ceil, cos, cosine_distance, cosine_similarity, count, count_distinct, create_object_from_entries, create_uid, decbin, dechex, decoct, deg2rad, diff, diff_assoc, digitOk, divide, empty, entries, epochms_epoch_day, epochms_epoch_hour, epochms_epoch_minute, epochms_epoch_sec, equals, escape, even, exp, fill, fill_keys, first, flatten, floor, format_timestamp, from_utf8, greater_than, greater_than_or_equal, hex2bin, hexdec, iindex, index, inner_product, intersect, intersect_assoc, is_array, is_bool, is_decimal, is_empty, is_int, is_null, is_object, is_text, is_uuid, json_decode, json_encode, jwe_decode, jwe_encode, jws_decode, jws_encode, keys, l1_distance_manhattan, l2_distance_euclidean, lambda_every, lambda_filter, lambda_find, lambda_findIndex, lambda_map, lambda_reduce, lambda_some, last, length, less_than, less_than_or_equal, list_encodings, ln, log10, lower, max, median, merge, merge_recursive, min, minAlpha, minDigit, minLowerAlpha, minSymbol, minUpperAlpha, modulus, multiply, negative_inner_product, not, not_equals, octdec, odd, ok, parse_timestamp, pattern, pop, prevent, product, push, querystring_parse, rad2deg, regex_get_all_matches, regex_get_first_match, regex_matches, remove, replace, reverse, safe_array, shift, shuffle, sin, slice, sort, sprintf, sql_alias, sql_esc, sqrt, startsWith, strip_accents, strip_html, strlen, subtract, sum, tan, text_escape, text_unescape, timestamp_add_days, timestamp_add_hours, timestamp_add_minutes, timestamp_add_months, timestamp_add_seconds, timestamp_add_years, timestamp_day_of_month, timestamp_day_of_week, timestamp_day_of_year, timestamp_epoch_day, timestamp_epoch_hour, timestamp_epoch_minute, timestamp_epoch_sec, timestamp_hour, timestamp_minute, timestamp_month, timestamp_subtract_days, timestamp_subtract_hours, timestamp_subtract_minutes, timestamp_subtract_months, timestamp_subtract_seconds, timestamp_subtract_years, timestamp_week, timestamp_year, to_bool, to_days, to_decimal, to_distinct_list, to_distinct_list_asc, to_distinct_list_desc, to_expr, to_hours, to_int, to_list, to_list_asc, to_list_desc, to_lower, to_minutes, to_ms, to_seconds, to_text, to_timestamp, to_upper, to_utf8, transform_timestamp, uid, unaccent, unshift, upper, url_decode, url_decode_rfc3986, url_encode, url_encode_rfc3986, url_parse, uuid, uuid4, values, xml_decode, yaml_decode, yaml_encode.
+Other filters (reachable as `fl.<name>`, variadic): abs, acos, acosh, add_ms_to_timestamp, add_secs_to_timestamp, addslashes, alphaOk, array_entries, array_keys, array_max, array_min, array_pop, array_shift, array_shuffle, array_values, asin, asinh, atan, atanh, avg, base64_decode, base64_decode_urlsafe, base64_encode, base64_encode_urlsafe, between, bin2hex, bindec, bitwise_not, capitalize, ceil, cos, cosine_distance, cosine_similarity, count, count_distinct, create_object_from_entries, create_uid, decbin, dechex, decoct, deg2rad, diff, diff_assoc, digitOk, divide, empty, entries, equals, escape, even, exp, fill, fill_keys, first, flatten, floor, format_timestamp, from_utf8, greater_than, greater_than_or_equal, hex2bin, hexdec, iindex, index, inner_product, intersect, intersect_assoc, is_array, is_bool, is_decimal, is_empty, is_int, is_null, is_object, is_text, is_uuid, json_decode, json_encode, jwe_decode, jwe_encode, jws_decode, jws_encode, keys, l1_distance_manhattan, l2_distance_euclidean, lambda_every, lambda_filter, lambda_find, lambda_findIndex, lambda_map, lambda_reduce, lambda_some, last, length, less_than, less_than_or_equal, list_encodings, ln, log10, lower, max, median, merge, merge_recursive, min, minAlpha, minDigit, minLowerAlpha, minSymbol, minUpperAlpha, modulus, multiply, negative_inner_product, not, not_equals, octdec, odd, ok, parse_timestamp, pattern, pop, prevent, product, push, querystring_parse, rad2deg, regex_get_all_matches, regex_get_first_match, regex_matches, remove, replace, reverse, safe_array, shift, shuffle, sin, slice, sort, sprintf, sql_alias, sql_esc, sqrt, startsWith, strip_accents, strip_html, strlen, subtract, sum, tan, text_escape, text_unescape, timestamp_add_days, timestamp_add_hours, timestamp_add_minutes, timestamp_add_months, timestamp_add_seconds, timestamp_add_years, timestamp_day_of_month, timestamp_day_of_week, timestamp_day_of_year, timestamp_epoch_day, timestamp_epoch_hour, timestamp_epoch_minute, timestamp_epoch_sec, timestamp_hour, timestamp_minute, timestamp_month, timestamp_subtract_days, timestamp_subtract_hours, timestamp_subtract_minutes, timestamp_subtract_months, timestamp_subtract_seconds, timestamp_subtract_years, timestamp_week, timestamp_year, to_bool, to_days, to_decimal, to_distinct_list, to_distinct_list_asc, to_distinct_list_desc, to_expr, to_hours, to_int, to_list, to_list_asc, to_list_desc, to_lower, to_minutes, to_ms, to_seconds, to_text, to_timestamp, to_upper, to_utf8, transform_timestamp, uid, unaccent, unshift, upper, url_decode, url_decode_rfc3986, url_encode, url_encode_rfc3986, url_parse, uuid, uuid4, values, xml_decode, yaml_decode, yaml_encode.
 
 ## Statements
 

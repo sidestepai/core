@@ -183,17 +183,26 @@ function refresh(): FilterCatalog {
   }
   const names = parseNames(readFileSync(NAMES_SRC, "utf8"));
   const docs = parseDocs(readFileSync(DOCS_SRC, "utf8"));
+  const aggSpecs = parseFilterYaml(readFileSync(AGG_SRC, "utf8"));
+  const pipeSpecs = parseFilterYaml(readFileSync(PIPE_SRC, "utf8"));
+  const filterSpecs = parseFilterYaml(readFileSync(YAML_SRC, "utf8"));
+
   // Merge the three typed catalogs; later spreads win, so filter.yaml takes
   // precedence over pipe.yaml over aggregate.yaml on shared names.
-  const yaml: Record<string, FilterSpec> = {
-    ...parseFilterYaml(readFileSync(AGG_SRC, "utf8")),
-    ...parseFilterYaml(readFileSync(PIPE_SRC, "utf8")),
-    ...parseFilterYaml(readFileSync(YAML_SRC, "utf8")),
-  };
+  const yaml: Record<string, FilterSpec> = { ...aggSpecs, ...pipeSpecs, ...filterSpecs };
 
-  // Union of names (the yaml may document a filter the list also carries).
+  // Value-pipeline membership. filterNames.js is the LSP's authoritative set of
+  // filters applicable to a variable; pipe.yaml and aggregate.yaml are the value
+  // pipeline's own catalogs, so their names count too. filter.yaml, however, is
+  // the *db.query* filter catalog (SQL-generating filters like `array_length`,
+  // `vector_*`, `epochms_*`) — a different runtime registry that does NOT back
+  // the value `filters[]` pipeline this surface targets. It enriches typed args
+  // for names already in the pipeline, but must NOT introduce new ones: a value
+  // pipeline calling e.g. `fl.array_length` type-checks and exports but 500s at
+  // runtime ("Unable to locate func entry"). See issue #46.
   const all = new Set<string>(names);
-  for (const n of Object.keys(yaml)) all.add(n);
+  for (const n of Object.keys(aggSpecs)) all.add(n);
+  for (const n of Object.keys(pipeSpecs)) all.add(n);
 
   const specs: Record<string, FilterSpec> = {};
   for (const name of all) {
