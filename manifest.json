@@ -1,6 +1,6 @@
 {
   "name": "sidestep",
-  "version": "2.5.1",
+  "version": "2.6.0",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
