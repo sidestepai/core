@@ -14,7 +14,6 @@ import {
   s,
   c,
   inp,
-  col,
   ref,
   fl,
   withFilters,
@@ -49,11 +48,15 @@ export const bumpClicks = query({
   apiGroup: api,
   input: { id: input.int({ required: true }) },
   stack: [
+    // Read the row first: `col()` does NOT resolve to the stored value inside a
+    // `db.edit` `row` (it evaluates to null — issue #32), so increment off the
+    // read-back value via `ref(...)`.
+    s.db.get({ table: links, fieldValue: inp("id"), as: "current" }),
     s.db.edit({
       table: links,
       fieldValue: inp("id"),
-      // `row` is a partial keyed by column; increment from the current value.
-      row: { clicks: withFilters(col("clicks"), fl.add(c.int(1))) },
+      // `row` is a partial keyed by column; increment from the read value.
+      row: { clicks: withFilters(ref("current.clicks"), fl.add(c.int(1))) },
       as: "updated",
     }),
     s.db.query({

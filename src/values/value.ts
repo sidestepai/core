@@ -28,6 +28,17 @@ export type RefValue<Name extends string = string> = Value & { readonly __ref: N
  */
 export type FilteredValue = Value & { readonly __filtered: true };
 
+/**
+ * A {@link Value} produced by {@link col} (or a filter chain built from one). The
+ * `__col` carrier is phantom (type-only). It exists so a `col()` reference can be
+ * *statically rejected* where it would silently fail at runtime: inside a
+ * `db.edit`/`db.add` `row`, `{tag:"col"}` does not resolve to the row's stored
+ * value — it evaluates to `null`, so a following `fl.add(1)` computes `null + 1`
+ * and the engine aborts ("Numbers are required for mathematical operations",
+ * issue #32). `col()` is only meaningful in a `db.query` `where`/view expression.
+ */
+export type ColValue = Value & { readonly __col: true };
+
 function val(value: string, tag: Tag, filters: FilterXdo[] = []): Value {
   return { value, tag, filters };
 }
@@ -87,9 +98,14 @@ export function inp(name: string): Value {
   return val(name, "input");
 }
 
-/** Reference a table **column**: `{tag:"col", value}` (used in `db.query` `where` + table views). See {@link ref} for the full picker. */
-export function col(name: string): Value {
-  return val(name, "col");
+/**
+ * Reference a table **column**: `{tag:"col", value}` (used in `db.query` `where` +
+ * table views). See {@link ref} for the full picker. The return is branded
+ * {@link ColValue} so it is a *compile error* to pass `col()` into a `db.edit`/
+ * `db.add` `row` — where it would resolve to `null` at runtime (issue #32).
+ */
+export function col(name: string): ColValue {
+  return val(name, "col") as ColValue;
 }
 
 /**
@@ -126,9 +142,15 @@ export function filter(name: string, ...args: (Value | undefined)[]): FilterXdo 
  * (the canonical form, `withFilters(v, fl.trim(), fl.lower())`); the array form
  * (`withFilters(v, [fl.trim(), fl.lower()])`) is also accepted — both are flattened.
  */
-export function withFilters(value: Value, ...filters: (FilterXdo | FilterXdo[])[]): FilteredValue {
+export function withFilters<V extends Value>(
+  value: V,
+  ...filters: (FilterXdo | FilterXdo[])[]
+): FilteredValue & (V extends ColValue ? { readonly __col: true } : unknown) {
   // `__filtered` is a phantom carrier — the runtime object is the plain
   // `{value, tag, filters}` Value; the cast marks the type as filter-reshaped so
-  // `InferResponse` degrades it to `unknown`.
-  return { ...value, filters: [...value.filters, ...filters.flat()] } as FilteredValue;
+  // `InferResponse` degrades it to `unknown`. A `col()`-derived chain keeps the
+  // `__col` brand so `withFilters(col("x"), fl.add(...))` is rejected in a `row`
+  // just like a bare `col()` (issue #32) — the wrapped form is the actual footgun.
+  return { ...value, filters: [...value.filters, ...filters.flat()] } as FilteredValue &
+    (V extends ColValue ? { readonly __col: true } : unknown);
 }
