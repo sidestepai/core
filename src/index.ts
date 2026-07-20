@@ -74,7 +74,7 @@ export type {
   VectorMethod,
   TableRefMethod,
 } from "./fields/generated/field-methods.generated.js";
-export { c, ref, inp, col, auth, env, setting, filter, withFilters } from "./values/value.js";
+export { c, ref, inp, col, auth, env, setting, out, filter, withFilters } from "./values/value.js";
 export type { Value, RefValue, FilteredValue } from "./values/value.js";
 export { fl, FILTER_NAMES } from "./values/generated/filters.generated.js";
 export { setVar, updateVar } from "./statements/set-var.js";
@@ -196,6 +196,7 @@ export type {
   SortDirective,
   DbPaging,
 } from "./statements/special/db.js";
+export type { AddonSpec } from "./statements/special/addon-encode.js";
 export { deriveGuid, resolveRef, REFERENCEABLE_KINDS } from "./refs/guid.js";
 export type { ObjectRef } from "./refs/guid.js";
 

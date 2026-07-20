@@ -28,6 +28,7 @@
 import type { Statement } from "../statement.js";
 import { registerStatement } from "../statement.js";
 import type { Value } from "../../values/value.js";
+import { leanInput } from "../lean-input.js";
 import { encodeComparison } from "../conditional.js";
 import type { Comparison } from "../conditional.js";
 
@@ -131,7 +132,7 @@ function setPath(obj: Record<string, unknown>, path: string, value: unknown): vo
 
 /** Build a statement `input[]` argument binding from an authored Value. */
 function inputEntry(name: string, v: Value, full: boolean): Record<string, unknown> {
-  const entry: Record<string, unknown> = { name, value: v.value, tag: v.tag, filters: v.filters };
+  const entry: Record<string, unknown> = { ...leanInput(name, v) };
   if (full) {
     entry.ignore = false;
     entry.expand = false;

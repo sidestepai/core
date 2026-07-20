@@ -1,5 +1,5 @@
 import { describe, it, expect, expectTypeOf } from "vitest";
-import { c, ref, inp, auth, filter, withFilters } from "../src/values/value.js";
+import { c, ref, inp, auth, out, filter, withFilters } from "../src/values/value.js";
 import type { Value, RefValue } from "../src/values/value.js";
 
 describe("c.* constant constructors", () => {
@@ -111,6 +111,10 @@ describe("references", () => {
 
   it("inp produces an input tag", () => {
     expect(inp("name")).toEqual({ value: "name", tag: "input", filters: [] });
+  });
+
+  it("out produces an output tag (parent-row reference for addon inputs)", () => {
+    expect(out("book_name")).toEqual({ value: "book_name", tag: "output", filters: [] });
   });
 
   it("a dotted ref stays a raw var path by default (unchanged emit)", () => {

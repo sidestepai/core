@@ -489,6 +489,38 @@ and paging numbers are plain ints). The field-match ops take a **single** field 
 two-column lookup (e.g. dedupe a `(habit, date)` check-in), use `s.db.query` with a `where`
 array (ANDed) and branch on the result, rather than pushing the check to the client.
 
+**Paging changes the response shape.** Supplying `paging` with metadata on (the
+default) makes `s.db.query` return a **paging envelope** — `{ items: Row[], curPage,
+nextPage, prevPage, offset, perPage, itemsReceived }`, plus `itemsTotal`/`pageTotal`
+when `totals: true` — instead of a bare `Row[]`, and `InferResponse` reflects that
+(issue #58). Pass `paging: { …, metadata: false }` to keep the bare array. Without
+`paging` at all, the result stays a bare `Row[]`.
+
+**Addons** — enrich each returned row with related data by attaching addons to
+`s.db.query`/`get`/`add`/`edit`/`patch` (the row-returning ops). Reference the
+addon by name (or def handle), map its inputs (bind a parent-row column with
+`out(col)`), optionally restrict its output columns, and land it on the row at a
+dotted `as` (`offset.alias`). Addons nest via `children`:
+
+```ts
+s.db.query({
+  table: post,
+  addon: [
+    { addon: "author", as: "items._author", input: { user_id: out("user_id") }, output: ["name"] },
+  ],
+  as: "rows",
+}),
+```
+
+Each addon's **alias** (the last segment of its `as` — here `_author`) is now
+merged onto the row shape in `InferResponse` as an **`unknown`-typed** key: the SDK
+references addons by name/guid and can't know the target addon's return columns, so
+`unknown` is the honest floor — narrow it at the call site (`(row._author as
+Author)`) rather than casting the whole row to `any`. With `paging` the alias lands
+inside each `items[]` element; without it, on each bare row. The
+`s.db.add_or_edit`/`del`/`has`/`truncate` ops do not take an `addon` (no row to
+enrich / lean envelope).
+
 **Runtime behavior.** Knowing what these return matters for typing your endpoint responses:
 
 - `s.db.get` binds **`null`** when no row matches — it does *not* throw. So its response type
@@ -502,7 +534,8 @@ array (ANDed) and branch on the result, rather than pushing the check to the cli
   `unknown`. Unlike `get`, `edit`/`del` **throw** `NotFound` (404) when nothing matches.
 
 **Values** — `c.int/text/bool/decimal/null/obj/array`, `ref(var)`, `inp(input)`,
-`col(name)`, plus context refs `auth(path?)`, `env(name)`, `setting(name)`. `c.obj`/`c.array`
+`col(name)`, plus context refs `auth(path?)`, `env(name)`, `setting(name)`, `out(name)`
+(a parent-row column, for addon inputs). `c.obj`/`c.array`
 take **plain JSON literals only** — a nested tagged value (`inp`/`ref`/`auth`/`c.*`) is a
 compile error; for a computed object response use a record of values, not `c.obj` (issue #42).
 `withFilters(value, fl.a(), fl.b())` attaches the value pipeline via a typed catalog `fl.*`

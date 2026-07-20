@@ -32,8 +32,13 @@ import type { Value } from "../../values/value.js";
 import { c } from "../../values/value.js";
 import { resolveRef } from "../../refs/guid.js";
 import type { ObjectRef } from "../../refs/guid.js";
+import { encodeAddons } from "./addon-encode.js";
+import type { AddonSpec } from "./addon-encode.js";
+import { leanInput } from "../lean-input.js";
+import type { LeanInput } from "../lean-input.js";
 import { tableColumns } from "../../kinds/table.js";
 import type { ColumnDef, TableDef, InferRow } from "../../kinds/table.js";
+import type { Prettify } from "../../fields/value-types.js";
 import { encodeSearchExpression } from "../conditional.js";
 import type { Comparison } from "../conditional.js";
 
@@ -70,6 +75,81 @@ type RowShapeOf<T extends ObjectRef, Cols extends readonly string[]> = [
 type FullRowShapeOf<T extends ObjectRef> = RowShapeOf<T, readonly []>;
 
 /**
+ * The alias segment of a dotted addon `as` — the part after the last dot
+ * (`"items._book"` → `"_book"`, `"_book"` → `"_book"`). This is the key the addon
+ * grafts onto the row.
+ */
+type AddonAlias<S extends string> = S extends `${string}.${infer Rest}`
+  ? AddonAlias<Rest>
+  : S;
+
+/**
+ * The keys a set of attached addons graft onto each returned row. Each addon's
+ * alias (the last segment of its `as`) becomes a key valued `unknown`: the SDK
+ * references addons by name/guid and cannot know the target addon's return
+ * columns' types, so `unknown` is the honest floor (narrow it at the call site).
+ *
+ * Mirrors the engine's `applyAddOnSchema` placement — the alias always lands on
+ * the *row element*. With paging the engine wraps rows under `items` (returnAs),
+ * so `as:"items._book"` puts `_book` inside each `items[]` element = each row;
+ * without paging `as:"_book"` puts it on each bare row. Both reduce to "the row
+ * gains the alias key". Nested `children` addons enrich the addon's own result
+ * (under the `unknown` alias), so they add no parent-visible keys.
+ */
+type AddonFields<A> = A extends readonly [infer H, ...infer Rest]
+  ? (H extends { as: infer S extends string } ? { [K in AddonAlias<S>]: unknown } : object) &
+      AddonFields<Rest>
+  : object;
+
+/**
+ * A row shape augmented with any addon-grafted alias keys. With no addons
+ * (`A = readonly []`) it is the row unchanged, so the non-addon path — and every
+ * existing caller — keeps its exact shape.
+ */
+type WithAddons<Row, A> = [keyof AddonFields<A>] extends [never]
+  ? Row
+  : Prettify<Row & AddonFields<A>>;
+
+/**
+ * The paging metadata envelope a `db.query` returns when `paging` is set with
+ * metadata on — the engine's `packageListMeta` shape (issue #58). The result
+ * list lives under `items`; `totals:true` adds `itemsTotal`/`pageTotal`. A query
+ * with no `paging`, or `paging:{ metadata:false }`, returns the bare list instead.
+ */
+type PagingEnvelope<Items, Totals extends boolean> = Prettify<
+  {
+    items: Items;
+    itemsReceived: number;
+    curPage: number;
+    nextPage: number | null;
+    prevPage: number | null;
+    offset: number;
+    perPage: number;
+  } & (Totals extends true ? { itemsTotal: number; pageTotal: number } : object)
+>;
+
+/**
+ * Whether a `paging` arg produces the metadata envelope: present, and not
+ * explicitly `metadata:false` (the engine default is `metadata:true`).
+ */
+type HasPagingEnvelope<P> = P extends undefined
+  ? false
+  : P extends { metadata: false }
+    ? false
+    : true;
+
+/** The `totals` flag of a `paging` arg — literal `true` only when set explicitly. */
+type PagingTotals<P> = P extends { totals: true } ? true : false;
+
+/**
+ * The full `db.query` result shape: the addon-augmented row list, wrapped in the
+ * {@link PagingEnvelope} when `paging` requests metadata, else the bare list.
+ */
+type QueryResult<Row, A, P> = HasPagingEnvelope<P> extends true
+  ? PagingEnvelope<WithAddons<Row, A>[], PagingTotals<P>>
+  : WithAddons<Row, A>[];
+
+/**
  * A db read statement branded — **at the type level only** — via the shared
  * {@link AsShapeBrand} contract (the stack variable it binds + the shape it
  * produces). The runtime statement is a plain {@link Statement}, so
@@ -93,14 +173,26 @@ function entry(name: string, v: Value, ignore = false): RichInput {
 }
 
 /**
+ * Optional envelope extras for a db op: `output` restricts the returned columns;
+ * `addon` attaches addons. Both default to absent (full record, empty `addon:[]`).
+ * Grouped into one options bag so a statement that wants only `addon` needn't
+ * thread a positional `undefined` past `output`.
+ */
+interface EnvelopeOpts {
+  output?: readonly string[];
+  addon?: readonly AddonSpec[];
+}
+
+/**
  * The shared db-op envelope fields (everything except name/context/as/input).
- * `outputCols` switches the output block to the engine's customized form —
+ * `output` switches the output block to the engine's customized form —
  * `{customize:true, items:[{name,children:[]}]}` (byte shape per the
  * `schema:query-auth-me` golden); omitted, it stays the full-record default.
  */
 function envelope(
-  outputCols?: readonly string[],
+  opts: EnvelopeOpts = {},
 ): Pick<Statement, "description" | "settings_registry" | "output" | "addon"> {
+  const { output: outputCols, addon: addons } = opts;
   return {
     description: "",
     settings_registry: [],
@@ -109,7 +201,9 @@ function envelope(
     output: outputCols?.length
       ? { customize: true, filters: [], items: outputCols.map((name) => ({ name, children: [] })) }
       : { customize: false, filters: [], items: [] },
-    addon: [],
+    // `encodeAddons` returns `[]` when omitted, preserving the empty-`addon:[]`
+    // default byte-for-byte for statements that attach none.
+    addon: encodeAddons(addons),
   };
 }
 
@@ -119,14 +213,14 @@ function dboStatement(
   table: ObjectRef,
   as: string | undefined,
   input: RichInput[],
-  outputCols?: readonly string[],
+  opts: EnvelopeOpts = {},
 ): Statement {
   return {
     name,
     context: { dbo: { id: resolveRef("dbo", table) } },
     as: as ?? "",
     input,
-    ...envelope(outputCols),
+    ...envelope(opts),
   };
 }
 
@@ -134,6 +228,7 @@ export interface DbGetArgs<
   T extends ObjectRef = ObjectRef,
   As extends string = string,
   Cols extends readonly ColsOf<T>[] = readonly ColsOf<T>[],
+  A extends readonly AddonSpec[] = readonly AddonSpec[],
 > {
   /** The target table (def handle or name). */
   table: T;
@@ -153,6 +248,10 @@ export interface DbGetArgs<
    * `InferResponse` narrows a traced row to exactly these columns.
    */
   output?: Cols;
+  /** Attach addons to enrich the returned row (see {@link AddonSpec}). Each
+   * addon's alias (the last segment of its `as`) is merged onto the row shape in
+   * `InferResponse` as an `unknown`-typed key — narrow it at the call site. */
+  addon?: A;
   /** Capture the row into this stack variable. Captured literally so
    * `InferResponse` can trace a `ref` back to this statement. */
   as?: As;
@@ -165,7 +264,8 @@ export function dbGet<
   T extends ObjectRef,
   const As extends string = "",
   const Cols extends readonly ColsOf<T>[] = readonly [],
->(args: DbGetArgs<T, As, Cols>): DbResult<As, RowShapeOf<T, Cols>> {
+  const A extends readonly AddonSpec[] = readonly [],
+>(args: DbGetArgs<T, As, Cols, A>): DbResult<As, WithAddons<RowShapeOf<T, Cols>, A>> {
   return dboStatement(
     "mvp:dbo_getby",
     args.table,
@@ -175,8 +275,8 @@ export function dbGet<
       entry("field_value", args.fieldValue),
       entry("lock", c.bool(args.lock ?? false)),
     ],
-    args.output,
-  ) as DbResult<As, RowShapeOf<T, Cols>>;
+    { output: args.output, addon: args.addon },
+  ) as DbResult<As, WithAddons<RowShapeOf<T, Cols>, A>>;
 }
 
 export interface DbDelArgs<T extends ObjectRef = ObjectRef> {
@@ -226,12 +326,20 @@ export function dbHas<T extends ObjectRef, const As extends string = "">(
   ]) as DbResult<As, boolean>;
 }
 
-export interface DbPatchArgs<T extends ObjectRef = ObjectRef, As extends string = string> {
+export interface DbPatchArgs<
+  T extends ObjectRef = ObjectRef,
+  As extends string = string,
+  A extends readonly AddonSpec[] = readonly AddonSpec[],
+> {
   table: T;
   fieldName?: ColsOf<T>;
   fieldValue: Value;
   /** The partial row to merge (an object value). */
   data: Value;
+  /** Attach addons to enrich the returned row (see {@link AddonSpec}). Each
+   * addon's alias (the last segment of its `as`) is merged onto the row shape in
+   * `InferResponse` as an `unknown`-typed key — narrow it at the call site. */
+  addon?: A;
   /** Capture the post-patch row into this stack variable. Captured literally so
    * `InferResponse` can trace a `ref` back to this statement. */
   as?: As;
@@ -240,14 +348,22 @@ export interface DbPatchArgs<T extends ObjectRef = ObjectRef, As extends string 
 /** `db.patch <table>` — partial-update a record by a field match (`mvp:dbo_patch`).
  * Binds the **full post-patch row** (`$updatedInst`), so it's branded with `as` +
  * the row shape for `InferResponse` (throws `NotFound`/404 when nothing matches). */
-export function dbPatch<T extends ObjectRef, const As extends string = "">(
-  args: DbPatchArgs<T, As>,
-): DbResult<As, FullRowShapeOf<T>> {
-  return dboStatement("mvp:dbo_patch", args.table, args.as, [
-    entry("field_name", c.text(args.fieldName ?? "id")),
-    entry("field_value", args.fieldValue),
-    entry("item", args.data),
-  ]) as DbResult<As, FullRowShapeOf<T>>;
+export function dbPatch<
+  T extends ObjectRef,
+  const As extends string = "",
+  const A extends readonly AddonSpec[] = readonly [],
+>(args: DbPatchArgs<T, As, A>): DbResult<As, WithAddons<FullRowShapeOf<T>, A>> {
+  return dboStatement(
+    "mvp:dbo_patch",
+    args.table,
+    args.as,
+    [
+      entry("field_name", c.text(args.fieldName ?? "id")),
+      entry("field_value", args.fieldValue),
+      entry("item", args.data),
+    ],
+    { addon: args.addon },
+  ) as DbResult<As, WithAddons<FullRowShapeOf<T>, A>>;
 }
 
 export interface DbTruncateArgs {
@@ -373,12 +489,20 @@ function expandRow(table: ObjectRef, row: RowMap, op: "add" | "edit"): DbField[]
   });
 }
 
-export interface DbAddArgs<T extends ObjectRef = ObjectRef, As extends string = string> {
+export interface DbAddArgs<
+  T extends ObjectRef = ObjectRef,
+  As extends string = string,
+  A extends readonly AddonSpec[] = readonly AddonSpec[],
+> {
   table: T;
   /** The row to insert as explicit entries (exact control over each field + `ignore`). */
   data?: DbField[];
   /** A partial row keyed by column name; expanded against the table's declared columns. */
   row?: RowMap<ColsOf<T>>;
+  /** Attach addons to enrich the returned row (see {@link AddonSpec}). Each
+   * addon's alias (the last segment of its `as`) is merged onto the row shape in
+   * `InferResponse` as an `unknown`-typed key — narrow it at the call site. */
+  addon?: A;
   /** Capture the inserted row into this stack variable. Captured literally so
    * `InferResponse` can trace a `ref` back to this statement. */
   as?: As;
@@ -387,17 +511,26 @@ export interface DbAddArgs<T extends ObjectRef = ObjectRef, As extends string = 
 /** `db.add <table>` — insert a record (`mvp:dbo_add`). Binds the **full inserted
  * row** (including the auto-assigned `id`/`created_at`), so it's branded with
  * `as` + the row shape for `InferResponse`. */
-export function dbAdd<T extends ObjectRef, const As extends string = "">(
-  args: DbAddArgs<T, As>,
-): DbResult<As, FullRowShapeOf<T>> {
+export function dbAdd<
+  T extends ObjectRef,
+  const As extends string = "",
+  const A extends readonly AddonSpec[] = readonly [],
+>(args: DbAddArgs<T, As, A>): DbResult<As, WithAddons<FullRowShapeOf<T>, A>> {
   const data = args.row !== undefined ? expandRow(args.table, args.row, "add") : (args.data ?? []);
-  return dboStatement("mvp:dbo_add", args.table, args.as, rowEntries(data)) as DbResult<
-    As,
-    FullRowShapeOf<T>
-  >;
+  return dboStatement(
+    "mvp:dbo_add",
+    args.table,
+    args.as,
+    rowEntries(data),
+    { addon: args.addon },
+  ) as DbResult<As, WithAddons<FullRowShapeOf<T>, A>>;
 }
 
-export interface DbEditArgs<T extends ObjectRef = ObjectRef, As extends string = string> {
+export interface DbEditArgs<
+  T extends ObjectRef = ObjectRef,
+  As extends string = string,
+  A extends readonly AddonSpec[] = readonly AddonSpec[],
+> {
   table: T;
   fieldName?: ColsOf<T>;
   fieldValue: Value;
@@ -411,6 +544,10 @@ export interface DbEditArgs<T extends ObjectRef = ObjectRef, As extends string =
    * columns. Use `data` for byte-exact control over each entry's `ignore` flag.
    */
   row?: RowMap<ColsOf<T>>;
+  /** Attach addons to enrich the returned row (see {@link AddonSpec}). Each
+   * addon's alias (the last segment of its `as`) is merged onto the row shape in
+   * `InferResponse` as an `unknown`-typed key — narrow it at the call site. */
+  addon?: A;
   /** Capture the post-mutation row into this stack variable. Captured literally so
    * `InferResponse` can trace a `ref` back to this statement. */
   as?: As;
@@ -420,15 +557,23 @@ export interface DbEditArgs<T extends ObjectRef = ObjectRef, As extends string =
  * Binds the **full post-mutation row** (the freshly-written values), so it's
  * branded with `as` + the row shape for `InferResponse` (throws `NotFound`/404
  * when nothing matches). */
-export function dbEdit<T extends ObjectRef, const As extends string = "">(
-  args: DbEditArgs<T, As>,
-): DbResult<As, FullRowShapeOf<T>> {
+export function dbEdit<
+  T extends ObjectRef,
+  const As extends string = "",
+  const A extends readonly AddonSpec[] = readonly [],
+>(args: DbEditArgs<T, As, A>): DbResult<As, WithAddons<FullRowShapeOf<T>, A>> {
   const data = args.row !== undefined ? expandRow(args.table, args.row, "edit") : (args.data ?? []);
-  return dboStatement("mvp:dbo_editby", args.table, args.as, [
-    entry("field_name", c.text(args.fieldName ?? "id")),
-    entry("field_value", args.fieldValue),
-    ...rowEntries(data),
-  ]) as DbResult<As, FullRowShapeOf<T>>;
+  return dboStatement(
+    "mvp:dbo_editby",
+    args.table,
+    args.as,
+    [
+      entry("field_name", c.text(args.fieldName ?? "id")),
+      entry("field_value", args.fieldValue),
+      ...rowEntries(data),
+    ],
+    { addon: args.addon },
+  ) as DbResult<As, WithAddons<FullRowShapeOf<T>, A>>;
 }
 
 /**
@@ -445,16 +590,6 @@ export function dbEdit<T extends ObjectRef, const As extends string = "">(
  * Matched correct-by-construction against the golden, same posture as the rest
  * of the db family.
  */
-interface LeanInput {
-  name: string;
-  value: string;
-  tag: string;
-  filters: unknown[];
-}
-
-function leanEntry(name: string, v: Value): LeanInput {
-  return { name, value: v.value, tag: v.tag, filters: v.filters };
-}
 
 export interface DbAddOrEditArgs<T extends ObjectRef = ObjectRef, As extends string = string> {
   table: T;
@@ -480,9 +615,9 @@ export function dbAddOrEdit<T extends ObjectRef, const As extends string = "">(
   const tableName = typeof args.table === "string" ? args.table : args.table.name;
   const data = args.row !== undefined ? expandRow(args.table, args.row, "edit") : (args.data ?? []);
   const input: Array<LeanInput & { ignore?: boolean }> = [
-    leanEntry("field_name", c.text(args.fieldName ?? "id")),
-    leanEntry("field_value", args.fieldValue),
-    ...data.map((f) => ({ ignore: f.ignore ?? false, ...leanEntry(f.name, f.value) })),
+    leanInput("field_name", c.text(args.fieldName ?? "id")),
+    leanInput("field_value", args.fieldValue),
+    ...data.map((f) => ({ ignore: f.ignore ?? false, ...leanInput(f.name, f.value) })),
   ];
   return {
     name: "mvp:dbo_addoreditby",
@@ -589,8 +724,8 @@ function bulkStatement(
 /** `db.bulk.add <table>` — insert many rows (`mvp:dbo_bulkadd`). */
 export function dbBulkAdd(args: DbBulkAddArgs): Statement {
   return bulkStatement("mvp:dbo_bulkadd", args.table, args.as, [
-    leanEntry("allow_id_field", c.bool(args.allowIdField ?? false)),
-    leanEntry("items", args.items),
+    leanInput("allow_id_field", c.bool(args.allowIdField ?? false)),
+    leanInput("items", args.items),
   ]);
 }
 
@@ -647,7 +782,7 @@ export function dbBulkPatch<T extends ObjectRef, const As extends string = "">(
   args: DbBulkWriteArgs<T, As>,
 ): DbResult<As, FullRowShapeOf<T>[]> {
   return bulkStatement("mvp:dbo_bulkpatch", args.table, args.as, [
-    leanEntry("items", args.items),
+    leanInput("items", args.items),
   ]) as DbResult<As, FullRowShapeOf<T>[]>;
 }
 
@@ -661,7 +796,7 @@ export function dbBulkPatch<T extends ObjectRef, const As extends string = "">(
  * `bulk.patch` (row list) and `bulk.delete` (count) carry a static output schema.
  */
 export function dbBulkUpdate(args: DbBulkWriteArgs): Statement {
-  return bulkStatement("mvp:dbo_bulkupdate", args.table, args.as, [leanEntry("items", args.items)]);
+  return bulkStatement("mvp:dbo_bulkupdate", args.table, args.as, [leanInput("items", args.items)]);
 }
 
 /** Sort direction for a {@link SortDirective} — the engine's `orderBy` values. */
@@ -778,6 +913,8 @@ export interface DbQueryArgs<
   T extends ObjectRef = ObjectRef,
   As extends string = string,
   Cols extends readonly ColsOf<T>[] = readonly ColsOf<T>[],
+  A extends readonly AddonSpec[] = readonly AddonSpec[],
+  P extends DbPaging | undefined = DbPaging | undefined,
 > {
   table: T;
   /** Primary filter — `expr(...)`, an array of `expr(...)` (ANDed), or a raw `Value`. */
@@ -788,11 +925,23 @@ export interface DbQueryArgs<
   sort?: SortDirective<ColsOf<T>>[];
   /** Acquire row locks. */
   lock?: boolean;
-  /** Paging controls (`page`/`per_page`/`offset`/`totals`/`metadata`) — applied by the engine. */
-  paging?: DbPaging;
+  /**
+   * Paging controls (`page`/`per_page`/`offset`/`totals`/`metadata`) — applied by
+   * the engine. **Supplying `paging` changes the response shape:** with metadata
+   * on (the default) the result is wrapped in a paging envelope
+   * (`{ items, curPage, nextPage, prevPage, offset, perPage, itemsReceived }`,
+   * plus `itemsTotal`/`pageTotal` when `totals:true`) instead of a bare row list,
+   * and `InferResponse` reflects that (issue #58). Pass `metadata:false` to keep
+   * the bare array.
+   */
+  paging?: P;
   /** Restrict returned columns. Captured literally so `InferResponse` narrows
    * the traced row list to exactly these columns. */
   output?: Cols;
+  /** Attach addons to enrich each returned row (see {@link AddonSpec}). Each
+   * addon's alias (the last segment of its `as`) is merged onto the row shape in
+   * `InferResponse` as an `unknown`-typed key — narrow it at the call site. */
+  addon?: A;
   /** Capture the result list into this stack variable. Captured literally so
    * `InferResponse` can trace a `ref` back to this statement. */
   as?: As;
@@ -813,7 +962,11 @@ export function dbQuery<
   T extends ObjectRef,
   const As extends string = "",
   const Cols extends readonly ColsOf<T>[] = readonly [],
->(args: DbQueryArgs<T, As, Cols>): DbResult<As, RowShapeOf<T, Cols>[]> {
+  const A extends readonly AddonSpec[] = readonly [],
+  const P extends DbPaging | undefined = undefined,
+>(
+  args: DbQueryArgs<T, As, Cols, A, P>,
+): DbResult<As, QueryResult<RowShapeOf<T, Cols>, A, P>> {
   const context: Record<string, unknown> = { dbo: { id: resolveRef("dbo", args.table) } };
   const search = encodeSearch(args.where, args.additionalWhere);
   if (search !== undefined) context.search = search;
@@ -826,8 +979,8 @@ export function dbQuery<
     context,
     as: args.as ?? "",
     input: [],
-    ...envelope(args.output),
-  } as unknown as DbResult<As, RowShapeOf<T, Cols>[]>;
+    ...envelope({ output: args.output, addon: args.addon }),
+  } as unknown as DbResult<As, QueryResult<RowShapeOf<T, Cols>, A, P>>;
 }
 
 export interface DbTransactionArgs {
