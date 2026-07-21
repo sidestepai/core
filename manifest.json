@@ -595,80 +595,8 @@
       "storedName": "mvp:api_request",
       "sPath": "api.request",
       "registered": true,
-      "declarative": true,
-      "output": true,
-      "fields": [
-        {
-          "name": "as",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "url",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "method",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "params",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "headers",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "timeout",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "follow_location",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "verify_host",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "verify_peer",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "ca_certificate",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "certificate",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "certificate_pass",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "private_key",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "private_key_pass",
-          "type": "value",
-          "optional": true
-        }
-      ]
+      "declarative": false,
+      "output": true
     },
     {
       "surface": "api.stream",

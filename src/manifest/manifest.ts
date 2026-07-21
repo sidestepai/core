@@ -312,6 +312,15 @@ function buildFilters(): ManifestFilter[] {
 
 const SPECS_BY_NAME = new Map(GENERATED_SPECS.map((s) => [s.name, s]));
 
+/**
+ * Stored statements that have a generated spec but whose public `s.` surface is
+ * a hand-authored typed override (documented in prose above the catalog). The
+ * generated bare-`Value` field signature is suppressed so the catalog renders
+ * `(…) [special]` and defers to the typed entry — as it already does for the
+ * hand-authored call family. The `[output]` flag is preserved.
+ */
+export const OVERRIDDEN_SURFACES = new Set(["mvp:api_request"]);
+
 function fieldsOf(spec: StatementSpec): ManifestField[] {
   return spec.rules.map((r) => {
     const f: ManifestField = {
@@ -333,16 +342,18 @@ export function buildManifest(opts: { version?: string } = {}): Manifest {
 
   const statements: ManifestStatement[] = STATEMENT_SURFACES.map(([surface, storedName]) => {
     const spec = SPECS_BY_NAME.get(storedName);
+    const overridden = OVERRIDDEN_SURFACES.has(storedName);
     const entry: ManifestStatement = {
       surface,
       storedName,
       sPath: sPathOf(surface),
       registered: isRegisteredStatement(storedName),
-      declarative: spec !== undefined,
+      declarative: spec !== undefined && !overridden,
     };
     if (spec) {
       entry.output = spec.output ?? false;
-      entry.fields = fieldsOf(spec);
+      // Overridden surfaces defer their signature to the hand-authored prose entry.
+      if (!overridden) entry.fields = fieldsOf(spec);
     }
     return entry;
   });
@@ -863,6 +874,7 @@ export function renderLlmsTxt(m: Manifest): string {
     "- `s.security.create_auth_token({ table, id, extras?, expiration?, as? })` — `extras` defaults to `{}`, `expiration` to `86400`s (`0` = never).",
     "- `s.function.run({ fn, input?, as? })` / `s.function.call({ fn, input?, as? })` — run another function; `input` is keyed by the target's input names.",
     "- `s.api.call({ api, input?, headers?, auth?, as? })` — invoke an endpoint; `auth` is `{ token, ignoreExpiration? }`.",
+    "- `s.api.request({ url?, method?, params?, headers?, timeout?, follow_location?, verify_host?, verify_peer?, ca_certificate?, certificate?, certificate_pass?, private_key?, private_key_pass?, description?, output?, as? })` — external HTTP request (`mvp:api_request`). Ergonomic types, each also accepting a dynamic `Value`: `method` suggests the 7 verbs (GET/POST/PUT/DELETE/HEAD/OPTIONS/PATCH), `params` a plain object (→ query string for GET/HEAD/OPTIONS, body otherwise), `headers` a `string[]` of full header lines, `timeout` a `number` in seconds (1–86400), and `follow_location`/`verify_host`/`verify_peer` booleans. `description` (Settings tab) and `output` filters (Output tab) ride the envelope. SSL cert interdependencies are validated by the engine at runtime, not at build time.",
     "- `s.task.call` / `s.tool.call` / `s.trigger.call` / `s.middleware.call` / `s.addon.call` — same `{ <target>, input?, as? }` shape against the named kind.",
     "",
   );
