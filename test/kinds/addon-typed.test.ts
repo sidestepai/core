@@ -106,10 +106,34 @@ describe("addon() typed authoring — encode", () => {
         name: "author",
         table: userTable,
         cardinality: "single",
-        context: { dbo: { id: "explicit-guid" }, return: { type: "list" } },
+        // Same type as `cardinality` (no conflict), but a richer explicit block —
+        // proves the author's `return` is preserved verbatim, not overwritten by the auto-fill.
+        context: { dbo: { id: "explicit-guid" }, return: { type: "single", listable: false } },
       }),
     );
-    expect(a.context).toEqual({ dbo: { id: "explicit-guid" }, return: { type: "list" } });
+    expect(a.context).toEqual({ dbo: { id: "explicit-guid" }, return: { type: "single", listable: false } });
+  });
+
+  it("conflicting cardinality vs explicit context.return.type throws", () => {
+    expect(() =>
+      encodeAddon(
+        addon({ name: "author", table: userTable, cardinality: "single", context: { return: { type: "list" } } }),
+      ),
+    ).toThrow(/cardinality/);
+  });
+
+  it("empty sort is dropped, not written as context.sort: []", () => {
+    const a = encodeAddon(addon({ name: "author", table: userTable, output: ["id"], sort: [] }));
+    expect(a.context.sort).toBeUndefined();
+  });
+
+  it("malformed where (typo'd comparison) throws instead of shipping a garbage search", () => {
+    // `operator` instead of `op` — not comparison-shaped and not a tagged Value.
+    expect(() =>
+      encodeAddon(
+        addon({ name: "author", table: userTable, where: { operator: "=", left: col("id") } as never }),
+      ),
+    ).toThrow(/must be an expr/);
   });
 
   it("no table/output → unchanged empty context + full-record output (back-compat)", () => {
@@ -258,6 +282,30 @@ describe("addon() typed authoring — graft types on db.query", () => {
     });
     type Row = InferResponse<typeof q>[number];
     expectTypeOf<Row["_author"]>().toEqualTypeOf<{ id: number }>();
+  });
+
+  it("attachment output on a count/exists addon preserves the scalar graft (never collapses to {})", () => {
+    // Guards NarrowGraft's `G extends object ? Pick : G` branch: an attachment-level
+    // `output` must not run a number/boolean graft through `Pick` (→ `{}`).
+    const q = query({
+      verb: "GET",
+      apiGroup: group,
+      name: "q_scalar_output",
+      stack: [
+        s.db.query({
+          table: chirp,
+          addon: [
+            { addon: countAddon, as: "_count", input: { user_id: out("author") }, output: ["id"] },
+            { addon: existsAddon, as: "_exists", input: { user_id: out("author") }, output: ["id"] },
+          ],
+          as: "rows",
+        }),
+      ],
+      response: ref("rows"),
+    });
+    type Row = InferResponse<typeof q>[number];
+    expectTypeOf<Row["_count"]>().toEqualTypeOf<number>();
+    expectTypeOf<Row["_exists"]>().toEqualTypeOf<boolean>();
   });
 
   it("attachment output on a bare-name addon stays unknown (never collapses to {})", () => {

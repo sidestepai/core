@@ -137,7 +137,25 @@ function buildContext(def: AddonDef): Record<string, unknown> {
     if (search !== undefined) ctx.search = search;
   }
   if (def.sort !== undefined && ctx.sort === undefined) {
-    ctx.sort = encodeSort(def.sort);
+    const sort = encodeSort(def.sort);
+    // Drop an empty/no-op sort rather than write a bare `context.sort: []`.
+    if (sort.length) ctx.sort = sort;
+  }
+  // The graft type is derived from `cardinality`, so a raw `context.return.type`
+  // that contradicts it would type one shape and encode another. A *matching*
+  // type (a richer explicit `return` for the same cardinality — e.g. aggregate's
+  // `group`/`eval`) is fine; a differing type is a silent desync, so throw.
+  const explicitReturn = ctx.return as { type?: string } | undefined;
+  if (
+    def.cardinality !== undefined &&
+    explicitReturn?.type !== undefined &&
+    explicitReturn.type !== def.cardinality
+  ) {
+    throw new Error(
+      `addon: cardinality:"${def.cardinality}" conflicts with an explicit ` +
+        `context.return.type "${explicitReturn.type}" — they shape the graft differently. ` +
+        "Set one, not both.",
+    );
   }
   // `"list"` is the engine default (absent `return` coerces to list), so omit it
   // to keep the stored context lean; any other cardinality encodes `return.type`.

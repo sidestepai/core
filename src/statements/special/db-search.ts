@@ -1,9 +1,9 @@
 /**
  * Shared db-search authoring primitives — the `where`/`sort` surface used by
- * both `s.db.query` ({@link file://./db.ts}) and a table-bound `addon()`
- * ({@link file://../../kinds/addon.ts}). Extracted here so the addon kind can
- * reuse the exact same builders without importing `db.ts` (which imports the
- * addon kind — a cycle).
+ * both `s.db.query` (`./db.ts`) and a table-bound `addon()`
+ * (`../../kinds/addon.ts`). Extracted here so the addon kind can reuse the exact
+ * same builders without importing `db.ts` (which imports the addon kind — a
+ * cycle).
  */
 import type { Value } from "../../values/value.js";
 import { encodeSearchExpression } from "../conditional.js";
@@ -15,7 +15,10 @@ export type SortDir = "asc" | "desc" | "rand";
 /**
  * One sort directive: order the returned rows by `sortBy`, ascending, descending,
  * or random. `dir` maps to the engine's `orderBy`; the encoded element is the
- * `mvp_sort` shape `{ sortBy, orderBy }`.
+ * `mvp_sort` shape `{ sortBy, orderBy }`. Each caller places that element
+ * differently — `db.query` under `context.return.list.sort` (via
+ * `MVP::convertContextToConfig`), an `addon()` at top-level `context.sort` — so
+ * this doc stays placement-neutral; see each caller's own doc for where it lands.
  */
 export interface SortDirective<C extends string = string> {
   /** The column (or dot-path) to sort by. */
@@ -36,6 +39,11 @@ export type DbWhere = Value | Comparison | Comparison[];
 /** A `Comparison` (`{left, op, right}`) vs a tagged `Value` (`{value, tag, filters}`). */
 function isComparison(w: DbWhere): w is Comparison {
   return typeof w === "object" && w !== null && !Array.isArray(w) && "op" in w && "left" in w;
+}
+
+/** A tagged {@link Value} (`{value, tag, filters}`) — the raw-search escape hatch. */
+function isValue(w: unknown): w is Value {
+  return typeof w === "object" && w !== null && !Array.isArray(w) && "tag" in w && "value" in w;
 }
 
 /** Normalize a `DbWhere` to `Comparison[]`, or `null` for the raw-`Value` escape hatch. */
@@ -60,7 +68,17 @@ export function encodeSearch(where?: DbWhere, additionalWhere?: DbWhere): unknow
     if (!w) continue;
     const cmps = toComparisons(w);
     if (cmps) clauses.push(...cmps);
-    else raw = w;
+    else if (isValue(w)) raw = w;
+    else {
+      // Not comparison-shaped and not a tagged `Value` — a malformed `where`
+      // (e.g. `op` mistyped as `operator`) would otherwise slip through as a
+      // garbage `context.search`. Fail at the authoring site, not deep in the engine.
+      throw new Error(
+        "db search: `where` must be an expr(...) comparison, an array of comparisons, or a " +
+          "tagged Value (inp/ref/col/c.*) — got an object that is neither. Check for a typo " +
+          "(e.g. `operator` instead of `op`).",
+      );
+    }
   }
   if (raw !== undefined && clauses.length) {
     throw new Error(

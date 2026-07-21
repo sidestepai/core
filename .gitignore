@@ -6,3 +6,4 @@ coverage/
 *.tgz
 .xano/
 docs/
+CLAUDE.md
