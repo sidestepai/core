@@ -2,6 +2,7 @@ import { describe, it, expect, expectTypeOf } from "vitest";
 import "../../src/index.js"; // register all statements
 import { s } from "../../src/statements/s.js";
 import { c, inp, ref, filter } from "../../src/values/value.js";
+import { coerceObj } from "../../src/statements/special/coerce.js";
 import { encodeStatement } from "../../src/statements/statement.js";
 import { query } from "../../src/kinds/query.js";
 import { apiGroup } from "../../src/kinds/api-group.js";
@@ -102,6 +103,109 @@ describe("s.api.request — typed wrapper (U3)", () => {
     const names = (encoded.input as Array<{ name: string }>).map((e) => e.name);
     expect(names).toEqual(["url"]);
     expect(encoded.description).toBe("");
+  });
+});
+
+describe("params record-of-values (issues #74/#75)", () => {
+  it("encodes a plain record of tagged values as a c.obj base + set filters", () => {
+    // The obvious spelling that used to throw — now mirrors `response: { k: v }`.
+    expect(coerceObj({ count: ref("count") })).toEqual({
+      value: "{}",
+      tag: "const:obj",
+      filters: [
+        {
+          name: "set",
+          disabled: false,
+          arg: [
+            { value: "count", tag: "const", filters: [] },
+            { value: "count", tag: "var", filters: [] },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("keeps literal keys in the c.obj base and lifts only the Value keys", () => {
+    const encoded = coerceObj({ n: 1, count: ref("count") })!;
+    expect(encoded.tag).toBe("const:obj");
+    expect(encoded.value).toBe('{"n":1}'); // literal subset seeds the constant base
+    expect(encoded.filters).toEqual([
+      {
+        name: "set",
+        disabled: false,
+        arg: [
+          { value: "count", tag: "const", filters: [] },
+          { value: "count", tag: "var", filters: [] },
+        ],
+      },
+    ]);
+  });
+
+  it("lifts multiple Value keys in deterministic (insertion) order", () => {
+    const encoded = coerceObj({ a: ref("x"), b: inp("y") })!;
+    expect(encoded.filters.map((f) => ({ name: f.name, path: f.arg[0]?.value, valTag: f.arg[1]?.tag }))).toEqual([
+      { name: "set", path: "a", valTag: "var" },
+      { name: "set", path: "b", valTag: "input" },
+    ]);
+  });
+
+  it("leaves a pure-JSON record as a plain const:obj constant (no regression)", () => {
+    // Byte-identical to the pre-change behavior — no set filters.
+    expect(coerceObj({ a: "b", n: 1 })).toEqual({ value: '{"a":"b","n":1}', tag: "const:obj", filters: [] });
+  });
+
+  it("passes a dynamic Value (and an explicit c.obj) through untouched", () => {
+    const r = ref("whole");
+    expect(coerceObj(r)).toBe(r);
+    const o = c.obj({ static: true });
+    expect(coerceObj(o)).toBe(o);
+  });
+
+  it("returns undefined for an absent field", () => {
+    expect(coerceObj(undefined)).toBeUndefined();
+  });
+
+  it("integrates through s.api.request params (end-to-end #74 repro shape)", () => {
+    const encoded = encodeStatement(
+      s.api.request({ url: "https://x", method: "POST", params: { count: ref("count") } }),
+    );
+    expect(field(encoded, "params")).toEqual({ value: "{}", tag: "const:obj" });
+  });
+
+  it("still throws loudly for a value nested inside a sub-object (flat-only boundary)", () => {
+    // Documented boundary (KTD-3): not silently dropped — the #42 guard fires.
+    expect(() => coerceObj({ a: { b: ref("x") } })).toThrow(/tagged value/);
+  });
+
+  it("encodes an empty record as an empty const:obj constant", () => {
+    expect(coerceObj({})).toEqual({ value: "{}", tag: "const:obj", filters: [] });
+  });
+
+  it("does NOT mistake a plain record with `tag`/`value` keys for a tagged Value", () => {
+    // The passthrough uses the strict `isTaggedValue` (real Tag + filters[]), so a
+    // params object that merely reuses `tag`/`value` as data keys is encoded as a
+    // constant — not returned verbatim as a bogus node.
+    expect(coerceObj({ tag: "sale", value: "50" })).toEqual({
+      value: '{"tag":"sale","value":"50"}',
+      tag: "const:obj",
+      filters: [],
+    });
+  });
+
+  it("keeps array params as an array constant (not object-ified), preserving #42", () => {
+    // Preserves the pre-change path exactly: c.obj JSON-stringifies the array
+    // (`"[1,2]"`, tag const:obj); an array holding a Value still throws #42.
+    expect(coerceObj([1, 2] as unknown as object)).toEqual({ value: "[1,2]", tag: "const:obj", filters: [] });
+    expect(() => coerceObj([ref("x")] as unknown as object)).toThrow(/tagged value/);
+  });
+
+  it("throws on a dotted top-level key carrying a Value (nested-path ambiguity)", () => {
+    // The engine `set` filter would split "a.b" into a nested path, diverging from
+    // the flat encoding a literal-valued key gets — fail loud instead.
+    expect(() => coerceObj({ "a.b": ref("x") })).toThrow(/nested path/);
+    expect(() => coerceObj({ "items[0]": ref("x") })).toThrow(/nested path/);
+    // The same dotted key with a plain value stays flat (pre-existing behavior).
+    expect(coerceObj({ "a.b": 1 })).toEqual({ value: '{"a.b":1}', tag: "const:obj", filters: [] });
   });
 });
 

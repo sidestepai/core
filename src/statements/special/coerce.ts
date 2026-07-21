@@ -8,7 +8,7 @@
  * Hoisted here per the rule of three once the second wrapper landed.
  */
 import type { Value } from "../../values/value.js";
-import { c } from "../../values/value.js";
+import { c, filter, withFilters, isTaggedValue } from "../../values/value.js";
 
 /** The HTTP verbs the engine's runtime input schema accepts (suggested, not enforced). */
 export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "HEAD" | "OPTIONS" | "PATCH";
@@ -24,8 +24,66 @@ export const coerceInt = (v: number | Value | undefined): Value | undefined =>
   v === undefined ? undefined : isValue(v) ? v : c.int(v);
 export const coerceBool = (v: boolean | Value | undefined): Value | undefined =>
   v === undefined ? undefined : isValue(v) ? v : c.bool(v);
-export const coerceObj = (v: object | Value | undefined): Value | undefined =>
-  v === undefined ? undefined : isValue(v) ? v : c.obj(v as Record<string, unknown>);
+/**
+ * Coerce an object field (`params`, …) to its `Value` form.
+ *
+ * - `undefined` → dropped downstream.
+ * - a tagged {@link Value} → passed through (the dynamic escape hatch).
+ * - an array → a `c.obj` constant, as before (a pure-JSON array stays `[…]`; an
+ *   array holding a tagged value still throws #42). An object-of-values is a
+ *   record, never a list, so arrays never take the `set`-filter path.
+ * - a plain **pure-JSON** record → a `c.obj` constant (`tag:"const:obj"`), as before.
+ * - a plain record that **contains tagged values** at the top level → a real
+ *   object-of-values: a `c.obj` base seeded from the literal-valued keys, plus one
+ *   `set` filter per Value-valued key. This makes `params: { count: ref("count") }`
+ *   *just work*, mirroring the record-of-values `response: { key: value }` accepts
+ *   (issues #74/#75) — instead of routing into `c.obj`, which refuses to embed a
+ *   tagged value (issue #42).
+ *
+ * Only **top-level** Value keys are lifted. A value nested *inside* a sub-object
+ * or array lands in the `c.obj` base and still trips the #42 guard — a loud
+ * failure, not a silent drop (the documented flat-only boundary).
+ */
+export const coerceObj = (v: object | Value | undefined): Value | undefined => {
+  if (v === undefined) return undefined;
+  // Strict tagged-value check (a real `Tag` + `filters[]`), NOT the loose local
+  // `isValue`: a params record like `{ tag: "sale", value: "50" }` structurally
+  // matches the loose shape and would be passed through as a bogus node. The
+  // strict check — the same one `c.obj`'s #42 guard rejects on — only matches an
+  // actual Value, so such a record correctly falls through to the record path.
+  if (isTaggedValue(v)) return v;
+  // Arrays keep their pre-change behavior: a pure array serializes as an array
+  // constant, an array holding a Value throws #42. They never become an
+  // object-of-values (that shape is a record, not a list).
+  if (Array.isArray(v)) return c.obj(v as unknown as Record<string, unknown>);
+  const literals: Record<string, unknown> = {};
+  const valueEntries: [string, Value][] = [];
+  for (const [key, val] of Object.entries(v as Record<string, unknown>)) {
+    if (isTaggedValue(val)) valueEntries.push([key, val]);
+    else literals[key] = val;
+  }
+  // `c.obj` still enforces #42 on the literal subset — a value nested inside a
+  // sub-object stays here and throws (the flat-only boundary). With no top-level
+  // Value keys this is byte-identical to the old plain-JSON constant path.
+  const base = c.obj(literals);
+  if (valueEntries.length === 0) return base;
+  return withFilters(
+    base,
+    ...valueEntries.map(([key, val]) => {
+      // The engine `set` filter reads `.`/`[` in the path as a nested-path DSL
+      // (`"a.b"` → `{a:{b:…}}`), so a dotted key carrying a Value would encode
+      // differently than the same key with a literal value (which `c.obj` keeps
+      // flat). Fail loud on that ambiguity rather than silently diverging.
+      if (/[.[]/.test(key))
+        throw new Error(
+          `coerceObj: object key ${JSON.stringify(key)} carries a tagged value but contains "." or "[", ` +
+            `which the engine's set filter reads as a nested path ("a.b" → {a:{b:…}}) — the same key with a ` +
+            `plain value would stay flat. Use a nested object, or a key without "." / "[".`,
+        );
+      return filter("set", c.text(key), val);
+    }),
+  );
+};
 export const coerceArray = (v: readonly string[] | Value | undefined): Value | undefined =>
   v === undefined ? undefined : isValue(v) ? v : c.array(v as string[]);
 

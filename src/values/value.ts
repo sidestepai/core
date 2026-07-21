@@ -83,8 +83,13 @@ const REJECT_TAGGED_VALUE =
  * check, so a plain-JSON literal that happens to use `tag`/`value`/`filters` as
  * keys with an unrecognized tag is not falsely rejected. Mirrors the `isValue`
  * predicate in `responses/response.ts`.
+ *
+ * Exported so `coerceObj` (the HTTP-request family's object field) can detect a
+ * record-of-values with the *same* check `c.obj` rejects on — keeping the
+ * "encode as object-of-values" runtime branch in lockstep with the `c.obj`
+ * strict-constant guard (issues #74/#75).
  */
-function isTaggedValue(x: unknown): boolean {
+export function isTaggedValue(x: unknown): x is Value {
   return (
     typeof x === "object" &&
     x !== null &&
