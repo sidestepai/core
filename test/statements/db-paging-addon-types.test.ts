@@ -114,6 +114,50 @@ describe("db.query paging envelope + addon response typing", () => {
     }>();
   });
 
+  it("returnType maps InferResponse: count→number, exists→boolean, single→Row|null, stream→Row[]", () => {
+    const qCount = query({
+      verb: "GET", apiGroup: group, name: "rt1",
+      stack: [s.db.query({ table: book, returnType: "count", as: "n" })],
+      response: ref("n"),
+    });
+    expectTypeOf(qCount).toBeObject();
+    expectTypeOf<InferResponse<typeof qCount>>().toEqualTypeOf<number>();
+
+    const qExists = query({
+      verb: "GET", apiGroup: group, name: "rt2",
+      stack: [s.db.query({ table: book, returnType: "exists", as: "b" })],
+      response: ref("b"),
+    });
+    expectTypeOf(qExists).toBeObject();
+    expectTypeOf<InferResponse<typeof qExists>>().toEqualTypeOf<boolean>();
+
+    const qSingle = query({
+      verb: "GET", apiGroup: group, name: "rt3",
+      stack: [s.db.query({ table: book, returnType: "single", as: "row" })],
+      response: ref("row"),
+    });
+    expectTypeOf(qSingle).toBeObject();
+    expectTypeOf<InferResponse<typeof qSingle>>().toEqualTypeOf<Book | null>();
+
+    const qStream = query({
+      verb: "GET", apiGroup: group, name: "rt4",
+      stack: [s.db.query({ table: book, returnType: "stream", as: "rows" })],
+      response: ref("rows"),
+    });
+    expectTypeOf(qStream).toBeObject();
+    expectTypeOf<InferResponse<typeof qStream>>().toEqualTypeOf<Book[]>();
+  });
+
+  it("single + output narrows to Pick<Row> | null", () => {
+    const q = query({
+      verb: "GET", apiGroup: group, name: "rt5",
+      stack: [s.db.query({ table: book, returnType: "single", output: ["name"], as: "row" })],
+      response: ref("row"),
+    });
+    expectTypeOf(q).toBeObject();
+    expectTypeOf<InferResponse<typeof q>>().toEqualTypeOf<Pick<Book, "name"> | null>();
+  });
+
   it("has-next signal: envelope exposes nextPage: number|null and typed itemsTotal (issue #66 bonus)", () => {
     const q = query({
       verb: "GET",

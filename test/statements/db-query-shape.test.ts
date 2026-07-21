@@ -317,4 +317,40 @@ describe("db.query (mvp:dbo_view) emit shape", () => {
     expect(top).toHaveLength(2);
     expect(top.every((n) => n.or === false && n.type === "statement")).toBe(true);
   });
+
+  // --- Return types (M3: U6) ---
+
+  const ret = (enc: ReturnType<typeof encodeStatement>): unknown =>
+    (enc.context as { return: unknown }).return;
+
+  it("returnType count/exists → bare { type }, no sub-block", () => {
+    expect(ret(encodeStatement(dbQuery({ table: note, returnType: "count" })))).toEqual({ type: "count" });
+    expect(ret(encodeStatement(dbQuery({ table: note, returnType: "exists" })))).toEqual({ type: "exists" });
+  });
+
+  it("returnType single → { type:'single', single:{ sort } }, no paging", () => {
+    const enc = encodeStatement(
+      dbQuery({ table: note, returnType: "single", sort: [{ sortBy: "id", dir: "desc" }] }),
+    );
+    expect(ret(enc)).toEqual({ type: "single", single: { sort: [{ sortBy: "id", orderBy: "desc" }] } });
+  });
+
+  it("returnType stream → sort + distinct, no metadata/totals; paging is {page,per_page,enabled}", () => {
+    const noPaging = encodeStatement(dbQuery({ table: note, returnType: "stream" }));
+    expect(ret(noPaging)).toEqual({ type: "stream", stream: { sort: [], distinct: "auto" } });
+    const paged = encodeStatement(
+      dbQuery({ table: note, returnType: "stream", paging: { page: 1, per_page: 10 } }),
+    );
+    expect(ret(paged)).toEqual({
+      type: "stream",
+      stream: { sort: [], distinct: "auto", paging: { page: 1, per_page: 10, enabled: true } },
+    });
+  });
+
+  it("default returnType is list (byte-identical to today)", () => {
+    const a = ret(encodeStatement(dbQuery({ table: note })));
+    const b = ret(encodeStatement(dbQuery({ table: note, returnType: "list" })));
+    expect(a).toEqual(b);
+    expect((a as { type: string }).type).toBe("list");
+  });
 });
