@@ -9,7 +9,7 @@
  * `npm run codegen`.
  */
 import type { Statement } from "../statement.js";
-import type { Authored } from "../schema-dsl/interpret.js";
+import type { Authored, OutputAuthored } from "../schema-dsl/interpret.js";
 import { encodeFromSpec } from "../schema-dsl/interpret.js";
 import type { Value } from "../../values/value.js";
 import type { Comparison } from "../conditional.js";
@@ -39,7 +39,7 @@ export const generated = {
     microservice: /** `mvp:microservice_request` — fields: as, host, path, method, params, headers, timeout, follow_location */
 (a: { as?: string; host: Value; path: Value; method: Value; params: Value; headers: Value; timeout: Value; follow_location: Value }): Statement => fromSpec("mvp:microservice_request", a),
     request: /** `mvp:api_request` — fields: as, url, method, params, headers, timeout, follow_location, verify_host, verify_peer, ca_certificate, certificate, certificate_pass, private_key, private_key_pass */
-(a: { as?: string; url?: Value; method?: Value; params?: Value; headers?: Value; timeout?: Value; follow_location?: Value; verify_host?: Value; verify_peer?: Value; ca_certificate?: Value; certificate?: Value; certificate_pass?: Value; private_key?: Value; private_key_pass?: Value } = {}): Statement => fromSpec("mvp:api_request", a),
+(a: { as?: string; url?: Value; method?: Value; params?: Value; headers?: Value; timeout?: Value; follow_location?: Value; verify_host?: Value; verify_peer?: Value; ca_certificate?: Value; certificate?: Value; certificate_pass?: Value; private_key?: Value; private_key_pass?: Value; description?: string; output?: OutputAuthored } = {}): Statement => fromSpec("mvp:api_request", a),
     stream: /** `mvp:streaming_api_response` — fields: value */
 (a: { value: Value }): Statement => fromSpec("mvp:streaming_api_response", a),
   },
@@ -47,13 +47,13 @@ export const generated = {
     difference: /** `mvp:array_difference` — fields: as, expr, value, by */
 (a: { as?: string; expr?: Value; value?: Value; by?: Value } = {}): Statement => fromSpec("mvp:array_difference", a),
     every: /** `mvp:array_every` — fields: expr, as, if */
-(a: { expr?: Value; as?: string; if?: Comparison } = {}): Statement => fromSpec("mvp:array_every", a),
+(a: { expr?: Value; as?: string; if?: Comparison; output?: OutputAuthored } = {}): Statement => fromSpec("mvp:array_every", a),
     filter: /** `mvp:array_filter` — fields: expr, as, if */
 (a: { expr?: Value; as?: string; if?: Comparison } = {}): Statement => fromSpec("mvp:array_filter", a),
     filter_count: /** `mvp:array_filter_count` — fields: expr, as, if */
 (a: { expr?: Value; as?: string; if?: Comparison } = {}): Statement => fromSpec("mvp:array_filter_count", a),
     find: /** `mvp:array_find` — fields: expr, as, if */
-(a: { expr?: Value; as?: string; if?: Comparison } = {}): Statement => fromSpec("mvp:array_find", a),
+(a: { expr?: Value; as?: string; if?: Comparison; output?: OutputAuthored } = {}): Statement => fromSpec("mvp:array_find", a),
     find_index: /** `mvp:array_find_index` — fields: expr, as, if */
 (a: { expr?: Value; as?: string; if?: Comparison } = {}): Statement => fromSpec("mvp:array_find_index", a),
     group_by: /** `mvp:array_group_by` — fields: as, expr, by */
@@ -63,13 +63,13 @@ export const generated = {
     intersection: /** `mvp:array_intersection` — fields: as, expr, value, by */
 (a: { as?: string; expr?: Value; value?: Value; by?: Value } = {}): Statement => fromSpec("mvp:array_intersection", a),
     merge: /** `mvp:array_merge` — fields: name, value */
-(a: { name?: string; value?: Value } = {}): Statement => fromSpec("mvp:array_merge", a),
+(a: { name?: string; value?: Value; output?: OutputAuthored } = {}): Statement => fromSpec("mvp:array_merge", a),
     partition: /** `mvp:array_partition` — fields: expr, as, if */
 (a: { expr?: Value; as?: string; if?: Comparison } = {}): Statement => fromSpec("mvp:array_partition", a),
     pop: /** `mvp:array_pop` — fields: name, as */
-(a: { name?: string; as?: string } = {}): Statement => fromSpec("mvp:array_pop", a),
+(a: { name?: string; as?: string; output?: OutputAuthored } = {}): Statement => fromSpec("mvp:array_pop", a),
     push: /** `mvp:array_push` — fields: name, value */
-(a: { name?: string; value: Value }): Statement => fromSpec("mvp:array_push", a),
+(a: { name?: string; value: Value; output?: OutputAuthored }): Statement => fromSpec("mvp:array_push", a),
     shift: /** `mvp:array_shift` — fields: name, as */
 (a: { name?: string; as?: string } = {}): Statement => fromSpec("mvp:array_shift", a),
     unshift: /** `mvp:array_unshift` — fields: name, value */
@@ -80,7 +80,7 @@ export const generated = {
   cloud: {
     algolia: {
       request: /** `mvp:algolia_request` — fields: as, application_id, api_key, url, method, payload */
-(a: { as?: string; application_id: Value; api_key: Value; url: Value; method: Value; payload: Value }): Statement => fromSpec("mvp:algolia_request", a),
+(a: { as?: string; application_id: Value; api_key: Value; url: Value; method: Value; payload: Value; description?: string; output?: OutputAuthored }): Statement => fromSpec("mvp:algolia_request", a),
     },
     aws: {
       opensearch: {
@@ -207,14 +207,14 @@ export const generated = {
   },
   math: {
     add: /** `mvp:math_add` — fields: name, value */
-(a: { name?: string; value: Value }): Statement => fromSpec("mvp:math_add", a),
+(a: { name?: string; value: Value; output?: OutputAuthored }): Statement => fromSpec("mvp:math_add", a),
     bitwise: {
       and: /** `mvp:bitwise_and` — fields: name, value */
-(a: { name?: string; value: Value }): Statement => fromSpec("mvp:bitwise_and", a),
+(a: { name?: string; value: Value; output?: OutputAuthored }): Statement => fromSpec("mvp:bitwise_and", a),
       or: /** `mvp:bitwise_or` — fields: name, value */
-(a: { name?: string; value: Value }): Statement => fromSpec("mvp:bitwise_or", a),
+(a: { name?: string; value: Value; output?: OutputAuthored }): Statement => fromSpec("mvp:bitwise_or", a),
       xor: /** `mvp:bitwise_xor` — fields: name, value */
-(a: { name?: string; value: Value }): Statement => fromSpec("mvp:bitwise_xor", a),
+(a: { name?: string; value: Value; output?: OutputAuthored }): Statement => fromSpec("mvp:bitwise_xor", a),
     },
     div: /** `mvp:math_div` — fields: name, value */
 (a: { name?: string; value: Value }): Statement => fromSpec("mvp:math_div", a),
@@ -227,11 +227,11 @@ export const generated = {
   },
   object: {
     entries: /** `mvp:object_entries` — fields: as, value */
-(a: { as?: string; value?: Value } = {}): Statement => fromSpec("mvp:object_entries", a),
+(a: { as?: string; value?: Value; output?: OutputAuthored } = {}): Statement => fromSpec("mvp:object_entries", a),
     keys: /** `mvp:object_keys` — fields: as, value */
-(a: { as?: string; value?: Value } = {}): Statement => fromSpec("mvp:object_keys", a),
+(a: { as?: string; value?: Value; output?: OutputAuthored } = {}): Statement => fromSpec("mvp:object_keys", a),
     values: /** `mvp:object_values` — fields: as, value */
-(a: { as?: string; value?: Value } = {}): Statement => fromSpec("mvp:object_values", a),
+(a: { as?: string; value?: Value; output?: OutputAuthored } = {}): Statement => fromSpec("mvp:object_values", a),
   },
   precondition: /** `mvp:precondition` — fields: expr, error_type, error, payload */
 (a: { expr?: Comparison; error_type?: string; error?: Value; payload?: Value } = {}): Statement => fromSpec("mvp:precondition", a),
@@ -269,7 +269,7 @@ export const generated = {
   },
   security: {
     check_password: /** `mvp:check_pass` — fields: as, text_password, hash_password */
-(a: { as?: string; text_password?: Value; hash_password?: Value } = {}): Statement => fromSpec("mvp:check_pass", a),
+(a: { as?: string; text_password?: Value; hash_password?: Value; description?: string; output?: OutputAuthored } = {}): Statement => fromSpec("mvp:check_pass", a),
     create_curve_key: /** `mvp:crypto_create_ec_key` — fields: as, curve, format */
 (a: { as?: string; curve?: Value; format?: Value } = {}): Statement => fromSpec("mvp:crypto_create_ec_key", a),
     create_password: /** `mvp:generate_pass` — fields: as, character_count, require_lowercase, require_uppercase, require_digit, require_symbol, symbol_whitelist */
@@ -305,15 +305,15 @@ export const generated = {
     create_attachment: /** `mvp:create_attachment` — fields: as, value, access, filename */
 (a: { as?: string; value: Value; access?: string; filename?: Value }): Statement => fromSpec("mvp:create_attachment", a),
     create_audio: /** `mvp:create_audio` — fields: as, value, access, filename */
-(a: { as?: string; value: Value; access?: string; filename?: Value }): Statement => fromSpec("mvp:create_audio", a),
+(a: { as?: string; value: Value; access?: string; filename?: Value; output?: OutputAuthored }): Statement => fromSpec("mvp:create_audio", a),
     create_file_resource: /** `mvp:create_file_resource` — fields: as, filename, filedata */
-(a: { as?: string; filename: Value; filedata: Value }): Statement => fromSpec("mvp:create_file_resource", a),
+(a: { as?: string; filename: Value; filedata: Value; description?: string; output?: OutputAuthored }): Statement => fromSpec("mvp:create_file_resource", a),
     create_image: /** `mvp:create_image` — fields: as, value, access, filename */
-(a: { as?: string; value: Value; access?: string; filename?: Value }): Statement => fromSpec("mvp:create_image", a),
+(a: { as?: string; value: Value; access?: string; filename?: Value; output?: OutputAuthored }): Statement => fromSpec("mvp:create_image", a),
     create_video: /** `mvp:create_video` — fields: as, value, access, filename */
-(a: { as?: string; value: Value; access?: string; filename?: Value }): Statement => fromSpec("mvp:create_video", a),
+(a: { as?: string; value: Value; access?: string; filename?: Value; output?: OutputAuthored }): Statement => fromSpec("mvp:create_video", a),
     delete_file: /** `mvp:delete_file` — fields: pathname */
-(a: { pathname: Value }): Statement => fromSpec("mvp:delete_file", a),
+(a: { pathname: Value; description?: string; output?: OutputAuthored }): Statement => fromSpec("mvp:delete_file", a),
     read_file_resource: /** `mvp:create_var_from_file_resource` — fields: as, value */
 (a: { as?: string; value: Value }): Statement => fromSpec("mvp:create_var_from_file_resource", a),
     sign_private_url: /** `mvp:vault_sign_url` — fields: as, pathname, ttl */
@@ -321,7 +321,7 @@ export const generated = {
   },
   stream: {
     from_csv: /** `mvp:csv_stream` — fields: as, value, separator, enclosure, escape_char */
-(a: { as?: string; value: Value; separator?: Value; enclosure?: Value; escape_char?: Value }): Statement => fromSpec("mvp:csv_stream", a),
+(a: { as?: string; value: Value; separator?: Value; enclosure?: Value; escape_char?: Value; output?: OutputAuthored }): Statement => fromSpec("mvp:csv_stream", a),
     from_jsonl: /** `mvp:jsonl_stream` — fields: as, value */
 (a: { as?: string; value: Value }): Statement => fromSpec("mvp:jsonl_stream", a),
     from_request: /** `mvp:streaming_api_request` — fields: as, url, method, params, headers, timeout, follow_location, verify_host, verify_peer, ca_certificate, certificate, certificate_pass, private_key, private_key_pass */

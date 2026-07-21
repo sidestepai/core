@@ -97,8 +97,30 @@ export interface StatementSpec {
   envelope?: EnvelopeProfile;
 }
 
-/** Authored inputs for a spec-driven statement, keyed by field name. */
-export type Authored = Record<string, string | Value | Comparison | undefined>;
+/**
+ * Authored `output` envelope shaping (the frontend's "Output" tab). Any of the
+ * three stored members may be set; omitted members keep their empty default.
+ * `filters` attaches a filter chain to the result variable; `customize`/`items`
+ * drive response field-mapping. Merged over the spec's default `output` shape.
+ */
+export interface OutputAuthored {
+  filters?: unknown[];
+  customize?: boolean;
+  items?: unknown[];
+}
+
+/**
+ * Authored inputs for a spec-driven statement, keyed by field name. Besides the
+ * spec's rule fields, two reserved envelope keys are honored when the spec's
+ * envelope permits them: `description` (a per-statement description string, the
+ * frontend "Settings" tab) and `output` (an {@link OutputAuthored} shaping the
+ * result envelope). No engine statement routes a rule field named `description`
+ * or `output`, so these names are unambiguous.
+ */
+export type Authored = Record<
+  string,
+  string | Value | Comparison | OutputAuthored | undefined
+>;
 
 function valueFields(v: Value): { value: string; tag: string; filters: unknown[] } {
   return { value: v.value, tag: v.tag, filters: v.filters };
@@ -116,6 +138,11 @@ function nestedValueFields(v: Value): Record<string, unknown> {
   const fields: Record<string, unknown> = { value: v.value, tag: v.tag };
   if (Array.isArray(v.filters) && v.filters.length > 0) fields.filters = v.filters;
   return fields;
+}
+
+/** Shallow-copy only the defined own keys of an object (drops `undefined`). */
+function pickDefined(o: OutputAuthored): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
 }
 
 /** Write `value` at a dotted `path` inside `obj`, creating intermediate objects. */
@@ -185,10 +212,17 @@ export function encodeFromSpec(spec: StatementSpec, authored: Authored): Stateme
   const stmt: Statement = { name: spec.name, context, input };
   if (as !== undefined) stmt.as = as;
   else if (env?.emitAs) stmt.as = "";
-  if (env?.description) stmt.description = "";
+  if (env?.description) {
+    // Reserved envelope key: an authored per-statement description, else "".
+    const d = authored.description;
+    stmt.description = typeof d === "string" ? d : "";
+  }
   if (env?.settingsRegistry) stmt.settings_registry = [];
   if (spec.output) {
-    stmt.output = env?.richOutput ? { customize: false, filters: [], items: [] } : { filters: [] };
+    const base = env?.richOutput ? { customize: false, filters: [], items: [] } : { filters: [] };
+    // Reserved envelope key: authored output shaping merged over the default.
+    const authoredOut = authored.output as OutputAuthored | undefined;
+    stmt.output = authoredOut ? { ...base, ...pickDefined(authoredOut) } : base;
   }
   if (env?.addon) stmt.addon = [];
   return stmt;

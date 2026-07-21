@@ -208,3 +208,46 @@ describe("generated catalog registration", () => {
     }
   });
 });
+
+describe("generated envelope authoring — description + output (U2)", () => {
+  const apiRequest = getStatementFactory("mvp:api_request");
+
+  it("emits an authored description when the envelope carries one", () => {
+    const encoded = encodeStatement(apiRequest({ url: c.text("https://x"), description: "note" }));
+    expect(encoded.description).toBe("note");
+  });
+
+  it("defaults description to empty when omitted (unchanged behavior)", () => {
+    const encoded = encodeStatement(apiRequest({ url: c.text("https://x") }));
+    expect(encoded.description).toBe("");
+  });
+
+  it("merges authored output filters/customize over the default output envelope", () => {
+    const encoded = encodeStatement(
+      apiRequest({
+        url: c.text("https://x"),
+        output: { customize: true, filters: [filter("json_decode")] },
+      }),
+    );
+    expect(encoded.output).toEqual({
+      items: [],
+      filters: [filter("json_decode")],
+      customize: true,
+    });
+  });
+
+  it("leaves the empty default output when omitted (unchanged behavior)", () => {
+    const encoded = encodeStatement(apiRequest({ url: c.text("https://x") }));
+    expect(encoded.output).toEqual({ items: [], filters: [], customize: false });
+  });
+
+  it("ignores a description on a lean statement whose envelope has none", () => {
+    // math_add has no `description` envelope flag; the reserved key is inert.
+    const mathAddFactory = getStatementFactory("mvp:math_add");
+    const encoded = encodeStatement(
+      mathAddFactory({ name: "x1", value: c.int(1), description: "ignored" } as never),
+    );
+    // encodeStatement fills the uniform envelope default; the authored value is dropped.
+    expect(encoded.description).toBe("");
+  });
+});

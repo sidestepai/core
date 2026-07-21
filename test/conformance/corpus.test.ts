@@ -30,7 +30,7 @@ const objArg = () =>
  *   Declarative (generated factory exists — should be quick, mirror bitwise_and):
  *     bitwise_or, bitwise_xor, array_every, array_merge, object_entries,
  *     object_values-array, return-null-text, conditional, sleep, get_record,
- *     generate_pass, check_pass, api_request, algolia_request, csv_stream,
+ *     generate_pass, check_pass, algolia_request, csv_stream,
  *     crypto_jwe_decode2, crypto_jws_decode2, crypto_jws_encode2,
  *     create_image, create_video, create_audio, create_attachment,
  *     create_file_resource, create_var_from_file_resource, vault_sign_url,
@@ -54,6 +54,30 @@ const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
   // rich envelope + full input entry (delete_file), medium envelope + lean
   // input entries (lambda), and numeric int coercion in input entries (crypto ttl).
   { fixture: "delete_file", build: () => stmt("mvp:delete_file", { pathname: c.text("abc") }) },
+  // External API Request: proves the object/array/bool/int input-tag split
+  // (params→const:obj, headers→const:array, verify/follow→const:bool,
+  // timeout→const:int) and the authored `description` envelope key (U2).
+  {
+    fixture: "api_request",
+    build: () =>
+      stmt("mvp:api_request", {
+        as: "api1",
+        url: c.text("https://www.xano.com"),
+        method: c.text("GET"),
+        params: c.obj({}),
+        headers: c.array([]),
+        timeout: c.int(10),
+        follow_location: c.bool(true),
+        verify_host: c.bool(true),
+        verify_peer: c.bool(true),
+        ca_certificate: c.text(""),
+        certificate: c.text(""),
+        certificate_pass: c.text(""),
+        private_key: c.text(""),
+        private_key_pass: c.text(""),
+        description: "this is a test",
+      }),
+  },
   {
     fixture: "lambda",
     build: () => stmt("mvp:lambda", { as: "x1", code: c.text(""), timeout: c.int(10) }),

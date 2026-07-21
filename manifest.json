@@ -538,50 +538,8 @@
       "storedName": "mvp:microservice_request",
       "sPath": "api.microservice",
       "registered": true,
-      "declarative": true,
-      "output": false,
-      "fields": [
-        {
-          "name": "as",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "host",
-          "type": "value",
-          "optional": false
-        },
-        {
-          "name": "path",
-          "type": "value",
-          "optional": false
-        },
-        {
-          "name": "method",
-          "type": "value",
-          "optional": false
-        },
-        {
-          "name": "params",
-          "type": "value",
-          "optional": false
-        },
-        {
-          "name": "headers",
-          "type": "value",
-          "optional": false
-        },
-        {
-          "name": "timeout",
-          "type": "value",
-          "optional": false
-        },
-        {
-          "name": "follow_location",
-          "type": "value",
-          "optional": false
-        }
-      ]
+      "declarative": false,
+      "output": false
     },
     {
       "surface": "api.realtime_event",
@@ -595,80 +553,8 @@
       "storedName": "mvp:api_request",
       "sPath": "api.request",
       "registered": true,
-      "declarative": true,
-      "output": true,
-      "fields": [
-        {
-          "name": "as",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "url",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "method",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "params",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "headers",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "timeout",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "follow_location",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "verify_host",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "verify_peer",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "ca_certificate",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "certificate",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "certificate_pass",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "private_key",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "private_key_pass",
-          "type": "value",
-          "optional": true
-        }
-      ]
+      "declarative": false,
+      "output": true
     },
     {
       "surface": "api.stream",
@@ -4531,80 +4417,8 @@
       "storedName": "mvp:streaming_api_request",
       "sPath": "stream.from_request",
       "registered": true,
-      "declarative": true,
-      "output": false,
-      "fields": [
-        {
-          "name": "as",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "url",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "method",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "params",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "headers",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "timeout",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "follow_location",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "verify_host",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "verify_peer",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "ca_certificate",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "certificate",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "certificate_pass",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "private_key",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "private_key_pass",
-          "type": "value",
-          "optional": true
-        }
-      ]
+      "declarative": false,
+      "output": false
     },
     {
       "surface": "switch",
@@ -5191,80 +5005,8 @@
       "storedName": "mvp:connect_webflow_api_request",
       "sPath": "webflow.request",
       "registered": true,
-      "declarative": true,
-      "output": false,
-      "fields": [
-        {
-          "name": "as",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "path",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "method",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "params",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "headers",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "timeout",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "follow_location",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "verify_host",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "verify_peer",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "ca_certificate",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "certificate",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "certificate_pass",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "private_key",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "private_key_pass",
-          "type": "value",
-          "optional": true
-        }
-      ]
+      "declarative": false,
+      "output": false
     },
     {
       "surface": "while",

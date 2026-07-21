@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildManifest, renderLlmsTxt } from "../../src/manifest/manifest.js";
+import { buildManifest, renderLlmsTxt, OVERRIDDEN_SURFACES } from "../../src/manifest/manifest.js";
 import { s } from "../../src/statements/s.js";
 import { GENERATED_SPECS } from "../../src/statements/generated/specs.generated.js";
 import { registeredKinds } from "../../src/kinds/kind.js";
@@ -66,9 +66,12 @@ describe("manifest", () => {
         expect(stmt.fields).toBeUndefined();
       }
     }
-    // Unique declarative stored names == the generated spec catalog.
+    // Unique declarative stored names == the generated spec catalog, minus the
+    // surfaces whose public `s.` factory is a hand-authored typed override (their
+    // generated field signature is deliberately suppressed — see OVERRIDDEN_SURFACES).
     const declNames = new Set(m.statements.filter((x) => x.declarative).map((x) => x.storedName));
-    expect(declNames).toEqual(specNames);
+    const expectedDecl = new Set([...specNames].filter((n) => !OVERRIDDEN_SURFACES.has(n)));
+    expect(declNames).toEqual(expectedDecl);
   });
 
   it("object-kind descriptors match the live kind registry", () => {
