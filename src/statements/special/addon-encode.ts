@@ -43,7 +43,14 @@ export interface AddonSpec<Graft = unknown> {
    * resolves to a guid but grafts `unknown`.
    */
   addon: ObjectRef | AddonDef<Graft>;
-  /** Dotted destination on the row, e.g. `"items._book"` (offset + alias). */
+  /**
+   * Dotted destination **relative to a returned row**, e.g. `"_book"` (a bare
+   * alias) or `"obj._book"` (offset + alias). Splits at the last dot into the
+   * stored `offset` (path prefix) + `as` (final segment). Do **not** hand-write
+   * the `items[]` paging-envelope prefix — a `db.query` that returns a metadata
+   * paging envelope adds it automatically (writing it explicitly is tolerated and
+   * not double-prefixed).
+   */
   as: string;
   /** Addon input bindings, name → value (use {@link out} for parent-row columns). */
   input?: Record<string, Value>;
@@ -104,22 +111,46 @@ function splitAs(as: string): { offset?: string; as: string } {
 }
 
 /**
+ * Prefix a paging-envelope offset (e.g. `"items[]"`) onto an addon's own offset.
+ * When a `db.query` returns a metadata paging envelope, the rows live under
+ * `items[]`, so a top-level addon must graft at `items[].<offset>` rather than at
+ * the envelope root — the frontend applies exactly this rule in the return-type
+ * editor (`statement-dbo-view.component.ts` `openReturn`). Idempotent: an offset
+ * that already starts with the prefix (an author who wrote `items[]` explicitly)
+ * is left untouched, mirroring the frontend's `!offset.startsWith(findMe)` guard.
+ */
+function withEnvelopeOffset(offset: string | undefined, envelopeOffset: string): string {
+  if (offset?.startsWith(envelopeOffset)) return offset;
+  return [envelopeOffset, offset].filter(Boolean).join(".");
+}
+
+/**
  * Encode one addon spec into its stored form (recursing into `children`). `path`
  * carries the spec objects on the current branch so a spec that (transitively)
  * lists itself under `children` throws a clear error instead of recursing until
  * the stack overflows — near-impossible in normal authoring, but cheap to reject.
+ *
+ * `envelopeOffset` (top-level only) prefixes the paging-envelope path onto the
+ * offset; nested `children` graft relative to their parent addon's result, not
+ * the query envelope, so it is never threaded into the recursion.
  */
-function encodeOne(spec: AddonSpec, path: readonly AddonSpec[]): StoredAddon {
+function encodeOne(
+  spec: AddonSpec,
+  path: readonly AddonSpec[],
+  envelopeOffset?: string,
+): StoredAddon {
   if (path.includes(spec)) {
     throw new Error("addon: `children` cannot reference an ancestor addon spec (cycle detected).");
   }
   const { offset, as } = splitAs(spec.as);
+  const finalOffset =
+    envelopeOffset !== undefined ? withEnvelopeOffset(offset, envelopeOffset) : offset;
   const stored: StoredAddon = {
     id: resolveRef("addon", spec.addon),
     as,
     input: encodeInput(spec.input),
   };
-  if (offset !== undefined) stored.offset = offset;
+  if (finalOffset) stored.offset = finalOffset;
   const output = encodeOutput(spec.output);
   if (output !== undefined) stored.output = output;
   if (spec.children?.length) {
@@ -133,8 +164,15 @@ function encodeOne(spec: AddonSpec, path: readonly AddonSpec[]): StoredAddon {
  * Encode an authored addon list into the stored `addon[]` block. Returns `[]`
  * for an omitted/empty list, so callers pass it straight through to the
  * statement envelope (preserving the empty-`addon:[]` default byte-for-byte).
+ *
+ * `envelopeOffset` (e.g. `"items[]"`) is set by a `db.query` that returns a
+ * metadata paging envelope, so top-level addons graft onto each row inside
+ * `items[]` rather than the envelope object.
  */
-export function encodeAddons(specs?: readonly AddonSpec[]): StoredAddon[] {
+export function encodeAddons(
+  specs?: readonly AddonSpec[],
+  envelopeOffset?: string,
+): StoredAddon[] {
   if (!specs?.length) return [];
-  return specs.map((spec) => encodeOne(spec, []));
+  return specs.map((spec) => encodeOne(spec, [], envelopeOffset));
 }
