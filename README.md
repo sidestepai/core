@@ -17,9 +17,9 @@ sidestep sandbox deploy ./xano/index.ts --static ./dist
 
 ```
 → Deploying ./xano/index.ts → sandbox (merge)
-✓ Backend deployed
+✓ Backend deployed to sandbox
     https://x8ki-letl.n7.xano.io                                  ← backend, live
-→ Deploying static frontend ./dist
+→ Deploying static frontend ./dist → workspace #9
 ✓ Static host deployed
     https://my-app.xano.io                                        ← frontend, live
 ```
@@ -95,12 +95,12 @@ npx sidestep sandbox deploy ./xano/index.ts --static ./dist
 
 ```
 → Deploying ./xano/index.ts → sandbox (merge)
-✓ Backend deployed
+✓ Backend deployed to sandbox
     https://x8ki-letl.n7.xano.io/tenant/sbx-ab12                      ← backend, live
-→ Deploying static frontend ./dist
+→ Deploying static frontend ./dist → workspace #9
+✓ Config injected into index.html: window.XANO_HOST                   ← backend URL, wired in
 ✓ Static host deployed
     https://my-app.xano.io                                            ← frontend, live
-    Config injected into index.html: window.XANO_HOST                 ← backend URL, wired in
 ```
 
 One authenticated call ships your database schema, your APIs, your functions and

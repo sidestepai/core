@@ -143,11 +143,7 @@ export async function runDeployCommand(args: ParsedArgs): Promise<void> {
   const auth = await getAccessToken(args);
   const resp = await postDeploy({ bundle, endpointPath: SANDBOX_DEPLOY_PATH, auth, query });
 
-  success(
-    resp.workspace?.name
-      ? `Backend deployed to workspace ${resp.workspace.name}${resp.workspace.id !== undefined ? ` (#${resp.workspace.id})` : ""}`
-      : "Backend deployed",
-  );
+  success("Backend deployed to sandbox");
   if (resp.baseUrl) link(resp.baseUrl);
 
   const summary: DeploySummary = {
