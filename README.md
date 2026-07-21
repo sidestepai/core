@@ -4,6 +4,8 @@
 
 ### Your Xano backend, as TypeScript. Deployed to a live sandbox in one command.
 
+*An independent SDK for Xano.*
+
 **Write your database, APIs, functions, triggers, and AI agents in typed TypeScript.
 Then push the whole thing — plus an optional static frontend — to a disposable Xano
 sandbox with a single deploy.**
@@ -896,6 +898,6 @@ a nested function call) and addon/related-field keys resolve to `unknown` — de
 
 See [`@sidestep/auth`](https://www.npmjs.com/package/@sidestep/auth) for a real,
 reusable extension package · [`llms.txt`](llms.txt) for the full authoring surface ·
-MIT licensed
+An independent project · MIT licensed
 
 </div>
