@@ -155,6 +155,13 @@ type WithAddons<Row, A> = [keyof AddonFields<A>] extends [never]
  * metadata on — the engine's `packageListMeta` shape (issue #58). The result
  * list lives under `items`; `totals:true` adds `itemsTotal`/`pageTotal`. A query
  * with no `paging`, or `paging:{ metadata:false }`, returns the bare list instead.
+ *
+ * **Has-next signal (issue #66 bonus):** read `nextPage` — it is `number` when
+ * another page exists and `null` on the last page (the engine fetches one extra
+ * row to decide, so this needs no second scan). For a total count, set
+ * `paging:{ totals:true }` and read `itemsTotal`/`pageTotal`. Both are typed on
+ * this envelope by `InferResponse`, so a client can drive "load more" straight
+ * off the typed response without hand-declaring the shape.
  */
 type PagingEnvelope<Items, Totals extends boolean> = Prettify<
   {
@@ -952,13 +959,59 @@ function encodeSimpleExternal(paging?: DbPaging): Record<string, unknown> | unde
 }
 
 /**
+ * Which parts of a classic {@link DbExternal} blob the engine is permitted to
+ * honor. Each defaults to the engine's own default (search/sort/page `true`,
+ * `per_page` `false`) — the shape from the `external` golden.
+ */
+export interface DbExternalPermissions {
+  search?: boolean;
+  sort?: boolean;
+  page?: boolean;
+  per_page?: boolean;
+}
+
+/**
+ * The classic single-blob external override (`context.external`). Its resolved
+ * `value` is a whole faceted-filter object (`{search, sort, page, per_page}`),
+ * typically fed from one request input; `permissions` gates which of those
+ * sub-keys the engine honors. Mutually exclusive with input-bound `paging`
+ * fields — the engine consults `simpleExternal` only when `external` is empty.
+ */
+export interface DbExternal {
+  /** The whole external config as one tagged {@link Value} (e.g. `inp("filters")`). */
+  value: Value;
+  /** Per-part gates; each defaults to the engine default. */
+  permissions?: DbExternalPermissions;
+}
+
+/**
+ * Encode `context.external`: the tagged value flattened (`{value,tag,filters}`)
+ * with a `permissions` object filled to the engine defaults (byte shape from the
+ * `external` golden — `{search:true, sort:true, page:true, per_page:false}`).
+ */
+function encodeExternal(ext: DbExternal): Record<string, unknown> {
+  const p = ext.permissions ?? {};
+  return {
+    value: ext.value.value,
+    tag: ext.value.tag,
+    filters: ext.value.filters,
+    permissions: {
+      search: p.search ?? true,
+      sort: p.sort ?? true,
+      page: p.page ?? true,
+      per_page: p.per_page ?? false,
+    },
+  };
+}
+
+/**
  * Build `context.return` for a list query — the block the engine's converter
  * reads for sort (`return.list.sort`) and paging (`return.list.paging`, applied
  * only when `enabled:true`). `db.query` is always a list read; sort maps
  * `{ sortBy, dir }` → `{ sortBy, orderBy }`, and paging fills the engine's
  * `page=1`/`offset=0`/`per_page=25`/`metadata=true`/`totals=false` defaults.
  */
-function encodeReturn(sort?: SortDirective[], paging?: DbPaging): unknown {
+function encodeReturn(sort?: SortDirective[], paging?: DbPaging, forceEnabled = false): unknown {
   const sortEls = encodeSort(sort);
   // Static baseline int: an author-supplied number wins; a `Value` (input-bound)
   // field rides `context.simpleExternal` instead, so the static block keeps the
@@ -968,8 +1021,9 @@ function encodeReturn(sort?: SortDirective[], paging?: DbPaging): unknown {
   // `enabled:true` gates the engine's paging (and the simpleExternal page/per_page/
   // offset overrides). Keyed on a page/per_page/offset field being present — a
   // `search`/`sort`-only `paging` must NOT flip it on (else default pagination
-  // activates and truncates the result to 25 rows).
-  const enabled = hasPageField(paging);
+  // activates and truncates the result to 25 rows). A classic `external` blob
+  // (forceEnabled) also needs the gate on for its page/per_page to take effect.
+  const enabled = hasPageField(paging) || forceEnabled;
   const pagingObj = {
     enabled,
     page: staticInt(paging?.page, 1),
@@ -1007,6 +1061,16 @@ export interface DbQueryArgs<
    * the bare array.
    */
   paging?: P;
+  /**
+   * Classic single-blob external override (`context.external`) — one tagged
+   * {@link Value} whose resolved value is a whole `{search,sort,page,per_page}`
+   * config, with per-part `permissions` gates. Mutually exclusive with an
+   * input-bound `paging` field (a `Value` page/per_page/offset/search/sort): the
+   * engine honors `simpleExternal` only when `external` is empty, so authoring
+   * both throws. Setting `external` forces `paging.enabled:true` so its
+   * page/per_page take effect even with no `paging` arg.
+   */
+  external?: DbExternal;
   /** Restrict returned columns. Captured literally so `InferResponse` narrows
    * the traced row list to exactly these columns. */
   output?: Cols;
@@ -1046,11 +1110,27 @@ export function dbQuery<
   // Row lock rides `context.lock` as a tagged value (`{value, tag, filters}`),
   // not a bare bool — the shape `MVP::convertLockToConfig` reads.
   if (args.lock !== undefined) context.lock = c.bool(args.lock);
-  context.return = encodeReturn(args.sort, args.paging);
   // Input-bound paging (issue #66): `Value`-typed page/per_page/offset/search/sort
   // ride `context.simpleExternal` on top of the static block (which is the gate).
   const simpleExternal = encodeSimpleExternal(args.paging);
-  if (simpleExternal) context.simpleExternal = simpleExternal;
+  if (args.external !== undefined) {
+    // The engine consults `simpleExternal` only when `external` is empty, so
+    // authoring both silently drops the per-field binds. Fail at the source.
+    if (simpleExternal) {
+      throw new Error(
+        "db.query: `external` (classic blob) and input-bound `paging` fields (a Value " +
+          "page/per_page/offset/search/sort → simpleExternal) are mutually exclusive — the " +
+          "engine honors `external` and ignores simpleExternal. Use one or the other.",
+      );
+    }
+    // `external`'s page/per_page are gated by static `paging.enabled` just like
+    // simpleExternal — force it on so a self-contained blob isn't silently no-op'd.
+    context.return = encodeReturn(args.sort, args.paging, true);
+    context.external = encodeExternal(args.external);
+  } else {
+    context.return = encodeReturn(args.sort, args.paging);
+    if (simpleExternal) context.simpleExternal = simpleExternal;
+  }
   return {
     name: "mvp:dbo_view",
     context,

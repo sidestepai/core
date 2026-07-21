@@ -165,6 +165,40 @@ describe("db.query (mvp:dbo_view) emit shape", () => {
     expect(enc.context).not.toHaveProperty("simpleExternal");
   });
 
+  // --- Classic external blob (U2) ---
+
+  it("external blob → context.external with permissions; forces paging.enabled:true", () => {
+    const enc = encodeStatement(
+      dbQuery({
+        table: note,
+        external: { value: inp("filters"), permissions: { page: true, search: true } },
+        as: "rows",
+      }),
+    );
+    expectShape("db_view_external", enc);
+  });
+
+  it("external with no paging arg still forces enabled:true so page/per_page take effect", () => {
+    const enc = encodeStatement(dbQuery({ table: note, external: { value: inp("x") } }));
+    const { paging } = (enc.context as { return: { list: { paging: { enabled: boolean } } } })
+      .return.list;
+    expect(paging.enabled).toBe(true);
+  });
+
+  it("external + all-static paging is allowed and emits both blocks (no simpleExternal)", () => {
+    const enc = encodeStatement(
+      dbQuery({ table: note, paging: { per_page: 50 }, external: { value: inp("x") } }),
+    );
+    expect((enc.context as { external: unknown }).external).toBeDefined();
+    expect(enc.context).not.toHaveProperty("simpleExternal");
+  });
+
+  it("rejects external combined with an input-bound paging field (mutual exclusion)", () => {
+    expect(() =>
+      dbQuery({ table: note, paging: { page: inp("page") }, external: { value: inp("x") } }),
+    ).toThrow(/mutually exclusive/);
+  });
+
   it("output columns ride the statement output envelope, not context.output", () => {
     const enc = encodeStatement(dbQuery({ table: note, output: ["id", "title"] }));
     expect((enc.output as { customize: boolean }).customize).toBe(true);

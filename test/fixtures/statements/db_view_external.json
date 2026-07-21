@@ -1,0 +1,32 @@
+{
+  "_derived_from": "Byte-verified against the cloud-client `external` golden (extensions/MVP/includes/xano/test/script/data/process/schema:function/minimal/DEV-7305.json): context.external = {value,tag,filters,permissions:{page,sort,search,per_page}}, permission defaults search/sort/page:true, per_page:false. Setting external forces return.list.paging.enabled:true so the blob's page/per_page take effect. See docs/plans/2026-07-21-001-feat-db-query-frontend-parity-plan.md.",
+  "name": "mvp:dbo_view",
+  "as": "rows",
+  "input": [],
+  "addon": [],
+  "output": { "customize": false, "filters": [], "items": [] },
+  "context": {
+    "dbo": { "id": "PLACEHOLDER" },
+    "return": {
+      "type": "list",
+      "list": {
+        "distinct": "auto",
+        "sort": [],
+        "paging": {
+          "enabled": true,
+          "page": 1,
+          "offset": 0,
+          "per_page": 25,
+          "metadata": true,
+          "totals": false
+        }
+      }
+    },
+    "external": {
+      "value": "filters",
+      "tag": "input",
+      "filters": [],
+      "permissions": { "search": true, "sort": true, "page": true, "per_page": false }
+    }
+  }
+}

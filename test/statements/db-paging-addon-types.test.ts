@@ -102,6 +102,7 @@ describe("db.query paging envelope + addon response typing", () => {
       input: { page: input.int({ default: 1 }) },
       response: ref("rows"),
     });
+    expectTypeOf(q).toBeObject();
     expectTypeOf<InferResponse<typeof q>>().toEqualTypeOf<{
       items: Book[];
       itemsReceived: number;
@@ -113,6 +114,22 @@ describe("db.query paging envelope + addon response typing", () => {
     }>();
   });
 
+  it("has-next signal: envelope exposes nextPage: number|null and typed itemsTotal (issue #66 bonus)", () => {
+    const q = query({
+      verb: "GET",
+      apiGroup: group,
+      name: "q4d",
+      stack: [
+        s.db.query({ table: book, paging: { page: inp("page"), totals: true }, as: "rows" }),
+      ],
+      input: { page: input.int({ default: 1 }) },
+      response: ref("rows"),
+    });
+    expectTypeOf(q).toBeObject();
+    type Env = InferResponse<typeof q>;
+    expectTypeOf<Env>().toMatchTypeOf<{ nextPage: number | null; itemsTotal: number; pageTotal: number }>();
+  });
+
   it("search/sort-only paging (no page field) → bare row list, not the truncated envelope", () => {
     const q = query({
       verb: "GET",
@@ -122,6 +139,7 @@ describe("db.query paging envelope + addon response typing", () => {
       input: { q: input.text(), s: input.text() },
       response: ref("rows"),
     });
+    expectTypeOf(q).toBeObject();
     expectTypeOf<InferResponse<typeof q>>().toEqualTypeOf<Book[]>();
   });
 
