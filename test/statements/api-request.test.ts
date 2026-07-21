@@ -1,8 +1,12 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, expectTypeOf } from "vitest";
 import "../../src/index.js"; // register all statements
 import { s } from "../../src/statements/s.js";
-import { c, inp, filter } from "../../src/values/value.js";
+import { c, inp, ref, filter } from "../../src/values/value.js";
 import { encodeStatement } from "../../src/statements/statement.js";
+import { query } from "../../src/kinds/query.js";
+import { apiGroup } from "../../src/kinds/api-group.js";
+import type { InferResponse } from "../../src/responses/infer.js";
+import type { ApiRequestResult } from "../../src/statements/special/api-request.js";
 import { normalize, loadFixture } from "../conformance/harness.js";
 
 /** Pull an input entry `{value, tag}` by name from an encoded statement. */
@@ -184,5 +188,67 @@ describe("HTTP-request sibling wrappers (envelope broadening)", () => {
     const encoded = encodeStatement(s.stream.from_request({ url: inp("u"), method: inp("m") }));
     expect(field(encoded, "url")?.tag).toBe("input");
     expect(field(encoded, "method")?.tag).toBe("input");
+  });
+});
+
+describe("api.request result typing (InferResponse)", () => {
+  const grp = apiGroup({ name: "g", canonical: "apireq-oracle" });
+
+  it("resolves a ref to the {request, response} envelope", () => {
+    const q = query({
+      verb: "GET",
+      apiGroup: grp,
+      name: "callit",
+      stack: [s.api.request({ url: "https://x", as: "api1" })],
+      response: ref("api1"),
+    });
+    expect(q).toBeDefined();
+    expectTypeOf<InferResponse<typeof q>>().toEqualTypeOf<ApiRequestResult>();
+  });
+
+  it("webflow.request and api.microservice bind the same envelope", () => {
+    const wf = query({
+      verb: "GET",
+      apiGroup: grp,
+      name: "wf",
+      stack: [s.webflow.request({ path: "/sites", as: "r" })],
+      response: ref("r"),
+    });
+    expect(wf).toBeDefined();
+    expectTypeOf<InferResponse<typeof wf>>().toEqualTypeOf<ApiRequestResult>();
+
+    const ms = query({
+      verb: "GET",
+      apiGroup: grp,
+      name: "ms",
+      stack: [
+        s.api.microservice({
+          host: "svc",
+          path: "/p",
+          method: "GET",
+          params: {},
+          headers: [],
+          timeout: 5,
+          follow_location: true,
+          as: "r",
+        }),
+      ],
+      response: ref("r"),
+    });
+    expect(ms).toBeDefined();
+    expectTypeOf<InferResponse<typeof ms>>().toEqualTypeOf<ApiRequestResult>();
+  });
+
+  it("status is a number and result is unknown on the resolved type", () => {
+    const q = query({
+      verb: "GET",
+      apiGroup: grp,
+      name: "shape",
+      stack: [s.api.request({ url: "https://x", as: "api1" })],
+      response: ref("api1"),
+    });
+    expect(q).toBeDefined();
+    expectTypeOf<InferResponse<typeof q>["response"]["status"]>().toEqualTypeOf<number>();
+    expectTypeOf<InferResponse<typeof q>["response"]["result"]>().toEqualTypeOf<unknown>();
   });
 });

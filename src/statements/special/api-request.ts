@@ -16,7 +16,7 @@
  * (Output tab) ride the envelope where the statement carries one — today only
  * `api.request` does (its siblings are lean specs).
  */
-import type { Statement } from "../statement.js";
+import type { Statement, AsShapeBrand } from "../statement.js";
 import type { Value } from "../../values/value.js";
 import { generated } from "../generated/factories.generated.js";
 import type { OutputAuthored } from "../schema-dsl/interpret.js";
@@ -33,6 +33,29 @@ import {
 } from "./coerce.js";
 
 export type { HttpMethod };
+
+/**
+ * The `{request, response}` envelope every `Api::fetch`-backed statement binds to
+ * its `as` variable (`api.request`, `webflow.request`, `api.microservice`). Shape
+ * confirmed against the engine (`Api::fetch` in x2) and a live run: `headers` are
+ * arrays of raw `"Name: value"` lines, `result` is the response body (JSON-decoded
+ * when possible, else the raw string — hence `unknown`), `status` the HTTP code,
+ * and `error` is present only on a transport-level (curl) failure.
+ */
+export interface ApiRequestResult {
+  request: {
+    url: string;
+    method: string;
+    headers: string[];
+    params: unknown;
+  };
+  response: {
+    headers: string[];
+    result: unknown;
+    status: number;
+    error?: { code: number; message: string };
+  };
+}
 
 // ── api.request ──────────────────────────────────────────────────────────────
 
@@ -58,7 +81,9 @@ export interface ApiRequestArgs extends HttpRequestFields {
  * flags booleans. A plain-object `params` is a static `const:obj` (no nested
  * tagged values — issue #42); for dynamic params pass a `Value`.
  */
-export function apiRequest(a: ApiRequestArgs = {}): Statement {
+export function apiRequest<const As extends string = "">(
+  a: ApiRequestArgs & { as?: As } = {},
+): Statement & AsShapeBrand<As, ApiRequestResult> {
   assertSslConsistency("api.request", a);
   return generated.api.request({
     as: a.as,
@@ -66,7 +91,7 @@ export function apiRequest(a: ApiRequestArgs = {}): Statement {
     ...coerceHttpFields(a),
     description: a.description,
     output: a.output,
-  });
+  }) as Statement & AsShapeBrand<As, ApiRequestResult>;
 }
 
 // ── stream.from_request ──────────────────────────────────────────────────────
@@ -104,13 +129,15 @@ export interface WebflowRequestArgs extends HttpRequestFields {
  * `webflow.request` — call the Webflow API (`mvp:connect_webflow_api_request`).
  * Like {@link apiRequest} but addressed by `path` (the host is engine-supplied).
  */
-export function webflowRequest(a: WebflowRequestArgs = {}): Statement {
+export function webflowRequest<const As extends string = "">(
+  a: WebflowRequestArgs & { as?: As } = {},
+): Statement & AsShapeBrand<As, ApiRequestResult> {
   assertSslConsistency("webflow.request", a);
   return generated.webflow.request({
     as: a.as,
     path: coerceText(a.path),
     ...coerceHttpFields(a),
-  });
+  }) as Statement & AsShapeBrand<As, ApiRequestResult>;
 }
 
 // ── api.microservice ─────────────────────────────────────────────────────────
@@ -139,7 +166,9 @@ export interface MicroserviceArgs {
  * Typed over the generated factory; no TLS/cert fields (the engine schema omits
  * them). All request fields are required, matching the engine contract.
  */
-export function microservice(a: MicroserviceArgs): Statement {
+export function microservice<const As extends string = "">(
+  a: MicroserviceArgs & { as?: As },
+): Statement & AsShapeBrand<As, ApiRequestResult> {
   return generated.api.microservice({
     as: a.as,
     host: coerceText(a.host)!,
@@ -149,5 +178,5 @@ export function microservice(a: MicroserviceArgs): Statement {
     headers: coerceArray(a.headers)!,
     timeout: coerceInt(a.timeout)!,
     follow_location: coerceBool(a.follow_location)!,
-  });
+  }) as Statement & AsShapeBrand<As, ApiRequestResult>;
 }
