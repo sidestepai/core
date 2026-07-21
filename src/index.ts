@@ -279,7 +279,23 @@ export {
 export type { ObjectKind } from "./kinds/kind.js";
 export { functionKind, encodeFunction } from "./kinds/function.js";
 export { trigger, triggerKind, encodeTrigger } from "./kinds/trigger.js";
-export type { TriggerDef, TriggerXdo, TriggerObjType } from "./kinds/trigger.js";
+export type {
+  TriggerDef,
+  TriggerXdo,
+  TriggerObjType,
+  DatabaseActions,
+  WorkspaceActions,
+  RealtimeActions,
+  DatabaseInputs,
+} from "./kinds/trigger.js";
+// Typed input handles passed to a trigger's `stack`/`response` callback.
+export type {
+  FieldAccessor,
+  RealtimeInputs,
+  ToolsetInputs,
+  WorkspaceInputs,
+  ErrorInputs,
+} from "./kinds/trigger-handle.js";
 export {
   tool,
   toolKind,

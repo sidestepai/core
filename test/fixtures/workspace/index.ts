@@ -27,7 +27,7 @@ const onInsert = trigger.table({
   name: "user_inserted",
   objId: 1,
   actions: { insert: true },
-  stack: [setVar("x1", c.text("new user"))],
+  stack: () => [setVar("x1", c.text("new user"))],
 });
 
 const xano = new Xano()
