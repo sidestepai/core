@@ -148,6 +148,11 @@ function argSignature(spec: StatementSpec): { type: string; allOptional: boolean
     const optional = r.optional || r.default !== undefined;
     return `${r.field}${optional ? "?" : ""}: ${TS_TYPE[r.type]}`;
   });
+  // Reserved envelope authoring keys (always optional): a per-statement
+  // `description` when the envelope emits one, and `output` shaping when the
+  // statement carries an output envelope. See interpret.ts encodeFromSpec.
+  if (spec.envelope?.description) fields.push("description?: string");
+  if (spec.output) fields.push("output?: OutputAuthored");
   const allOptional = spec.rules.every((r) => r.optional || r.default !== undefined);
   return { type: fields.length ? `{ ${fields.join("; ")} }` : "Record<string, never>", allOptional };
 }
@@ -220,7 +225,7 @@ function writeFactories(entries: FactoryEntry[]): void {
  * \`npm run codegen\`.
  */
 import type { Statement } from "../statement.js";
-import type { Authored } from "../schema-dsl/interpret.js";
+import type { Authored, OutputAuthored } from "../schema-dsl/interpret.js";
 import { encodeFromSpec } from "../schema-dsl/interpret.js";
 import type { Value } from "../../values/value.js";
 import type { Comparison } from "../conditional.js";
