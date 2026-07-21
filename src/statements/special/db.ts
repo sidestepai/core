@@ -903,8 +903,13 @@ export function dbBulkAdd(args: DbBulkAddArgs): Statement {
 
 export interface DbBulkDeleteArgs<As extends string = string> {
   table: ObjectRef;
-  /** Optional filter selecting which rows to delete. */
-  where?: Value;
+  /**
+   * Filter selecting which rows to delete — the same `where` surface as
+   * `s.db.query`: `expr(...)`/`cmp(...)` comparisons, `and(...)`/`or(...)` groups,
+   * an array of those (ANDed), or a raw `Value`. Encoded into `context.search`
+   * via {@link encodeSearch}. **Omitting `where` deletes every row in the table.**
+   */
+  where?: DbWhere;
   /** Capture the deleted-row count into this stack variable. Captured literally so
    * `InferResponse` can trace a `ref` back to this statement. */
   as?: As;
@@ -913,12 +918,13 @@ export interface DbBulkDeleteArgs<As extends string = string> {
 /**
  * `db.bulk.delete <table>` — delete many rows by a search (`mvp:dbo_bulkdelete`).
  * Unlike the other bulk ops, the filter rides `context.search` (`DB::fromSearch`),
- * NOT an input entry.
+ * NOT an input entry. The `where` is encoded through the shared {@link encodeSearch}
+ * — the identical operand-based `{expression:[…]}` shape `s.db.query` emits — so the
+ * modern DSL (`expr`/`cmp`/`and`/`or`) is fully supported here too.
  *
- * @TODO(byte-verify): no golden — `context.search`'s exact clause shape (the
- *   query-builder search array) is unknown; the provided `where` value is passed
- *   through as-is and is almost certainly the wrong shape. CONFIRM before relying
- *   on it — a wrong/empty search could delete more rows than intended.
+ * @TODO(byte-verify): no `dbo_bulkdelete` golden yet — the `context.search` shape
+ *   is shared with the (source-grounded) `dbo_view` search reader, but capture a
+ *   fixture before trusting bytes. An empty/omitted `where` deletes all rows.
  *
  * Binds the **deleted-row count** (the engine's `__self: int` output), so it's
  * branded with `as` + `number` for `InferResponse` — table-independent.
@@ -927,7 +933,8 @@ export function dbBulkDelete<const As extends string = "">(
   args: DbBulkDeleteArgs<As>,
 ): DbResult<As, number> {
   const context: Record<string, unknown> = { dbo: { id: resolveRef("dbo", args.table) } };
-  if (args.where) context.search = args.where;
+  const search = encodeSearch(args.where);
+  if (search !== undefined) context.search = search;
   // Double-cast is compiler-forced, not sloppiness: this literal's `context`
   // (`Record<string, unknown>` local) and `input: never[]` don't overlap
   // `DbResult` closely enough for a direct `as` (TS2352). The brand is phantom,
