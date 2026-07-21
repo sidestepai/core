@@ -401,10 +401,11 @@ method. Payload keys use the engine's singular names.
 
 **Triggers** — all six types share one envelope discriminated by `obj_type` + a per-type
 `meta`: `trigger.table` (db), `trigger.realtime`, `trigger.mcpServer`, `trigger.agent`,
-`trigger.workspace`, `trigger.error`. A trigger's inputs are **implied by type** (fixed by
-Xano, not editable) and injected automatically — so triggers take no `input` field. Reference
-them through the typed stack handle `stack: (t) => [...]`, which exposes exactly that type's
-inputs:
+`trigger.workspace`, `trigger.error`. **A trigger's `stack` is a callback — `stack: (t) => [...]`,
+not the plain `stack: []` array the other kinds use.** A trigger's inputs are **implied by type**
+(fixed by Xano, not editable) and injected automatically — so triggers take no `input` field, and
+the typed stack handle `t` is the only way to reference them (`response: (t) => ...` on
+response-bearing types). `t` exposes exactly that type's inputs:
 
 ```ts
 // Database trigger — t.new/t.old typed against the bound table's row.

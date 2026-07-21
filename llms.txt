@@ -302,12 +302,15 @@ omit it and it derives from `name` (set it to survive a rename).
 
 ### Triggers
 
-Triggers do **not** take an `input` field — their inputs are **implied by
-type** (fixed by Xano, not editable) and injected automatically. Reference
-them through the typed **stack handle**: `stack: (t) => Statement[]` (and
-`response: (t) => ResponseDef` on response-bearing types). `t` exposes exactly
-that trigger type's inputs; a wrong name is a compile error, not a runtime
-surprise. Each factory: `trigger.{table,realtime,mcpServer,agent,workspace,error}({ name, guid?, description?, active?, tags?, ... })`.
+**A trigger's `stack` is a callback — `stack: (t) => [...]`, not the plain
+`stack: []` array that `defineFunction`/`query`/`task` use.** That's the one
+shape that doesn't carry over from the other kinds: a trigger has no
+user-declared `input`, so its inputs are **implied by type** (fixed by Xano,
+not editable) and arrive through the typed **stack handle** `t` — you can't
+reference them without it. (Response-bearing types take `response: (t) =>
+ResponseDef` too.) `t` exposes exactly that trigger type's inputs; a wrong
+name is a compile error, not a runtime surprise. Each factory:
+`trigger.{table,realtime,mcpServer,agent,workspace,error}({ name, guid?, description?, active?, tags?, ... })`.
 
 - `trigger.table({ name, table?, datasources?, actions?: {insert?,update?,delete?,truncate?}, stack })` — database trigger. `t.new` / `t.old` are the row **after** / **before** the change; `t.action` (`insert|update|delete|truncate`), `t.datasource`. Bind `table` to a `table()` handle and `t.new("col")` / `t.old("col")` are typed to that row (misspelled column = compile error). Nullability follows the enabled actions: insert → `old` is null, delete → `new` is null, update → both, truncate → neither (per the `xrt_trigger` semantics). Config-only (no response).
 - `trigger.realtime({ name, objId, actions?: {message?,join?}, stack?, response? })` — realtime channel. Inputs: `t.action` (`message|join`), `t.channel`, `t.client` (`t.client("permissions.dbo_id")`), `t.options`, `t.payload`. Response-bearing; `response` defaults to the `payload` passthrough.
