@@ -6,6 +6,7 @@ import { input } from "../../src/inputs/input.js";
 import { s } from "../../src/statements/s.js";
 import { col, inp, out, ref } from "../../src/values/value.js";
 import { expr } from "../../src/statements/conditional.js";
+import { cmp, or } from "../../src/statements/special/db-search.js";
 import { deriveGuid } from "../../src/refs/guid.js";
 import { query } from "../../src/kinds/query.js";
 import { apiGroup } from "../../src/kinds/api-group.js";
@@ -74,6 +75,22 @@ describe("addon() typed authoring — encode", () => {
     const search = a.context.search as { expression: unknown[] };
     expect(search.expression).toHaveLength(1);
     expect(a.context.dbo).toEqual({ id: deriveGuid("dbo", userTable.name) });
+  });
+
+  it("addon where inherits the extended operators + nested groups (M2 overlap)", () => {
+    const a = encodeAddon(
+      addon({
+        name: "author",
+        table: userTable,
+        output: ["id"],
+        where: or(cmp(col("name"), "ilike", inp("q")), expr(col("id"), "=", inp("uid"))),
+        input: { q: input.text(), uid: input.int() },
+      }),
+    );
+    const top = (a.context.search as { expression: { type: string; group: { expression: { op?: string; or: boolean }[] } }[] })
+      .expression;
+    expect(top[0]!.type).toBe("group");
+    expect(top[0]!.group.expression[1]!.or).toBe(true);
   });
 
   it("sort encodes context.sort as {sortBy, orderBy}", () => {

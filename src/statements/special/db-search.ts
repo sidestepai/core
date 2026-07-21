@@ -6,7 +6,6 @@
  * cycle).
  */
 import type { Value } from "../../values/value.js";
-import { encodeSearchExpression } from "../conditional.js";
 import type { Comparison } from "../conditional.js";
 
 /** Sort direction for a {@link SortDirective} — the engine's `orderBy` values. */
@@ -28,17 +27,100 @@ export interface SortDirective<C extends string = string> {
 }
 
 /**
- * A `db.query`/addon filter. Author it as a comparison (or several, ANDed) with
- * `expr(col("status"), "=", c.text("published"))` — encoded into the engine's
- * operand-based `{expression:[…]}` search shape (the same algebra as a
- * conditional `when` / a table trigger's search). A raw `Value` stays the escape
- * hatch for a pre-built clause.
+ * The full engine operator set for a search comparison (`op` values from
+ * `x2 …/XS/xs/op/*.php` `getName()`). `cmp(...)` accepts these; the conditional
+ * `expr(...)` stays intentionally narrow (`= != > < >= <=`) — see KTD3 in the
+ * db.query parity plan.
  */
-export type DbWhere = Value | Comparison | Comparison[];
+export type SearchOp =
+  | "="
+  | "=="
+  | "!="
+  | "<"
+  | "<="
+  | ">"
+  | ">="
+  | "in"
+  | "not in"
+  | "like"
+  | "not like"
+  | "ilike"
+  | "not ilike"
+  | "~"
+  | "!~"
+  | "between"
+  | "not between"
+  | "@>"
+  | "contains"
+  | "not contains"
+  | "includes"
+  | "not includes"
+  | "overlaps"
+  | "not overlaps"
+  | "search";
 
-/** A `Comparison` (`{left, op, right}`) vs a tagged `Value` (`{value, tag, filters}`). */
-function isComparison(w: DbWhere): w is Comparison {
-  return typeof w === "object" && w !== null && !Array.isArray(w) && "op" in w && "left" in w;
+const SEARCH_OPS = new Set<string>([
+  "=", "==", "!=", "<", "<=", ">", ">=", "in", "not in", "like", "not like", "ilike",
+  "not ilike", "~", "!~", "between", "not between", "@>", "contains", "not contains",
+  "includes", "not includes", "overlaps", "not overlaps", "search",
+]);
+
+/** A search comparison over the full {@link SearchOp} set, with an optional `ignore_empty`. */
+export interface SearchComparison {
+  left: Value;
+  op: SearchOp;
+  right: Value;
+  /** Skip this clause when the resolved right value is empty (engine `right.ignore_empty`). */
+  ignoreEmpty?: boolean;
+}
+
+/** A nested AND/OR group of search nodes (`context.search.expression` `{type:"group"}`). */
+export interface SearchGroup {
+  /** How the group's children join each other: OR (`true`) or AND (`false`). */
+  or: boolean;
+  children: SearchNode[];
+}
+
+/** A node in the search tree: a narrow `expr()` comparison, a `cmp()` comparison, or an and/or group. */
+export type SearchNode = Comparison | SearchComparison | SearchGroup;
+
+/**
+ * A `db.query`/addon filter. Author it as a comparison (or several, ANDed) with
+ * `expr(col("status"), "=", c.text("published"))` or, for the full operator set,
+ * `cmp(col("tags"), "overlaps", inp("t"))`. Compose nested boolean logic with
+ * `and(...)` / `or(...)`. A raw `Value` stays the escape hatch for a pre-built
+ * clause. Encoded into the engine's operand-based `{expression:[…]}` search shape.
+ */
+export type DbWhere = Value | SearchNode | SearchNode[];
+
+/**
+ * Build a search comparison over the full operator set (`in`, `like`, `ilike`,
+ * `between`, `contains`, `overlaps`, `@>`, `~`, `search`, …). Distinct from the
+ * conditional `expr()`, which stays narrow. `opts.ignoreEmpty` skips the clause
+ * when the resolved right value is empty.
+ */
+export function cmp(
+  left: Value,
+  op: SearchOp,
+  right: Value,
+  opts?: { ignoreEmpty?: boolean },
+): SearchComparison {
+  if (!SEARCH_OPS.has(op)) {
+    throw new Error(
+      `db search: unsupported operator "${op}". Supported: ${[...SEARCH_OPS].join(", ")}.`,
+    );
+  }
+  return { left, op, right, ignoreEmpty: opts?.ignoreEmpty };
+}
+
+/** Group search nodes joined by AND (`and(a, b, or(c, d))`). */
+export function and(...children: SearchNode[]): SearchGroup {
+  return { or: false, children };
+}
+
+/** Group search nodes joined by OR (`or(a, b)`). */
+export function or(...children: SearchNode[]): SearchGroup {
+  return { or: true, children };
 }
 
 /** A tagged {@link Value} (`{value, tag, filters}`) — the raw-search escape hatch. */
@@ -46,11 +128,47 @@ function isValue(w: unknown): w is Value {
   return typeof w === "object" && w !== null && !Array.isArray(w) && "tag" in w && "value" in w;
 }
 
-/** Normalize a `DbWhere` to `Comparison[]`, or `null` for the raw-`Value` escape hatch. */
-function toComparisons(w: DbWhere): Comparison[] | null {
-  if (Array.isArray(w)) return w;
-  if (isComparison(w)) return [w];
-  return null;
+/** An and/or group node. */
+function isGroup(w: unknown): w is SearchGroup {
+  return typeof w === "object" && w !== null && !Array.isArray(w) && "children" in w;
+}
+
+/** A comparison node (narrow `expr()` or full `cmp()`) — has `left` + `op`, not a tagged value. */
+function isCmpNode(w: unknown): w is Comparison | SearchComparison {
+  return typeof w === "object" && w !== null && !Array.isArray(w) && "op" in w && "left" in w;
+}
+
+/** Encode a tagged value to the `{operand, tag, filters}` search operand shape. */
+function toOperand(v: Value): { operand: string; tag: string; filters: unknown[] } {
+  return { operand: v.value, tag: v.tag, filters: v.filters };
+}
+
+/** One `{type:"statement", or, group:{expression:[]}, statement:{op,left,right}}` node. */
+function toStatementNode(node: Comparison | SearchComparison, or: boolean): unknown {
+  const right: Record<string, unknown> = toOperand(node.right);
+  if ((node as SearchComparison).ignoreEmpty) right.ignore_empty = true;
+  return {
+    type: "statement",
+    or,
+    group: { expression: [] },
+    statement: { op: node.op, left: toOperand(node.left), right },
+  };
+}
+
+/**
+ * Encode a container of sibling nodes into `expression[]`. `joinOr` decides how
+ * siblings after the first join the previous one (the engine's per-node `or`):
+ * AND (`false`) for a flat `where`/`and(...)`, OR (`true`) for `or(...)`. The
+ * first sibling never ORs to a nonexistent predecessor.
+ */
+function encodeContainer(children: SearchNode[], joinOr: boolean): unknown[] {
+  return children.map((child, i) => {
+    const or = joinOr && i > 0;
+    if (isGroup(child)) {
+      return { type: "group", or, group: { expression: encodeContainer(child.children, child.or) } };
+    }
+    return toStatementNode(child, or);
+  });
 }
 
 /**
@@ -62,31 +180,33 @@ function toComparisons(w: DbWhere): Comparison[] | null {
  * `context.search` directly, but cannot be combined with comparison clauses.
  */
 export function encodeSearch(where?: DbWhere, additionalWhere?: DbWhere): unknown {
-  const clauses: Comparison[] = [];
+  const nodes: SearchNode[] = [];
   let raw: unknown;
   for (const w of [where, additionalWhere]) {
     if (!w) continue;
-    const cmps = toComparisons(w);
-    if (cmps) clauses.push(...cmps);
+    if (Array.isArray(w)) nodes.push(...w);
+    else if (isGroup(w) || isCmpNode(w)) nodes.push(w);
     else if (isValue(w)) raw = w;
     else {
-      // Not comparison-shaped and not a tagged `Value` — a malformed `where`
+      // Not comparison/group-shaped and not a tagged `Value` — a malformed `where`
       // (e.g. `op` mistyped as `operator`) would otherwise slip through as a
       // garbage `context.search`. Fail at the authoring site, not deep in the engine.
       throw new Error(
-        "db search: `where` must be an expr(...) comparison, an array of comparisons, or a " +
-          "tagged Value (inp/ref/col/c.*) — got an object that is neither. Check for a typo " +
-          "(e.g. `operator` instead of `op`).",
+        "db search: `where` must be an expr(...)/cmp(...) comparison, an and()/or() group, an " +
+          "array of those, or a tagged Value (inp/ref/col/c.*) — got an object that is neither. " +
+          "Check for a typo (e.g. `operator` instead of `op`).",
       );
     }
   }
-  if (raw !== undefined && clauses.length) {
+  if (raw !== undefined && nodes.length) {
     throw new Error(
-      "db search: a raw Value `where` cannot be combined with `expr(...)` clauses — " +
+      "db search: a raw Value `where` cannot be combined with expr()/cmp()/and()/or() clauses — " +
         "use one form or the other.",
     );
   }
-  if (clauses.length) return encodeSearchExpression(clauses);
+  // Top-level siblings are ANDed (the engine has exactly one `search`, so
+  // `where` + `additionalWhere` concatenate into one ANDed `expression[]`).
+  if (nodes.length) return { expression: encodeContainer(nodes, false) };
   if (raw !== undefined) return raw;
   return undefined;
 }

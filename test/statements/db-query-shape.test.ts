@@ -24,6 +24,7 @@ import { table } from "../../src/kinds/table.js";
 import { f } from "../../src/fields/catalog.js";
 import { c, col, auth, inp } from "../../src/values/value.js";
 import { expr } from "../../src/statements/conditional.js";
+import { cmp, and, or } from "../../src/statements/special/db-search.js";
 import { normalize, loadFixture } from "../conformance/harness.js";
 
 const note = table({
@@ -237,5 +238,83 @@ describe("db.query (mvp:dbo_view) emit shape", () => {
         additionalWhere: expr(col("user_id"), "=", auth("id")),
       }),
     ).toThrow(/raw Value/);
+  });
+
+  // --- Extended operators + nested groups (M2: U4/U5) ---
+
+  it("cmp() supports the extended operator set (in/like/overlaps/@>/...)", () => {
+    const enc = encodeStatement(dbQuery({ table: note, where: cmp(col("title"), "ilike", inp("q")) }));
+    const stmt = (
+      enc.context as {
+        search: { expression: { statement: { op: string; left: unknown; right: unknown } }[] };
+      }
+    ).search.expression[0]!.statement;
+    expect(stmt.op).toBe("ilike");
+    expect(stmt.left).toEqual({ operand: "title", tag: "col", filters: [] });
+    expect(stmt.right).toEqual({ operand: "q", tag: "input", filters: [] });
+  });
+
+  it("cmp() ignoreEmpty sets right.ignore_empty; default omits it", () => {
+    const withFlag = encodeStatement(
+      dbQuery({ table: note, where: cmp(col("title"), "=", inp("q"), { ignoreEmpty: true }) }),
+    );
+    const withoutFlag = encodeStatement(dbQuery({ table: note, where: cmp(col("title"), "=", inp("q")) }));
+    const r1 = (withFlag.context as { search: { expression: { statement: { right: Record<string, unknown> } }[] } })
+      .search.expression[0]!.statement.right;
+    const r2 = (withoutFlag.context as { search: { expression: { statement: { right: Record<string, unknown> } }[] } })
+      .search.expression[0]!.statement.right;
+    expect(r1.ignore_empty).toBe(true);
+    expect(r2).not.toHaveProperty("ignore_empty");
+  });
+
+  it("cmp() rejects an unsupported operator at authoring time", () => {
+    // @ts-expect-error — "like?" is not a SearchOp
+    expect(() => cmp(col("title"), "like?", inp("q"))).toThrow(/unsupported operator/);
+  });
+
+  it("or() emits a group node; second child carries or:true", () => {
+    const enc = encodeStatement(
+      dbQuery({
+        table: note,
+        where: or(expr(col("user_id"), "=", auth("id")), cmp(col("title"), "ilike", inp("q"))),
+      }),
+    );
+    const top = (enc.context as { search: { expression: { type: string; group: { expression: { or: boolean }[] } }[] } })
+      .search.expression;
+    expect(top[0]!.type).toBe("group");
+    const kids = top[0]!.group.expression;
+    expect(kids[0]!.or).toBe(false); // first child never ORs to a nonexistent predecessor
+    expect(kids[1]!.or).toBe(true); // second ORs to the first
+  });
+
+  it("nested and(a, or(b, c)) emits a group containing a nested group", () => {
+    const enc = encodeStatement(
+      dbQuery({
+        table: note,
+        where: and(
+          expr(col("user_id"), "=", auth("id")),
+          or(cmp(col("title"), "ilike", inp("q")), expr(col("title"), "=", c.text("x"))),
+        ),
+      }),
+    );
+    const top = (enc.context as { search: { expression: { type: string; group: { expression: { type: string }[] } }[] } })
+      .search.expression;
+    expect(top[0]!.type).toBe("group");
+    const kids = top[0]!.group.expression;
+    expect(kids[0]!.type).toBe("statement");
+    expect(kids[1]!.type).toBe("group"); // the nested or(...)
+  });
+
+  it("flat where: [expr, expr] stays ANDed (or:false) — back-compat", () => {
+    const enc = encodeStatement(
+      dbQuery({
+        table: note,
+        where: [expr(col("user_id"), "=", auth("id")), expr(col("title"), "!=", c.text(""))],
+      }),
+    );
+    const top = (enc.context as { search: { expression: { or: boolean; type: string }[] } })
+      .search.expression;
+    expect(top).toHaveLength(2);
+    expect(top.every((n) => n.or === false && n.type === "statement")).toBe(true);
   });
 });
