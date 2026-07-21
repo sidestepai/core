@@ -140,8 +140,10 @@ describe("sidestep sandbox deploy (OAuth, replaces push)", () => {
 
     // No machine-readable JSON dump on an interactive terminal…
     expect(stdoutChunks.join("")).toBe("");
-    // …but the workspace still surfaces as a human-readable detail line on stderr.
-    expect(stderrChunks.join("")).toContain("workspace: example (#1)");
+    // …but the workspace still surfaces on the human-readable "Backend deployed" line.
+    expect(stderrChunks.join("")).toContain("Backend deployed to workspace example (#1)");
+    // …and the backend URL is highlighted (bold+cyan), not dropped.
+    expect(stderrChunks.join("")).toContain("https://x.dev.xano.io/tenant/abc");
   });
 
   it("uploads an existing bundle with --bundle, without compiling", async () => {

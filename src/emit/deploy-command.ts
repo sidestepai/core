@@ -30,7 +30,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { exportBundleJson, type ParsedArgs } from "./cli.js";
 import { getAccessToken, type ResolvedAuth } from "../auth/token.js";
 import { postDeploy } from "../deploy/client.js";
-import { step, success, warn, detail } from "./ui.js";
+import { step, success, warn, detail, link } from "./ui.js";
 
 const SANDBOX_DEPLOY_PATH = "/api:meta/sandbox/bundle";
 
@@ -97,8 +97,8 @@ async function deployParentStatic(
   const { resolveScopedWorkspaceId } = await import("../deploy/workspace.js");
   const { deployStaticHost } = await import("../deploy/static-host.js");
 
-  step(`Deploying static frontend ${dir}${host ? ` (host: ${host})` : ""}`);
   const workspaceId = await resolveScopedWorkspaceId(auth);
+  step(`Deploying static frontend ${dir} → workspace #${workspaceId}${host ? ` (host: ${host})` : ""}`);
   const sh = await deployStaticHost({
     host,
     dir,
@@ -107,19 +107,24 @@ async function deployParentStatic(
     accessToken: auth.access_token,
     env,
   });
-  success("Static host deployed");
-  if (sh.url) detail(sh.url);
+
+  // Report config injection as its own outcome before the deploy line, so the
+  // sub-steps read as a checklist that ends on the highlighted URL.
   const globals = Object.keys(env).map((k) => `window.${k}`);
-  if (globals.length === 0) return { url: sh.url };
-  if (sh.envInjected) {
-    detail(`Config injected into index.html: ${globals.join(", ")}`);
-  } else if (explicit) {
-    // The caller asked for config via --static-env and it could not be delivered — warn loudly.
-    warn(`Config not injected — no <head> in a root index.html to anchor to. ${globals.join(", ")} unset.`);
-  } else {
-    // Only the auto-seeded XANO_HOST was in play; a static host with no root index.html is a fine, quiet outcome.
-    detail(`No root index.html to inject window.XANO_HOST into — skipped.`);
+  if (globals.length > 0) {
+    if (sh.envInjected) {
+      success(`Config injected into index.html: ${globals.join(", ")}`);
+    } else if (explicit) {
+      // The caller asked for config via --static-env and it could not be delivered — warn loudly.
+      warn(`Config not injected — no <head> in a root index.html to anchor to. ${globals.join(", ")} unset.`);
+    } else {
+      // Only the auto-seeded XANO_HOST was in play; a static host with no root index.html is a fine, quiet outcome.
+      detail(`No root index.html to inject window.XANO_HOST into — skipped.`);
+    }
   }
+
+  success("Static host deployed");
+  if (sh.url) link(sh.url);
   return { url: sh.url };
 }
 
@@ -138,8 +143,12 @@ export async function runDeployCommand(args: ParsedArgs): Promise<void> {
   const auth = await getAccessToken(args);
   const resp = await postDeploy({ bundle, endpointPath: SANDBOX_DEPLOY_PATH, auth, query });
 
-  success("Backend deployed");
-  if (resp.baseUrl) detail(resp.baseUrl);
+  success(
+    resp.workspace?.name
+      ? `Backend deployed to workspace ${resp.workspace.name}${resp.workspace.id !== undefined ? ` (#${resp.workspace.id})` : ""}`
+      : "Backend deployed",
+  );
+  if (resp.baseUrl) link(resp.baseUrl);
 
   const summary: DeploySummary = {
     baseUrl: resp.baseUrl,
@@ -166,13 +175,8 @@ export async function runDeployCommand(args: ParsedArgs): Promise<void> {
   // stdout is the machine-readable data channel: emit the projected, secret-free
   // summary as JSON when it's piped or redirected (`… deploy | jq`, CI logs). When
   // stdout is an interactive terminal, a raw JSON dump under the formatted progress
-  // is just noise — the URLs are already shown, so add only the workspace line.
-  if (process.stdout.isTTY) {
-    if (summary.workspace?.name) {
-      const { id, name } = summary.workspace;
-      detail(`workspace: ${name}${id !== undefined ? ` (#${id})` : ""}`);
-    }
-  } else {
+  // is just noise — the workspace and URLs are already shown as progress lines.
+  if (!process.stdout.isTTY) {
     process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
   }
 }
