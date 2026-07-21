@@ -1,0 +1,137 @@
+{
+  "context": {},
+  "name": "mvp:api_request",
+  "as": "api1",
+  "input": [
+    {
+      "name": "url",
+      "value": "https://www.xano.com",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "method",
+      "value": "GET",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "params",
+      "value": "{}",
+      "tag": "const:obj",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "headers",
+      "value": "[]",
+      "tag": "const:array",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "timeout",
+      "value": 10,
+      "tag": "const:int",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "follow_location",
+      "value": "true",
+      "tag": "const:bool",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "verify_host",
+      "value": "true",
+      "tag": "const:bool",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "verify_peer",
+      "value": "true",
+      "tag": "const:bool",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "ca_certificate",
+      "value": "",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "certificate",
+      "value": "",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "certificate_pass",
+      "value": "",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "private_key",
+      "value": "",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "private_key_pass",
+      "value": "",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    }
+  ],
+  "_xsid": "f:dc420efa-e407-4455-bd68-7b7c94603c96",
+  "@guid": "f:dc420efa-e407-4455-bd68-7b7c94603c96",
+  "@index": [
+    "undefined"
+  ],
+  "description": "this is a test",
+  "settings_registry": [],
+  "output": {
+    "customize": false,
+    "filters": [],
+    "items": []
+  },
+  "addon": []
+}
