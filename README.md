@@ -559,14 +559,16 @@ passthrough; an explicit `context.search`/`sort`/`return` wins over `where`/
 `sort`/`cardinality`.
 
 *Attaching it.* Reference the addon by its handle (or a bare name), map its
-inputs (bind a parent-row column with `out(col)`), and land it on the row at a
-dotted `as` (`offset.alias`). Addons nest via `children`:
+inputs (bind a parent-row column with `out(col)`), and land it on the row at an
+`as` destination — a bare alias (`_author`) or a dotted `offset.alias`, authored
+**relative to a row**. Addons nest via `children`:
 
 ```ts
 s.db.query({
   table: post,
+  paging: { per_page: 20 },
   addon: [
-    { addon: authorAddon, as: "items._author", input: { user_id: out("author") } },
+    { addon: authorAddon, as: "_author", input: { user_id: out("author") } },
   ],
   as: "rows",
 }),
@@ -580,8 +582,11 @@ last segment of its `as` — here `_author`) is merged onto the row shape in
 `aggregate`) — no cast needed. An attachment-level
 `output` narrows an object/array graft further (`output: ["name"]` → `{ name }[]`). A
 **bare-name** reference still grafts `unknown` (the SDK can't shape it), so
-narrow it at the call site. With `paging` the alias lands inside each `items[]`
-element; without it, on each bare row.
+narrow it at the call site. Author `as` relative to a row (`_author`); when the
+query returns a metadata paging envelope (any `paging` with metadata on), the
+`items[]` offset is prefixed for you so the addon grafts onto each `items[]`
+element — without paging it lands on each bare row. (Writing `items[]` yourself
+is tolerated and not double-prefixed.)
 
 If an addon's alias **shadows an existing column** on the queried table, the
 build throws — the engine would silently overwrite that column at runtime.

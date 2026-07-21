@@ -319,6 +319,9 @@ function entry(name: string, v: Value, ignore = false): RichInput {
 interface EnvelopeOpts {
   output?: readonly string[];
   addon?: readonly AddonSpec[];
+  /** Paging-envelope offset (`"items[]"`) prefixed onto top-level addons when the
+   * query returns a metadata paging envelope. Set only by `dbQuery`. */
+  addonOffset?: string;
 }
 
 /**
@@ -330,7 +333,7 @@ interface EnvelopeOpts {
 function envelope(
   opts: EnvelopeOpts = {},
 ): Pick<Statement, "description" | "settings_registry" | "output" | "addon"> {
-  const { output: outputCols, addon: addons } = opts;
+  const { output: outputCols, addon: addons, addonOffset } = opts;
   return {
     description: "",
     settings_registry: [],
@@ -341,7 +344,7 @@ function envelope(
       : { customize: false, filters: [], items: [] },
     // `encodeAddons` returns `[]` when omitted, preserving the empty-`addon:[]`
     // default byte-for-byte for statements that attach none.
-    addon: encodeAddons(addons),
+    addon: encodeAddons(addons, addonOffset),
   };
 }
 
@@ -1279,7 +1282,9 @@ export interface DbQueryArgs<
   output?: Cols;
   /** Attach addons to enrich each returned row (see {@link AddonSpec}). Each
    * addon's alias (the last segment of its `as`) is merged onto the row shape in
-   * `InferResponse` as an `unknown`-typed key — narrow it at the call site. */
+   * `InferResponse` as an `unknown`-typed key — narrow it at the call site. Author
+   * `as` relative to a row (`"_user"`); when the query returns a metadata paging
+   * envelope, the `items[]` offset is prefixed automatically. */
   addon?: A;
   /** Capture the result list into this stack variable. Captured literally so
    * `InferResponse` can trace a `ref` back to this statement. */
@@ -1343,12 +1348,24 @@ export function dbQuery<
     context.return = encodeReturn(returnType, args.sort, args.paging, false, args.distinct, args.aggregate);
     if (simpleExternal) context.simpleExternal = simpleExternal;
   }
+  // A `list` query with paging enabled + metadata on returns a paging envelope,
+  // so its rows live under `items[]` — top-level addons must graft there. Paging
+  // is enabled by a page/per_page/offset field or a classic `external` blob; the
+  // frontend's return-type editor applies the identical `items[]` prefix.
+  const usesPagingEnvelope =
+    returnType === "list" &&
+    (hasPageField(args.paging) || args.external !== undefined) &&
+    (args.paging?.metadata ?? true);
   return {
     name: "mvp:dbo_view",
     context,
     as: args.as ?? "",
     input: [],
-    ...envelope({ output: args.output, addon: args.addon }),
+    ...envelope({
+      output: args.output,
+      addon: args.addon,
+      addonOffset: usesPagingEnvelope ? "items[]" : undefined,
+    }),
   } as unknown as DbResult<As, QueryResult<RowShapeOf<T, Cols>, A, P, RT, E, AG>>;
 }
 
