@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { fl, FILTER_NAMES, FILTER_SPECS } from "../../src/values/generated/filters.generated.js";
-import { c } from "../../src/values/value.js";
+import { c, ref } from "../../src/values/value.js";
 
 const ROOT = join(import.meta.dirname, "../..");
 
@@ -63,6 +63,58 @@ describe("fl.* filter catalog", () => {
     }
     // A direction-neutral filter carries no such note.
     expect(FILTER_SPECS["to_upper"]?.description ?? "").not.toMatch(/Direction:/);
+  });
+
+  it("path-taking filters accept a bare string path, coercing it to c.text (#76)", () => {
+    // The natural spelling `fl.set("count", …)` now type-checks and is
+    // byte-identical to the wrapped `fl.set(c.text("count"), …)` form.
+    expect(fl.set("count", ref("count"))).toEqual(fl.set(c.text("count"), ref("count")));
+    expect(fl.set("count", ref("count"))).toEqual({
+      name: "set",
+      disabled: false,
+      arg: [c.text("count"), ref("count")],
+    });
+    // The whole path-taking family (all 20 object-manipulation filters whose arg
+    // is named `path`) coerces identically — not just the `set` siblings.
+    expect(fl.set_conditional("k", ref("v"), ref("cond")).arg[0]).toEqual(c.text("k"));
+    expect(fl.set_ifnotempty("k", ref("v")).arg[0]).toEqual(c.text("k"));
+    expect(fl.set_ifnotnull("k", ref("v")).arg[0]).toEqual(c.text("k"));
+    expect(fl.get("count").arg[0]).toEqual(c.text("count"));
+    expect(fl.has("count").arg[0]).toEqual(c.text("count"));
+    expect(fl.unset("count").arg[0]).toEqual(c.text("count"));
+    expect(fl.index_by("id").arg[0]).toEqual(c.text("id"));
+  });
+
+  it("coerces the path arg by name even when it is not first (append) (#76)", () => {
+    // `append(value, path, …)` — the coerced arg is the second, positionally.
+    expect(fl.append(ref("item"), "items")).toEqual({
+      name: "append",
+      disabled: false,
+      arg: [ref("item"), c.text("items")],
+    });
+  });
+
+  it("coerces path across the varied positional shapes of the family (#76)", () => {
+    // `fsort(path, dir?, flag?)` — path first, two optional args trail it.
+    expect(fl.fsort("scores.value").arg[0]).toEqual(c.text("scores.value"));
+    // Single-arg `filter_*` family — path is the only arg.
+    expect(fl.filter_empty("items")).toEqual({ name: "filter_empty", disabled: false, arg: [c.text("items")] });
+    expect(fl.filter_null("items").arg[0]).toEqual(c.text("items"));
+    // `array_remove(value, path, strict?)` — path second, a trailing arg after it.
+    expect(fl.array_remove(ref("x"), "items").arg[1]).toEqual(c.text("items"));
+  });
+
+  it("a dynamic Value path still passes through unchanged (#76)", () => {
+    const dyn = ref("dynamicKey");
+    expect(fl.set(dyn, ref("v")).arg[0]).toBe(dyn);
+    expect(fl.get(dyn).arg[0]).toBe(dyn);
+  });
+
+  it("only the path arg is coerced — other args still require a Value (#76)", () => {
+    // @ts-expect-error — the value arg is not a coerced path; a bare string is rejected.
+    fl.set("count", "not-a-value");
+    // @ts-expect-error — get's `default` arg is a plain Value, not a coerced path.
+    fl.get("count", "not-a-value");
   });
 
   it("the committed generated file is fresh vs the vendor snapshot", () => {
