@@ -3,7 +3,8 @@ import { query } from "../../src/kinds/query.js";
 import { apiGroup } from "../../src/kinds/api-group.js";
 import { table } from "../../src/kinds/table.js";
 import { f } from "../../src/fields/catalog.js";
-import { ref, out, c } from "../../src/values/value.js";
+import { ref, out, c, inp } from "../../src/values/value.js";
+import { input } from "../../src/inputs/input.js";
 import { s } from "../../src/statements/s.js";
 import type { InferResponse } from "../../src/responses/infer.js";
 import type { InferRow } from "../../src/kinds/table.js";
@@ -90,6 +91,38 @@ describe("db.query paging envelope + addon response typing", () => {
       itemsTotal: number;
       pageTotal: number;
     }>();
+  });
+
+  it("input-bound page (Value) still yields the paging envelope (issue #66)", () => {
+    const q = query({
+      verb: "GET",
+      apiGroup: group,
+      name: "q4b",
+      stack: [s.db.query({ table: book, paging: { page: inp("page"), per_page: 20 }, as: "rows" })],
+      input: { page: input.int({ default: 1 }) },
+      response: ref("rows"),
+    });
+    expectTypeOf<InferResponse<typeof q>>().toEqualTypeOf<{
+      items: Book[];
+      itemsReceived: number;
+      curPage: number;
+      nextPage: number | null;
+      prevPage: number | null;
+      offset: number;
+      perPage: number;
+    }>();
+  });
+
+  it("search/sort-only paging (no page field) → bare row list, not the truncated envelope", () => {
+    const q = query({
+      verb: "GET",
+      apiGroup: group,
+      name: "q4c",
+      stack: [s.db.query({ table: book, paging: { search: inp("q"), sort: inp("s") }, as: "rows" })],
+      input: { q: input.text(), s: input.text() },
+      response: ref("rows"),
+    });
+    expectTypeOf<InferResponse<typeof q>>().toEqualTypeOf<Book[]>();
   });
 
   // `toEqualTypeOf` is finicky comparing an `unknown`-valued key across a

@@ -169,14 +169,30 @@ type PagingEnvelope<Items, Totals extends boolean> = Prettify<
 >;
 
 /**
- * Whether a `paging` arg produces the metadata envelope: present, and not
- * explicitly `metadata:false` (the engine default is `metadata:true`).
+ * Whether a `paging` arg carries a page/per_page/offset field (static or a
+ * `Value`) — the runtime gate that activates pagination. A `search`/`sort`-only
+ * `paging` has no such field, so it does not produce the envelope.
+ */
+type HasPageFieldT<P> = P extends { page: unknown }
+  ? true
+  : P extends { per_page: unknown }
+    ? true
+    : P extends { offset: unknown }
+      ? true
+      : false;
+
+/**
+ * Whether a `paging` arg produces the metadata envelope: it activates pagination
+ * (a page/per_page/offset field is present) and is not explicitly `metadata:false`
+ * (the engine default is `metadata:true`).
  */
 type HasPagingEnvelope<P> = P extends undefined
   ? false
   : P extends { metadata: false }
     ? false
-    : true;
+    : HasPageFieldT<P> extends true
+      ? true
+      : false;
 
 /** The `totals` flag of a `paging` arg — literal `true` only when set explicitly. */
 type PagingTotals<P> = P extends { totals: true } ? true : false;
@@ -871,26 +887,68 @@ export function dbBulkUpdate(args: DbBulkWriteArgs): Statement {
 }
 
 /**
- * Static paging controls for `db.query`. Applied by the engine — these land in
- * `context.return.list.paging` (with `enabled:true`) and mirror the engine
- * schema's `return.list.paging` block: `page=1`, `per_page=25`, `offset=0`,
- * `totals=false`, `metadata=true`.
+ * Paging controls for `db.query`. Static controls (`page`/`per_page`/`offset` as
+ * plain numbers) land in `context.return.list.paging` (with `enabled:true`) and
+ * mirror the engine schema's `return.list.paging` block: `page=1`, `per_page=25`,
+ * `offset=0`, `totals=false`, `metadata=true`.
  *
- * Values are plain numbers, not {@link Value}s: the engine's `return.list.paging`
- * fields are typed `int`. Dynamic, input-bound paging (a `per_page` fed from a
- * request input) is a separate engine surface (`simpleExternal`/`external`) that
- * is out of scope here.
+ * **Input-bound (dynamic) paging (issue #66):** pass a {@link Value} (e.g.
+ * `inp("page")`) for `page`/`per_page`/`offset` instead of a number and it is
+ * emitted into `context.simpleExternal.<field>` as a tagged `{value,tag,filters}`
+ * (byte shape from the `simpleExternal` golden — the inner key is `value`, not
+ * `operand`), while the static block stays as the engine's baseline/fallback and
+ * the gate (`enabled:true`). `search`/`sort` accept a {@link Value} for a
+ * dynamic custom-query / sort override; the engine reads those unconditionally.
+ *
+ * The `enabled:true` gate is keyed on whether a **page/per_page/offset** field is
+ * present (static or `Value`) — a `paging` object carrying *only* `search`/`sort`
+ * leaves `enabled:false`, so a dynamic-search-only override does not silently
+ * activate default pagination and truncate the result to 25 rows.
  *
  * Note `metadata:true` (the default) wraps the result in a paging envelope
  * (`{ items, curPage, nextPage, … }`) rather than returning a bare row list; pass
- * `metadata:false` to keep the bare array `db.query` otherwise types.
+ * `metadata:false` to keep the bare array. The envelope only applies when a
+ * page/per_page/offset field is present.
  */
 export interface DbPaging {
-  page?: number;
-  per_page?: number;
-  offset?: number;
+  page?: number | Value;
+  per_page?: number | Value;
+  offset?: number | Value;
   totals?: boolean;
   metadata?: boolean;
+  /** Dynamic custom-query override (`context.simpleExternal.search`) — a {@link Value}, ANDed onto the static `where`. */
+  search?: Value;
+  /** Dynamic sort override (`context.simpleExternal.sort`) — a {@link Value}; replaces the static sort at runtime. */
+  sort?: Value;
+}
+
+/** A `paging` value that is a tagged {@link Value} (input-bound) vs a plain number. */
+function isPagingValue(x: unknown): x is Value {
+  return typeof x === "object" && x !== null && "tag" in x && "value" in x && "filters" in x;
+}
+
+/** Whether a `paging` arg carries a page/per_page/offset field (static or `Value`) — the engine's paging gate. */
+function hasPageField(paging?: DbPaging): boolean {
+  return (
+    !!paging &&
+    (paging.page !== undefined || paging.per_page !== undefined || paging.offset !== undefined)
+  );
+}
+
+/**
+ * The `context.simpleExternal` block for input-bound paging: one tagged
+ * `{value,tag,filters}` entry per `page`/`per_page`/`offset`/`search`/`sort`
+ * field authored as a {@link Value}. Numeric fields ride the static block
+ * instead, so they are omitted here. Returns `undefined` when nothing is dynamic.
+ */
+function encodeSimpleExternal(paging?: DbPaging): Record<string, unknown> | undefined {
+  if (!paging) return undefined;
+  const out: Record<string, unknown> = {};
+  for (const k of ["page", "per_page", "offset", "search", "sort"] as const) {
+    const v = paging[k];
+    if (isPagingValue(v)) out[k] = { value: v.value, tag: v.tag, filters: v.filters };
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 /**
@@ -902,16 +960,24 @@ export interface DbPaging {
  */
 function encodeReturn(sort?: SortDirective[], paging?: DbPaging): unknown {
   const sortEls = encodeSort(sort);
-  const pagingObj = paging
-    ? {
-        enabled: true,
-        page: paging.page ?? 1,
-        offset: paging.offset ?? 0,
-        per_page: paging.per_page ?? 25,
-        metadata: paging.metadata ?? true,
-        totals: paging.totals ?? false,
-      }
-    : { enabled: false, page: 1, offset: 0, per_page: 25, metadata: true, totals: false };
+  // Static baseline int: an author-supplied number wins; a `Value` (input-bound)
+  // field rides `context.simpleExternal` instead, so the static block keeps the
+  // engine default as the fallback baseline.
+  const staticInt = (v: number | Value | undefined, def: number): number =>
+    typeof v === "number" ? v : def;
+  // `enabled:true` gates the engine's paging (and the simpleExternal page/per_page/
+  // offset overrides). Keyed on a page/per_page/offset field being present — a
+  // `search`/`sort`-only `paging` must NOT flip it on (else default pagination
+  // activates and truncates the result to 25 rows).
+  const enabled = hasPageField(paging);
+  const pagingObj = {
+    enabled,
+    page: staticInt(paging?.page, 1),
+    offset: staticInt(paging?.offset, 0),
+    per_page: staticInt(paging?.per_page, 25),
+    metadata: paging?.metadata ?? true,
+    totals: paging?.totals ?? false,
+  };
   return { type: "list", list: { distinct: "auto", sort: sortEls, paging: pagingObj } };
 }
 
@@ -981,6 +1047,10 @@ export function dbQuery<
   // not a bare bool — the shape `MVP::convertLockToConfig` reads.
   if (args.lock !== undefined) context.lock = c.bool(args.lock);
   context.return = encodeReturn(args.sort, args.paging);
+  // Input-bound paging (issue #66): `Value`-typed page/per_page/offset/search/sort
+  // ride `context.simpleExternal` on top of the static block (which is the gate).
+  const simpleExternal = encodeSimpleExternal(args.paging);
+  if (simpleExternal) context.simpleExternal = simpleExternal;
   return {
     name: "mvp:dbo_view",
     context,

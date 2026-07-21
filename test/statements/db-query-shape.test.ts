@@ -22,7 +22,7 @@ import { encodeStatement } from "../../src/statements/statement.js";
 import { deriveGuid } from "../../src/refs/guid.js";
 import { table } from "../../src/kinds/table.js";
 import { f } from "../../src/fields/catalog.js";
-import { c, col, auth } from "../../src/values/value.js";
+import { c, col, auth, inp } from "../../src/values/value.js";
 import { expr } from "../../src/statements/conditional.js";
 import { normalize, loadFixture } from "../conformance/harness.js";
 
@@ -116,6 +116,53 @@ describe("db.query (mvp:dbo_view) emit shape", () => {
     const paging = (enc.context as { return: { list: { paging: { enabled: boolean } } } })
       .return.list.paging;
     expect(paging.enabled).toBe(false);
+  });
+
+  // --- Input-bound paging (issue #66) ---
+
+  it("input-bound page → context.simpleExternal.page tagged value; static block stays the gate", () => {
+    const enc = encodeStatement(
+      dbQuery({ table: note, paging: { page: inp("page"), per_page: 20 }, as: "rows" }),
+    );
+    expectShape("db_view_simple_external", enc);
+  });
+
+  it("a Value paging field forces enabled:true (the engine gate) with the static default baseline", () => {
+    const enc = encodeStatement(dbQuery({ table: note, paging: { page: inp("page") } }));
+    const { paging } = (enc.context as { return: { list: { paging: Record<string, unknown> } } })
+      .return.list;
+    expect(paging.enabled).toBe(true);
+    expect(paging.page).toBe(1); // static baseline; the Value overrides at runtime
+    expect((enc.context as { simpleExternal: { page: unknown } }).simpleExternal.page).toEqual({
+      value: "page",
+      tag: "input",
+      filters: [],
+    });
+  });
+
+  it("input-bound offset rides simpleExternal.offset, keeps the static default", () => {
+    const enc = encodeStatement(dbQuery({ table: note, paging: { offset: inp("off") } }));
+    expect((enc.context as { simpleExternal: { offset: unknown } }).simpleExternal.offset).toEqual({
+      value: "off",
+      tag: "input",
+      filters: [],
+    });
+  });
+
+  it("search/sort-only paging does NOT activate pagination (enabled stays false, no truncation)", () => {
+    const enc = encodeStatement(dbQuery({ table: note, paging: { search: inp("q"), sort: inp("s") } }));
+    const ctx = enc.context as {
+      return: { list: { paging: { enabled: boolean } } };
+      simpleExternal: { search: unknown; sort: unknown };
+    };
+    expect(ctx.return.list.paging.enabled).toBe(false); // no page field → no default pagination
+    expect(ctx.simpleExternal.search).toEqual({ value: "q", tag: "input", filters: [] });
+    expect(ctx.simpleExternal.sort).toEqual({ value: "s", tag: "input", filters: [] });
+  });
+
+  it("all-static paging emits no simpleExternal (byte-identical to today)", () => {
+    const enc = encodeStatement(dbQuery({ table: note, paging: { page: 2, per_page: 10 } }));
+    expect(enc.context).not.toHaveProperty("simpleExternal");
   });
 
   it("output columns ride the statement output envelope, not context.output", () => {
