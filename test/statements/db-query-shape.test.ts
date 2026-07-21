@@ -433,4 +433,31 @@ describe("db.query (mvp:dbo_view) emit shape", () => {
     );
     expect((ret(enc) as { aggregate: Record<string, unknown> }).aggregate).not.toHaveProperty("paging");
   });
+
+  // --- Joins (M6: U11) ---
+
+  it("bind with a where emits {dbo:{as,id}, join, search}", () => {
+    const enc = encodeStatement(
+      dbQuery({
+        table: note,
+        bind: [{ table: note, as: "note2", join: "left", where: cmp(col("note.user_id"), "=", col("note2.user_id")) }],
+      }),
+    );
+    const bind = (enc.context as { bind: { dbo: { as: string; id: unknown }; join: string; search: { expression: unknown[] } }[] }).bind;
+    expect(bind[0]!.dbo.as).toBe("note2");
+    expect(bind[0]!.join).toBe("left");
+    expect(bind[0]!.search.expression).toHaveLength(1);
+  });
+
+  it("bind defaults join to inner and as to the table name; no where → no search key", () => {
+    const enc = encodeStatement(dbQuery({ table: note, bind: [{ table: note }] }));
+    const bind = (enc.context as { bind: { dbo: { as: string }; join: string }[] }).bind;
+    expect(bind[0]!.join).toBe("inner");
+    expect(bind[0]!.dbo.as).toBe("note");
+    expect(bind[0]).not.toHaveProperty("search");
+  });
+
+  it("two binds resolving to the same alias throw", () => {
+    expect(() => dbQuery({ table: note, bind: [{ table: note }, { table: note }] })).toThrow(/duplicate join alias/);
+  });
 });

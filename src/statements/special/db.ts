@@ -278,6 +278,26 @@ export interface DbAggregate {
   paging?: DbAggregatePaging;
 }
 
+/** A join type for a {@link DbBind} — the engine's `bind[].join`. */
+export type DbJoin = "inner" | "left" | "right";
+
+/**
+ * A join (`context.bind[]`): join `table` (aliased by `as`) with `join` kind and
+ * an optional `where` join condition (same search surface as the query). Joins
+ * widen what `where`/`sort`/`eval` can address by dotted path (`"author.id"`);
+ * they do not by themselves change the returned row shape.
+ */
+export interface DbBind {
+  /** The table to join. */
+  table: ObjectRef;
+  /** SQL alias for the joined table — defaults to the table name. Two binds to the same table need distinct aliases. */
+  as?: string;
+  /** Join kind (default `"inner"`). */
+  join?: DbJoin;
+  /** Join condition — same `where`/`cmp`/`and`/`or` surface as the query. */
+  where?: DbWhere;
+}
+
 /**
  * The full `db.query` result shape, discriminated by return type `RT`:
  * `count → number`, `exists → boolean`, `single → row | null`, `stream → row[]`,
@@ -1124,6 +1144,34 @@ function encodeEval(evals?: readonly DbEval[]): unknown[] | undefined {
  * — the graft would silently override the base column (same hazard as
  * {@link assertNoAddonShadow}). A bare-name table (no schema) is skipped.
  */
+/**
+ * Encode `context.bind[]` — one `{ dbo:{as,id}, join, search? }` per join. `as`
+ * defaults to the table name; two binds resolving to the same alias throw (SQL
+ * alias collision). `search` (the join condition) is omitted when there's no
+ * `where`. Byte shape from the `bind` / `bind-nosearch` goldens.
+ */
+function encodeBind(binds?: readonly DbBind[]): unknown[] | undefined {
+  if (!binds?.length) return undefined;
+  const seen = new Set<string>();
+  return binds.map((b) => {
+    const as = b.as ?? (typeof b.table === "string" ? b.table : b.table.name);
+    if (seen.has(as)) {
+      throw new Error(
+        `db.query bind: duplicate join alias "${as}" — two joins to the same table need ` +
+          `distinct \`as\` values so their dotted-path columns don't collide.`,
+      );
+    }
+    seen.add(as);
+    const entry: Record<string, unknown> = {
+      dbo: { as, id: resolveRef("dbo", b.table) },
+      join: b.join ?? "inner",
+    };
+    const search = encodeSearch(b.where);
+    if (search !== undefined) entry.search = search;
+    return entry;
+  });
+}
+
 function assertNoEvalShadow(table: ObjectRef, evals?: readonly DbEval[]): void {
   if (!evals?.length) return;
   if (typeof table === "string" || !("schema" in table)) return;
@@ -1238,6 +1286,12 @@ export interface DbQueryArgs<
   where?: DbWhere;
   /** Additional filter ANDed with `where` (same forms as `where`). */
   additionalWhere?: DbWhere;
+  /**
+   * Joins (`context.bind[]`) — `[{ table, as?, join?, where? }]`. Joined columns
+   * are addressable by dotted path in `where`/`sort`/`eval`; the row shape is
+   * unchanged (output columns still come from `output`/`eval`).
+   */
+  bind?: DbBind[];
   /** Sort directives (`[{ sortBy, dir }]`) — applied by the engine. */
   sort?: SortDirective<ColsOf<T>>[];
   /** Acquire row locks. */
@@ -1321,6 +1375,8 @@ export function dbQuery<
   const context: Record<string, unknown> = { dbo: { id: resolveRef("dbo", args.table) } };
   const search = encodeSearch(args.where, args.additionalWhere);
   if (search !== undefined) context.search = search;
+  const binds = encodeBind(args.bind);
+  if (binds) context.bind = binds;
   const evals = encodeEval(args.eval);
   if (evals) context.eval = evals;
   // Row lock rides `context.lock` as a tagged value (`{value, tag, filters}`),

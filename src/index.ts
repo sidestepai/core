@@ -200,6 +200,8 @@ export type {
   DbEvalFilter,
   DbAggregate,
   DbAggregatePaging,
+  DbBind,
+  DbJoin,
   DbExternal,
   DbExternalPermissions,
   DbWhere,
