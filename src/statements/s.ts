@@ -50,6 +50,7 @@ import {
   dbTransaction,
   dbExternalQuery,
 } from "./special/db.js";
+import { apiRequest } from "./special/api-request.js";
 import { aiAgentRun, cloudJob, cloudJobAwait, cloudJobStatus } from "./special/ai-cloud.js";
 import {
   arrayMap,
@@ -105,11 +106,12 @@ export const s = {
   foreach_remove: foreachRemove,
   // Call family — invoke another workspace object. `api.call`/`api.realtime_event`
   // merge into the generated `api` namespace; the rest are new namespaces.
+  // `api.request` is a typed hand-authored override of the generated factory.
   function: { run: functionRun, call: functionCall },
   service: { function: { run: serviceFunctionRun } },
   action: { call: actionCall, package: { call: actionPackageCall } },
   workflow_test: { call: workflowTestCall },
-  api: { ...generated.api, call: apiCall, realtime_event: realtimeEvent },
+  api: { ...generated.api, call: apiCall, realtime_event: realtimeEvent, request: apiRequest },
   task: { call: taskCall },
   tool: { call: toolCall },
   trigger: { call: triggerCall },
