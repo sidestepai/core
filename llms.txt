@@ -300,6 +300,21 @@ omit it and it derives from `name` (set it to survive a rename).
 - `apiGroup({ name, guid?, canonical?, description?, docs?, swagger?, apiGroupEnabled?, documentation?, cors? })` — a query container; register it and bind queries to it via their `apiGroup`.
   - `cors?`: `{ mode?, allowOrigins?: string[], allowHeaders?: string[], allowCredentials?, maxAge?, allowMethods?: { get?, post?, put?, patch?, delete?, head? } }`.
 
+### Triggers
+
+Triggers do **not** take an `input` field — their inputs are **implied by
+type** (fixed by Xano, not editable) and injected automatically. Reference
+them through the typed **stack handle**: `stack: (t) => Statement[]` (and
+`response: (t) => ResponseDef` on response-bearing types). `t` exposes exactly
+that trigger type's inputs; a wrong name is a compile error, not a runtime
+surprise. Each factory: `trigger.{table,realtime,mcpServer,agent,workspace,error}({ name, guid?, description?, active?, tags?, ... })`.
+
+- `trigger.table({ name, table?, datasources?, actions?: {insert?,update?,delete?,truncate?}, stack })` — database trigger. `t.new` / `t.old` are the row **after** / **before** the change; `t.action` (`insert|update|delete|truncate`), `t.datasource`. Bind `table` to a `table()` handle and `t.new("col")` / `t.old("col")` are typed to that row (misspelled column = compile error). Nullability follows the enabled actions: insert → `old` is null, delete → `new` is null, update → both, truncate → neither (per the `xrt_trigger` semantics). Config-only (no response).
+- `trigger.realtime({ name, objId, actions?: {message?,join?}, stack?, response? })` — realtime channel. Inputs: `t.action` (`message|join`), `t.channel`, `t.client` (`t.client("permissions.dbo_id")`), `t.options`, `t.payload`. Response-bearing; `response` defaults to the `payload` passthrough.
+- `trigger.mcpServer(...)` / `trigger.agent({ name, objId, stack?, response? })` — toolset connection. Inputs: `t.toolset` (`t.toolset("name")`), `t.tools`. Response-bearing; the default stack copies `toolset`/`tools` into vars and returns them.
+- `trigger.workspace({ name, actions?: {branch_live?,branch_merge?,branch_new?}, stack? })` — branch lifecycle. Inputs: `t.to_branch`, `t.from_branch`, `t.action`. Config-only.
+- `trigger.error({ name, stack? })` — error-signature trigger. Inputs: `t.event` (`new|regression|fixed`), `t.id`, `t.signature`, `t.error` (`t.error("code")`/`t.error("message")`), `t.caller`, `t.statement`, `t.actor`, `t.count`, `t.first_seen`, `t.last_seen`, `t.fixed_at`. Config-only.
+
 ### Responses
 
 The `response?` field (on functions, queries, tools, middleware, and

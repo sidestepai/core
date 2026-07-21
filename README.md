@@ -401,7 +401,33 @@ method. Payload keys use the engine's singular names.
 
 **Triggers** — all six types share one envelope discriminated by `obj_type` + a per-type
 `meta`: `trigger.table` (db), `trigger.realtime`, `trigger.mcpServer`, `trigger.agent`,
-`trigger.workspace`, `trigger.error`.
+`trigger.workspace`, `trigger.error`. A trigger's inputs are **implied by type** (fixed by
+Xano, not editable) and injected automatically — so triggers take no `input` field. Reference
+them through the typed stack handle `stack: (t) => [...]`, which exposes exactly that type's
+inputs:
+
+```ts
+// Database trigger — t.new/t.old typed against the bound table's row.
+trigger.table({
+  name: "on-user-insert",
+  table: users,
+  actions: { insert: true },
+  stack: (t) => [
+    // t.new("email") is typed to the row; t.action is the op; t.old is null (insert-only).
+    s.db.add({ table: auditLog, row: { email: t.new("email"), event: t.action } }),
+  ],
+});
+
+// Realtime trigger — response-bearing; response defaults to the payload passthrough.
+trigger.realtime({
+  name: "on-message",
+  objId: channelId,
+  actions: { message: true },
+  response: (t) => t.payload,
+});
+```
+
+Per-type inputs: **table** `new`/`old`/`action`/`datasource`; **realtime** `action`/`channel`/`client`/`options`/`payload`; **mcpServer**/**agent** `toolset`/`tools`; **workspace** `to_branch`/`from_branch`/`action`; **error** `event`/`id`/`signature`/`error`/`caller`/`statement`/`actor`/`count`/`first_seen`/`last_seen`/`fixed_at`.
 
 **Toolsets — AI vs MCP** — `toolset.mcp({ name, tools })` exposes tools over the MCP
 protocol; `agent({ name, agentSettings: { type: "anthropic", model, system_prompt }, tools })`
