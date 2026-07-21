@@ -628,7 +628,10 @@ Auth & calls:
 - `s.security.create_auth_token({ table, id, extras?, expiration?, as? })` — `extras` defaults to `{}`, `expiration` to `86400`s (`0` = never).
 - `s.function.run({ fn, input?, as? })` / `s.function.call({ fn, input?, as? })` — run another function; `input` is keyed by the target's input names.
 - `s.api.call({ api, input?, headers?, auth?, as? })` — invoke an endpoint; `auth` is `{ token, ignoreExpiration? }`.
-- `s.api.request({ url?, method?, params?, headers?, timeout?, follow_location?, verify_host?, verify_peer?, ca_certificate?, certificate?, certificate_pass?, private_key?, private_key_pass?, description?, output?, as? })` — external HTTP request (`mvp:api_request`). Ergonomic types, each also accepting a dynamic `Value`: `method` suggests the 7 verbs (GET/POST/PUT/DELETE/HEAD/OPTIONS/PATCH), `params` a plain object (→ query string for GET/HEAD/OPTIONS, body otherwise), `headers` a `string[]` of full header lines, `timeout` a `number` in seconds (1–86400), and `follow_location`/`verify_host`/`verify_peer` booleans. `description` (Settings tab) and `output` filters (Output tab) ride the envelope. SSL cert interdependencies are validated by the engine at runtime, not at build time.
+- `s.api.request({ url?, method?, params?, headers?, timeout?, follow_location?, verify_host?, verify_peer?, ca_certificate?, certificate?, certificate_pass?, private_key?, private_key_pass?, description?, output?, as? })` — external HTTP request (`mvp:api_request`). Ergonomic types, each also accepting a dynamic `Value`: `method` suggests the 7 verbs (GET/POST/PUT/DELETE/HEAD/OPTIONS/PATCH), `params` a plain object (→ query string for GET/HEAD/OPTIONS, body otherwise), `headers` a `string[]` of full header lines, `timeout` a `number` in seconds (1–86400), and `follow_location`/`verify_host`/`verify_peer` booleans. `description` (Settings tab) and `output` filters (Output tab) ride the envelope. SSL cert interdependencies (certificate↔private_key, ca_certificate→verify_peer) are checked at build time when statically provable, else by the engine at runtime.
+- `s.stream.from_request({ url?, method?, …tls, as? })` — streaming external HTTP request (`mvp:streaming_api_request`); same typed field surface as `s.api.request` (no description/output envelope).
+- `s.webflow.request({ path?, method?, …tls, as? })` — Webflow API request (`mvp:connect_webflow_api_request`); like `s.api.request` but addressed by `path` (host is engine-supplied).
+- `s.api.microservice({ host, path, method, params, headers, timeout, follow_location, as? })` — in-cluster microservice call (`mvp:microservice_request`); typed, all request fields required, no TLS fields.
 - `s.task.call` / `s.tool.call` / `s.trigger.call` / `s.middleware.call` / `s.addon.call` — same `{ <target>, input?, as? }` shape against the named kind.
 
 ### (top-level)
@@ -672,7 +675,7 @@ Auth & calls:
 
 - `s.api.call(…)` → `mvp:workspace_run_endpoint` [special]
 - `s.api.lambda({ as?: string; code?: value; timeout?: value })` → `mvp:lambda`
-- `s.api.microservice({ as?: string; host: value; path: value; method: value; params: value; headers: value; timeout: value; follow_location: value })` → `mvp:microservice_request`
+- `s.api.microservice(…)` → `mvp:microservice_request` [special]
 - `s.api.realtime_event(…)` → `mvp:realtime_event` [special]
 - `s.api.request(…)` → `mvp:api_request` [special, output]
 - `s.api.stream({ value: value })` → `mvp:streaming_api_response`
@@ -870,7 +873,7 @@ Auth & calls:
 
 - `s.stream.from_csv({ as?: string; value: value; separator?: value = ","; enclosure?: value = "\\\""; escape_char?: value = "\\\"" })` → `mvp:csv_stream` [output]
 - `s.stream.from_jsonl({ as?: string; value: value })` → `mvp:jsonl_stream`
-- `s.stream.from_request({ as?: string; url?: value; method?: value; params?: value; headers?: value; timeout?: value; follow_location?: value; verify_host?: value; verify_peer?: value; ca_certificate?: value; certificate?: value; certificate_pass?: value; private_key?: value; private_key_pass?: value })` → `mvp:streaming_api_request`
+- `s.stream.from_request(…)` → `mvp:streaming_api_request` [special]
 
 ### task
 
@@ -915,7 +918,7 @@ Auth & calls:
 
 ### webflow
 
-- `s.webflow.request({ as?: string; path?: value; method?: value; params?: value; headers?: value; timeout?: value; follow_location?: value; verify_host?: value; verify_peer?: value; ca_certificate?: value; certificate?: value; certificate_pass?: value; private_key?: value; private_key_pass?: value })` → `mvp:connect_webflow_api_request`
+- `s.webflow.request(…)` → `mvp:connect_webflow_api_request` [special]
 
 ### workflow_test
 

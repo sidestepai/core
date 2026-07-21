@@ -319,7 +319,12 @@ const SPECS_BY_NAME = new Map(GENERATED_SPECS.map((s) => [s.name, s]));
  * `(…) [special]` and defers to the typed entry — as it already does for the
  * hand-authored call family. The `[output]` flag is preserved.
  */
-export const OVERRIDDEN_SURFACES = new Set(["mvp:api_request"]);
+export const OVERRIDDEN_SURFACES = new Set([
+  "mvp:api_request",
+  "mvp:streaming_api_request",
+  "mvp:connect_webflow_api_request",
+  "mvp:microservice_request",
+]);
 
 function fieldsOf(spec: StatementSpec): ManifestField[] {
   return spec.rules.map((r) => {
@@ -874,7 +879,10 @@ export function renderLlmsTxt(m: Manifest): string {
     "- `s.security.create_auth_token({ table, id, extras?, expiration?, as? })` — `extras` defaults to `{}`, `expiration` to `86400`s (`0` = never).",
     "- `s.function.run({ fn, input?, as? })` / `s.function.call({ fn, input?, as? })` — run another function; `input` is keyed by the target's input names.",
     "- `s.api.call({ api, input?, headers?, auth?, as? })` — invoke an endpoint; `auth` is `{ token, ignoreExpiration? }`.",
-    "- `s.api.request({ url?, method?, params?, headers?, timeout?, follow_location?, verify_host?, verify_peer?, ca_certificate?, certificate?, certificate_pass?, private_key?, private_key_pass?, description?, output?, as? })` — external HTTP request (`mvp:api_request`). Ergonomic types, each also accepting a dynamic `Value`: `method` suggests the 7 verbs (GET/POST/PUT/DELETE/HEAD/OPTIONS/PATCH), `params` a plain object (→ query string for GET/HEAD/OPTIONS, body otherwise), `headers` a `string[]` of full header lines, `timeout` a `number` in seconds (1–86400), and `follow_location`/`verify_host`/`verify_peer` booleans. `description` (Settings tab) and `output` filters (Output tab) ride the envelope. SSL cert interdependencies are validated by the engine at runtime, not at build time.",
+    "- `s.api.request({ url?, method?, params?, headers?, timeout?, follow_location?, verify_host?, verify_peer?, ca_certificate?, certificate?, certificate_pass?, private_key?, private_key_pass?, description?, output?, as? })` — external HTTP request (`mvp:api_request`). Ergonomic types, each also accepting a dynamic `Value`: `method` suggests the 7 verbs (GET/POST/PUT/DELETE/HEAD/OPTIONS/PATCH), `params` a plain object (→ query string for GET/HEAD/OPTIONS, body otherwise), `headers` a `string[]` of full header lines, `timeout` a `number` in seconds (1–86400), and `follow_location`/`verify_host`/`verify_peer` booleans. `description` (Settings tab) and `output` filters (Output tab) ride the envelope. SSL cert interdependencies (certificate↔private_key, ca_certificate→verify_peer) are checked at build time when statically provable, else by the engine at runtime.",
+    "- `s.stream.from_request({ url?, method?, …tls, as? })` — streaming external HTTP request (`mvp:streaming_api_request`); same typed field surface as `s.api.request` (no description/output envelope).",
+    "- `s.webflow.request({ path?, method?, …tls, as? })` — Webflow API request (`mvp:connect_webflow_api_request`); like `s.api.request` but addressed by `path` (host is engine-supplied).",
+    "- `s.api.microservice({ host, path, method, params, headers, timeout, follow_location, as? })` — in-cluster microservice call (`mvp:microservice_request`); typed, all request fields required, no TLS fields.",
     "- `s.task.call` / `s.tool.call` / `s.trigger.call` / `s.middleware.call` / `s.addon.call` — same `{ <target>, input?, as? }` shape against the named kind.",
     "",
   );

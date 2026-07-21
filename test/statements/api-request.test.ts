@@ -100,3 +100,89 @@ describe("s.api.request — typed wrapper (U3)", () => {
     expect(encoded.description).toBe("");
   });
 });
+
+describe("SSL/mTLS interdependency validation (build-time, static-only)", () => {
+  it("rejects a certificate without a private key", () => {
+    expect(() => s.api.request({ url: "https://x", certificate: "PEM" })).toThrow(/private_key/);
+  });
+
+  it("rejects a private key without a certificate", () => {
+    expect(() => s.api.request({ url: "https://x", private_key: "KEY" })).toThrow(/certificate/);
+  });
+
+  it("rejects a ca_certificate with verify_peer disabled", () => {
+    expect(() => s.api.request({ url: "https://x", ca_certificate: "CA", verify_peer: false })).toThrow(
+      /verify_peer/,
+    );
+  });
+
+  it("accepts a certificate + private_key pair", () => {
+    expect(() => s.api.request({ url: "https://x", certificate: "PEM", private_key: "KEY" })).not.toThrow();
+  });
+
+  it("accepts a ca_certificate with verify_peer defaulted (omitted → true)", () => {
+    expect(() => s.api.request({ url: "https://x", ca_certificate: "CA" })).not.toThrow();
+  });
+
+  it("does NOT reject a dynamic certificate Value (indeterminate → skip)", () => {
+    // A bound Value can't be statically proven empty; never block valid usage.
+    expect(() => s.api.request({ url: "https://x", certificate: inp("cert") })).not.toThrow();
+  });
+
+  it("does NOT reject when verify_peer is a dynamic Value", () => {
+    expect(() =>
+      s.api.request({ url: "https://x", ca_certificate: "CA", verify_peer: inp("vp") }),
+    ).not.toThrow();
+  });
+
+  it("applies the same validation to stream.from_request and webflow.request", () => {
+    expect(() => s.stream.from_request({ url: "https://x", certificate: "PEM" })).toThrow(/private_key/);
+    expect(() => s.webflow.request({ path: "/x", certificate: "PEM" })).toThrow(/private_key/);
+  });
+});
+
+describe("HTTP-request sibling wrappers (envelope broadening)", () => {
+  it("stream.from_request encodes url + coerced fields", () => {
+    const encoded = encodeStatement(
+      s.stream.from_request({ as: "s1", url: "https://x", method: "POST", timeout: 5 }),
+    );
+    expect(encoded.name).toBe("mvp:streaming_api_request");
+    expect(encoded.as).toBe("s1");
+    expect(field(encoded, "url")).toEqual({ value: "https://x", tag: "const" });
+    expect(field(encoded, "method")).toEqual({ value: "POST", tag: "const" });
+    expect(field(encoded, "timeout")).toEqual({ value: "5", tag: "const:int" });
+  });
+
+  it("webflow.request encodes path (not url)", () => {
+    const encoded = encodeStatement(s.webflow.request({ path: "/sites", method: "GET", headers: ["A: b"] }));
+    expect(encoded.name).toBe("mvp:connect_webflow_api_request");
+    expect(field(encoded, "path")).toEqual({ value: "/sites", tag: "const" });
+    expect(field(encoded, "headers")).toEqual({ value: '["A: b"]', tag: "const:array" });
+    expect(field(encoded, "url")).toBeUndefined();
+  });
+
+  it("api.microservice encodes host/path and coerces required fields", () => {
+    const encoded = encodeStatement(
+      s.api.microservice({
+        as: "m1",
+        host: "svc",
+        path: "/health",
+        method: "GET",
+        params: {},
+        headers: [],
+        timeout: 3,
+        follow_location: true,
+      }),
+    );
+    expect(encoded.name).toBe("mvp:microservice_request");
+    expect(field(encoded, "host")).toEqual({ value: "svc", tag: "const" });
+    expect(field(encoded, "params")).toEqual({ value: "{}", tag: "const:obj" });
+    expect(field(encoded, "follow_location")).toEqual({ value: "true", tag: "const:bool" });
+  });
+
+  it("passes dynamic Values through on siblings", () => {
+    const encoded = encodeStatement(s.stream.from_request({ url: inp("u"), method: inp("m") }));
+    expect(field(encoded, "url")?.tag).toBe("input");
+    expect(field(encoded, "method")?.tag).toBe("input");
+  });
+});
