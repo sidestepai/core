@@ -637,7 +637,8 @@ enrich / lean envelope).
 `col(name)`, plus context refs `auth(path?)`, `env(name)`, `setting(name)`, `out(name)`
 (a parent-row column, for addon inputs). `c.obj`/`c.array`
 take **plain JSON literals only** — a nested tagged value (`inp`/`ref`/`auth`/`c.*`) is a
-compile error; for a computed object response use a record of values, not `c.obj` (issue #42).
+compile error; for a computed object — a response, or an `api.request` `params` — use a record
+of values (`{ count: ref("count") }`), not `c.obj` (issues #42, #74/#75).
 `withFilters(value, fl.a(), fl.b())` attaches the value pipeline via a typed catalog `fl.*`
 (377 filters generated from the engine's own sources; pass filters spread — the array form
 `withFilters(v, [fl.a(), fl.b()])` also works but the spread form is canonical). To
