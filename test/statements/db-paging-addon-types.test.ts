@@ -160,6 +160,28 @@ describe("db.query paging envelope + addon response typing", () => {
     expectTypeOf<Row["name_upper"]>().toEqualTypeOf<unknown>();
   });
 
+  it("aggregate row is keyed by group + eval aliases (unknown values) (M5)", () => {
+    const q = query({
+      verb: "GET", apiGroup: group, name: "agg1",
+      stack: [
+        s.db.query({
+          table: book,
+          returnType: "aggregate",
+          aggregate: {
+            group: [{ name: "name", as: "grp" }],
+            eval: [{ name: "pages", as: "total", filters: [{ name: "sum" }] }],
+          },
+          as: "rows",
+        }),
+      ],
+      response: ref("rows"),
+    });
+    expectTypeOf(q).toBeObject();
+    type Row = InferResponse<typeof q>[number];
+    expectTypeOf<Row["grp"]>().toEqualTypeOf<unknown>();
+    expectTypeOf<Row["total"]>().toEqualTypeOf<unknown>();
+  });
+
   it("single + output narrows to Pick<Row> | null", () => {
     const q = query({
       verb: "GET", apiGroup: group, name: "rt5",

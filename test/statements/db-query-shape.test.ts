@@ -400,4 +400,37 @@ describe("db.query (mvp:dbo_view) emit shape", () => {
   it("eval alias shadowing an existing column throws", () => {
     expect(() => dbQuery({ table: note, eval: [{ name: "user_id", as: "title" }] })).toThrow(/shadows/);
   });
+
+  // --- Aggregate / group-by (M5: U9) ---
+
+  it("returnType aggregate emits context.return.aggregate {sort,paging,eval,group}", () => {
+    const enc = encodeStatement(
+      dbQuery({
+        table: note,
+        returnType: "aggregate",
+        aggregate: {
+          group: [{ name: "user_id", as: "uid" }],
+          eval: [{ name: "id", as: "cnt", filters: [{ name: "count" }] }],
+          sort: [{ sortBy: "uid" }],
+          paging: { per_page: 50 },
+        },
+      }),
+    );
+    expect(ret(enc)).toEqual({
+      type: "aggregate",
+      aggregate: {
+        sort: [{ sortBy: "uid", orderBy: "asc" }],
+        eval: [{ as: "cnt", name: "id", filters: [{ name: "count", arg: [] }] }],
+        group: [{ as: "uid", name: "user_id", filters: [] }],
+        paging: { page: 1, per_page: 50, metadata: true, enabled: true },
+      },
+    });
+  });
+
+  it("aggregate without paging omits the paging block", () => {
+    const enc = encodeStatement(
+      dbQuery({ table: note, returnType: "aggregate", aggregate: { group: [{ name: "user_id", as: "uid" }] } }),
+    );
+    expect((ret(enc) as { aggregate: Record<string, unknown> }).aggregate).not.toHaveProperty("paging");
+  });
 });

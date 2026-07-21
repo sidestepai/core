@@ -229,7 +229,7 @@ type PagingTotals<P> = P extends { totals: true } ? true : false;
  * `"single"` a first-match object; `"count"`/`"exists"` a scalar; `"stream"` a
  * (pageable) row array with no metadata envelope.
  */
-export type DbReturnType = "list" | "single" | "count" | "exists" | "stream";
+export type DbReturnType = "list" | "single" | "count" | "exists" | "stream" | "aggregate";
 
 /** Distinct-row handling (`context.return.<list|stream>.distinct`): engine default `"auto"`. */
 export type DbDistinct = "auto" | "yes" | "no";
@@ -257,25 +257,57 @@ export interface DbEval {
   filters?: DbEvalFilter[];
 }
 
+/** Aggregate paging (`context.return.aggregate.paging`) — no `offset`/`totals` (engine schema). */
+export interface DbAggregatePaging {
+  page?: number;
+  per_page?: number;
+  /** Wrap the result in the metadata envelope (engine default `true`). */
+  metadata?: boolean;
+}
+
+/**
+ * Aggregate/group-by config for `returnType:"aggregate"` (`context.return.aggregate`).
+ * `group` are the group-by columns and `eval` the aggregator columns (each
+ * `{ name, as, filters }` — an aggregator like `sum`/`count` rides `filters`).
+ * Both `as` sets graft onto the aggregate row (`unknown` values).
+ */
+export interface DbAggregate {
+  group?: DbEval[];
+  eval?: DbEval[];
+  sort?: SortDirective[];
+  paging?: DbAggregatePaging;
+}
+
 /**
  * The full `db.query` result shape, discriminated by return type `RT`:
  * `count → number`, `exists → boolean`, `single → row | null`, `stream → row[]`,
  * and `list → row[]` or the {@link PagingEnvelope} when `paging` requests
  * metadata. The row is always the addon-augmented row.
  */
-type QueryResult<Row, A, P, RT extends DbReturnType, E = readonly []> = RT extends "count"
+/**
+ * The row an aggregate query yields — keyed by every `group` and `eval` alias
+ * (values `unknown`, since aggregator/filter output isn't statically knowable).
+ * Reuses {@link EvalFields}; an absent group/eval contributes no keys.
+ */
+type AggregateRow<AG> = AG extends { group?: infer G; eval?: infer EV }
+  ? Prettify<EvalFields<G> & EvalFields<EV>>
+  : Record<string, unknown>;
+
+type QueryResult<Row, A, P, RT extends DbReturnType, E = readonly [], AG = unknown> = RT extends "count"
   ? number
   : RT extends "exists"
     ? boolean
-    : WithAddons<WithEval<Row, E>, A> extends infer R
-      ? RT extends "single"
-        ? R | null
-        : RT extends "stream"
-          ? R[]
-          : HasPagingEnvelope<P> extends true
-            ? PagingEnvelope<R[], PagingTotals<P>>
-            : R[]
-      : never;
+    : RT extends "aggregate"
+      ? AggregateRow<AG>[]
+      : WithAddons<WithEval<Row, E>, A> extends infer R
+        ? RT extends "single"
+          ? R | null
+          : RT extends "stream"
+            ? R[]
+            : HasPagingEnvelope<P> extends true
+              ? PagingEnvelope<R[], PagingTotals<P>>
+              : R[]
+        : never;
 
 /**
  * A db read statement branded — **at the type level only** — via the shared
@@ -1119,14 +1151,38 @@ function assertNoEvalShadow(table: ObjectRef, evals?: readonly DbEval[]): void {
  *
  * `distinct` is hardcoded `"auto"` for now (author control is a later unit).
  */
+/**
+ * Encode `context.return.aggregate` — `{ sort, paging?, eval, group }`. `group`
+ * and `eval` reuse the {@link encodeEval} `{ as, name, filters }` shape. Aggregate
+ * paging is `{ page, per_page, metadata, enabled }` — no `offset`/`totals`.
+ */
+function encodeAggregate(agg?: DbAggregate): unknown {
+  const block: Record<string, unknown> = {
+    sort: encodeSort(agg?.sort),
+    eval: encodeEval(agg?.eval) ?? [],
+    group: encodeEval(agg?.group) ?? [],
+  };
+  if (agg?.paging) {
+    block.paging = {
+      page: agg.paging.page ?? 1,
+      per_page: agg.paging.per_page ?? 25,
+      metadata: agg.paging.metadata ?? true,
+      enabled: true,
+    };
+  }
+  return { type: "aggregate", aggregate: block };
+}
+
 function encodeReturn(
   returnType: DbReturnType,
   sort?: SortDirective[],
   paging?: DbPaging,
   forceEnabled = false,
   distinct: DbDistinct = "auto",
+  aggregate?: DbAggregate,
 ): unknown {
   const sortEls = encodeSort(sort);
+  if (returnType === "aggregate") return encodeAggregate(aggregate);
   if (returnType === "count" || returnType === "exists") return { type: returnType };
   if (returnType === "single") return { type: "single", single: { sort: sortEls } };
   // `enabled:true` gates the engine's paging (+ the simpleExternal page/per_page/
@@ -1168,6 +1224,7 @@ export interface DbQueryArgs<
   P extends DbPaging | undefined = DbPaging | undefined,
   RT extends DbReturnType = DbReturnType,
   E extends readonly DbEval[] = readonly DbEval[],
+  AG extends DbAggregate = DbAggregate,
 > {
   table: T;
   /**
@@ -1217,6 +1274,12 @@ export interface DbQueryArgs<
    * An alias shadowing an existing column throws at build time.
    */
   eval?: E;
+  /**
+   * Aggregate/group-by config, used with `returnType:"aggregate"` →
+   * `context.return.aggregate.{group,eval,sort,paging}`. `InferResponse` types the
+   * aggregate row from the `group` and `eval` aliases (values `unknown`).
+   */
+  aggregate?: AG;
   /** Restrict returned columns. Captured literally so `InferResponse` narrows
    * the traced row list to exactly these columns. */
   output?: Cols;
@@ -1248,9 +1311,10 @@ export function dbQuery<
   const P extends DbPaging | undefined = undefined,
   const RT extends DbReturnType = "list",
   const E extends readonly DbEval[] = readonly [],
+  const AG extends DbAggregate = DbAggregate,
 >(
-  args: DbQueryArgs<T, As, Cols, A, P, RT, E>,
-): DbResult<As, QueryResult<RowShapeOf<T, Cols>, A, P, RT, E>> {
+  args: DbQueryArgs<T, As, Cols, A, P, RT, E, AG>,
+): DbResult<As, QueryResult<RowShapeOf<T, Cols>, A, P, RT, E, AG>> {
   assertNoAddonShadow(args.table, args.addon);
   assertNoEvalShadow(args.table, args.eval);
   const returnType: DbReturnType = args.returnType ?? "list";
@@ -1277,10 +1341,10 @@ export function dbQuery<
     }
     // `external`'s page/per_page are gated by static `paging.enabled` just like
     // simpleExternal — force it on so a self-contained blob isn't silently no-op'd.
-    context.return = encodeReturn(returnType, args.sort, args.paging, true, args.distinct);
+    context.return = encodeReturn(returnType, args.sort, args.paging, true, args.distinct, args.aggregate);
     context.external = encodeExternal(args.external);
   } else {
-    context.return = encodeReturn(returnType, args.sort, args.paging, false, args.distinct);
+    context.return = encodeReturn(returnType, args.sort, args.paging, false, args.distinct, args.aggregate);
     if (simpleExternal) context.simpleExternal = simpleExternal;
   }
   return {
@@ -1289,7 +1353,7 @@ export function dbQuery<
     as: args.as ?? "",
     input: [],
     ...envelope({ output: args.output, addon: args.addon }),
-  } as unknown as DbResult<As, QueryResult<RowShapeOf<T, Cols>, A, P, RT, E>>;
+  } as unknown as DbResult<As, QueryResult<RowShapeOf<T, Cols>, A, P, RT, E, AG>>;
 }
 
 export interface DbTransactionArgs {

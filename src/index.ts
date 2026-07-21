@@ -198,6 +198,8 @@ export type {
   DbDistinct,
   DbEval,
   DbEvalFilter,
+  DbAggregate,
+  DbAggregatePaging,
   DbExternal,
   DbExternalPermissions,
   DbWhere,
