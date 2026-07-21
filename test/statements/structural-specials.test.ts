@@ -11,7 +11,9 @@ import { s } from "../../src/statements/s.js";
 import { generated } from "../../src/statements/generated/factories.generated.js";
 import { encodeStatement } from "../../src/statements/statement.js";
 import { deriveGuid } from "../../src/refs/guid.js";
-import { c } from "../../src/values/value.js";
+import { c, col, auth, inp } from "../../src/values/value.js";
+import { expr } from "../../src/statements/conditional.js";
+import { and } from "../../src/statements/special/db-search.js";
 
 const T = { name: "user" };
 
@@ -28,6 +30,35 @@ describe("structural db specials", () => {
     expect(s.db.bulk.delete({ table: T }).name).toBe("mvp:dbo_bulkdelete");
     expect(s.db.bulk.patch({ table: T, items: c.array([]) }).name).toBe("mvp:dbo_bulkpatch");
     expect(s.db.bulk.update({ table: T, items: c.array([]) }).name).toBe("mvp:dbo_bulkupdate");
+  });
+
+  it("db.bulk.delete encodes the where DSL through context.search (same shape as db.query)", () => {
+    // The modern where DSL (expr/cmp/and/or) must produce the operand-based
+    // {expression:[…]} search, identical to db.query — not a raw passthrough.
+    const enc = encodeStatement(
+      s.db.bulk.delete({
+        table: T,
+        where: and(
+          expr(col("chirp"), "=", inp("chirp_id")),
+          expr(col("user"), "=", auth("id")),
+        ),
+        as: "deleted",
+      }),
+    );
+    expect(enc.name).toBe("mvp:dbo_bulkdelete");
+    expect((enc.context as { dbo: { id: string } }).dbo.id).toBe(deriveGuid("dbo", T.name));
+    // A single top-level and() group folds into one group node in expression[].
+    const search = (enc.context as { search: { expression: unknown[] } }).search;
+    expect(search.expression).toHaveLength(1);
+    expect((search.expression[0] as { type: string }).type).toBe("group");
+    const inner = (search.expression[0] as { group: { expression: unknown[] } }).group.expression;
+    expect(inner).toHaveLength(2);
+    expect((inner[0] as { statement: { op: string } }).statement.op).toBe("=");
+  });
+
+  it("db.bulk.delete with no where omits context.search (deletes all rows)", () => {
+    const enc = encodeStatement(s.db.bulk.delete({ table: T }));
+    expect(enc.context).not.toHaveProperty("search");
   });
 
   it("db.query (dbo_view) emits filter under context.search + a list return, not the old keys", () => {

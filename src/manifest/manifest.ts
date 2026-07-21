@@ -832,7 +832,7 @@ export function renderLlmsTxt(m: Manifest): string {
     "- `s.db.direct_query({ sql, responseType?, args?, as? })` — `sql` is a **raw string** (not a `Value`); binds go in `args: Value[]`.",
     "- `s.db.transaction({ body })` — run a `Statement[]` atomically.",
     "- `s.db.bulk.add({ table, items, as? })` / `s.db.bulk.update` / `s.db.bulk.patch` — `items` is an array `Value`.",
-    "- `s.db.bulk.delete({ table, where?, as? })` — ⚠ deletes by a `context.search` filter (`where` is a `Value`); shape not byte-verified — an empty/wrong filter can delete more rows than intended.",
+    "- `s.db.bulk.delete({ table, where?, as? })` — deletes rows by a `context.search` filter. `where` is the same surface as `s.db.query` (`expr(...)`/`cmp(...)`, `and(...)`/`or(...)` groups, an array of those ANDed, or a raw `Value`) and encodes through the identical `{expression:[…]}` search shape. ⚠ Omitting `where` deletes **every** row; the `context.search` bytes are grounded in the `dbo_view` search reader but not yet byte-verified against a captured golden.",
     "",
     "Runtime behavior (what the `as:` output holds, and misses):",
     "",
