@@ -148,6 +148,18 @@ describe("db.query paging envelope + addon response typing", () => {
     expectTypeOf<InferResponse<typeof qStream>>().toEqualTypeOf<Book[]>();
   });
 
+  it("eval alias grafts onto each row as unknown (M4)", () => {
+    const q = query({
+      verb: "GET", apiGroup: group, name: "ev1",
+      stack: [s.db.query({ table: book, eval: [{ name: "name", as: "name_upper" }], as: "rows" })],
+      response: ref("rows"),
+    });
+    expectTypeOf(q).toBeObject();
+    type Row = InferResponse<typeof q>[number];
+    expectTypeOf<Row>().toMatchTypeOf<Book>();
+    expectTypeOf<Row["name_upper"]>().toEqualTypeOf<unknown>();
+  });
+
   it("single + output narrows to Pick<Row> | null", () => {
     const q = query({
       verb: "GET", apiGroup: group, name: "rt5",

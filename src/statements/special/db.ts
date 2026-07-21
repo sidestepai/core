@@ -151,6 +151,25 @@ type WithAddons<Row, A> = [keyof AddonFields<A>] extends [never]
   : Prettify<Omit<Row, keyof AddonFields<A>> & AddonFields<A>>;
 
 /**
+ * The keys a set of `eval` computed columns graft onto each returned row. Each
+ * eval's `as` alias becomes a key valued `unknown` — a filter pipeline's output
+ * isn't statically knowable, so `unknown` is the honest floor (narrow at the call
+ * site). Mirrors {@link AddonFields}.
+ */
+type EvalFields<E> = E extends readonly [infer H, ...infer Rest]
+  ? (H extends { as: infer S extends string } ? { [K in S]: unknown } : object) & EvalFields<Rest>
+  : object;
+
+/**
+ * A row shape augmented with any `eval` alias keys. With no evals it is the row
+ * unchanged. Like {@link WithAddons}, an eval alias **overrides** a base column of
+ * the same name (the engine computes over it), so the honest type is the graft.
+ */
+type WithEval<Row, E> = [keyof EvalFields<E>] extends [never]
+  ? Row
+  : Prettify<Omit<Row, keyof EvalFields<E>> & EvalFields<E>>;
+
+/**
  * The paging metadata envelope a `db.query` returns when `paging` is set with
  * metadata on — the engine's `packageListMeta` shape (issue #58). The result
  * list lives under `items`; `totals:true` adds `itemsTotal`/`pageTotal`. A query
@@ -212,23 +231,51 @@ type PagingTotals<P> = P extends { totals: true } ? true : false;
  */
 export type DbReturnType = "list" | "single" | "count" | "exists" | "stream";
 
+/** Distinct-row handling (`context.return.<list|stream>.distinct`): engine default `"auto"`. */
+export type DbDistinct = "auto" | "yes" | "no";
+
+/** One step of an eval filter pipeline (`{ name, arg, disabled? }`) — engine `mvp_filter`. */
+export interface DbEvalFilter {
+  name: string;
+  /** Filter args as tagged values (encoded `{value,tag,filters}`). */
+  arg?: Value[];
+  /** Skip this step (kept in the stored pipeline as `disabled:true`). */
+  disabled?: boolean;
+}
+
+/**
+ * A computed output column (`context.eval[]`): source column/path `name`, output
+ * alias `as`, and an optional `filters` pipeline. The `as` grafts onto the
+ * returned row as an `unknown`-typed key. Shared with `addon()`.
+ */
+export interface DbEval {
+  /** Source column or dotted path (e.g. `"book.name"`). */
+  name: string;
+  /** Output alias — the row key this eval lands under. */
+  as: string;
+  /** Optional filter pipeline applied to the value. */
+  filters?: DbEvalFilter[];
+}
+
 /**
  * The full `db.query` result shape, discriminated by return type `RT`:
  * `count → number`, `exists → boolean`, `single → row | null`, `stream → row[]`,
  * and `list → row[]` or the {@link PagingEnvelope} when `paging` requests
  * metadata. The row is always the addon-augmented row.
  */
-type QueryResult<Row, A, P, RT extends DbReturnType> = RT extends "count"
+type QueryResult<Row, A, P, RT extends DbReturnType, E = readonly []> = RT extends "count"
   ? number
   : RT extends "exists"
     ? boolean
-    : RT extends "single"
-      ? WithAddons<Row, A> | null
-      : RT extends "stream"
-        ? WithAddons<Row, A>[]
-        : HasPagingEnvelope<P> extends true
-          ? PagingEnvelope<WithAddons<Row, A>[], PagingTotals<P>>
-          : WithAddons<Row, A>[];
+    : WithAddons<WithEval<Row, E>, A> extends infer R
+      ? RT extends "single"
+        ? R | null
+        : RT extends "stream"
+          ? R[]
+          : HasPagingEnvelope<P> extends true
+            ? PagingEnvelope<R[], PagingTotals<P>>
+            : R[]
+      : never;
 
 /**
  * A db read statement branded — **at the type level only** — via the shared
@@ -1023,6 +1070,43 @@ function encodeExternal(ext: DbExternal): Record<string, unknown> {
 }
 
 /**
+ * Encode `context.eval[]` — one `{ as, name, filters }` per computed column. Each
+ * filter step is `{ name, arg, disabled? }` with `arg` a list of tagged values;
+ * `disabled` is dropped at its default. Byte shape from the `list-evals` golden.
+ */
+function encodeEval(evals?: readonly DbEval[]): unknown[] | undefined {
+  if (!evals?.length) return undefined;
+  return evals.map((e) => ({
+    as: e.as,
+    name: e.name,
+    filters: (e.filters ?? []).map((f) => ({
+      name: f.name,
+      arg: (f.arg ?? []).map((v) => ({ value: v.value, tag: v.tag, filters: v.filters })),
+      ...(f.disabled ? { disabled: true } : {}),
+    })),
+  }));
+}
+
+/**
+ * Reject an `eval` whose `as` alias shadows a column already on the queried table
+ * — the graft would silently override the base column (same hazard as
+ * {@link assertNoAddonShadow}). A bare-name table (no schema) is skipped.
+ */
+function assertNoEvalShadow(table: ObjectRef, evals?: readonly DbEval[]): void {
+  if (!evals?.length) return;
+  if (typeof table === "string" || !("schema" in table)) return;
+  const cols = new Set(tableColumns(table as TableDef).map((col) => col.name));
+  for (const e of evals) {
+    if (cols.has(e.as)) {
+      throw new Error(
+        `db.query eval: alias "${e.as}" shadows an existing "${table.name}" column — the ` +
+          `computed value would overwrite it. Rename the eval alias (e.g. "${e.as}_calc").`,
+      );
+    }
+  }
+}
+
+/**
  * Build `context.return` for a query, discriminated by `returnType`:
  * - `count`/`exists` → a bare `{ type }` (no sub-block — the scalar rides the
  *   statement `as`);
@@ -1040,6 +1124,7 @@ function encodeReturn(
   sort?: SortDirective[],
   paging?: DbPaging,
   forceEnabled = false,
+  distinct: DbDistinct = "auto",
 ): unknown {
   const sortEls = encodeSort(sort);
   if (returnType === "count" || returnType === "exists") return { type: returnType };
@@ -1054,7 +1139,7 @@ function encodeReturn(
     typeof v === "number" ? v : def;
   if (returnType === "stream") {
     // Stream paging is `{ page, per_page, enabled }` only — no offset/metadata/totals.
-    const stream: Record<string, unknown> = { sort: sortEls, distinct: "auto" };
+    const stream: Record<string, unknown> = { sort: sortEls, distinct };
     if (enabled) {
       stream.paging = {
         page: staticInt(paging?.page, 1),
@@ -1072,7 +1157,7 @@ function encodeReturn(
     metadata: paging?.metadata ?? true,
     totals: paging?.totals ?? false,
   };
-  return { type: "list", list: { distinct: "auto", sort: sortEls, paging: pagingObj } };
+  return { type: "list", list: { distinct, sort: sortEls, paging: pagingObj } };
 }
 
 export interface DbQueryArgs<
@@ -1082,6 +1167,7 @@ export interface DbQueryArgs<
   A extends readonly AddonSpec[] = readonly AddonSpec[],
   P extends DbPaging | undefined = DbPaging | undefined,
   RT extends DbReturnType = DbReturnType,
+  E extends readonly DbEval[] = readonly DbEval[],
 > {
   table: T;
   /**
@@ -1119,6 +1205,18 @@ export interface DbQueryArgs<
    * page/per_page take effect even with no `paging` arg.
    */
   external?: DbExternal;
+  /**
+   * Distinct-row handling for a `list`/`stream` query (`"auto"` default | `"yes"`
+   * | `"no"`) → `context.return.<type>.distinct`. Ignored for single/count/exists.
+   */
+  distinct?: DbDistinct;
+  /**
+   * Computed output columns (`context.eval[]`) — each `{ name, as, filters? }`.
+   * The `as` alias grafts onto every returned row as an `unknown`-typed key
+   * (`InferResponse`), since a filter pipeline's output isn't statically knowable.
+   * An alias shadowing an existing column throws at build time.
+   */
+  eval?: E;
   /** Restrict returned columns. Captured literally so `InferResponse` narrows
    * the traced row list to exactly these columns. */
   output?: Cols;
@@ -1149,14 +1247,18 @@ export function dbQuery<
   const A extends readonly AddonSpec[] = readonly [],
   const P extends DbPaging | undefined = undefined,
   const RT extends DbReturnType = "list",
+  const E extends readonly DbEval[] = readonly [],
 >(
-  args: DbQueryArgs<T, As, Cols, A, P, RT>,
-): DbResult<As, QueryResult<RowShapeOf<T, Cols>, A, P, RT>> {
+  args: DbQueryArgs<T, As, Cols, A, P, RT, E>,
+): DbResult<As, QueryResult<RowShapeOf<T, Cols>, A, P, RT, E>> {
   assertNoAddonShadow(args.table, args.addon);
+  assertNoEvalShadow(args.table, args.eval);
   const returnType: DbReturnType = args.returnType ?? "list";
   const context: Record<string, unknown> = { dbo: { id: resolveRef("dbo", args.table) } };
   const search = encodeSearch(args.where, args.additionalWhere);
   if (search !== undefined) context.search = search;
+  const evals = encodeEval(args.eval);
+  if (evals) context.eval = evals;
   // Row lock rides `context.lock` as a tagged value (`{value, tag, filters}`),
   // not a bare bool — the shape `MVP::convertLockToConfig` reads.
   if (args.lock !== undefined) context.lock = c.bool(args.lock);
@@ -1175,10 +1277,10 @@ export function dbQuery<
     }
     // `external`'s page/per_page are gated by static `paging.enabled` just like
     // simpleExternal — force it on so a self-contained blob isn't silently no-op'd.
-    context.return = encodeReturn(returnType, args.sort, args.paging, true);
+    context.return = encodeReturn(returnType, args.sort, args.paging, true, args.distinct);
     context.external = encodeExternal(args.external);
   } else {
-    context.return = encodeReturn(returnType, args.sort, args.paging);
+    context.return = encodeReturn(returnType, args.sort, args.paging, false, args.distinct);
     if (simpleExternal) context.simpleExternal = simpleExternal;
   }
   return {
@@ -1187,7 +1289,7 @@ export function dbQuery<
     as: args.as ?? "",
     input: [],
     ...envelope({ output: args.output, addon: args.addon }),
-  } as unknown as DbResult<As, QueryResult<RowShapeOf<T, Cols>, A, P, RT>>;
+  } as unknown as DbResult<As, QueryResult<RowShapeOf<T, Cols>, A, P, RT, E>>;
 }
 
 export interface DbTransactionArgs {

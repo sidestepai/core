@@ -353,4 +353,51 @@ describe("db.query (mvp:dbo_view) emit shape", () => {
     expect(a).toEqual(b);
     expect((a as { type: string }).type).toBe("list");
   });
+
+  // --- distinct + eval (M4: U7/U8) ---
+
+  it("distinct rides return.list.distinct (default auto)", () => {
+    const yes = ret(encodeStatement(dbQuery({ table: note, distinct: "yes" })));
+    expect((yes as { list: { distinct: string } }).list.distinct).toBe("yes");
+    const auto = ret(encodeStatement(dbQuery({ table: note })));
+    expect((auto as { list: { distinct: string } }).list.distinct).toBe("auto");
+  });
+
+  it("distinct on a stream query rides return.stream.distinct", () => {
+    const enc = ret(encodeStatement(dbQuery({ table: note, returnType: "stream", distinct: "no" })));
+    expect((enc as { stream: { distinct: string } }).stream.distinct).toBe("no");
+  });
+
+  it("eval computed columns emit context.eval[] {as,name,filters}", () => {
+    const enc = encodeStatement(
+      dbQuery({
+        table: note,
+        eval: [
+          { name: "title", as: "title_calc", filters: [{ name: "upper", disabled: true }, { name: "trim" }] },
+        ],
+      }),
+    );
+    expect((enc.context as { eval: unknown[] }).eval).toEqual([
+      {
+        as: "title_calc",
+        name: "title",
+        filters: [
+          { name: "upper", arg: [], disabled: true },
+          { name: "trim", arg: [] },
+        ],
+      },
+    ]);
+  });
+
+  it("eval filter arg values encode to tagged {value,tag,filters}", () => {
+    const enc = encodeStatement(
+      dbQuery({ table: note, eval: [{ name: "user_id", as: "uid_plus", filters: [{ name: "add", arg: [c.int(1)] }] }] }),
+    );
+    const arg = (enc.context as { eval: { filters: { arg: unknown[] }[] }[] }).eval[0]!.filters[0]!.arg;
+    expect(arg).toEqual([{ value: "1", tag: "const:int", filters: [] }]);
+  });
+
+  it("eval alias shadowing an existing column throws", () => {
+    expect(() => dbQuery({ table: note, eval: [{ name: "user_id", as: "title" }] })).toThrow(/shadows/);
+  });
 });
