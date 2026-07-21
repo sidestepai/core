@@ -179,6 +179,7 @@ describe("addon() typed authoring — graft types on db.query", () => {
       stack: [s.db.query({ table: chirp, addon: [{ addon: authorAddon, as: "_author", input: { user_id: out("author") } }], as: "rows" })],
       response: ref("rows"),
     });
+    expect(q).toBeDefined();
     type Row = InferResponse<typeof q>[number];
     expectTypeOf<Row["_author"]>().toEqualTypeOf<{ id: number; name: string }[]>();
   });
@@ -191,6 +192,7 @@ describe("addon() typed authoring — graft types on db.query", () => {
       stack: [s.db.query({ table: chirp, addon: [{ addon: authorSingle, as: "_author", input: { user_id: out("author") } }], as: "rows" })],
       response: ref("rows"),
     });
+    expect(q).toBeDefined();
     type Row = InferResponse<typeof q>[number];
     expectTypeOf<Row["_author"]>().toEqualTypeOf<{ id: number; name: string }>();
   });
@@ -207,6 +209,7 @@ describe("addon() typed authoring — graft types on db.query", () => {
       stack: [s.db.query({ table: chirp, addon: [{ addon: countAddon, as: "_author", input: { user_id: out("author") } }], as: "rows" })],
       response: ref("rows"),
     });
+    expect(q).toBeDefined();
     type Row = InferResponse<typeof q>[number];
     expectTypeOf<Row["_author"]>().toEqualTypeOf<number>();
   });
@@ -219,6 +222,7 @@ describe("addon() typed authoring — graft types on db.query", () => {
       stack: [s.db.query({ table: chirp, addon: [{ addon: existsAddon, as: "_author", input: { user_id: out("author") } }], as: "rows" })],
       response: ref("rows"),
     });
+    expect(q).toBeDefined();
     type Row = InferResponse<typeof q>[number];
     expectTypeOf<Row["_author"]>().toEqualTypeOf<boolean>();
   });
@@ -231,6 +235,7 @@ describe("addon() typed authoring — graft types on db.query", () => {
       stack: [s.db.query({ table: chirp, addon: [{ addon: aggAddon, as: "_author", input: { user_id: out("author") } }], as: "rows" })],
       response: ref("rows"),
     });
+    expect(q).toBeDefined();
     type Row = InferResponse<typeof q>[number];
     expectTypeOf<Row["_author"]>().toEqualTypeOf<unknown>();
   });
@@ -262,6 +267,7 @@ describe("addon() typed authoring — graft types on db.query", () => {
       ],
       response: ref("rows"),
     });
+    expect(q).toBeDefined();
     type Row = InferResponse<typeof q>[number];
     expectTypeOf<Row["_author"]>().toEqualTypeOf<{ name: string }[]>();
   });
@@ -280,6 +286,7 @@ describe("addon() typed authoring — graft types on db.query", () => {
       ],
       response: ref("rows"),
     });
+    expect(q).toBeDefined();
     type Row = InferResponse<typeof q>[number];
     expectTypeOf<Row["_author"]>().toEqualTypeOf<{ id: number }>();
   });
@@ -303,6 +310,7 @@ describe("addon() typed authoring — graft types on db.query", () => {
       ],
       response: ref("rows"),
     });
+    expect(q).toBeDefined();
     type Row = InferResponse<typeof q>[number];
     expectTypeOf<Row["_count"]>().toEqualTypeOf<number>();
     expectTypeOf<Row["_exists"]>().toEqualTypeOf<boolean>();
@@ -316,6 +324,7 @@ describe("addon() typed authoring — graft types on db.query", () => {
       stack: [s.db.query({ table: chirp, addon: [{ addon: "author", as: "_author", output: ["name"] }], as: "rows" })],
       response: ref("rows"),
     });
+    expect(q).toBeDefined();
     type Row = InferResponse<typeof q>[number];
     expectTypeOf<Row["_author"]>().toEqualTypeOf<unknown>();
   });
@@ -328,6 +337,7 @@ describe("addon() typed authoring — graft types on db.query", () => {
       stack: [s.db.query({ table: chirp, addon: [{ addon: "author", as: "_author" }], as: "rows" })],
       response: ref("rows"),
     });
+    expect(q).toBeDefined();
     type Row = InferResponse<typeof q>[number];
     expectTypeOf<Row["_author"]>().toEqualTypeOf<unknown>();
   });
