@@ -117,7 +117,7 @@ describe("lock-aware export", () => {
       .registerQueries([query({ name: "list_users", verb: "GET", apiGroup: group })])
       .registerToolsets([toolset.mcp({ name: "assistant" })])
       .registerTriggers([
-        trigger.table({ name: "on_insert", objId: 1, actions: { insert: true }, stack: [] }),
+        trigger.table({ name: "on_insert", objId: 1, actions: { insert: true }, stack: () => [] }),
       ]);
     const ctx = createLockContext(emptyLock());
     x.export({ lock: ctx });

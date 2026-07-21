@@ -8,26 +8,43 @@
  *
  * Response-bearing types (realtime, mcp_server, agent) emit `result[]`;
  * config-only types (table, workspace, error) do not.
+ *
+ * **Implied inputs (U1-U4).** A trigger's inputs are fixed by type — Xano
+ * generates them in `mvp:trigger_update_defaults` and they cannot be edited.
+ * SideStep injects the exact per-type input array (`impliedInputs`) at encode
+ * time and exposes those inputs to the stack through a typed handle `t`:
+ * `stack: (t) => [...]`. There is no user-supplied `input` field — the implied
+ * inputs are the only inputs. For a database trigger bound to a `table()`
+ * handle, `t.new` / `t.old` are typed against the table's row, with nullability
+ * keyed on the enabled actions (delete → `new` is null, insert → `old` is null).
  */
 import type { ResultItemXdo, StackItemXdo, InputXdo } from "../types/xdo.js";
+import type { Value } from "../values/value.js";
+import { inp, ref } from "../values/value.js";
+import { setVar } from "../statements/set-var.js";
 import { encodeStatement } from "../statements/statement.js";
 import type { Statement } from "../statements/statement.js";
 import { encodeResponse } from "../responses/response.js";
 import type { ResponseDef } from "../responses/response.js";
-import { encodeInput } from "../inputs/input.js";
-import type { InputDescriptor } from "../inputs/input.js";
 import { registerKind } from "./kind.js";
 import type { ObjectKind } from "./kind.js";
 import { defaultHistory, encodeTags } from "./common.js";
 import { resolveRef } from "../refs/guid.js";
 import type { ObjectRef } from "../refs/guid.js";
+import type { InferRow } from "./table.js";
+import { impliedInputs } from "./trigger-inputs.js";
+import type { TriggerInputObjType } from "./trigger-inputs.js";
+import { buildTriggerHandle } from "./trigger-handle.js";
+import type {
+  FieldAccessor,
+  RealtimeInputs,
+  ToolsetInputs,
+  WorkspaceInputs,
+  ErrorInputs,
+} from "./trigger-handle.js";
 
-export type TriggerObjType =
-  | "database"
-  | "workspace_realtime_channel"
-  | "toolset"
-  | "workspace"
-  | "error";
+/** The stored trigger `obj_type` (identical set to {@link TriggerInputObjType}). */
+export type TriggerObjType = TriggerInputObjType;
 
 export interface DatabaseActions {
   delete?: boolean;
@@ -44,6 +61,33 @@ export interface RealtimeActions {
   message?: boolean;
   join?: boolean;
 }
+
+// --- Database handle typing (U4) ---
+
+/** The row type a database trigger references, or a `json` floor when no
+ * `table()` handle is bound (a raw numeric `objId` carries no field brands). */
+type TriggerRow<T> = [InferRow<T>] extends [never] ? Record<string, unknown> : InferRow<T>;
+
+/** `new` is present when an insert or update action is enabled. */
+type HasNew<A> = A extends { insert: true } ? true : A extends { update: true } ? true : false;
+/** `old` is present when an update or delete action is enabled. */
+type HasOld<A> = A extends { update: true } ? true : A extends { delete: true } ? true : false;
+
+/**
+ * The typed handle passed to a database trigger's `stack`. `action`/`datasource`
+ * are always present; `new`/`old` are typed row accessors when their action is
+ * enabled and `null` otherwise (delete → `new` null, insert → `old` null,
+ * update → both, truncate → neither). A multi-action trigger offers both — the
+ * runtime value can still be empty for the op that didn't fire, discriminated
+ * via `t.action`.
+ */
+export type DatabaseInputs<Row, A> = {
+  /** The database op (`"insert"` | `"update"` | `"delete"` | `"truncate"`). */
+  action: Value;
+  /** The data source label the change occurred on. */
+  datasource: Value;
+} & (HasNew<A> extends true ? { new: FieldAccessor<Row> } : { new: null }) &
+  (HasOld<A> extends true ? { old: FieldAccessor<Row> } : { old: null });
 
 /** The canonical four-group meta skeleton (per dbo/trigger.yaml). */
 function baseMeta() {
@@ -74,8 +118,9 @@ export interface TriggerDef {
   objId?: number | string;
   description?: string;
   active?: boolean;
-  input?: Record<string, InputDescriptor>;
+  /** The resolved statement stack (the `stack` callback is invoked at factory time). */
   stack?: Statement[];
+  /** The resolved response (response-bearing types only). */
   response?: ResponseDef;
   /** Whether this type emits a `result[]` (response-bearing). */
   hasResult: boolean;
@@ -113,7 +158,9 @@ export function encodeTrigger(def: TriggerDef): TriggerXdo {
     output: [],
     meta: def.meta,
     tag: encodeTags(def.tags),
-    input: Object.entries(def.input ?? {}).map(([name, d]) => encodeInput(name, d)),
+    // Inputs are implied by type (fixed by Xano, not user-editable) — always
+    // inject the canonical per-type array, never a user-supplied map.
+    input: impliedInputs(def.objType),
     run: (def.stack ?? []).map(encodeStatement),
   };
   if (def.hasResult) {
@@ -124,6 +171,8 @@ export function encodeTrigger(def: TriggerDef): TriggerXdo {
   return xdo;
 }
 
+/** Fields common to every trigger factory. Note: no `input` — trigger inputs
+ * are implied by type and cannot be user-supplied. */
 interface CommonArgs {
   name: string;
   /** Explicit Xano `guid` (defaults to a guid derived from `name`). */
@@ -131,16 +180,23 @@ interface CommonArgs {
   description?: string;
   active?: boolean;
   objId?: number;
-  input?: Record<string, InputDescriptor>;
-  stack?: Statement[];
   /** Workspace tags (stored `tag: [{tag}]`), e.g. `["xano:quick-start"]`. */
   tags?: string[];
 }
 
 export const trigger = {
-  /** Database table trigger (obj_type=database). Config-only (no response). */
-  table(
-    args: CommonArgs & { table?: ObjectRef; datasources?: string[]; actions?: DatabaseActions },
+  /**
+   * Database table trigger (obj_type=database). Config-only (no response). The
+   * `stack` callback receives `t` with `t.new`/`t.old` (typed against the bound
+   * `table` row) plus `t.action`/`t.datasource`.
+   */
+  table<const T extends ObjectRef | undefined = undefined, const A extends DatabaseActions = DatabaseActions>(
+    args: CommonArgs & {
+      table?: T;
+      datasources?: string[];
+      actions?: A;
+      stack?: (t: DatabaseInputs<TriggerRow<T>, A>) => Statement[];
+    },
   ): TriggerDef {
     const meta = baseMeta();
     meta.database.datasource = (args.datasources ?? []).map((tag) => ({ tag }));
@@ -153,49 +209,147 @@ export const trigger = {
     // Bind to the target table by its portable guid (a `table()` handle or
     // name); a raw numeric `objId` stays the escape hatch.
     const objId = args.table !== undefined ? resolveRef("dbo", args.table) : args.objId;
-    return { ...args, objId, objType: "database", hasResult: false, meta };
+    const t = buildTriggerHandle("database") as unknown as DatabaseInputs<TriggerRow<T>, A>;
+    return {
+      name: args.name,
+      guid: args.guid,
+      description: args.description,
+      active: args.active,
+      tags: args.tags,
+      objId,
+      objType: "database",
+      hasResult: false,
+      meta,
+      stack: args.stack?.(t) ?? [],
+    };
   },
 
   /** Realtime channel trigger (obj_type=workspace_realtime_channel). Response-bearing. */
-  realtime(args: CommonArgs & { actions?: RealtimeActions; response?: ResponseDef }): TriggerDef {
+  realtime(
+    args: CommonArgs & {
+      actions?: RealtimeActions;
+      stack?: (t: RealtimeInputs) => Statement[];
+      response?: (t: RealtimeInputs) => ResponseDef;
+    },
+  ): TriggerDef {
     const meta = baseMeta();
     meta.workspace_realtime_channel.action = {
       message: args.actions?.message ?? false,
       join: args.actions?.join ?? false,
     };
-    return { ...args, objType: "workspace_realtime_channel", hasResult: true, meta };
+    const t = buildTriggerHandle("workspace_realtime_channel") as unknown as RealtimeInputs;
+    return {
+      name: args.name,
+      guid: args.guid,
+      description: args.description,
+      active: args.active,
+      tags: args.tags,
+      objId: args.objId,
+      objType: "workspace_realtime_channel",
+      hasResult: true,
+      meta,
+      stack: args.stack?.(t) ?? [],
+      // Xano default (updateResult): echo the `payload` input back.
+      response: args.response ? args.response(t) : inp("payload"),
+    };
   },
 
   /** MCP server trigger (obj_type=toolset, connection action). Response-bearing. */
-  mcpServer(args: CommonArgs & { response?: ResponseDef }): TriggerDef {
-    const meta = baseMeta();
-    meta.toolset.action.connection = true;
-    return { ...args, objType: "toolset", hasResult: true, meta };
+  mcpServer(
+    args: CommonArgs & {
+      stack?: (t: ToolsetInputs) => Statement[];
+      response?: (t: ToolsetInputs) => ResponseDef;
+    },
+  ): TriggerDef {
+    return toolsetTrigger(args);
   },
 
   /** Agent trigger (obj_type=toolset, connection action). Response-bearing. */
-  agent(args: CommonArgs & { response?: ResponseDef }): TriggerDef {
-    const meta = baseMeta();
-    meta.toolset.action.connection = true;
-    return { ...args, objType: "toolset", hasResult: true, meta };
+  agent(
+    args: CommonArgs & {
+      stack?: (t: ToolsetInputs) => Statement[];
+      response?: (t: ToolsetInputs) => ResponseDef;
+    },
+  ): TriggerDef {
+    return toolsetTrigger(args);
   },
 
   /** Workspace lifecycle trigger (obj_type=workspace). Config-only. */
-  workspace(args: CommonArgs & { actions?: WorkspaceActions }): TriggerDef {
+  workspace(
+    args: CommonArgs & {
+      actions?: WorkspaceActions;
+      stack?: (t: WorkspaceInputs) => Statement[];
+    },
+  ): TriggerDef {
     const meta = baseMeta();
     meta.workspace.action = {
       branch_live: args.actions?.branch_live ?? false,
       branch_merge: args.actions?.branch_merge ?? false,
       branch_new: args.actions?.branch_new ?? false,
     };
-    return { ...args, objType: "workspace", hasResult: false, meta };
+    const t = buildTriggerHandle("workspace") as unknown as WorkspaceInputs;
+    return {
+      name: args.name,
+      guid: args.guid,
+      description: args.description,
+      active: args.active,
+      tags: args.tags,
+      objId: args.objId,
+      objType: "workspace",
+      hasResult: false,
+      meta,
+      stack: args.stack?.(t) ?? [],
+    };
   },
 
   /** Error trigger (obj_type=error, empty meta). Config-only. */
-  error(args: CommonArgs): TriggerDef {
-    return { ...args, objType: "error", hasResult: false, meta: {} };
+  error(
+    args: CommonArgs & {
+      stack?: (t: ErrorInputs) => Statement[];
+    },
+  ): TriggerDef {
+    const t = buildTriggerHandle("error") as unknown as ErrorInputs;
+    return {
+      name: args.name,
+      guid: args.guid,
+      description: args.description,
+      active: args.active,
+      tags: args.tags,
+      objId: args.objId,
+      objType: "error",
+      hasResult: false,
+      meta: {},
+      stack: args.stack?.(t) ?? [],
+    };
   },
 };
+
+/** Shared MCP-server / agent trigger construction (both are `obj_type=toolset`). */
+function toolsetTrigger(
+  args: CommonArgs & {
+    stack?: (t: ToolsetInputs) => Statement[];
+    response?: (t: ToolsetInputs) => ResponseDef;
+  },
+): TriggerDef {
+  const meta = baseMeta();
+  meta.toolset.action.connection = true;
+  const t = buildTriggerHandle("toolset") as unknown as ToolsetInputs;
+  return {
+    name: args.name,
+    guid: args.guid,
+    description: args.description,
+    active: args.active,
+    tags: args.tags,
+    objId: args.objId,
+    objType: "toolset",
+    hasResult: true,
+    meta,
+    // Xano default (updateRun): copy the toolset/tools inputs into stack vars.
+    stack: args.stack ? args.stack(t) : [setVar("toolset", inp("toolset")), setVar("tools", inp("tools"))],
+    // Xano default (updateResult): return the toolset/tools vars.
+    response: args.response ? args.response(t) : { toolset: ref("toolset"), tools: ref("tools") },
+  };
+}
 
 export const triggerKind: ObjectKind<TriggerDef, TriggerXdo> = {
   name: "trigger",

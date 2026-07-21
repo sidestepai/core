@@ -25,7 +25,7 @@ import type { TriggerInputObjType } from "./trigger-inputs.js";
  * dotted `child.rest` escape for deeper nesting). A `json`/untyped field uses
  * `Record<string, unknown>`, whose key set widens to `string` (any path).
  */
-export type FieldAccessor<Cols extends Record<string, unknown> = Record<string, unknown>> = Value &
+export type FieldAccessor<Cols = Record<string, unknown>> = Value &
   (<K extends keyof Cols & string>(path: K | `${K}.${string}`) => Value);
 
 // --- Per-type handle shapes (database lives in trigger.ts, generic over row + actions) ---
