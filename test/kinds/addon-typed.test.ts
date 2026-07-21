@@ -54,11 +54,31 @@ describe("addon() typed authoring — encode", () => {
     expect(a.context.return).toBeUndefined();
   });
 
-  it.each(["count", "exists", "aggregate"] as const)("cardinality:'%s' encodes context.return.type", (card) => {
+  it.each(["count", "exists"] as const)("cardinality:'%s' encodes context.return.type", (card) => {
     const a = encodeAddon(addon({ name: "author", table: userTable, output: ["id"], cardinality: card }));
     expect(a.context).toEqual({
       dbo: { id: deriveGuid("dbo", userTable.name) },
       return: { type: card },
+    });
+  });
+
+  it("cardinality:'aggregate' with group/eval encodes the full return.aggregate block", () => {
+    const a = encodeAddon(
+      addon({
+        name: "author",
+        table: userTable,
+        cardinality: "aggregate",
+        group: [{ name: "name", as: "grp" }],
+        eval: [{ name: "id", as: "cnt", filters: [{ name: "count" }] }],
+      }),
+    );
+    expect(a.context.return).toEqual({
+      type: "aggregate",
+      aggregate: {
+        sort: [],
+        eval: [{ as: "cnt", name: "id", filters: [{ name: "count", arg: [] }] }],
+        group: [{ as: "grp", name: "name", filters: [] }],
+      },
     });
   });
 
@@ -255,6 +275,28 @@ describe("addon() typed authoring — graft types on db.query", () => {
     expect(q).toBeDefined();
     type Row = InferResponse<typeof q>[number];
     expectTypeOf<Row["_author"]>().toEqualTypeOf<unknown>();
+  });
+
+  it("aggregate addon WITH group/eval → graft typed by the aliases (U10)", () => {
+    const typedAgg = addon({
+      name: "chirp_agg2",
+      table: userTable,
+      cardinality: "aggregate",
+      group: [{ name: "name", as: "grp" }],
+      eval: [{ name: "id", as: "cnt", filters: [{ name: "count" }] }],
+      input: { user_id: input.int() },
+    });
+    const q = query({
+      verb: "GET",
+      apiGroup: group,
+      name: "qagg2",
+      stack: [s.db.query({ table: chirp, addon: [{ addon: typedAgg, as: "_stats", input: { user_id: out("author") } }], as: "rows" })],
+      response: ref("rows"),
+    });
+    expect(q).toBeDefined();
+    type Row = InferResponse<typeof q>[number];
+    type Stats = Row["_stats"];
+    expectTypeOf<Stats>().toEqualTypeOf<Array<{ grp: unknown; cnt: unknown }>>();
   });
 
   it("collision detection: shadowing alias throws, non-colliding + bare-name are fine", () => {

@@ -7,6 +7,7 @@
  */
 import type { Value } from "../../values/value.js";
 import type { Comparison } from "../conditional.js";
+import type { Prettify } from "../../fields/value-types.js";
 
 /** Sort direction for a {@link SortDirective} — the engine's `orderBy` values. */
 export type SortDir = "asc" | "desc" | "rand";
@@ -215,3 +216,67 @@ export function encodeSearch(where?: DbWhere, additionalWhere?: DbWhere): unknow
 export function encodeSort(sort?: SortDirective[]): Array<{ sortBy: string; orderBy: SortDir }> {
   return (sort ?? []).map((s) => ({ sortBy: s.sortBy, orderBy: s.dir ?? "asc" }));
 }
+
+// ---------------------------------------------------------------------------
+// Eval / computed-column primitives — shared by `s.db.query` (`context.eval[]`,
+// aggregate `group`/`eval`) and `addon()` (same). Lives here (not db.ts) so the
+// addon kind can reuse it without importing db.ts (a cycle).
+// ---------------------------------------------------------------------------
+
+/** One step of an eval filter pipeline (`{ name, arg, disabled? }`) — engine `mvp_filter`. */
+export interface DbEvalFilter {
+  name: string;
+  /** Filter args as tagged values (encoded `{value,tag,filters}`). */
+  arg?: Value[];
+  /** Skip this step (kept in the stored pipeline as `disabled:true`). */
+  disabled?: boolean;
+}
+
+/**
+ * A computed output column (`context.eval[]`): source column/path `name`, output
+ * alias `as`, and an optional `filters` pipeline. The `as` grafts onto the
+ * returned row as an `unknown`-typed key. Also used for aggregate `group`/`eval`.
+ */
+export interface DbEval {
+  /** Source column or dotted path (e.g. `"book.name"`). */
+  name: string;
+  /** Output alias — the row key this eval lands under. */
+  as: string;
+  /** Optional filter pipeline applied to the value. */
+  filters?: DbEvalFilter[];
+}
+
+/**
+ * Encode `context.eval[]` — one `{ as, name, filters }` per computed column. Each
+ * filter step is `{ name, arg, disabled? }` with `arg` a list of tagged values;
+ * `disabled` is dropped at its default. Byte shape from the `list-evals` golden.
+ */
+export function encodeEval(evals?: readonly DbEval[]): unknown[] | undefined {
+  if (!evals?.length) return undefined;
+  return evals.map((e) => ({
+    as: e.as,
+    name: e.name,
+    filters: (e.filters ?? []).map((f) => ({
+      name: f.name,
+      arg: (f.arg ?? []).map((v) => ({ value: v.value, tag: v.tag, filters: v.filters })),
+      ...(f.disabled ? { disabled: true } : {}),
+    })),
+  }));
+}
+
+/**
+ * The keys a set of `eval` (or aggregate `group`/`eval`) columns graft onto a
+ * row. Each entry's `as` alias becomes a key valued `unknown` — a filter
+ * pipeline's output isn't statically knowable. An absent set contributes none.
+ */
+export type EvalFields<E> = E extends readonly [infer H, ...infer Rest]
+  ? (H extends { as: infer S extends string } ? { [K in S]: unknown } : object) & EvalFields<Rest>
+  : object;
+
+/**
+ * The row an aggregate query/addon yields — keyed by every `group` and `eval`
+ * alias (values `unknown`). Reuses {@link EvalFields}; absent group/eval → no keys.
+ */
+export type AggregateRow<AG> = AG extends { group?: infer G; eval?: infer EV }
+  ? Prettify<EvalFields<G> & EvalFields<EV>>
+  : Record<string, unknown>;

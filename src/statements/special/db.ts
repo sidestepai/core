@@ -40,9 +40,9 @@ import type { LeanInput } from "../lean-input.js";
 import { tableColumns } from "../../kinds/table.js";
 import type { ColumnDef, TableDef, InferRow } from "../../kinds/table.js";
 import type { Prettify } from "../../fields/value-types.js";
-import { encodeSearch, encodeSort } from "./db-search.js";
-import type { DbWhere, SortDirective } from "./db-search.js";
-export type { DbWhere, SortDir, SortDirective } from "./db-search.js";
+import { encodeSearch, encodeSort, encodeEval } from "./db-search.js";
+import type { DbWhere, SortDirective, DbEval, EvalFields, AggregateRow } from "./db-search.js";
+export type { DbWhere, SortDir, SortDirective, DbEval, DbEvalFilter } from "./db-search.js";
 
 /**
  * The column-name type for a db op's `table` argument: a typed `table()` handle
@@ -151,16 +151,6 @@ type WithAddons<Row, A> = [keyof AddonFields<A>] extends [never]
   : Prettify<Omit<Row, keyof AddonFields<A>> & AddonFields<A>>;
 
 /**
- * The keys a set of `eval` computed columns graft onto each returned row. Each
- * eval's `as` alias becomes a key valued `unknown` — a filter pipeline's output
- * isn't statically knowable, so `unknown` is the honest floor (narrow at the call
- * site). Mirrors {@link AddonFields}.
- */
-type EvalFields<E> = E extends readonly [infer H, ...infer Rest]
-  ? (H extends { as: infer S extends string } ? { [K in S]: unknown } : object) & EvalFields<Rest>
-  : object;
-
-/**
  * A row shape augmented with any `eval` alias keys. With no evals it is the row
  * unchanged. Like {@link WithAddons}, an eval alias **overrides** a base column of
  * the same name (the engine computes over it), so the honest type is the graft.
@@ -234,29 +224,6 @@ export type DbReturnType = "list" | "single" | "count" | "exists" | "stream" | "
 /** Distinct-row handling (`context.return.<list|stream>.distinct`): engine default `"auto"`. */
 export type DbDistinct = "auto" | "yes" | "no";
 
-/** One step of an eval filter pipeline (`{ name, arg, disabled? }`) — engine `mvp_filter`. */
-export interface DbEvalFilter {
-  name: string;
-  /** Filter args as tagged values (encoded `{value,tag,filters}`). */
-  arg?: Value[];
-  /** Skip this step (kept in the stored pipeline as `disabled:true`). */
-  disabled?: boolean;
-}
-
-/**
- * A computed output column (`context.eval[]`): source column/path `name`, output
- * alias `as`, and an optional `filters` pipeline. The `as` grafts onto the
- * returned row as an `unknown`-typed key. Shared with `addon()`.
- */
-export interface DbEval {
-  /** Source column or dotted path (e.g. `"book.name"`). */
-  name: string;
-  /** Output alias — the row key this eval lands under. */
-  as: string;
-  /** Optional filter pipeline applied to the value. */
-  filters?: DbEvalFilter[];
-}
-
 /** Aggregate paging (`context.return.aggregate.paging`) — no `offset`/`totals` (engine schema). */
 export interface DbAggregatePaging {
   page?: number;
@@ -304,15 +271,6 @@ export interface DbBind {
  * and `list → row[]` or the {@link PagingEnvelope} when `paging` requests
  * metadata. The row is always the addon-augmented row.
  */
-/**
- * The row an aggregate query yields — keyed by every `group` and `eval` alias
- * (values `unknown`, since aggregator/filter output isn't statically knowable).
- * Reuses {@link EvalFields}; an absent group/eval contributes no keys.
- */
-type AggregateRow<AG> = AG extends { group?: infer G; eval?: infer EV }
-  ? Prettify<EvalFields<G> & EvalFields<EV>>
-  : Record<string, unknown>;
-
 type QueryResult<Row, A, P, RT extends DbReturnType, E = readonly [], AG = unknown> = RT extends "count"
   ? number
   : RT extends "exists"
@@ -1119,24 +1077,6 @@ function encodeExternal(ext: DbExternal): Record<string, unknown> {
       per_page: p.per_page ?? false,
     },
   };
-}
-
-/**
- * Encode `context.eval[]` — one `{ as, name, filters }` per computed column. Each
- * filter step is `{ name, arg, disabled? }` with `arg` a list of tagged values;
- * `disabled` is dropped at its default. Byte shape from the `list-evals` golden.
- */
-function encodeEval(evals?: readonly DbEval[]): unknown[] | undefined {
-  if (!evals?.length) return undefined;
-  return evals.map((e) => ({
-    as: e.as,
-    name: e.name,
-    filters: (e.filters ?? []).map((f) => ({
-      name: f.name,
-      arg: (f.arg ?? []).map((v) => ({ value: v.value, tag: v.tag, filters: v.filters })),
-      ...(f.disabled ? { disabled: true } : {}),
-    })),
-  }));
 }
 
 /**
