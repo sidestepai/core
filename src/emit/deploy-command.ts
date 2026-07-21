@@ -163,6 +163,16 @@ export async function runDeployCommand(args: ParsedArgs): Promise<void> {
     }
   }
 
-  // The one machine-readable line: a projected, secret-free summary on stdout.
-  process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
+  // stdout is the machine-readable data channel: emit the projected, secret-free
+  // summary as JSON when it's piped or redirected (`… deploy | jq`, CI logs). When
+  // stdout is an interactive terminal, a raw JSON dump under the formatted progress
+  // is just noise — the URLs are already shown, so add only the workspace line.
+  if (process.stdout.isTTY) {
+    if (summary.workspace?.name) {
+      const { id, name } = summary.workspace;
+      detail(`workspace: ${name}${id !== undefined ? ` (#${id})` : ""}`);
+    }
+  } else {
+    process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
+  }
 }
