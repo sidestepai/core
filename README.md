@@ -499,26 +499,33 @@ when `totals: true` — instead of a bare `Row[]`, and `InferResponse` reflects 
 **Addons** — enrich each returned row with related data by attaching addons to
 `s.db.query`/`get`/`add`/`edit`/`patch` (the row-returning ops).
 
-*Authoring an addon.* Use `addon({ table, output })` — the `table` handle
-auto-fills the `context.dbo` binding, and `output` names the columns it returns.
-`cardinality: "single"` grafts a single object (Xano's Single toggle); the
-default lists an array. Register it with `.registerAddons([...])`:
+*Authoring an addon.* An addon is a single table-bound db query (not a statement
+stack) — Xano executes it straight off its `context`. Use `addon({ table, where,
+output })`: the `table` handle auto-fills the `context.dbo` binding, `where` (the
+same `expr(...)` surface as `s.db.query`) is the predicate binding the addon to
+the parent row, and `output` names the columns it returns. `sort` orders the
+result. `cardinality` shapes it — `"single"` (one object), `"list"` (array, the
+default), `"count"` (a number), `"exists"` (a boolean), or `"aggregate"` (grouped
+rows; supply the `group`/`eval` via a raw `context.return`). Register it with
+`.registerAddons([...])`:
 
 ```ts
-import { addon, s, inp, input } from "@sidestep/core";
+import { addon, input, expr, col, inp } from "@sidestep/core";
 import { userTable } from "@sidestep/auth";
 
 export const authorAddon = addon({
   name: "author",
-  table: userTable,                       // → context.dbo binding
-  output: ["id", "name"],                 // → typed graft, restricted columns
-  cardinality: "single",                  // → one object, not a 1-element array
+  table: userTable,                          // → context.dbo binding
+  where: expr(col("id"), "=", inp("user_id")), // → context.search (bind to parent row)
+  output: ["id", "name"],                    // → typed graft, restricted columns
+  cardinality: "single",                     // → one object, not a 1-element array
   input: { user_id: input.int({ required: true }) },
-  stack: [
-    s.db.get({ table: userTable, fieldValue: inp("user_id"), output: ["id", "name"], as: "author" }),
-  ],
 });
 ```
+
+Rarer context (`eval`, `bind`, `lock`, external paging) stays raw `context`
+passthrough; an explicit `context.search`/`sort`/`return` wins over `where`/
+`sort`/`cardinality`.
 
 *Attaching it.* Reference the addon by its handle (or a bare name), map its
 inputs (bind a parent-row column with `out(col)`), and land it on the row at a
@@ -537,8 +544,9 @@ s.db.query({
 When you attach a typed `addon({ table, output })` handle, its **alias** (the
 last segment of its `as` — here `_author`) is merged onto the row shape in
 `InferResponse` with the addon's **graft shape** (`{ id; name }` for `single`,
-`{ id; name }[]` for the default list) — no cast needed. An attachment-level
-`output` narrows that shape further (`output: ["name"]` → `{ name }[]`). A
+`{ id; name }[]` for the default list, `number` for `count`, `boolean` for
+`exists`, `unknown` for `aggregate`) — no cast needed. An attachment-level
+`output` narrows an object/array graft further (`output: ["name"]` → `{ name }[]`). A
 **bare-name** reference still grafts `unknown` (the SDK can't shape it), so
 narrow it at the call site. With `paging` the alias lands inside each `items[]`
 element; without it, on each bare row.

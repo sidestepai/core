@@ -40,8 +40,9 @@ import type { LeanInput } from "../lean-input.js";
 import { tableColumns } from "../../kinds/table.js";
 import type { ColumnDef, TableDef, InferRow } from "../../kinds/table.js";
 import type { Prettify } from "../../fields/value-types.js";
-import { encodeSearchExpression } from "../conditional.js";
-import type { Comparison } from "../conditional.js";
+import { encodeSearch, encodeSort } from "./db-search.js";
+import type { DbWhere, SortDirective } from "./db-search.js";
+export type { DbWhere, SortDir, SortDirective } from "./db-search.js";
 
 /**
  * The column-name type for a db op's `table` argument: a typed `table()` handle
@@ -99,7 +100,9 @@ type NarrowGraft<G, O extends readonly string[]> = IsUnknown<G> extends true
   ? unknown
   : G extends readonly (infer E)[]
     ? Prettify<Pick<E, Extract<O[number], keyof E>>>[]
-    : Prettify<Pick<G, Extract<O[number], keyof G>>>;
+    : G extends object
+      ? Prettify<Pick<G, Extract<O[number], keyof G>>>
+      : G;
 
 /**
  * The graft shape one attached addon lands on the row. A typed
@@ -867,22 +870,6 @@ export function dbBulkUpdate(args: DbBulkWriteArgs): Statement {
   return bulkStatement("mvp:dbo_bulkupdate", args.table, args.as, [leanInput("items", args.items)]);
 }
 
-/** Sort direction for a {@link SortDirective} — the engine's `orderBy` values. */
-export type SortDir = "asc" | "desc" | "rand";
-
-/**
- * One sort directive: order the returned rows by `sortBy`, ascending, descending,
- * or random. Applied by the engine — the directive lands in `context.return.list.sort`
- * as `{ sortBy, orderBy }`, the shape the `mvp:dbo_view` converter
- * (`MVP::convertContextToConfig`) reads. `dir` maps to the engine's `orderBy`.
- */
-export interface SortDirective<C extends string = string> {
-  /** The column (or dot-path) to sort by. */
-  sortBy: C;
-  /** Direction (`"asc"` | `"desc"` | `"rand"`); defaults to ascending. */
-  dir?: SortDir;
-}
-
 /**
  * Static paging controls for `db.query`. Applied by the engine — these land in
  * `context.return.list.paging` (with `enabled:true`) and mirror the engine
@@ -907,55 +894,6 @@ export interface DbPaging {
 }
 
 /**
- * A `db.query` filter. Author it as a comparison (or several, ANDed) with
- * `expr(col("status"), "=", c.text("published"))` — encoded into the engine's
- * operand-based `{expression:[…]}` search shape (the same algebra as a
- * conditional `when` / a table trigger's search). A raw `Value` stays the
- * escape hatch for a pre-built clause.
- */
-export type DbWhere = Value | Comparison | Comparison[];
-
-/** A `Comparison` (`{left, op, right}`) vs a tagged `Value` (`{value, tag, filters}`). */
-function isComparison(w: DbWhere): w is Comparison {
-  return typeof w === "object" && w !== null && !Array.isArray(w) && "op" in w && "left" in w;
-}
-
-/** Normalize a `DbWhere` to `Comparison[]`, or `null` for the raw-`Value` escape hatch. */
-function toComparisons(w: DbWhere): Comparison[] | null {
-  if (Array.isArray(w)) return w;
-  if (isComparison(w)) return [w];
-  return null;
-}
-
-/**
- * Encode `where` + `additionalWhere` into the single `context.search` the engine
- * reads (`mvp_search` = `{ expression: [...] }`). Comparison clauses from both
- * args concatenate into one `expression[]`, ANDed (`or:false`) — the engine has
- * exactly one `search`, so there is no separate `additional_where`. A raw `Value`
- * (escape hatch) passes through as `context.search` directly, but cannot be
- * combined with comparison clauses.
- */
-function encodeSearch(where?: DbWhere, additionalWhere?: DbWhere): unknown {
-  const clauses: Comparison[] = [];
-  let raw: unknown;
-  for (const w of [where, additionalWhere]) {
-    if (!w) continue;
-    const cmps = toComparisons(w);
-    if (cmps) clauses.push(...cmps);
-    else raw = w;
-  }
-  if (raw !== undefined && clauses.length) {
-    throw new Error(
-      "db.query: a raw Value `where` cannot be combined with `expr(...)` clauses — " +
-        "use one form or the other.",
-    );
-  }
-  if (clauses.length) return encodeSearchExpression(clauses);
-  if (raw !== undefined) return raw;
-  return undefined;
-}
-
-/**
  * Build `context.return` for a list query — the block the engine's converter
  * reads for sort (`return.list.sort`) and paging (`return.list.paging`, applied
  * only when `enabled:true`). `db.query` is always a list read; sort maps
@@ -963,7 +901,7 @@ function encodeSearch(where?: DbWhere, additionalWhere?: DbWhere): unknown {
  * `page=1`/`offset=0`/`per_page=25`/`metadata=true`/`totals=false` defaults.
  */
 function encodeReturn(sort?: SortDirective[], paging?: DbPaging): unknown {
-  const sortEls = (sort ?? []).map((s) => ({ sortBy: s.sortBy, orderBy: s.dir ?? "asc" }));
+  const sortEls = encodeSort(sort);
   const pagingObj = paging
     ? {
         enabled: true,

@@ -4,7 +4,8 @@ import { table } from "../../src/kinds/table.js";
 import { f } from "../../src/fields/catalog.js";
 import { input } from "../../src/inputs/input.js";
 import { s } from "../../src/statements/s.js";
-import { inp, out, ref } from "../../src/values/value.js";
+import { col, inp, out, ref } from "../../src/values/value.js";
+import { expr } from "../../src/statements/conditional.js";
 import { deriveGuid } from "../../src/refs/guid.js";
 import { query } from "../../src/kinds/query.js";
 import { apiGroup } from "../../src/kinds/api-group.js";
@@ -33,7 +34,6 @@ describe("addon() typed authoring — encode", () => {
         table: userTable,
         output: ["id", "name"],
         input: { user_id: input.int({ required: true }) },
-        stack: [s.db.get({ table: userTable, fieldValue: inp("user_id"), output: ["id", "name"], as: "author" })],
       }),
     );
     expect(a.context).toEqual({ dbo: { id: deriveGuid("dbo", userTable.name) } });
@@ -53,16 +53,87 @@ describe("addon() typed authoring — encode", () => {
     expect(a.context.return).toBeUndefined();
   });
 
+  it.each(["count", "exists", "aggregate"] as const)("cardinality:'%s' encodes context.return.type", (card) => {
+    const a = encodeAddon(addon({ name: "author", table: userTable, output: ["id"], cardinality: card }));
+    expect(a.context).toEqual({
+      dbo: { id: deriveGuid("dbo", userTable.name) },
+      return: { type: card },
+    });
+  });
+
+  it("where encodes context.search (same builder as db.query)", () => {
+    const a = encodeAddon(
+      addon({
+        name: "author",
+        table: userTable,
+        output: ["id", "name"],
+        where: expr(col("id"), "=", inp("user_id")),
+        input: { user_id: input.int({ required: true }) },
+      }),
+    );
+    const search = a.context.search as { expression: unknown[] };
+    expect(search.expression).toHaveLength(1);
+    expect(a.context.dbo).toEqual({ id: deriveGuid("dbo", userTable.name) });
+  });
+
+  it("sort encodes context.sort as {sortBy, orderBy}", () => {
+    const a = encodeAddon(
+      addon({ name: "author", table: userTable, output: ["id"], sort: [{ sortBy: "name" }, { sortBy: "id", dir: "desc" }] }),
+    );
+    expect(a.context.sort).toEqual([
+      { sortBy: "name", orderBy: "asc" },
+      { sortBy: "id", orderBy: "desc" },
+    ]);
+  });
+
+  it("explicit context.search / context.sort win over where / sort", () => {
+    const a = encodeAddon(
+      addon({
+        name: "author",
+        table: userTable,
+        where: expr(col("id"), "=", inp("user_id")),
+        sort: [{ sortBy: "name" }],
+        context: { search: { expression: [] }, sort: [{ sortBy: "id", orderBy: "asc" }] },
+      }),
+    );
+    expect(a.context.search).toEqual({ expression: [] });
+    expect(a.context.sort).toEqual([{ sortBy: "id", orderBy: "asc" }]);
+  });
+
   it("explicit context.dbo / context.return win over the auto-fill", () => {
     const a = encodeAddon(
       addon({
         name: "author",
         table: userTable,
         cardinality: "single",
-        context: { dbo: { id: "explicit-guid" }, return: { type: "list" } },
+        // Same type as `cardinality` (no conflict), but a richer explicit block —
+        // proves the author's `return` is preserved verbatim, not overwritten by the auto-fill.
+        context: { dbo: { id: "explicit-guid" }, return: { type: "single", listable: false } },
       }),
     );
-    expect(a.context).toEqual({ dbo: { id: "explicit-guid" }, return: { type: "list" } });
+    expect(a.context).toEqual({ dbo: { id: "explicit-guid" }, return: { type: "single", listable: false } });
+  });
+
+  it("conflicting cardinality vs explicit context.return.type throws", () => {
+    expect(() =>
+      encodeAddon(
+        addon({ name: "author", table: userTable, cardinality: "single", context: { return: { type: "list" } } }),
+      ),
+    ).toThrow(/cardinality/);
+  });
+
+  it("empty sort is dropped, not written as context.sort: []", () => {
+    const a = encodeAddon(addon({ name: "author", table: userTable, output: ["id"], sort: [] }));
+    expect(a.context.sort).toBeUndefined();
+  });
+
+  it("malformed where (typo'd comparison) throws instead of shipping a garbage search", () => {
+    // `operator` instead of `op` — not comparison-shaped and not a tagged Value.
+    expect(() =>
+      encodeAddon(
+        addon({ name: "author", table: userTable, where: { operator: "=", left: col("id") } as never }),
+      ),
+    ).toThrow(/must be an expr/);
   });
 
   it("no table/output → unchanged empty context + full-record output (back-compat)", () => {
@@ -89,7 +160,6 @@ describe("addon() typed authoring — graft types on db.query", () => {
     table: userTable,
     output: ["id", "name"],
     input: { user_id: input.int({ required: true }) },
-    stack: [s.db.get({ table: userTable, fieldValue: inp("user_id"), output: ["id", "name"], as: "author" })],
   });
 
   const authorSingle = addon({
@@ -98,8 +168,8 @@ describe("addon() typed authoring — graft types on db.query", () => {
     output: ["id", "name"],
     cardinality: "single",
     input: { user_id: input.int({ required: true }) },
-    stack: [s.db.get({ table: userTable, fieldValue: inp("user_id"), output: ["id", "name"], as: "author" })],
   });
+
 
   it("list addon → graft typed as the picked columns array", () => {
     const q = query({
@@ -123,6 +193,46 @@ describe("addon() typed authoring — graft types on db.query", () => {
     });
     type Row = InferResponse<typeof q>[number];
     expectTypeOf<Row["_author"]>().toEqualTypeOf<{ id: number; name: string }>();
+  });
+
+  const countAddon = addon({ name: "chirp_count", table: userTable, cardinality: "count", input: { user_id: input.int() } });
+  const existsAddon = addon({ name: "chirp_exists", table: userTable, cardinality: "exists", input: { user_id: input.int() } });
+  const aggAddon = addon({ name: "chirp_agg", table: userTable, cardinality: "aggregate", input: { user_id: input.int() } });
+
+  it("count addon → graft typed as number", () => {
+    const q = query({
+      verb: "GET",
+      apiGroup: group,
+      name: "qcount",
+      stack: [s.db.query({ table: chirp, addon: [{ addon: countAddon, as: "_author", input: { user_id: out("author") } }], as: "rows" })],
+      response: ref("rows"),
+    });
+    type Row = InferResponse<typeof q>[number];
+    expectTypeOf<Row["_author"]>().toEqualTypeOf<number>();
+  });
+
+  it("exists addon → graft typed as boolean", () => {
+    const q = query({
+      verb: "GET",
+      apiGroup: group,
+      name: "qexists",
+      stack: [s.db.query({ table: chirp, addon: [{ addon: existsAddon, as: "_author", input: { user_id: out("author") } }], as: "rows" })],
+      response: ref("rows"),
+    });
+    type Row = InferResponse<typeof q>[number];
+    expectTypeOf<Row["_author"]>().toEqualTypeOf<boolean>();
+  });
+
+  it("aggregate addon → graft stays unknown (shape driven by group/eval)", () => {
+    const q = query({
+      verb: "GET",
+      apiGroup: group,
+      name: "qagg",
+      stack: [s.db.query({ table: chirp, addon: [{ addon: aggAddon, as: "_author", input: { user_id: out("author") } }], as: "rows" })],
+      response: ref("rows"),
+    });
+    type Row = InferResponse<typeof q>[number];
+    expectTypeOf<Row["_author"]>().toEqualTypeOf<unknown>();
   });
 
   it("collision detection: shadowing alias throws, non-colliding + bare-name are fine", () => {
@@ -172,6 +282,30 @@ describe("addon() typed authoring — graft types on db.query", () => {
     });
     type Row = InferResponse<typeof q>[number];
     expectTypeOf<Row["_author"]>().toEqualTypeOf<{ id: number }>();
+  });
+
+  it("attachment output on a count/exists addon preserves the scalar graft (never collapses to {})", () => {
+    // Guards NarrowGraft's `G extends object ? Pick : G` branch: an attachment-level
+    // `output` must not run a number/boolean graft through `Pick` (→ `{}`).
+    const q = query({
+      verb: "GET",
+      apiGroup: group,
+      name: "q_scalar_output",
+      stack: [
+        s.db.query({
+          table: chirp,
+          addon: [
+            { addon: countAddon, as: "_count", input: { user_id: out("author") }, output: ["id"] },
+            { addon: existsAddon, as: "_exists", input: { user_id: out("author") }, output: ["id"] },
+          ],
+          as: "rows",
+        }),
+      ],
+      response: ref("rows"),
+    });
+    type Row = InferResponse<typeof q>[number];
+    expectTypeOf<Row["_count"]>().toEqualTypeOf<number>();
+    expectTypeOf<Row["_exists"]>().toEqualTypeOf<boolean>();
   });
 
   it("attachment output on a bare-name addon stays unknown (never collapses to {})", () => {
