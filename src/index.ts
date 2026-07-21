@@ -80,6 +80,13 @@ export { fl, FILTER_NAMES } from "./values/generated/filters.generated.js";
 export { setVar, updateVar } from "./statements/set-var.js";
 export { conditional, expr } from "./statements/conditional.js";
 export type { Comparison } from "./statements/conditional.js";
+export { cmp, and, or } from "./statements/special/db-search.js";
+export type {
+  SearchOp,
+  SearchComparison,
+  SearchGroup,
+  SearchNode,
+} from "./statements/special/db-search.js";
 export type { Statement } from "./statements/statement.js";
 
 // Hand-authored control-flow / terminal specials (U10)
@@ -187,6 +194,16 @@ export type {
   DbBulkDeleteArgs,
   DbBulkWriteArgs,
   DbQueryArgs,
+  DbReturnType,
+  DbDistinct,
+  DbEval,
+  DbEvalFilter,
+  DbAggregate,
+  DbAggregatePaging,
+  DbBind,
+  DbJoin,
+  DbExternal,
+  DbExternalPermissions,
   DbWhere,
   DbTransactionArgs,
   DbExternalQueryArgs,

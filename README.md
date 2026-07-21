@@ -489,12 +489,43 @@ and paging numbers are plain ints). The field-match ops take a **single** field 
 two-column lookup (e.g. dedupe a `(habit, date)` check-in), use `s.db.query` with a `where`
 array (ANDed) and branch on the result, rather than pushing the check to the client.
 
+**Query parity — the full "Query All Records" surface.** Beyond a simple `where`,
+`s.db.query` mirrors the whole Xano query builder:
+
+- **Operators & boolean groups.** `expr(...)` stays the narrow comparison; for the
+  full operator set use `cmp(left, op, right, { ignoreEmpty? })` — `op` is `in`/`not in`/
+  `like`/`ilike`/`between`/`contains`/`includes`/`overlaps`/`@>`/`~`/`search`/… (plus the
+  `expr` comparisons). Compose nested logic with `and(...)` / `or(...)`: `where:
+  and(cmp(col("tags"), "overlaps", inp("t")), or(expr(col("a"), "=", …), expr(col("b"), "=", …)))`.
+  The same surface is available on `addon()` `where`.
+- **`returnType`** (`"list"` default | `"single"` | `"count"` | `"exists"` | `"stream"` |
+  `"aggregate"`) drives `context.return.type` and the `InferResponse` shape — `count`→`number`,
+  `exists`→`boolean`, `single`→`Row | null`, `stream`→`Row[]` (pageable, no envelope),
+  `aggregate`→rows keyed by the group/eval aliases.
+- **`bind: [{ table, as?, join?, where? }]`** adds joins (`context.bind[]`; `join` defaults to
+  `"inner"`). Joined columns are addressable by **dotted path** in `where`/`sort`/`eval`; `as`
+  defaults to the table name, and two joins to the same table need distinct aliases.
+- **`eval: [{ name, as, filters? }]`** adds computed columns (`context.eval[]`); each `as`
+  grafts onto the row as an `unknown` key in `InferResponse` (shadowing a column throws).
+- **`aggregate: { group?, eval?, sort?, paging? }`** (with `returnType: "aggregate"`) builds
+  `context.return.aggregate` — `group`/`eval` are `{ name, as, filters? }` (an aggregator like
+  `sum`/`count` rides `filters`).
+- **`distinct`** (`"auto"` default | `"yes"` | `"no"`) rides `context.return.<list|stream>.distinct`.
+
 **Paging changes the response shape.** Supplying `paging` with metadata on (the
 default) makes `s.db.query` return a **paging envelope** — `{ items: Row[], curPage,
 nextPage, prevPage, offset, perPage, itemsReceived }`, plus `itemsTotal`/`pageTotal`
 when `totals: true` — instead of a bare `Row[]`, and `InferResponse` reflects that
 (issue #58). Pass `paging: { …, metadata: false }` to keep the bare array. Without
-`paging` at all, the result stays a bare `Row[]`.
+`paging` at all, the result stays a bare `Row[]`. Read `nextPage` (`number | null`) as
+the typed has-next signal.
+
+**Input-bound paging (#66).** `paging.page`/`per_page`/`offset` also accept a `Value`
+(e.g. `inp("page")`) — the dynamic value rides `context.simpleExternal` while a static
+block stays the engine gate (`enabled: true`). `paging.search`/`sort` are `Value` dynamic
+overrides; a `search`/`sort`-only `paging` (no numeric field) does **not** paginate.
+`external: { value, permissions? }` is the classic whole-config paging blob (mutually
+exclusive with input-bound `paging` fields; forces the gate on).
 
 **Addons** — enrich each returned row with related data by attaching addons to
 `s.db.query`/`get`/`add`/`edit`/`patch` (the row-returning ops).
@@ -506,8 +537,8 @@ same `expr(...)` surface as `s.db.query`) is the predicate binding the addon to
 the parent row, and `output` names the columns it returns. `sort` orders the
 result. `cardinality` shapes it — `"single"` (one object), `"list"` (array, the
 default), `"count"` (a number), `"exists"` (a boolean), or `"aggregate"` (grouped
-rows; supply the `group`/`eval` via a raw `context.return`). Register it with
-`.registerAddons([...])`:
+rows; pass typed `group`/`eval` `{ name, as, filters? }` columns and the graft is an
+array keyed by those aliases). Register it with `.registerAddons([...])`:
 
 ```ts
 import { addon, input, expr, col, inp } from "@sidestep/core";
@@ -523,7 +554,7 @@ export const authorAddon = addon({
 });
 ```
 
-Rarer context (`eval`, `bind`, `lock`, external paging) stays raw `context`
+Rarer context (`bind`, `lock`, external paging) stays raw `context`
 passthrough; an explicit `context.search`/`sort`/`return` wins over `where`/
 `sort`/`cardinality`.
 
@@ -545,7 +576,8 @@ When you attach a typed `addon({ table, output })` handle, its **alias** (the
 last segment of its `as` — here `_author`) is merged onto the row shape in
 `InferResponse` with the addon's **graft shape** (`{ id; name }` for `single`,
 `{ id; name }[]` for the default list, `number` for `count`, `boolean` for
-`exists`, `unknown` for `aggregate`) — no cast needed. An attachment-level
+`exists`, and an array keyed by the declared `group`/`eval` aliases for
+`aggregate`) — no cast needed. An attachment-level
 `output` narrows an object/array graft further (`output: ["name"]` → `{ name }[]`). A
 **bare-name** reference still grafts `unknown` (the SDK can't shape it), so
 narrow it at the call site. With `paging` the alias lands inside each `items[]`

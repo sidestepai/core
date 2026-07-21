@@ -3,7 +3,8 @@ import { query } from "../../src/kinds/query.js";
 import { apiGroup } from "../../src/kinds/api-group.js";
 import { table } from "../../src/kinds/table.js";
 import { f } from "../../src/fields/catalog.js";
-import { ref, out, c } from "../../src/values/value.js";
+import { ref, out, c, inp } from "../../src/values/value.js";
+import { input } from "../../src/inputs/input.js";
 import { s } from "../../src/statements/s.js";
 import type { InferResponse } from "../../src/responses/infer.js";
 import type { InferRow } from "../../src/kinds/table.js";
@@ -90,6 +91,134 @@ describe("db.query paging envelope + addon response typing", () => {
       itemsTotal: number;
       pageTotal: number;
     }>();
+  });
+
+  it("input-bound page (Value) still yields the paging envelope (issue #66)", () => {
+    const q = query({
+      verb: "GET",
+      apiGroup: group,
+      name: "q4b",
+      stack: [s.db.query({ table: book, paging: { page: inp("page"), per_page: 20 }, as: "rows" })],
+      input: { page: input.int({ default: 1 }) },
+      response: ref("rows"),
+    });
+    expectTypeOf(q).toBeObject();
+    expectTypeOf<InferResponse<typeof q>>().toEqualTypeOf<{
+      items: Book[];
+      itemsReceived: number;
+      curPage: number;
+      nextPage: number | null;
+      prevPage: number | null;
+      offset: number;
+      perPage: number;
+    }>();
+  });
+
+  it("returnType maps InferResponse: count→number, exists→boolean, single→Row|null, stream→Row[]", () => {
+    const qCount = query({
+      verb: "GET", apiGroup: group, name: "rt1",
+      stack: [s.db.query({ table: book, returnType: "count", as: "n" })],
+      response: ref("n"),
+    });
+    expectTypeOf(qCount).toBeObject();
+    expectTypeOf<InferResponse<typeof qCount>>().toEqualTypeOf<number>();
+
+    const qExists = query({
+      verb: "GET", apiGroup: group, name: "rt2",
+      stack: [s.db.query({ table: book, returnType: "exists", as: "b" })],
+      response: ref("b"),
+    });
+    expectTypeOf(qExists).toBeObject();
+    expectTypeOf<InferResponse<typeof qExists>>().toEqualTypeOf<boolean>();
+
+    const qSingle = query({
+      verb: "GET", apiGroup: group, name: "rt3",
+      stack: [s.db.query({ table: book, returnType: "single", as: "row" })],
+      response: ref("row"),
+    });
+    expectTypeOf(qSingle).toBeObject();
+    expectTypeOf<InferResponse<typeof qSingle>>().toEqualTypeOf<Book | null>();
+
+    const qStream = query({
+      verb: "GET", apiGroup: group, name: "rt4",
+      stack: [s.db.query({ table: book, returnType: "stream", as: "rows" })],
+      response: ref("rows"),
+    });
+    expectTypeOf(qStream).toBeObject();
+    expectTypeOf<InferResponse<typeof qStream>>().toEqualTypeOf<Book[]>();
+  });
+
+  it("eval alias grafts onto each row as unknown (M4)", () => {
+    const q = query({
+      verb: "GET", apiGroup: group, name: "ev1",
+      stack: [s.db.query({ table: book, eval: [{ name: "name", as: "name_upper" }], as: "rows" })],
+      response: ref("rows"),
+    });
+    expectTypeOf(q).toBeObject();
+    type Row = InferResponse<typeof q>[number];
+    expectTypeOf<Row>().toMatchTypeOf<Book>();
+    expectTypeOf<Row["name_upper"]>().toEqualTypeOf<unknown>();
+  });
+
+  it("aggregate row is keyed by group + eval aliases (unknown values) (M5)", () => {
+    const q = query({
+      verb: "GET", apiGroup: group, name: "agg1",
+      stack: [
+        s.db.query({
+          table: book,
+          returnType: "aggregate",
+          aggregate: {
+            group: [{ name: "name", as: "grp" }],
+            eval: [{ name: "pages", as: "total", filters: [{ name: "sum" }] }],
+          },
+          as: "rows",
+        }),
+      ],
+      response: ref("rows"),
+    });
+    expectTypeOf(q).toBeObject();
+    type Row = InferResponse<typeof q>[number];
+    expectTypeOf<Row["grp"]>().toEqualTypeOf<unknown>();
+    expectTypeOf<Row["total"]>().toEqualTypeOf<unknown>();
+  });
+
+  it("single + output narrows to Pick<Row> | null", () => {
+    const q = query({
+      verb: "GET", apiGroup: group, name: "rt5",
+      stack: [s.db.query({ table: book, returnType: "single", output: ["name"], as: "row" })],
+      response: ref("row"),
+    });
+    expectTypeOf(q).toBeObject();
+    expectTypeOf<InferResponse<typeof q>>().toEqualTypeOf<Pick<Book, "name"> | null>();
+  });
+
+  it("has-next signal: envelope exposes nextPage: number|null and typed itemsTotal (issue #66 bonus)", () => {
+    const q = query({
+      verb: "GET",
+      apiGroup: group,
+      name: "q4d",
+      stack: [
+        s.db.query({ table: book, paging: { page: inp("page"), totals: true }, as: "rows" }),
+      ],
+      input: { page: input.int({ default: 1 }) },
+      response: ref("rows"),
+    });
+    expectTypeOf(q).toBeObject();
+    type Env = InferResponse<typeof q>;
+    expectTypeOf<Env>().toMatchTypeOf<{ nextPage: number | null; itemsTotal: number; pageTotal: number }>();
+  });
+
+  it("search/sort-only paging (no page field) → bare row list, not the truncated envelope", () => {
+    const q = query({
+      verb: "GET",
+      apiGroup: group,
+      name: "q4c",
+      stack: [s.db.query({ table: book, paging: { search: inp("q"), sort: inp("s") }, as: "rows" })],
+      input: { q: input.text(), s: input.text() },
+      response: ref("rows"),
+    });
+    expectTypeOf(q).toBeObject();
+    expectTypeOf<InferResponse<typeof q>>().toEqualTypeOf<Book[]>();
   });
 
   // `toEqualTypeOf` is finicky comparing an `unknown`-valued key across a

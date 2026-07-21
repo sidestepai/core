@@ -1,0 +1,29 @@
+{
+  "_derived_from": "Byte-verified against the cloud-client golden for context.simpleExternal (extensions/MVP/includes/xano/test/script/data/parser/script2json/minimal/DEV-7305.json — each of page/per_page/offset/search/sort is a tagged {value,tag,filters}, tag default 'input') and the static return.list.paging golden (…/db/minimal/query/mvp:dbo_view-list-paging.json). Input-bound paging (issue #66): a Value page rides context.simpleExternal while the static block stays as the engine gate (enabled:true). See docs/plans/2026-07-21-001-feat-db-query-frontend-parity-plan.md.",
+  "name": "mvp:dbo_view",
+  "as": "rows",
+  "input": [],
+  "addon": [],
+  "output": { "customize": false, "filters": [], "items": [] },
+  "context": {
+    "dbo": { "id": "PLACEHOLDER" },
+    "return": {
+      "type": "list",
+      "list": {
+        "distinct": "auto",
+        "sort": [],
+        "paging": {
+          "enabled": true,
+          "page": 1,
+          "offset": 0,
+          "per_page": 20,
+          "metadata": true,
+          "totals": false
+        }
+      }
+    },
+    "simpleExternal": {
+      "page": { "value": "page", "tag": "input", "filters": [] }
+    }
+  }
+}

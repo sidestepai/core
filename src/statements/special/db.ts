@@ -40,9 +40,9 @@ import type { LeanInput } from "../lean-input.js";
 import { tableColumns } from "../../kinds/table.js";
 import type { ColumnDef, TableDef, InferRow } from "../../kinds/table.js";
 import type { Prettify } from "../../fields/value-types.js";
-import { encodeSearch, encodeSort } from "./db-search.js";
-import type { DbWhere, SortDirective } from "./db-search.js";
-export type { DbWhere, SortDir, SortDirective } from "./db-search.js";
+import { encodeSearch, encodeSort, encodeEval } from "./db-search.js";
+import type { DbWhere, SortDirective, DbEval, EvalFields, AggregateRow } from "./db-search.js";
+export type { DbWhere, SortDir, SortDirective, DbEval, DbEvalFilter } from "./db-search.js";
 
 /**
  * The column-name type for a db op's `table` argument: a typed `table()` handle
@@ -151,10 +151,26 @@ type WithAddons<Row, A> = [keyof AddonFields<A>] extends [never]
   : Prettify<Omit<Row, keyof AddonFields<A>> & AddonFields<A>>;
 
 /**
+ * A row shape augmented with any `eval` alias keys. With no evals it is the row
+ * unchanged. Like {@link WithAddons}, an eval alias **overrides** a base column of
+ * the same name (the engine computes over it), so the honest type is the graft.
+ */
+type WithEval<Row, E> = [keyof EvalFields<E>] extends [never]
+  ? Row
+  : Prettify<Omit<Row, keyof EvalFields<E>> & EvalFields<E>>;
+
+/**
  * The paging metadata envelope a `db.query` returns when `paging` is set with
  * metadata on — the engine's `packageListMeta` shape (issue #58). The result
  * list lives under `items`; `totals:true` adds `itemsTotal`/`pageTotal`. A query
  * with no `paging`, or `paging:{ metadata:false }`, returns the bare list instead.
+ *
+ * **Has-next signal (issue #66 bonus):** read `nextPage` — it is `number` when
+ * another page exists and `null` on the last page (the engine fetches one extra
+ * row to decide, so this needs no second scan). For a total count, set
+ * `paging:{ totals:true }` and read `itemsTotal`/`pageTotal`. Both are typed on
+ * this envelope by `InferResponse`, so a client can drive "load more" straight
+ * off the typed response without hand-declaring the shape.
  */
 type PagingEnvelope<Items, Totals extends boolean> = Prettify<
   {
@@ -169,25 +185,107 @@ type PagingEnvelope<Items, Totals extends boolean> = Prettify<
 >;
 
 /**
- * Whether a `paging` arg produces the metadata envelope: present, and not
- * explicitly `metadata:false` (the engine default is `metadata:true`).
+ * Whether a `paging` arg carries a page/per_page/offset field (static or a
+ * `Value`) — the runtime gate that activates pagination. A `search`/`sort`-only
+ * `paging` has no such field, so it does not produce the envelope.
+ */
+type HasPageFieldT<P> = P extends { page: unknown }
+  ? true
+  : P extends { per_page: unknown }
+    ? true
+    : P extends { offset: unknown }
+      ? true
+      : false;
+
+/**
+ * Whether a `paging` arg produces the metadata envelope: it activates pagination
+ * (a page/per_page/offset field is present) and is not explicitly `metadata:false`
+ * (the engine default is `metadata:true`).
  */
 type HasPagingEnvelope<P> = P extends undefined
   ? false
   : P extends { metadata: false }
     ? false
-    : true;
+    : HasPageFieldT<P> extends true
+      ? true
+      : false;
 
 /** The `totals` flag of a `paging` arg — literal `true` only when set explicitly. */
 type PagingTotals<P> = P extends { totals: true } ? true : false;
 
 /**
- * The full `db.query` result shape: the addon-augmented row list, wrapped in the
- * {@link PagingEnvelope} when `paging` requests metadata, else the bare list.
+ * The engine's `context.return.type` for a `db.query` — the return-type
+ * discriminant. `"list"` is the default (a row array or paging envelope);
+ * `"single"` a first-match object; `"count"`/`"exists"` a scalar; `"stream"` a
+ * (pageable) row array with no metadata envelope.
  */
-type QueryResult<Row, A, P> = HasPagingEnvelope<P> extends true
-  ? PagingEnvelope<WithAddons<Row, A>[], PagingTotals<P>>
-  : WithAddons<Row, A>[];
+export type DbReturnType = "list" | "single" | "count" | "exists" | "stream" | "aggregate";
+
+/** Distinct-row handling (`context.return.<list|stream>.distinct`): engine default `"auto"`. */
+export type DbDistinct = "auto" | "yes" | "no";
+
+/** Aggregate paging (`context.return.aggregate.paging`) — no `offset`/`totals` (engine schema). */
+export interface DbAggregatePaging {
+  page?: number;
+  per_page?: number;
+  /** Wrap the result in the metadata envelope (engine default `true`). */
+  metadata?: boolean;
+}
+
+/**
+ * Aggregate/group-by config for `returnType:"aggregate"` (`context.return.aggregate`).
+ * `group` are the group-by columns and `eval` the aggregator columns (each
+ * `{ name, as, filters }` — an aggregator like `sum`/`count` rides `filters`).
+ * Both `as` sets graft onto the aggregate row (`unknown` values).
+ */
+export interface DbAggregate {
+  group?: DbEval[];
+  eval?: DbEval[];
+  sort?: SortDirective[];
+  paging?: DbAggregatePaging;
+}
+
+/** A join type for a {@link DbBind} — the engine's `bind[].join`. */
+export type DbJoin = "inner" | "left" | "right";
+
+/**
+ * A join (`context.bind[]`): join `table` (aliased by `as`) with `join` kind and
+ * an optional `where` join condition (same search surface as the query). Joins
+ * widen what `where`/`sort`/`eval` can address by dotted path (`"author.id"`);
+ * they do not by themselves change the returned row shape.
+ */
+export interface DbBind {
+  /** The table to join. */
+  table: ObjectRef;
+  /** SQL alias for the joined table — defaults to the table name. Two binds to the same table need distinct aliases. */
+  as?: string;
+  /** Join kind (default `"inner"`). */
+  join?: DbJoin;
+  /** Join condition — same `where`/`cmp`/`and`/`or` surface as the query. */
+  where?: DbWhere;
+}
+
+/**
+ * The full `db.query` result shape, discriminated by return type `RT`:
+ * `count → number`, `exists → boolean`, `single → row | null`, `stream → row[]`,
+ * and `list → row[]` or the {@link PagingEnvelope} when `paging` requests
+ * metadata. The row is always the addon-augmented row.
+ */
+type QueryResult<Row, A, P, RT extends DbReturnType, E = readonly [], AG = unknown> = RT extends "count"
+  ? number
+  : RT extends "exists"
+    ? boolean
+    : RT extends "aggregate"
+      ? AggregateRow<AG>[]
+      : WithAddons<WithEval<Row, E>, A> extends infer R
+        ? RT extends "single"
+          ? R | null
+          : RT extends "stream"
+            ? R[]
+            : HasPagingEnvelope<P> extends true
+              ? PagingEnvelope<R[], PagingTotals<P>>
+              : R[]
+        : never;
 
 /**
  * A db read statement branded — **at the type level only** — via the shared
@@ -871,48 +969,239 @@ export function dbBulkUpdate(args: DbBulkWriteArgs): Statement {
 }
 
 /**
- * Static paging controls for `db.query`. Applied by the engine — these land in
- * `context.return.list.paging` (with `enabled:true`) and mirror the engine
- * schema's `return.list.paging` block: `page=1`, `per_page=25`, `offset=0`,
- * `totals=false`, `metadata=true`.
+ * Paging controls for `db.query`. Static controls (`page`/`per_page`/`offset` as
+ * plain numbers) land in `context.return.list.paging` (with `enabled:true`) and
+ * mirror the engine schema's `return.list.paging` block: `page=1`, `per_page=25`,
+ * `offset=0`, `totals=false`, `metadata=true`.
  *
- * Values are plain numbers, not {@link Value}s: the engine's `return.list.paging`
- * fields are typed `int`. Dynamic, input-bound paging (a `per_page` fed from a
- * request input) is a separate engine surface (`simpleExternal`/`external`) that
- * is out of scope here.
+ * **Input-bound (dynamic) paging (issue #66):** pass a {@link Value} (e.g.
+ * `inp("page")`) for `page`/`per_page`/`offset` instead of a number and it is
+ * emitted into `context.simpleExternal.<field>` as a tagged `{value,tag,filters}`
+ * (byte shape from the `simpleExternal` golden — the inner key is `value`, not
+ * `operand`), while the static block stays as the engine's baseline/fallback and
+ * the gate (`enabled:true`). `search`/`sort` accept a {@link Value} for a
+ * dynamic custom-query / sort override; the engine reads those unconditionally.
+ *
+ * The `enabled:true` gate is keyed on whether a **page/per_page/offset** field is
+ * present (static or `Value`) — a `paging` object carrying *only* `search`/`sort`
+ * leaves `enabled:false`, so a dynamic-search-only override does not silently
+ * activate default pagination and truncate the result to 25 rows.
  *
  * Note `metadata:true` (the default) wraps the result in a paging envelope
  * (`{ items, curPage, nextPage, … }`) rather than returning a bare row list; pass
- * `metadata:false` to keep the bare array `db.query` otherwise types.
+ * `metadata:false` to keep the bare array. The envelope only applies when a
+ * page/per_page/offset field is present.
  */
 export interface DbPaging {
-  page?: number;
-  per_page?: number;
-  offset?: number;
+  page?: number | Value;
+  per_page?: number | Value;
+  offset?: number | Value;
   totals?: boolean;
   metadata?: boolean;
+  /** Dynamic custom-query override (`context.simpleExternal.search`) — a {@link Value}, ANDed onto the static `where`. */
+  search?: Value;
+  /** Dynamic sort override (`context.simpleExternal.sort`) — a {@link Value}; replaces the static sort at runtime. */
+  sort?: Value;
+}
+
+/** A `paging` value that is a tagged {@link Value} (input-bound) vs a plain number. */
+function isPagingValue(x: unknown): x is Value {
+  return typeof x === "object" && x !== null && "tag" in x && "value" in x && "filters" in x;
+}
+
+/** Whether a `paging` arg carries a page/per_page/offset field (static or `Value`) — the engine's paging gate. */
+function hasPageField(paging?: DbPaging): boolean {
+  return (
+    !!paging &&
+    (paging.page !== undefined || paging.per_page !== undefined || paging.offset !== undefined)
+  );
 }
 
 /**
- * Build `context.return` for a list query — the block the engine's converter
- * reads for sort (`return.list.sort`) and paging (`return.list.paging`, applied
- * only when `enabled:true`). `db.query` is always a list read; sort maps
- * `{ sortBy, dir }` → `{ sortBy, orderBy }`, and paging fills the engine's
- * `page=1`/`offset=0`/`per_page=25`/`metadata=true`/`totals=false` defaults.
+ * The `context.simpleExternal` block for input-bound paging: one tagged
+ * `{value,tag,filters}` entry per `page`/`per_page`/`offset`/`search`/`sort`
+ * field authored as a {@link Value}. Numeric fields ride the static block
+ * instead, so they are omitted here. Returns `undefined` when nothing is dynamic.
  */
-function encodeReturn(sort?: SortDirective[], paging?: DbPaging): unknown {
+function encodeSimpleExternal(paging?: DbPaging): Record<string, unknown> | undefined {
+  if (!paging) return undefined;
+  const out: Record<string, unknown> = {};
+  for (const k of ["page", "per_page", "offset", "search", "sort"] as const) {
+    const v = paging[k];
+    if (isPagingValue(v)) out[k] = { value: v.value, tag: v.tag, filters: v.filters };
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+/**
+ * Which parts of a classic {@link DbExternal} blob the engine is permitted to
+ * honor. Each defaults to the engine's own default (search/sort/page `true`,
+ * `per_page` `false`) — the shape from the `external` golden.
+ */
+export interface DbExternalPermissions {
+  search?: boolean;
+  sort?: boolean;
+  page?: boolean;
+  per_page?: boolean;
+}
+
+/**
+ * The classic single-blob external override (`context.external`). Its resolved
+ * `value` is a whole faceted-filter object (`{search, sort, page, per_page}`),
+ * typically fed from one request input; `permissions` gates which of those
+ * sub-keys the engine honors. Mutually exclusive with input-bound `paging`
+ * fields — the engine consults `simpleExternal` only when `external` is empty.
+ */
+export interface DbExternal {
+  /** The whole external config as one tagged {@link Value} (e.g. `inp("filters")`). */
+  value: Value;
+  /** Per-part gates; each defaults to the engine default. */
+  permissions?: DbExternalPermissions;
+}
+
+/**
+ * Encode `context.external`: the tagged value flattened (`{value,tag,filters}`)
+ * with a `permissions` object filled to the engine defaults (byte shape from the
+ * `external` golden — `{search:true, sort:true, page:true, per_page:false}`).
+ */
+function encodeExternal(ext: DbExternal): Record<string, unknown> {
+  const p = ext.permissions ?? {};
+  return {
+    value: ext.value.value,
+    tag: ext.value.tag,
+    filters: ext.value.filters,
+    permissions: {
+      search: p.search ?? true,
+      sort: p.sort ?? true,
+      page: p.page ?? true,
+      per_page: p.per_page ?? false,
+    },
+  };
+}
+
+/**
+ * Reject an `eval` whose `as` alias shadows a column already on the queried table
+ * — the graft would silently override the base column (same hazard as
+ * {@link assertNoAddonShadow}). A bare-name table (no schema) is skipped.
+ */
+/**
+ * Encode `context.bind[]` — one `{ dbo:{as,id}, join, search? }` per join. `as`
+ * defaults to the table name; two binds resolving to the same alias throw (SQL
+ * alias collision). `search` (the join condition) is omitted when there's no
+ * `where`. Byte shape from the `bind` / `bind-nosearch` goldens.
+ */
+function encodeBind(binds?: readonly DbBind[]): unknown[] | undefined {
+  if (!binds?.length) return undefined;
+  const seen = new Set<string>();
+  return binds.map((b) => {
+    const as = b.as ?? (typeof b.table === "string" ? b.table : b.table.name);
+    if (seen.has(as)) {
+      throw new Error(
+        `db.query bind: duplicate join alias "${as}" — two joins to the same table need ` +
+          `distinct \`as\` values so their dotted-path columns don't collide.`,
+      );
+    }
+    seen.add(as);
+    const entry: Record<string, unknown> = {
+      dbo: { as, id: resolveRef("dbo", b.table) },
+      join: b.join ?? "inner",
+    };
+    const search = encodeSearch(b.where);
+    if (search !== undefined) entry.search = search;
+    return entry;
+  });
+}
+
+function assertNoEvalShadow(table: ObjectRef, evals?: readonly DbEval[]): void {
+  if (!evals?.length) return;
+  if (typeof table === "string" || !("schema" in table)) return;
+  const cols = new Set(tableColumns(table as TableDef).map((col) => col.name));
+  for (const e of evals) {
+    if (cols.has(e.as)) {
+      throw new Error(
+        `db.query eval: alias "${e.as}" shadows an existing "${table.name}" column — the ` +
+          `computed value would overwrite it. Rename the eval alias (e.g. "${e.as}_calc").`,
+      );
+    }
+  }
+}
+
+/**
+ * Build `context.return` for a query, discriminated by `returnType`:
+ * - `count`/`exists` → a bare `{ type }` (no sub-block — the scalar rides the
+ *   statement `as`);
+ * - `single` → `{ type:"single", single:{ sort } }` (first match, no paging);
+ * - `stream` → `{ type:"stream", stream:{ sort, distinct, paging? } }` (paging is
+ *   `{ page, per_page, enabled }` only — no offset/metadata/totals);
+ * - `list` (default) → `{ type:"list", list:{ distinct, sort, paging } }` with the
+ *   engine's `page=1`/`offset=0`/`per_page=25`/`metadata=true`/`totals=false`
+ *   defaults; the metadata envelope applies only here.
+ *
+ * `distinct` is hardcoded `"auto"` for now (author control is a later unit).
+ */
+/**
+ * Encode `context.return.aggregate` — `{ sort, paging?, eval, group }`. `group`
+ * and `eval` reuse the {@link encodeEval} `{ as, name, filters }` shape. Aggregate
+ * paging is `{ page, per_page, metadata, enabled }` — no `offset`/`totals`.
+ */
+function encodeAggregate(agg?: DbAggregate): unknown {
+  const block: Record<string, unknown> = {
+    sort: encodeSort(agg?.sort),
+    eval: encodeEval(agg?.eval) ?? [],
+    group: encodeEval(agg?.group) ?? [],
+  };
+  if (agg?.paging) {
+    block.paging = {
+      page: agg.paging.page ?? 1,
+      per_page: agg.paging.per_page ?? 25,
+      metadata: agg.paging.metadata ?? true,
+      enabled: true,
+    };
+  }
+  return { type: "aggregate", aggregate: block };
+}
+
+function encodeReturn(
+  returnType: DbReturnType,
+  sort?: SortDirective[],
+  paging?: DbPaging,
+  forceEnabled = false,
+  distinct: DbDistinct = "auto",
+  aggregate?: DbAggregate,
+): unknown {
   const sortEls = encodeSort(sort);
-  const pagingObj = paging
-    ? {
+  if (returnType === "aggregate") return encodeAggregate(aggregate);
+  if (returnType === "count" || returnType === "exists") return { type: returnType };
+  if (returnType === "single") return { type: "single", single: { sort: sortEls } };
+  // `enabled:true` gates the engine's paging (+ the simpleExternal page/per_page/
+  // offset overrides). Keyed on a page/per_page/offset field being present — a
+  // `search`/`sort`-only `paging` must NOT flip it on (else default pagination
+  // truncates the result to 25 rows). A classic `external` blob (forceEnabled)
+  // also needs the gate on for its page/per_page to take effect.
+  const enabled = hasPageField(paging) || forceEnabled;
+  const staticInt = (v: number | Value | undefined, def: number): number =>
+    typeof v === "number" ? v : def;
+  if (returnType === "stream") {
+    // Stream paging is `{ page, per_page, enabled }` only — no offset/metadata/totals.
+    const stream: Record<string, unknown> = { sort: sortEls, distinct };
+    if (enabled) {
+      stream.paging = {
+        page: staticInt(paging?.page, 1),
+        per_page: staticInt(paging?.per_page, 25),
         enabled: true,
-        page: paging.page ?? 1,
-        offset: paging.offset ?? 0,
-        per_page: paging.per_page ?? 25,
-        metadata: paging.metadata ?? true,
-        totals: paging.totals ?? false,
-      }
-    : { enabled: false, page: 1, offset: 0, per_page: 25, metadata: true, totals: false };
-  return { type: "list", list: { distinct: "auto", sort: sortEls, paging: pagingObj } };
+      };
+    }
+    return { type: "stream", stream };
+  }
+  const pagingObj = {
+    enabled,
+    page: staticInt(paging?.page, 1),
+    offset: staticInt(paging?.offset, 0),
+    per_page: staticInt(paging?.per_page, 25),
+    metadata: paging?.metadata ?? true,
+    totals: paging?.totals ?? false,
+  };
+  return { type: "list", list: { distinct, sort: sortEls, paging: pagingObj } };
 }
 
 export interface DbQueryArgs<
@@ -921,12 +1210,28 @@ export interface DbQueryArgs<
   Cols extends readonly ColsOf<T>[] = readonly ColsOf<T>[],
   A extends readonly AddonSpec[] = readonly AddonSpec[],
   P extends DbPaging | undefined = DbPaging | undefined,
+  RT extends DbReturnType = DbReturnType,
+  E extends readonly DbEval[] = readonly DbEval[],
+  AG extends DbAggregate = DbAggregate,
 > {
   table: T;
+  /**
+   * The engine's `context.return.type`. `"list"` (default) returns a row array
+   * (or paging envelope); `"single"` a first-match `row | null`; `"count"` a
+   * `number`; `"exists"` a `boolean`; `"stream"` a pageable `row[]` with no
+   * metadata envelope. `InferResponse` reflects each shape.
+   */
+  returnType?: RT;
   /** Primary filter — `expr(...)`, an array of `expr(...)` (ANDed), or a raw `Value`. */
   where?: DbWhere;
   /** Additional filter ANDed with `where` (same forms as `where`). */
   additionalWhere?: DbWhere;
+  /**
+   * Joins (`context.bind[]`) — `[{ table, as?, join?, where? }]`. Joined columns
+   * are addressable by dotted path in `where`/`sort`/`eval`; the row shape is
+   * unchanged (output columns still come from `output`/`eval`).
+   */
+  bind?: DbBind[];
   /** Sort directives (`[{ sortBy, dir }]`) — applied by the engine. */
   sort?: SortDirective<ColsOf<T>>[];
   /** Acquire row locks. */
@@ -941,6 +1246,34 @@ export interface DbQueryArgs<
    * the bare array.
    */
   paging?: P;
+  /**
+   * Classic single-blob external override (`context.external`) — one tagged
+   * {@link Value} whose resolved value is a whole `{search,sort,page,per_page}`
+   * config, with per-part `permissions` gates. Mutually exclusive with an
+   * input-bound `paging` field (a `Value` page/per_page/offset/search/sort): the
+   * engine honors `simpleExternal` only when `external` is empty, so authoring
+   * both throws. Setting `external` forces `paging.enabled:true` so its
+   * page/per_page take effect even with no `paging` arg.
+   */
+  external?: DbExternal;
+  /**
+   * Distinct-row handling for a `list`/`stream` query (`"auto"` default | `"yes"`
+   * | `"no"`) → `context.return.<type>.distinct`. Ignored for single/count/exists.
+   */
+  distinct?: DbDistinct;
+  /**
+   * Computed output columns (`context.eval[]`) — each `{ name, as, filters? }`.
+   * The `as` alias grafts onto every returned row as an `unknown`-typed key
+   * (`InferResponse`), since a filter pipeline's output isn't statically knowable.
+   * An alias shadowing an existing column throws at build time.
+   */
+  eval?: E;
+  /**
+   * Aggregate/group-by config, used with `returnType:"aggregate"` →
+   * `context.return.aggregate.{group,eval,sort,paging}`. `InferResponse` types the
+   * aggregate row from the `group` and `eval` aliases (values `unknown`).
+   */
+  aggregate?: AG;
   /** Restrict returned columns. Captured literally so `InferResponse` narrows
    * the traced row list to exactly these columns. */
   output?: Cols;
@@ -970,24 +1303,53 @@ export function dbQuery<
   const Cols extends readonly ColsOf<T>[] = readonly [],
   const A extends readonly AddonSpec[] = readonly [],
   const P extends DbPaging | undefined = undefined,
+  const RT extends DbReturnType = "list",
+  const E extends readonly DbEval[] = readonly [],
+  const AG extends DbAggregate = DbAggregate,
 >(
-  args: DbQueryArgs<T, As, Cols, A, P>,
-): DbResult<As, QueryResult<RowShapeOf<T, Cols>, A, P>> {
+  args: DbQueryArgs<T, As, Cols, A, P, RT, E, AG>,
+): DbResult<As, QueryResult<RowShapeOf<T, Cols>, A, P, RT, E, AG>> {
   assertNoAddonShadow(args.table, args.addon);
+  assertNoEvalShadow(args.table, args.eval);
+  const returnType: DbReturnType = args.returnType ?? "list";
   const context: Record<string, unknown> = { dbo: { id: resolveRef("dbo", args.table) } };
   const search = encodeSearch(args.where, args.additionalWhere);
   if (search !== undefined) context.search = search;
+  const binds = encodeBind(args.bind);
+  if (binds) context.bind = binds;
+  const evals = encodeEval(args.eval);
+  if (evals) context.eval = evals;
   // Row lock rides `context.lock` as a tagged value (`{value, tag, filters}`),
   // not a bare bool — the shape `MVP::convertLockToConfig` reads.
   if (args.lock !== undefined) context.lock = c.bool(args.lock);
-  context.return = encodeReturn(args.sort, args.paging);
+  // Input-bound paging (issue #66): `Value`-typed page/per_page/offset/search/sort
+  // ride `context.simpleExternal` on top of the static block (which is the gate).
+  const simpleExternal = encodeSimpleExternal(args.paging);
+  if (args.external !== undefined) {
+    // The engine consults `simpleExternal` only when `external` is empty, so
+    // authoring both silently drops the per-field binds. Fail at the source.
+    if (simpleExternal) {
+      throw new Error(
+        "db.query: `external` (classic blob) and input-bound `paging` fields (a Value " +
+          "page/per_page/offset/search/sort → simpleExternal) are mutually exclusive — the " +
+          "engine honors `external` and ignores simpleExternal. Use one or the other.",
+      );
+    }
+    // `external`'s page/per_page are gated by static `paging.enabled` just like
+    // simpleExternal — force it on so a self-contained blob isn't silently no-op'd.
+    context.return = encodeReturn(returnType, args.sort, args.paging, true, args.distinct, args.aggregate);
+    context.external = encodeExternal(args.external);
+  } else {
+    context.return = encodeReturn(returnType, args.sort, args.paging, false, args.distinct, args.aggregate);
+    if (simpleExternal) context.simpleExternal = simpleExternal;
+  }
   return {
     name: "mvp:dbo_view",
     context,
     as: args.as ?? "",
     input: [],
     ...envelope({ output: args.output, addon: args.addon }),
-  } as unknown as DbResult<As, QueryResult<RowShapeOf<T, Cols>, A, P>>;
+  } as unknown as DbResult<As, QueryResult<RowShapeOf<T, Cols>, A, P, RT, E, AG>>;
 }
 
 export interface DbTransactionArgs {

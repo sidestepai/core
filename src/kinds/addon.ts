@@ -18,8 +18,13 @@ import { encodeInput } from "../inputs/input.js";
 import type { InputDescriptor } from "../inputs/input.js";
 import { resolveRef } from "../refs/guid.js";
 import type { ObjectRef } from "../refs/guid.js";
-import { encodeSearch, encodeSort } from "../statements/special/db-search.js";
-import type { DbWhere, SortDirective } from "../statements/special/db-search.js";
+import { encodeSearch, encodeSort, encodeEval } from "../statements/special/db-search.js";
+import type {
+  DbWhere,
+  SortDirective,
+  DbEval,
+  AggregateRow,
+} from "../statements/special/db-search.js";
 import type { InferRow } from "./table.js";
 import type { Prettify } from "../fields/value-types.js";
 import { registerKind } from "./kind.js";
@@ -47,9 +52,9 @@ export type AddonCardinality = "single" | "list" | "count" | "exists" | "aggrega
  * with an `output` list it's `Pick<InferRow<Tbl>, Out>`, wrapped per the
  * cardinality: an object (`"single"`) or an array (`"list"`). `"count"` grafts a
  * `number` and `"exists"` a `boolean` (the `output`/`table` are irrelevant to
- * those); `"aggregate"` grafts `unknown` (its shape is driven by `group`/`eval`,
- * which the SDK doesn't model). Falls back to `unknown` when the addon carries no
- * typed `table` + `output` (a bare-name/raw-context addon the SDK can't shape).
+ * those); `"aggregate"` grafts an array keyed by the declared `group`/`eval`
+ * aliases (values `unknown`), or `unknown` when neither is declared. Falls back to
+ * `unknown` when the addon carries no typed `table` + `output` (a bare-name/raw-context addon the SDK can't shape).
  * Mirrors the engine's per-return-type graft (`XS::processOptimizedAddOn` +
  * `getOutputSchema_`).
  */
@@ -57,12 +62,16 @@ export type AddonGraft<
   Tbl,
   Out extends readonly string[],
   Card extends AddonCardinality,
+  Grp extends readonly DbEval[] = readonly [],
+  Ev extends readonly DbEval[] = readonly [],
 > = Card extends "count"
   ? number
   : Card extends "exists"
     ? boolean
     : Card extends "aggregate"
-      ? unknown
+      ? [Grp, Ev] extends [readonly [], readonly []]
+        ? unknown // no group/eval declared → honest floor
+        : Prettify<AggregateRow<{ group: Grp; eval: Ev }>>[]
       : [Out] extends [readonly []]
         ? unknown
         : InferRow<Tbl> extends infer Row
@@ -108,6 +117,10 @@ export interface AddonDef<Graft = unknown> {
   output?: AddonOutput;
   /** Result cardinality (query `return.type`): `"single"` → object, `"list"` (default) → array, `"count"` → number, `"exists"` → boolean, `"aggregate"` → grouped rows. Encodes `context.return.type` (omitted for the `"list"` default). */
   cardinality?: AddonCardinality;
+  /** Aggregate group-by columns (with `cardinality:"aggregate"`) → `context.return.aggregate.group`. Each `as` grafts onto the aggregate row. */
+  group?: DbEval[];
+  /** Aggregate/eval columns (with `cardinality:"aggregate"`) → `context.return.aggregate.eval`. Each `as` grafts onto the aggregate row. */
+  eval?: DbEval[];
   /** @internal phantom carrier for {@link Graft}; never assigned at runtime. */
   readonly __graft?: Graft;
 }
@@ -160,7 +173,20 @@ function buildContext(def: AddonDef): Record<string, unknown> {
   // `"list"` is the engine default (absent `return` coerces to list), so omit it
   // to keep the stored context lean; any other cardinality encodes `return.type`.
   if (def.cardinality !== undefined && def.cardinality !== "list" && ctx.return === undefined) {
-    ctx.return = { type: def.cardinality };
+    if (def.cardinality === "aggregate") {
+      // Build the full aggregate block from group/eval (same {as,name,filters}
+      // shape as db.query aggregate) so the graft type matches the emit.
+      ctx.return = {
+        type: "aggregate",
+        aggregate: {
+          sort: encodeSort(def.sort),
+          eval: encodeEval(def.eval) ?? [],
+          group: encodeEval(def.group) ?? [],
+        },
+      };
+    } else {
+      ctx.return = { type: def.cardinality };
+    }
   }
   return ctx;
 }
@@ -198,30 +224,37 @@ export const addonKind: ObjectKind<AddonDef, AddonXdo> = {
 };
 registerKind(addonKind);
 
-/** The authoring args for {@link addon}, generic over the table/output/cardinality that drive the graft shape. */
+/** The authoring args for {@link addon}, generic over the table/output/cardinality/group/eval that drive the graft shape. */
 interface AddonArgs<
   Tbl extends ObjectRef,
   Out extends readonly string[],
   Card extends AddonCardinality,
-> extends Omit<AddonDef, "table" | "output" | "cardinality" | "__graft"> {
+  Grp extends readonly DbEval[],
+  Ev extends readonly DbEval[],
+> extends Omit<AddonDef, "table" | "output" | "cardinality" | "group" | "eval" | "__graft"> {
   table?: Tbl;
   output?: Out | { customize?: boolean; items?: unknown[] };
   cardinality?: Card;
+  group?: Grp;
+  eval?: Ev;
 }
 
 /**
  * Author an addon. Pass a typed `table` handle + `output` column list to get a
  * typed graft when the addon is attached to a `db.query`/`db.get`, and a
  * `cardinality` to shape it: `"single"` (object), `"list"` (array, default),
- * `"count"` (number), `"exists"` (boolean), or `"aggregate"` (grouped rows —
- * supply the `group`/`eval` via a raw `context.return`). The returned handle is
- * registered with `.registerAddons([...])` and attached via
+ * `"count"` (number), `"exists"` (boolean), or `"aggregate"` (grouped rows). For
+ * `"aggregate"`, pass `group`/`eval` (`{ name, as, filters? }`) and the graft is
+ * typed from their aliases. The returned handle is registered with
+ * `.registerAddons([...])` and attached via
  * `db.query({ addon: [{ addon: handle, as, input }] })`.
  */
 export function addon<
   const Out extends readonly string[] = readonly [],
   Tbl extends ObjectRef = ObjectRef,
   Card extends AddonCardinality = "list",
->(def: AddonArgs<Tbl, Out, Card>): AddonDef<AddonGraft<Tbl, Out, Card>> {
-  return def as AddonDef<AddonGraft<Tbl, Out, Card>>;
+  const Grp extends readonly DbEval[] = readonly [],
+  const Ev extends readonly DbEval[] = readonly [],
+>(def: AddonArgs<Tbl, Out, Card, Grp, Ev>): AddonDef<AddonGraft<Tbl, Out, Card, Grp, Ev>> {
+  return def as AddonDef<AddonGraft<Tbl, Out, Card, Grp, Ev>>;
 }
