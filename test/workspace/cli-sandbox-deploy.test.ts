@@ -121,6 +121,30 @@ describe("sidestep sandbox deploy (OAuth, replaces push)", () => {
     expect(stdoutChunks.join("")).not.toContain("s3cr3t");
   });
 
+  it("prints a formatted summary (not raw JSON) when stdout is an interactive terminal", async () => {
+    const authFile = writeTokenFile(dir);
+    stubFetchOk('{"base_url":"https://x.dev.xano.io/tenant/abc","workspace":{"id":1,"name":"example"}}');
+
+    const stderrChunks: string[] = [];
+    (process.stderr.write as unknown as ReturnType<typeof vi.fn>).mockImplementation((chunk: unknown) => {
+      stderrChunks.push(typeof chunk === "string" ? chunk : String(chunk));
+      return true;
+    });
+    const prevTTY = process.stdout.isTTY;
+    process.stdout.isTTY = true;
+    try {
+      await run(["sandbox", "deploy", examplePath, "--config", authFile]);
+    } finally {
+      process.stdout.isTTY = prevTTY;
+    }
+
+    // No machine-readable JSON dump on an interactive terminal…
+    expect(stdoutChunks.join("")).toBe("");
+    // …but the outcome and the highlighted backend URL still surface on stderr.
+    expect(stderrChunks.join("")).toContain("Backend deployed to sandbox example");
+    expect(stderrChunks.join("")).toContain("https://x.dev.xano.io/tenant/abc");
+  });
+
   it("uploads an existing bundle with --bundle, without compiling", async () => {
     const authFile = writeTokenFile(dir);
     writeFileSync(bundlePath, JSON.stringify({ app: "xano", payload: {} }));

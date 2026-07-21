@@ -57,6 +57,15 @@ export function detail(msg: string): void {
   process.stderr.write(`  ${style.dim(msg)}\n`);
 }
 
+/**
+ * A highlighted, indented URL under the preceding outcome — bold cyan so the
+ * deploy's payoff (the backend + static-host URLs you'll actually open) stands
+ * out from the dim {@link detail} lines around it.
+ */
+export function link(url: string): void {
+  process.stderr.write(`  ${style.bold(style.cyan(url))}\n`);
+}
+
 /** A blank separator line. */
 export function blank(): void {
   process.stderr.write("\n");
