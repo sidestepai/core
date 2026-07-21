@@ -141,7 +141,7 @@ describe("sidestep sandbox deploy (OAuth, replaces push)", () => {
     // No machine-readable JSON dump on an interactive terminal…
     expect(stdoutChunks.join("")).toBe("");
     // …but the outcome and the highlighted backend URL still surface on stderr.
-    expect(stderrChunks.join("")).toContain("Backend deployed to sandbox");
+    expect(stderrChunks.join("")).toContain("Backend deployed to sandbox example");
     expect(stderrChunks.join("")).toContain("https://x.dev.xano.io/tenant/abc");
   });
 

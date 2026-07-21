@@ -502,7 +502,7 @@ export function renderLlmsTxt(m: Manifest): string {
     "frontend directory (a dependency-free gzipped tarball, 100 MB cap) and deploys",
     "it to a static host AFTER the backend import. No separate frontend host to",
     "configure, no CI upload script — backend and static frontend ship together.",
-    "Output highlights the two live URLs: `Backend deployed to sandbox` with the",
+    "Output highlights the two live URLs: `Backend deployed to sandbox <name>` with the",
     "`<baseUrl>` beneath, then `Static host deployed` with the `<url>` beneath",
     "(frontend). The frontend goes to your OWN (parent)",
     "workspace, NOT the sandbox — the sandbox tenant does not serve static hosting.",

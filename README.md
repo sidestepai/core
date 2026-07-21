@@ -17,7 +17,7 @@ sidestep sandbox deploy ./xano/index.ts --static ./dist
 
 ```
 → Deploying ./xano/index.ts → sandbox (merge)
-✓ Backend deployed to sandbox
+✓ Backend deployed to sandbox my-app
     https://x8ki-letl.n7.xano.io                                  ← backend, live
 → Deploying static frontend ./dist → workspace #9
 ✓ Static host deployed
@@ -95,7 +95,7 @@ npx sidestep sandbox deploy ./xano/index.ts --static ./dist
 
 ```
 → Deploying ./xano/index.ts → sandbox (merge)
-✓ Backend deployed to sandbox
+✓ Backend deployed to sandbox sbx-ab12
     https://x8ki-letl.n7.xano.io/tenant/sbx-ab12                      ← backend, live
 → Deploying static frontend ./dist → workspace #9
 ✓ Config injected into index.html: window.XANO_HOST                   ← backend URL, wired in
