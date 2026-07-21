@@ -142,11 +142,7 @@ function nestedValueFields(v: Value): Record<string, unknown> {
 
 /** Shallow-copy only the defined own keys of an object (drops `undefined`). */
 function pickDefined(o: OutputAuthored): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  if (o.filters !== undefined) out.filters = o.filters;
-  if (o.customize !== undefined) out.customize = o.customize;
-  if (o.items !== undefined) out.items = o.items;
-  return out;
+  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
 }
 
 /** Write `value` at a dotted `path` inside `obj`, creating intermediate objects. */

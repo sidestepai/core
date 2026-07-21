@@ -27,6 +27,11 @@ import type { OutputAuthored } from "../schema-dsl/interpret.js";
 /** The HTTP verbs the engine's runtime input schema accepts (suggested, not enforced). */
 export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "HEAD" | "OPTIONS" | "PATCH";
 
+// NOTE: `isValue` + the `coerce*` cluster below are generic typed-field plumbing,
+// not api_request-specific. The sibling statements `stream.from_request` and
+// `webflow.request` share this exact 14-field shape; when the second typed
+// wrapper lands, hoist these into a shared `special/coerce.ts` (rule of three).
+
 /** A tagged {@link Value} — the dynamic-binding escape hatch for any typed field. */
 function isValue(w: unknown): w is Value {
   return typeof w === "object" && w !== null && !Array.isArray(w) && "tag" in w && "value" in w;
