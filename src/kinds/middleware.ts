@@ -17,6 +17,26 @@ import { encodeTags, defaultHistory } from "./common.js";
 import { clear } from "./middleware-attach.js";
 
 export type ResultStrategy = "merge" | "replace";
+/**
+ * What Xano does to the request when the middleware stack **throws** (e.g. a
+ * tripped `s.redis.ratelimit`). SideStep passes the value through verbatim; the
+ * engine (`Api\handler\ApiQuery` + `helper\Middleware`) interprets it:
+ *
+ * - `"silent"` **(default)** — the throw is swallowed; the host continues as if
+ *   the middleware succeeded. For a guard (rate limit, auth check) this means the
+ *   guard is **not enforced** — the over-limit request goes through. Set this
+ *   only for advisory middleware (logging, metrics) that must never block.
+ * - `"rethrow"` — the throw aborts the request and the authored `error`/status
+ *   surfaces to the caller (a tripped `ratelimit` → HTTP 429). The `post` chain
+ *   still runs. This is what a guard-style middleware wants.
+ * - `"critical"` — like `"rethrow"` (same aborted request, same HTTP status) but
+ *   additionally **skips the entire `post` middleware chain**. Use it when a
+ *   failed `pre` guard should suppress post-processing (audit shaping, response
+ *   rewrites) that assumes the host ran.
+ *
+ * No status or logging difference between `rethrow` and `critical` — the only
+ * distinction is whether `post` middleware runs.
+ */
 export type ExceptionPolicy = "silent" | "rethrow" | "critical";
 
 export interface MiddlewareDef {
@@ -26,6 +46,11 @@ export interface MiddlewareDef {
   description?: string;
   docs?: string;
   resultStrategy?: ResultStrategy;
+  /**
+   * How a throw in the stack affects the request. Defaults to `"silent"` (the
+   * throw is swallowed — a guard is **not** enforced). A rate limiter or auth
+   * check wants `"rethrow"`. See {@link ExceptionPolicy} for all three.
+   */
   exceptionPolicy?: ExceptionPolicy;
   tags?: string[];
   input?: Record<string, InputDescriptor>;

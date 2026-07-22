@@ -9,6 +9,7 @@
  * generic `register(kindName, …)`. More sugar is added as each kind lands.
  */
 import { getKind, encodeObject } from "../kinds/kind.js";
+import { middlewareEntryGuid, stackReferencesAuth } from "../kinds/middleware-attach.js";
 import { deriveGuid, resolveRef, REFERENCEABLE_KINDS } from "../refs/guid.js";
 import { buildBundle } from "./export.js";
 import type { Bundle, BundleType, PayloadArrayKey } from "./export.js";
@@ -178,6 +179,9 @@ export class Xano {
     // auth table. Xano supports any number of auth tables; each endpoint names
     // the one it authenticates against.
     this.validateQueryAuth(sections);
+    // Catch an `auth()`-keyed middleware directly attached to a host that can't
+    // resolve a request identity — the silent null-bucket collapse (issue #81).
+    this.validateMiddlewareAuth(sections);
     if (lockCtx) this.applyLock(lockCtx, sections);
     return buildBundle({
       type: this.bundleType,
@@ -230,6 +234,98 @@ export class Xano {
               `Check for a typo, or register the auth table; if it pins an explicit \`guid\`, pass the ` +
               `table def rather than its name.`,
       );
+    }
+  }
+
+  /**
+   * Warn about an `auth()`-keyed middleware **directly attached** to a host where
+   * `auth()` may resolve to `null` (issue #81).
+   *
+   * The footgun: a rate limiter keyed by `auth("id")` is the canonical middleware,
+   * but attach it to a host with no authenticated caller and `auth()` silently
+   * resolves to `null` — every caller collapses into one shared bucket, with no
+   * signal at author, export, or runtime. This surfaces it at export, where the
+   * middleware registry is known (an attachment entry only carries the target's
+   * guid; we resolve it back to the encoded `run` to inspect for `auth()`).
+   *
+   * It **warns, never throws** — a bare `auth()` reference is not proof of a
+   * collapse (an IP-disambiguated key or a personalize-if-logged-in middleware
+   * uses `auth()` where `null` is fine), so blocking the export would produce
+   * false positives on legitimate use. The warning names the host and reason so
+   * the author can confirm intent, vary the key, or move to an authenticated host.
+   *
+   * Scope: **direct attachment only** — a host's own `middleware.pre`/`post`. An
+   * authenticated `query` (its own `auth` table set) resolves an identity, so it
+   * is skipped. SideStep does not resolve the engine's Query→API-Group→Workspace
+   * inheritance walk (`getMiddlewareForObject`), so a middleware reaching a public
+   * query only via a workspace/API-group tier is a documented limitation.
+   */
+  private validateMiddlewareAuth(
+    sections: Partial<Record<PayloadArrayKey, unknown[]>>,
+  ): void {
+    const middlewares = sections["middleware" as PayloadArrayKey];
+    if (!Array.isArray(middlewares) || middlewares.length === 0) return;
+    // Index encoded middleware by guid. auth() detection is lazy + memoized (see
+    // `referencesAuth`) so we only deep-walk a stack that is actually attached —
+    // a defined-but-unattached middleware is never walked.
+    const byGuid = new Map<string, Record<string, unknown>>();
+    for (const mw of middlewares) {
+      if (!mw || typeof mw !== "object") continue;
+      const guid = (mw as { guid?: unknown }).guid;
+      if (typeof guid === "string") byGuid.set(guid, mw as Record<string, unknown>);
+    }
+    const authCache = new Map<string, boolean>();
+    const referencesAuth = (guid: string): boolean => {
+      let hit = authCache.get(guid);
+      if (hit === undefined) {
+        // The registry keeps only the encoded middleware; walk its `run` (the tag
+        // survives encoding — see `stackReferencesAuth`).
+        const run = byGuid.get(guid)?.run;
+        hit = stackReferencesAuth(Array.isArray(run) ? run : undefined);
+        authCache.set(guid, hit);
+      }
+      return hit;
+    };
+
+    // Leaf hosts that run middleware on their own request, each paired with why
+    // `auth()` may be null there. The `apiGroup` and workspace *tiers* are
+    // intentionally absent — their blocks are inherited by member queries, not run
+    // directly, and resolving that walk is out of scope (see the method doc). A
+    // `query` with its own auth table resolves an identity and is skipped.
+    const hostKinds: { key: PayloadArrayKey; label: string; reason: string }[] = [
+      { key: "query", label: "query", reason: "this endpoint has no auth table" },
+      { key: "task", label: "task", reason: "a task is scheduled/background and never has a request identity" },
+      { key: "function", label: "function", reason: "auth() is null unless an authenticated caller invokes it" },
+      { key: "tool", label: "tool", reason: "auth() is null unless an authenticated caller invokes it" },
+    ];
+
+    for (const { key, label, reason } of hostKinds) {
+      const hosts = sections[key];
+      if (!Array.isArray(hosts)) continue;
+      for (const host of hosts) {
+        if (!host || typeof host !== "object") continue;
+        const block = (host as { middleware?: unknown }).middleware;
+        if (!block || typeof block !== "object") continue;
+        // An authenticated query resolves an identity, so auth() is fine there.
+        if (label === "query" && (host as { auth?: unknown }).auth) continue;
+        const { pre, post } = block as { pre?: unknown; post?: unknown };
+        const entries = [...(Array.isArray(pre) ? pre : []), ...(Array.isArray(post) ? post : [])];
+        const hostName = String((host as { name?: unknown }).name ?? "?");
+
+        for (const entry of entries) {
+          // A disabled attachment doesn't run, so it can't collapse a bucket.
+          if ((entry as { disabled?: unknown })?.disabled === true) continue;
+          const guid = middlewareEntryGuid(entry);
+          if (!guid || !referencesAuth(guid)) continue;
+          const mwName = String(byGuid.get(guid)?.name ?? guid);
+
+          console.warn(
+            `sidestep: middleware "${mwName}" references auth() and is attached to ${label} ` +
+              `"${hostName}", where ${reason}. A null auth() collapses all callers into one shared ` +
+              `key — attach it to an authenticated host, vary the key, or remove auth().`,
+          );
+        }
+      }
     }
   }
 

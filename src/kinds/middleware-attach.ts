@@ -25,6 +25,7 @@ import { encodeStatement, registerStatement } from "../statements/statement.js";
 import type { Statement } from "../statements/statement.js";
 import { resolveRef } from "../refs/guid.js";
 import type { ObjectRef } from "../refs/guid.js";
+import { isTaggedValue } from "../values/value.js";
 import { emptyMiddleware } from "./common.js";
 import type { MiddlewareBlock } from "./common.js";
 
@@ -80,6 +81,17 @@ export function encodeMiddlewareEntry(entry: MiddlewareAttachEntry): StackItemXd
 }
 
 /**
+ * Read the target middleware guid off an **encoded** attachment entry — the
+ * `{ context: { middleware: { id } } }` shape {@link middlewareAttachStatement}
+ * writes. Returns `undefined` for a malformed or foreign entry. Co-located with
+ * the writer so the two stay in lockstep (used by the export-time auth guard).
+ */
+export function middlewareEntryGuid(entry: unknown): string | undefined {
+  const id = (entry as { context?: { middleware?: { id?: unknown } } })?.context?.middleware?.id;
+  return typeof id === "string" ? id : undefined;
+}
+
+/**
  * Build the object-level {@link MiddlewareBlock} from an authoring
  * {@link MiddlewareAttach}. Omitted → the empty block (both `_customize:false`,
  * both lists `[]`) byte-identical to {@link emptyMiddleware}, so a host with no
@@ -112,4 +124,48 @@ export function encodeMiddlewareList(entries?: MiddlewareAttachEntry[]): StackIt
  */
 export function clear(): MiddlewareAttachEntry[] {
   return [];
+}
+
+/**
+ * Does any statement in this middleware stack reference `auth()` (a tagged
+ * {@link Value} with `tag === "auth"`)?
+ *
+ * Detection for the export-time guard (see `Xano.validateMiddlewareAuth`):
+ * `auth("id")` is the idiomatic per-user rate-limit key, and when the middleware
+ * lands on a host that can't resolve a request identity the key silently becomes
+ * `null` — collapsing every caller into one shared bucket. This walk finds the
+ * reference so export can warn before that ships.
+ *
+ * Accepts either the pre-encode authored `Statement[]` or the encoded `run[]`
+ * (`StackItemXdo[]`) — the tag survives encoding, so the same deep walk finds it
+ * in both. The export registry keeps only the encoded middleware, so the guard
+ * passes the `run`; unit tests pass authored stacks. Hence `readonly unknown[]`.
+ *
+ * The walk is a generic deep traversal: it descends every object/array member —
+ * statement `context`, `input` bindings, `output`, **and each value's
+ * `filters[].arg[]`** — testing each node for an `auth`-tagged value. The
+ * filter-arg descent is load-bearing: the canonical key
+ * `withFilters(c.text("p:"), fl.concat(auth("id")))` hides the `auth()` as a
+ * filter argument, not a top-level value.
+ *
+ * Boundary: it does **not** follow references into a *nested* function's own
+ * stack (`s.function.run`), so an `auth()` buried inside a called function is a
+ * known false negative — which degrades safely to today's no-guard behavior.
+ */
+export function stackReferencesAuth(stack?: readonly unknown[]): boolean {
+  return (stack ?? []).some(nodeReferencesAuth);
+}
+
+/** Deep-walk any authored node for an `auth`-tagged value. */
+function nodeReferencesAuth(node: unknown): boolean {
+  // A tagged value can be a *callable* (the `t.new` trigger accessor form, which
+  // `isTaggedValue` accepts — issue #78), so admit functions as well as objects;
+  // rejecting them here would skip a callable's own `filters[].arg[]`.
+  if (node === null || (typeof node !== "object" && typeof node !== "function")) return false;
+  // A tagged value (including the function-carrying form) is checked first;
+  // `auth()` is exactly `{ tag: "auth", ... }`. Non-auth tagged values fall
+  // through to the recursion so their `filters[].arg[]` are still walked.
+  if (isTaggedValue(node) && node.tag === "auth") return true;
+  if (Array.isArray(node)) return node.some(nodeReferencesAuth);
+  return Object.values(node as Record<string, unknown>).some(nodeReferencesAuth);
 }
