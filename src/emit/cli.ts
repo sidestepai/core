@@ -418,7 +418,7 @@ const USAGE =
   "sidestep login [--origin <origin>] [--config <path>] [--global] [--port <n>] | " +
   "sidestep logout [--config <path>] [--global] | " +
   "sidestep sandbox deploy <file>|--bundle <path> [--reset] [--static <dir>] [--static-host <name>] [--static-env KEY=VALUE] [--config <path>] [--global] | " +
-  "sidestep sandbox export --format <json|multidoc> [--path <path>|-] [--name <name>] | " +
+  "sidestep sandbox export [<file>|--bundle <path>] [--format <json|multidoc>] [--path <path>|-] [--name <name>] | " +
   "sidestep sandbox details [--config <path>] [--global] | " +
   "sidestep profile me [--config <path>] [--global] | " +
   "sidestep validate <file>|--bundle <path> [--runtime] [--capture] [--out <dir>] [--instance <url>] [--workspace <id>] [--verbose] | " +
