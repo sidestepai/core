@@ -180,16 +180,34 @@ describe("sidestep sandbox export", () => {
     ).rejects.toThrow(/takes no input/i);
   });
 
-  it("rejects json with neither an entry file nor --bundle", async () => {
-    await expect(
-      runSandboxExportCommand(parseArgs(["sandbox", "export", "--format", "json"])),
-    ).rejects.toThrow(/Missing input.*--format json/s);
+  it("defaults --format to json (compiles the entry) when --format is omitted", async () => {
+    await runSandboxExportCommand(parseArgs(["sandbox", "export", entryPath, "--path", "-"]));
+    const expected = await exportBundleJson(parseArgs(["sandbox", "export", entryPath]));
+    expect(stdout.join("")).toBe(expected + "\n");
   });
 
-  it("requires --format", async () => {
-    await expect(
-      runSandboxExportCommand(parseArgs(["sandbox", "export"])),
-    ).rejects.toThrow(/Pass --format json\|multidoc/);
+  it("with no args, defaults to json and auto-discovers a conventional entry under the cwd", async () => {
+    const wsDir = fileURLToPath(new URL("../fixtures/workspace", import.meta.url));
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue(wsDir);
+    try {
+      // fixtures/workspace has index.ts (no xano/ dir), so discovery lands on index.ts.
+      await runSandboxExportCommand(parseArgs(["sandbox", "export", "--path", "-"]));
+      const expected = await exportBundleJson(parseArgs(["sandbox", "export", join(wsDir, "index.ts")]));
+      expect(stdout.join("")).toBe(expected + "\n");
+    } finally {
+      cwd.mockRestore();
+    }
+  });
+
+  it("gives a guided error when no entry is found and none was passed", async () => {
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue(dir); // empty temp dir
+    try {
+      await expect(
+        runSandboxExportCommand(parseArgs(["sandbox", "export", "--path", "-"])),
+      ).rejects.toThrow(/No workspace entry found.*xano\/index\.ts/s);
+    } finally {
+      cwd.mockRestore();
+    }
   });
 });
 

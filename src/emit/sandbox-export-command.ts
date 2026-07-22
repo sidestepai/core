@@ -1,11 +1,14 @@
 /**
- * `sidestep sandbox export --format <json|multidoc>` — hand back a portable
- * artifact for the workspace you're iterating on:
+ * `sidestep sandbox export [--format <json|multidoc>]` — hand back a portable
+ * artifact for the workspace you're iterating on. `--format` defaults to `json`,
+ * so a bare `sidestep sandbox export` from a project root just works.
  *
- *   • `--format json`     compiles the LOCAL workspace to the JSON bundle payload
- *                         (the same bytes `validate`/`deploy` send) and writes a
- *                         `.json` file. No network — this is `sidestep export`
- *                         under the sandbox namespace, with a conventional path.
+ *   • `--format json`     (default) compiles the LOCAL workspace to the JSON bundle
+ *                         payload (the same bytes `validate`/`deploy` send) and
+ *                         writes a `.json` file. No network. The entry is an
+ *                         explicit `<file>`/`--bundle`, or — with neither — a
+ *                         conventional entry auto-discovered under the cwd
+ *                         (`xano/index.ts`, `index.ts`, …).
  *   • `--format multidoc` calls `GET /api:meta/sandbox/multidoc` on the caller's
  *                         singleton sandbox tenant and writes the returned
  *                         `text/x-xanoscript` body to a `.xs` file. This reflects
@@ -21,12 +24,12 @@
  * Node-only (fetch/fs + the OAuth stack) and lazily imported by the command
  * layer so the browser-safe authoring bundle never pulls it in.
  */
-import { statSync, writeFileSync } from "node:fs";
+import { existsSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { ParsedArgs } from "./cli.js";
 import { loadBundleText } from "./bundle-input.js";
 import { getAccessToken, type ResolvedAuth } from "../auth/token.js";
-import { success, step } from "./ui.js";
+import { success, step, info } from "./ui.js";
 
 /** The multidoc body can be large; bound the fetch like deploy/validate (not the 30s details bound). */
 const MULTIDOC_TIMEOUT_MS = 120_000;
@@ -35,6 +38,29 @@ const MULTIDOC_PATH = "/api:meta/sandbox/multidoc";
 
 /** Default output basename when `--name` is omitted — format-independent, no dependence on tenant naming. */
 const DEFAULT_NAME = "sandbox";
+
+/** The default artifact when `--format` is omitted — the common case is "compile my workspace to JSON". */
+const DEFAULT_FORMAT = "json" as const;
+
+/**
+ * Conventional workspace-entry paths probed (in order, first hit wins) when
+ * `--format json` is run with no `<file>`/`--bundle`, so `sidestep sandbox
+ * export` works with zero arguments from a project root. `xano/index.ts` is the
+ * documented layout; the bare `index.*` forms cover flatter projects.
+ */
+const DEFAULT_ENTRY_CANDIDATES = [
+  "xano/index.ts",
+  "xano/index.js",
+  "index.ts",
+  "index.js",
+  "index.mts",
+  "src/index.ts",
+] as const;
+
+/** First conventional entry file that exists under the cwd, or undefined if none do. */
+function discoverEntryFile(): string | undefined {
+  return DEFAULT_ENTRY_CANDIDATES.find((rel) => existsSync(resolve(rel)));
+}
 
 /** Where the export should land: the stdout data channel, or an absolute file path. */
 export type OutputTarget = { kind: "stdout" } | { kind: "file"; path: string };
@@ -100,17 +126,40 @@ export async function fetchSandboxMultidoc(auth: ResolvedAuth): Promise<string> 
 }
 
 /**
+ * Compile the local workspace to the JSON bundle. Input resolution:
+ *   • explicit `<file>` / `--bundle`   → used as-is.
+ *   • neither                          → discover a conventional entry under the
+ *                                        cwd (so zero-arg `sandbox export` works
+ *                                        from a project root), else a guided error.
+ */
+async function produceJson(args: ParsedArgs): Promise<string> {
+  if (args.file === undefined && args.bundle === undefined) {
+    const entry = discoverEntryFile();
+    if (entry === undefined) {
+      throw new Error(
+        `No workspace entry found in ${process.cwd()} (looked for ${DEFAULT_ENTRY_CANDIDATES.join(", ")}). ` +
+          `Run from your project root, or pass an entry <file> or --bundle <path>.`,
+      );
+    }
+    info(`Compiling ${entry}`);
+    const { bundle } = await loadBundleText({ ...args, file: entry }, "");
+    return bundle;
+  }
+  const { bundle } = await loadBundleText(
+    args,
+    `Missing input for \`sandbox export --format json\`. Pass an entry <file> or --bundle <path>.`,
+  );
+  return bundle;
+}
+
+/**
  * Produce the export content + its extension for the requested format.
- *   json     → local compile (no network); requires <file> or --bundle.
+ *   json     → local compile (no network); entry <file>/--bundle, or auto-discovered.
  *   multidoc → OAuth meta call; takes NO input (reads the deployed sandbox tenant).
  */
-async function produce(args: ParsedArgs): Promise<{ content: string; ext: "json" | "xs" }> {
-  if (args.format === "json") {
-    const { bundle } = await loadBundleText(
-      args,
-      `Missing input for \`sandbox export --format json\`. Pass an entry <file> or --bundle <path>.`,
-    );
-    return { content: bundle, ext: "json" };
+async function produce(args: ParsedArgs, format: "json" | "multidoc"): Promise<{ content: string; ext: "json" | "xs" }> {
+  if (format === "json") {
+    return { content: await produceJson(args), ext: "json" };
   }
   // multidoc
   if (args.file !== undefined || args.bundle !== undefined) {
@@ -124,11 +173,10 @@ async function produce(args: ParsedArgs): Promise<{ content: string; ext: "json"
 }
 
 export async function runSandboxExportCommand(args: ParsedArgs): Promise<void> {
-  if (args.format === undefined) {
-    throw new Error(`Pass --format json|multidoc to \`sidestep sandbox export\`.`);
-  }
+  // `--format` is optional; the common case ("compile my workspace to JSON") is the default.
+  const format = args.format ?? DEFAULT_FORMAT;
 
-  const { content, ext } = await produce(args);
+  const { content, ext } = await produce(args, format);
   const target = resolveOutputTarget({ path: args.path, name: args.name, ext });
 
   if (target.kind === "stdout") {
@@ -139,6 +187,6 @@ export async function runSandboxExportCommand(args: ParsedArgs): Promise<void> {
 
   writeFileSync(target.path, content + "\n", "utf8");
   // Progress goes to stderr so stdout stays a clean data channel even when writing a file.
-  step(`Exported ${args.format} → ${target.path}`);
+  step(`Exported ${format} → ${target.path}`);
   success(`Wrote ${target.path}`);
 }
