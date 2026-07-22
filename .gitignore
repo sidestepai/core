@@ -7,3 +7,5 @@ coverage/
 .xano/
 docs/
 CLAUDE.md
+.env
+.env.local
