@@ -881,6 +881,10 @@ sidestep sandbox details                     # print the sandbox base URL + tena
 sidestep profile me                          # print the scoped user + instance base URL (JSON)
 sidestep logout                              # revoke the refresh token + delete the local cache
 sidestep version                             # print the installed @sidestep/core version
+
+sidestep validate ./xano/index.ts            # import into a live instance, diff each object back
+sidestep validate ./xano/index.ts --runtime  # also run each deployed function on the engine
+sidestep validate ./xano/index.ts --capture  # write the fetched JSON as fixture candidates
 ```
 
 Emitters that write to disk (and the programmatic CLI) are Node-only — import them from
@@ -891,6 +895,48 @@ on the browser-safe `@sidestep/core` entry.
 import { emitBundle } from "@sidestep/core";        // pure string — browser-safe
 import { writeBundle } from "@sidestep/core/node";  // writes a file — Node only
 ```
+
+</details>
+
+<details>
+<summary><b>Validating against a live instance (<code>sidestep validate</code>)</b></summary>
+
+`sidestep validate` proves your compiled output against a **real, running Xano
+instance** — not a static snapshot. It compiles your workspace, imports it into a
+disposable sandbox, exports it back, and diffs it against what you compiled, so
+you catch three classes of problem a local build can't:
+
+1. **Import accepts** — the engine actually accepts the bundle (malformed-but-shaped output is rejected here).
+2. **Round-trip parity** — the workspace the engine stores, re-exported in the same bundle format, matches your compiled JSON after normalization (full object logic included).
+3. **Runtime** (`--runtime`) — each deployed function actually runs on the engine, with logs surfaced on failure.
+
+It talks only to public meta API routes (the same `sandbox/bundle` import
+`sandbox deploy` uses, plus the workspace export), is non-destructive (imports
+into your disposable sandbox tenant), and never touches XanoScript.
+
+**Setup** — copy `.env.example` to `.env` (gitignored) and fill in a base URL +
+token. Switching between a cloud dev instance and a local Docker one is just a
+different `XANO_VALIDATE_INSTANCE`:
+
+```bash
+# .env
+XANO_VALIDATE_INSTANCE=https://your-instance.xano.io   # or http://localhost:8080 for local Docker
+XANO_VALIDATE_TOKEN=your-meta-bearer-token
+# XANO_VALIDATE_WORKSPACE_ID=…                          # optional; the import supplies it otherwise
+```
+
+```bash
+sidestep validate ./xano/index.ts                      # import + round-trip diff, reports per function
+sidestep validate ./xano/index.ts --runtime            # + run each deployed function
+sidestep validate ./xano/index.ts --capture            # + write fetched JSON to ./validate-out (fixture candidates)
+sidestep validate ./xano/index.ts --instance http://localhost:8080   # override the target for one run
+sidestep validate --bundle ws.json                     # validate an already-exported bundle
+```
+
+Config comes from the environment (a `.env` is autoloaded; a real env var wins),
+`--instance`/`--workspace` override per run, and the token is env-only — never a
+flag. A non-zero exit means a check failed; `--verbose` prints full diffs and raw
+engine detail instead of a projected summary.
 
 </details>
 

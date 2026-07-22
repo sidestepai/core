@@ -101,6 +101,16 @@ export interface ParsedArgs {
   port: number | undefined;
   /** `login --scope "<space list>"`: OAuth scopes to request (default: the built-in xano-cli set). */
   scope: string | undefined;
+  /** `validate --runtime`: after import + round-trip, run each deployed function and report. */
+  runtime: boolean;
+  /** `validate --capture`: write each round-tripped function's fetched JSON (candidate fixtures). */
+  capture: boolean;
+  /** `validate --verbose`: print full diffs / raw engine detail instead of a projected summary. */
+  verbose: boolean;
+  /** `validate --instance <url>`: override XANO_VALIDATE_INSTANCE for this run. */
+  instance: string | undefined;
+  /** `validate --workspace <id>`: override XANO_VALIDATE_WORKSPACE_ID for this run. */
+  workspace: number | undefined;
 }
 
 /** Parse a `--port` value, rejecting NaN/out-of-range so `server.listen` never gets `NaN`. */
@@ -140,6 +150,11 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let useGlobal = false;
   let port: number | undefined;
   let scope: string | undefined;
+  let runtime = false;
+  let capture = false;
+  let verbose = false;
+  let instance: string | undefined;
+  let workspace: number | undefined;
   const positionals: string[] = [];
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i]!;
@@ -193,6 +208,20 @@ export function parseArgs(argv: string[]): ParsedArgs {
       scope = rest[++i];
     } else if (arg.startsWith("--scope=")) {
       scope = arg.slice("--scope=".length);
+    } else if (arg === "--runtime") {
+      runtime = true;
+    } else if (arg === "--capture") {
+      capture = true;
+    } else if (arg === "--verbose") {
+      verbose = true;
+    } else if (arg === "--instance") {
+      instance = rest[++i];
+    } else if (arg.startsWith("--instance=")) {
+      instance = arg.slice("--instance=".length);
+    } else if (arg === "--workspace") {
+      workspace = parseWorkspaceId(rest[++i]);
+    } else if (arg.startsWith("--workspace=")) {
+      workspace = parseWorkspaceId(arg.slice("--workspace=".length));
     } else if (arg === "--profile" || arg.startsWith("--profile=")) {
       // Removed in the OAuth migration — fail loudly instead of letting the flag
       // (and its value) fall through into positionals and misparse as an entry file.
@@ -238,7 +267,21 @@ export function parseArgs(argv: string[]): ParsedArgs {
     global: useGlobal,
     port,
     scope,
+    runtime,
+    capture,
+    verbose,
+    instance,
+    workspace,
   };
+}
+
+/** Parse a `--workspace` value, rejecting non-positive-integers so config never gets NaN. */
+function parseWorkspaceId(raw: string | undefined): number {
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1) {
+    throw new Error(`--workspace must be a positive integer (got "${raw ?? ""}").`);
+  }
+  return n;
 }
 
 /**
@@ -347,6 +390,7 @@ const USAGE =
   "sidestep sandbox deploy <file>|--bundle <path> [--reset] [--static <dir>] [--static-host <name>] [--static-env KEY=VALUE] [--config <path>] [--global] | " +
   "sidestep sandbox details [--config <path>] [--global] | " +
   "sidestep profile me [--config <path>] [--global] | " +
+  "sidestep validate <file>|--bundle <path> [--runtime] [--capture] [--out <dir>] [--instance <url>] [--workspace <id>] [--verbose] | " +
   "sidestep lock <rename|prune|adopt> …";
 
 /** Quote a name for a suggested shell command when it needs it. */
@@ -461,6 +505,12 @@ export async function run(argv: string[]): Promise<void> {
     throw new Error(
       `\`sidestep push\` was removed — use \`sidestep sandbox deploy\` (same behavior against the sandbox, new name). ${USAGE}`,
     );
+  }
+  if (command === "validate") {
+    // Node-only (fetch/fs/env + the validate stack); lazily imported like the
+    // other Node-only commands so the browser-safe authoring bundle stays clean.
+    const { runValidateCommand } = await import("./validate-command.js");
+    return runValidateCommand(args);
   }
   if (command !== "compile" && command !== "export") {
     throw new Error(`Unknown command "${command ?? ""}". ${USAGE}`);
