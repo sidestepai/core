@@ -13,8 +13,7 @@ function bundleWith(payload: Record<string, unknown>): string {
 function fakeClient(over: Partial<LoopClient> = {}): LoopClient {
   return {
     importBundle: async () => ({ workspaceId: 42, baseUrl: undefined, raw: "{}" }),
-    listFunctions: async () => [{ id: 5, name: "f" }],
-    getFunction: async () => ({ id: 5, name: "f", run: [] }),
+    exportWorkspace: async () => ({ payload: { function: [{ name: "f", run: [] }] } }),
     ...over,
   };
 }
@@ -23,8 +22,8 @@ describe("runValidateLoop", () => {
   it("accepts and round-trips a matching function (server keys stripped)", async () => {
     const bundle = bundleWith({ function: [{ name: "f", run: [] }] });
     const client = fakeClient({
-      // engine augments with id/created_at/guid — normalize drops them → match
-      getFunction: async () => ({ id: 5, name: "f", run: [], created_at: 123, guid: "abc" }),
+      // exported object carries id/created_at/guid — normalize drops them → match
+      exportWorkspace: async () => ({ payload: { function: [{ id: 5, name: "f", run: [], created_at: 123, guid: "abc" }] } }),
     });
     const res = await runValidateLoop(client, bundle);
     expect(res.accepted).toBe(true);
@@ -48,7 +47,7 @@ describe("runValidateLoop", () => {
   it("flags a real divergence at the exact path", async () => {
     const bundle = bundleWith({ function: [{ name: "f", run: [{ name: "x1" }] }] });
     const client = fakeClient({
-      getFunction: async () => ({ id: 5, name: "f", run: [{ name: "x2" }] }),
+      exportWorkspace: async () => ({ payload: { function: [{ id: 5, name: "f", run: [{ name: "x2" }] }] } }),
     });
     const res = await runValidateLoop(client, bundle);
     const entry = res.roundTrip[0]!;
@@ -56,9 +55,9 @@ describe("runValidateLoop", () => {
     expect(entry.diffs).toContainEqual({ path: "$.run[0].name", expected: "x1", actual: "x2" });
   });
 
-  it("marks a function missing from the imported workspace", async () => {
+  it("marks a function missing from the exported workspace", async () => {
     const bundle = bundleWith({ function: [{ name: "ghost" }] });
-    const client = fakeClient({ listFunctions: async () => [{ id: 5, name: "f" }] });
+    const client = fakeClient({ exportWorkspace: async () => ({ payload: { function: [{ name: "f" }] } }) });
     const res = await runValidateLoop(client, bundle);
     expect(res.roundTrip[0]).toMatchObject({ name: "ghost", status: "missing" });
   });

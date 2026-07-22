@@ -12,6 +12,7 @@
  * Node-only; lazily imported by the command layer.
  */
 import { postDeploy } from "../deploy/client.js";
+import { decodeWorkspaceArchive } from "./archive.js";
 import type { ValidateConfig } from "./config.js";
 
 /** Bound each read/run so a stalled endpoint can't hang the CLI. */
@@ -43,10 +44,30 @@ export interface InvokeResult {
  * {@link runFunction} returns the status so callers can inspect error responses.
  */
 export class MetaClient {
-  constructor(private readonly config: ValidateConfig) {}
+  /**
+   * Origin that post-import reads/runs target. The import goes to the root
+   * instance's `sandbox/bundle`, but the objects land in a sandbox TENANT served
+   * under a `/tenant/<slug>` path (the import response's `base_url`). Reads must
+   * hit that tenant-scoped origin, not the root — so this is switched to
+   * `base_url` after a successful import (falls back to the root instance).
+   */
+  private readBase: string;
+
+  constructor(private readonly config: ValidateConfig) {
+    this.readBase = config.instance;
+  }
 
   private authHeaders(): Record<string, string> {
     return { Authorization: `Bearer ${this.config.token}` };
+  }
+
+  /**
+   * Build a read/run URL against {@link readBase}, APPENDING the route so any
+   * `/tenant/<slug>` path prefix survives (a leading-slash `new URL(path, base)`
+   * would drop it back to the origin).
+   */
+  private readUrl(path: string): URL {
+    return new URL(`${this.readBase}${path}`);
   }
 
   /** Import a compiled JSON bundle into the disposable sandbox tenant. */
@@ -75,35 +96,35 @@ export class MetaClient {
       throw err;
     }
     const workspaceId = typeof resp.workspace?.id === "number" ? resp.workspace.id : undefined;
+    // Point subsequent reads/runs at the tenant the import landed in.
+    if (resp.baseUrl !== undefined && resp.baseUrl !== "") {
+      this.readBase = resp.baseUrl.replace(/\/+$/, "");
+    }
     return { workspaceId, baseUrl: resp.baseUrl, raw: resp.raw };
   }
 
-  /** GET a meta route and parse JSON, throwing on non-2xx. */
-  private async getJson(path: string, params: Record<string, string> = {}): Promise<unknown> {
-    const url = new URL(path, this.config.instance);
-    for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  /**
+   * Export the workspace (the sandbox tenant, post-import) as a `packageExport`
+   * bundle — the SAME shape the SDK emits, carrying full object logic. This is
+   * the faithful round-trip source: the response is a gzipped tar of
+   * `workspace.json`, decoded here into its bundle object.
+   */
+  async exportWorkspace(workspaceId: number): Promise<{ payload: Record<string, unknown> }> {
+    const url = this.readUrl(`/api:meta/workspace/${workspaceId}/export`);
     const res = await fetch(url.href, {
-      headers: this.authHeaders(),
+      method: "POST",
+      headers: { ...this.authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ branch: "", password: "" }),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
-    const text = await res.text();
     if (!res.ok) {
-      throw new Error(`GET ${url.pathname} failed (${res.status} ${res.statusText}):\n${text}`);
+      const text = await res.text();
+      throw new Error(`Export of workspace ${workspaceId} failed (${res.status} ${res.statusText}):\n${text}`);
     }
-    return text === "" ? undefined : (JSON.parse(text) as unknown);
-  }
-
-  /** Read a function back as its persisted JSON object (XanoScript text omitted). */
-  getFunction(workspaceId: number, functionId: number): Promise<unknown> {
-    return this.getJson(`/api:meta/workspace/${workspaceId}/function/${functionId}`, {
-      include_xanoscript: "false",
-    });
-  }
-
-  /** List the workspace's functions (name → id mapping for round-trip reads). */
-  async listFunctions(workspaceId: number): Promise<Array<{ id: number; name: string | undefined }>> {
-    const raw = await this.getJson(`/api:meta/workspace/${workspaceId}/function`);
-    return asItems(raw).map((o) => ({ id: numberOf(o.id), name: stringOf(o.name) })).filter((f) => Number.isFinite(f.id));
+    const decoded = decodeWorkspaceArchive(new Uint8Array(await res.arrayBuffer())) as {
+      payload?: Record<string, unknown>;
+    };
+    return { payload: decoded.payload ?? {} };
   }
 
   /**
@@ -112,7 +133,7 @@ export class MetaClient {
    * report an engine error + logs as a runtime outcome.
    */
   async runFunction(workspaceId: number, name: string, input?: unknown): Promise<InvokeResult> {
-    const url = new URL(`/api:meta/workspace/${workspaceId}/function/run`, this.config.instance);
+    const url = this.readUrl(`/api:meta/workspace/${workspaceId}/function/run`);
     const res = await fetch(url.href, {
       method: "POST",
       headers: { ...this.authHeaders(), "Content-Type": "application/json" },
@@ -128,21 +149,4 @@ export class MetaClient {
     }
     return { status: res.status, ok: res.ok, body };
   }
-}
-
-/** Coerce a list response (bare array or `{ items: [...] }`) to an array of records. */
-function asItems(raw: unknown): Array<Record<string, unknown>> {
-  const arr = Array.isArray(raw)
-    ? raw
-    : raw !== null && typeof raw === "object" && Array.isArray((raw as { items?: unknown }).items)
-      ? (raw as { items: unknown[] }).items
-      : [];
-  return arr.filter((o): o is Record<string, unknown> => o !== null && typeof o === "object");
-}
-
-function numberOf(v: unknown): number {
-  return typeof v === "number" ? v : NaN;
-}
-function stringOf(v: unknown): string | undefined {
-  return typeof v === "string" ? v : undefined;
 }

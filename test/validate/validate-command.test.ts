@@ -3,6 +3,11 @@ import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseArgs, run } from "../../src/emit/cli.js";
+import { buildWorkspaceArchive } from "./_helpers.js";
+
+function archiveResponse(payload: Record<string, unknown>): Response {
+  return new Response(buildWorkspaceArchive({ app: "xano", type: "workspace", payload }), { status: 200, statusText: "OK" });
+}
 
 describe("parseArgs — validate flags", () => {
   it("parses the file, --runtime, --capture, --instance, --workspace", () => {
@@ -72,9 +77,8 @@ describe("run validate (end-to-end wiring via --bundle)", () => {
   it("passes when the function round-trips (server keys stripped)", async () => {
     const m = vi.spyOn(globalThis, "fetch");
     m.mockResolvedValueOnce(jsonOnce({ name: "Me" })); // auth/me
-    m.mockResolvedValueOnce(jsonOnce({ workspace: { id: 99 } })); // sandbox/bundle
-    m.mockResolvedValueOnce(jsonOnce([{ id: 1, name: "f" }])); // list functions
-    m.mockResolvedValueOnce(jsonOnce({ id: 1, name: "f", run: [], created_at: 1 })); // get function
+    m.mockResolvedValueOnce(jsonOnce({ workspace: { id: 99 } })); // sandbox/bundle import
+    m.mockResolvedValueOnce(archiveResponse({ function: [{ name: "f", run: [], created_at: 1 }] })); // export
 
     await run(["validate", "--bundle", bundlePath]);
     expect(process.exitCode).not.toBe(2);
@@ -88,8 +92,7 @@ describe("run validate (end-to-end wiring via --bundle)", () => {
     const m = vi.spyOn(globalThis, "fetch");
     m.mockResolvedValueOnce(jsonOnce({ name: "Me" }));
     m.mockResolvedValueOnce(jsonOnce({ workspace: { id: 99 } }));
-    m.mockResolvedValueOnce(jsonOnce([{ id: 1, name: "f" }]));
-    m.mockResolvedValueOnce(jsonOnce({ id: 1, name: "f", run: [{ name: "x2" }] })); // diverges
+    m.mockResolvedValueOnce(archiveResponse({ function: [{ name: "f", run: [{ name: "x2" }] }] })); // diverges
 
     await run(["validate", "--bundle", bundlePath]);
     expect(process.exitCode).toBe(2);

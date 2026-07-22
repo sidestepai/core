@@ -902,16 +902,17 @@ import { writeBundle } from "@sidestep/core/node";  // writes a file — Node on
 <summary><b>Validating against a live instance (<code>sidestep validate</code>)</b></summary>
 
 `sidestep validate` proves your compiled output against a **real, running Xano
-instance** — not a static snapshot. It compiles your workspace, imports the JSON
-bundle, then reads each authored object back and diffs it against what you
-compiled, so you catch three classes of problem a local build can't:
+instance** — not a static snapshot. It compiles your workspace, imports it into a
+disposable sandbox, exports it back, and diffs it against what you compiled, so
+you catch three classes of problem a local build can't:
 
 1. **Import accepts** — the engine actually accepts the bundle (malformed-but-shaped output is rejected here).
-2. **Round-trip parity** — the persisted object the engine stores matches your compiled JSON after normalization.
+2. **Round-trip parity** — the workspace the engine stores, re-exported in the same bundle format, matches your compiled JSON after normalization (full object logic included).
 3. **Runtime** (`--runtime`) — each deployed function actually runs on the engine, with logs surfaced on failure.
 
 It talks only to public meta API routes (the same `sandbox/bundle` import
-`sandbox deploy` uses), reads objects back as JSON, and never touches XanoScript.
+`sandbox deploy` uses, plus the workspace export), is non-destructive (imports
+into your disposable sandbox tenant), and never touches XanoScript.
 
 **Setup** — copy `.env.example` to `.env` (gitignored) and fill in a base URL +
 token. Switching between a cloud dev instance and a local Docker one is just a

@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { MetaClient } from "../../src/validate/meta-client.js";
+import { buildWorkspaceArchive } from "./_helpers.js";
 
 const config = { instance: "https://inst.xano.io", token: "tok", workspaceId: undefined };
 
@@ -31,24 +32,25 @@ describe("MetaClient", () => {
     await expect(new MetaClient(config).importBundle("{}")).rejects.toThrow(/JSON-only|not available/);
   });
 
-  it("getFunction reads the persisted JSON with include_xanoscript=false", async () => {
-    const m = stub(jsonResponse({ name: "f", run: [] }));
-    const obj = await new MetaClient(config).getFunction(42, 7);
-    expect(obj).toEqual({ name: "f", run: [] });
-    expect(String(m.mock.calls[0]![0])).toBe(
-      "https://inst.xano.io/api:meta/workspace/42/function/7?include_xanoscript=false",
+  it("exportWorkspace decodes the archive and routes to the tenant base_url after import", async () => {
+    const client = new MetaClient(config);
+    const exported = { app: "xano", type: "workspace", payload: { function: [{ name: "f", run: [] }] } };
+    const m = stub(
+      jsonResponse({ workspace: { id: 1 }, base_url: "https://inst.xano.io/tenant/sd68-jokr" }), // import
+      new Response(buildWorkspaceArchive(exported), { status: 200, statusText: "OK" }), // export archive
     );
+    await client.importBundle("{}", { reset: true });
+    const got = await client.exportWorkspace(1);
+    expect(got.payload).toEqual({ function: [{ name: "f", run: [] }] });
+    // import went to the ROOT instance; the export POST went to the TENANT origin
+    expect(String(m.mock.calls[0]![0])).toBe("https://inst.xano.io/api:meta/sandbox/bundle?reset=true");
+    expect(String(m.mock.calls[1]![0])).toBe("https://inst.xano.io/tenant/sd68-jokr/api:meta/workspace/1/export");
+    expect((m.mock.calls[1]![1] as RequestInit).method).toBe("POST");
   });
 
-  it("getFunction throws with the body on a non-2xx", async () => {
-    stub(new Response("boom", { status: 500, statusText: "ERR" }));
-    await expect(new MetaClient(config).getFunction(1, 2)).rejects.toThrow(/GET .* failed \(500/);
-  });
-
-  it("listFunctions accepts a bare array response", async () => {
-    stub(jsonResponse([{ id: 5, name: "echo" }, { id: 6, name: "sum" }]));
-    const fns = await new MetaClient(config).listFunctions(42);
-    expect(fns).toEqual([{ id: 5, name: "echo" }, { id: 6, name: "sum" }]);
+  it("exportWorkspace throws with the body on a non-2xx", async () => {
+    stub(new Response("nope", { status: 403, statusText: "Forbidden" }));
+    await expect(new MetaClient(config).exportWorkspace(1)).rejects.toThrow(/Export of workspace 1 failed \(403/);
   });
 
   it("runFunction posts name+input to function/run and returns status+body", async () => {

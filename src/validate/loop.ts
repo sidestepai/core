@@ -16,8 +16,7 @@ import type { ImportResult } from "./meta-client.js";
 /** The client surface the loop needs (satisfied structurally by MetaClient). */
 export interface LoopClient {
   importBundle(bundle: string, opts?: { reset?: boolean }): Promise<ImportResult>;
-  listFunctions(workspaceId: number): Promise<Array<{ id: number; name: string | undefined }>>;
-  getFunction(workspaceId: number, functionId: number): Promise<unknown>;
+  exportWorkspace(workspaceId: number): Promise<{ payload: Record<string, unknown> }>;
 }
 
 /** One leaf-level mismatch between compiled and fetched, after normalization. */
@@ -92,20 +91,22 @@ export async function runValidateLoop(
 
   let roundTrip: RoundTripEntry[] = [];
   if (compiledFns.length > 0) {
-    const persisted = await client.listFunctions(workspaceId);
-    const idByName = new Map(persisted.filter((f) => f.name !== undefined).map((f) => [f.name!, f.id]));
-    // Reads are independent (each keyed by an already-resolved id), so fetch +
-    // diff them concurrently; Promise.all preserves the authored order.
-    roundTrip = await Promise.all(
-      compiledFns.map(async (fn): Promise<RoundTripEntry> => {
-        const name = typeof fn.name === "string" ? fn.name : "(unnamed)";
-        const id = idByName.get(name);
-        if (id === undefined) return { name, status: "missing", diffs: [], fetched: undefined };
-        const fetched = await client.getFunction(workspaceId, id);
-        const diffs = deepDiff(normalize(fn), normalize(fetched));
-        return { name, status: diffs.length === 0 ? "match" : "diff", diffs, fetched };
-      }),
+    // Export the imported workspace back as a packageExport bundle (same shape we
+    // sent, full logic) and match functions by name — apples-to-apples via the
+    // shared normalizer.
+    const exported = await client.exportWorkspace(workspaceId);
+    const exportedByName = new Map(
+      asRecords(exported.payload.function)
+        .filter((f) => typeof f.name === "string")
+        .map((f) => [f.name as string, f]),
     );
+    roundTrip = compiledFns.map((fn): RoundTripEntry => {
+      const name = typeof fn.name === "string" ? fn.name : "(unnamed)";
+      const fetched = exportedByName.get(name);
+      if (fetched === undefined) return { name, status: "missing", diffs: [], fetched: undefined };
+      const diffs = deepDiff(normalize(fn), normalize(fetched));
+      return { name, status: diffs.length === 0 ? "match" : "diff", diffs, fetched };
+    });
   }
 
   return { accepted: true, workspaceId, roundTrip, unchecked };
