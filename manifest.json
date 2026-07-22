@@ -4,7 +4,7 @@
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
-      "implemented": 11,
+      "implemented": 12,
       "total": 24
     },
     "statements": {
@@ -164,10 +164,17 @@
       "registered": true
     },
     {
-      "kind": "toolset",
+      "kind": "mcp_server",
       "payloadKey": "toolset",
-      "authorFactory": "toolset.mcp / agent",
-      "registerMethod": "registerToolsets",
+      "authorFactory": "mcpServer",
+      "registerMethod": "registerMcpServers",
+      "registered": true
+    },
+    {
+      "kind": "agent",
+      "payloadKey": "toolset",
+      "authorFactory": "agent",
+      "registerMethod": "registerAgents",
       "registered": true
     },
     {

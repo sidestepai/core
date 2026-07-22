@@ -109,8 +109,12 @@ export class Xano {
     return this.register("tool", defs);
   }
 
-  registerToolsets(defs: unknown[]): this {
-    return this.register("toolset", defs);
+  registerMcpServers(defs: unknown[]): this {
+    return this.register("mcp_server", defs);
+  }
+
+  registerAgents(defs: unknown[]): this {
+    return this.register("agent", defs);
   }
 
   registerTables(defs: unknown[]): this {

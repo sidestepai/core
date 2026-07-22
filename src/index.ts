@@ -296,15 +296,22 @@ export type {
   WorkspaceInputs,
   ErrorInputs,
 } from "./kinds/trigger-handle.js";
-export {
-  tool,
-  toolKind,
-  encodeTool,
-  toolsetKind,
-  encodeToolset,
-  toolset,
-  agent,
-} from "./kinds/toolset.js";
+export { tool, toolKind, encodeTool, encodeToolsetBase, encodeToolRefs } from "./kinds/toolset.js";
+export { mcpServer, mcpServerKind, encodeMcpServer } from "./kinds/mcp-server.js";
+export type { McpServerDef, McpServerXdo } from "./kinds/mcp-server.js";
+export { agent, agentKind, encodeAgent } from "./kinds/agent.js";
+export type {
+  AgentDef,
+  AgentXdo,
+  AgentSettingsXdo,
+  AgentOutput,
+  LlmSettings,
+  LlmProvider,
+  AnthropicLlm,
+  OpenAiLlm,
+  GoogleGenAiLlm,
+  XanoFreeLlm,
+} from "./kinds/agent.js";
 export { table, tableKind, encodeTable, encodeColumn, encodeIndex, encodeView } from "./kinds/table.js";
 export type {
   TableDef,
@@ -339,10 +346,8 @@ export type { WorkspaceConfigDef, WorkspaceConfigXdo, WorkspaceMiddlewareDef, Wo
 export type {
   ToolDef,
   ToolXdo,
-  ToolsetDef,
-  ToolsetXdo,
-  ToolsetType,
-  AgentSettings,
+  ToolsetBaseDef,
+  ToolsetBaseXdo,
   ToolsetToolRef,
 } from "./kinds/toolset.js";
 

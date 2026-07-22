@@ -7,6 +7,8 @@
 import "./function.js";
 import "./trigger.js";
 import "./toolset.js";
+import "./mcp-server.js";
+import "./agent.js";
 import "./table.js";
 import "./query.js";
 import "./api-group.js";

@@ -13,7 +13,7 @@ import { table } from "../../src/kinds/table.js";
 import { trigger } from "../../src/kinds/trigger.js";
 import { apiGroup } from "../../src/kinds/api-group.js";
 import { query } from "../../src/kinds/query.js";
-import { toolset } from "../../src/kinds/toolset.js";
+import { mcpServer } from "../../src/kinds/mcp-server.js";
 import { deriveGuid } from "../../src/refs/guid.js";
 import {
   createLockContext,
@@ -115,7 +115,7 @@ describe("lock-aware export", () => {
       .registerApiGroups([group])
       .registerFunctions([defineFunction({ name: "sayHello", stack: [] })])
       .registerQueries([query({ name: "list_users", verb: "GET", apiGroup: group })])
-      .registerToolsets([toolset.mcp({ name: "assistant" })])
+      .registerMcpServers([mcpServer({ name: "assistant" })])
       .registerTriggers([
         trigger.table({ name: "on_insert", objId: 1, actions: { insert: true }, stack: () => [] }),
       ]);

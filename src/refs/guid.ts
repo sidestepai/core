@@ -45,7 +45,12 @@ export const REFERENCEABLE_KIND_PAYLOAD_KEYS: Readonly<Record<string, string>> =
   function: "function",
   query: "query",
   tool: "tool",
-  toolset: "toolset",
+  // MCP servers and agents are distinct kinds that both persist as
+  // obj_type=toolset — they share the "toolset" migrate type, so both derive
+  // md5("toolset:"+name) and a same-name pair correctly collides. A trigger
+  // binds either by resolving against this same "toolset" migrate type.
+  mcp_server: "toolset",
+  agent: "toolset",
   task: "task",
   trigger: "trigger",
   middleware: "middleware",

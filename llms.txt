@@ -6,7 +6,7 @@ Author a Xano workspace in TypeScript: build typed objects, register them on a
 `new Xano()` instance, and call `.export()` to get one importable bundle. Compile
 with `sidestep export ./xano/index.js`.
 
-Coverage: object kinds 11/24, statement surfaces 214/214, filters 345 (134 typed).
+Coverage: object kinds 12/24, statement surfaces 214/214, filters 345 (134 typed).
 
 ## Quickstart
 
@@ -259,10 +259,11 @@ Where a cold reader's intuition usually diverges from this API:
   `s.group(body)` and `s.util.post_process(body)` take it **positionally**.
   `s.for` is **count-bounded** (`{ as, count, body }`), not from/to. See the
   **Specials — authored signatures** block below.
-- **Toolset tools take a `tool` handle.** `toolset.mcp({ tools: [{ tool: myTool }] })`
-  / `agent({ tools: [{ tool: myTool }] })` — pass the `tool()` def handle (or
-  its name); it resolves to the tool's guid like the call family. A raw numeric
-  `id` is an escape hatch, not the default.
+- **MCP servers & agents are distinct root kinds** that both persist under the
+  `toolset` payload key (so a same-name pair collides). `mcpServer({...})` exposes
+  tools over MCP (auth is per-tool — no server-level gate); `agent({...})` carries a
+  typed `llm` block. Their `tools` take a `tool()` handle (or name), resolved to the
+  tool's guid like the call family; a raw numeric `id` is an escape hatch.
 - **`task.schedule` is an array** of `{ startsOn, freq?, repeatEnabled?, endsOn? }`
   (`ScheduleDef[]`), not a single `{ type, value }`. `freq` is seconds.
 - **`get_input`/`get_raw_input` read the whole payload**, not one named input
@@ -279,7 +280,8 @@ Author with the factory, register on the Xano instance, lands under the payload 
 - api_group: `apiGroup` → `Xano.registerApiGroups` → payload `app`
 - trigger: `trigger.{table,realtime,mcpServer,agent,workspace,error}` → `Xano.registerTriggers` → payload `trigger`
 - tool: `tool` → `Xano.registerTools` → payload `tool`
-- toolset: `toolset.mcp / agent` → `Xano.registerToolsets` → payload `toolset`
+- mcp_server: `mcpServer` → `Xano.registerMcpServers` → payload `toolset`
+- agent: `agent` → `Xano.registerAgents` → payload `toolset`
 - task: `task` → `Xano.registerTasks` → payload `task`
 - middleware: `middleware` → `Xano.registerMiddleware` → payload `middleware`
 - addon: `addon` → `Xano.registerAddons` → payload `addon`

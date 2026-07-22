@@ -217,9 +217,10 @@ const CLI_COMMANDS: readonly ManifestCliCommand[] = [
 ];
 
 /**
- * The 11 implemented object kinds with their authoring + registration metadata.
+ * The 12 implemented object kinds with their authoring + registration metadata.
  * `registered` is verified against the live kind registry at build time, and the
- * manifest test asserts payload keys match `registeredKinds()`.
+ * manifest test asserts payload keys match `registeredKinds()`. `mcp_server` and
+ * `agent` are distinct kinds that both persist under the `toolset` payload key.
  */
 const KIND_DESCRIPTORS: ReadonlyArray<Omit<ManifestKind, "registered">> = [
   { kind: "function", payloadKey: "function", authorFactory: "defineFunction", registerMethod: "registerFunctions" },
@@ -228,7 +229,8 @@ const KIND_DESCRIPTORS: ReadonlyArray<Omit<ManifestKind, "registered">> = [
   { kind: "api_group", payloadKey: "app", authorFactory: "apiGroup", registerMethod: "registerApiGroups" },
   { kind: "trigger", payloadKey: "trigger", authorFactory: "trigger.{table,realtime,mcpServer,agent,workspace,error}", registerMethod: "registerTriggers" },
   { kind: "tool", payloadKey: "tool", authorFactory: "tool", registerMethod: "registerTools" },
-  { kind: "toolset", payloadKey: "toolset", authorFactory: "toolset.mcp / agent", registerMethod: "registerToolsets" },
+  { kind: "mcp_server", payloadKey: "toolset", authorFactory: "mcpServer", registerMethod: "registerMcpServers" },
+  { kind: "agent", payloadKey: "toolset", authorFactory: "agent", registerMethod: "registerAgents" },
   { kind: "task", payloadKey: "task", authorFactory: "task", registerMethod: "registerTasks" },
   { kind: "middleware", payloadKey: "middleware", authorFactory: "middleware", registerMethod: "registerMiddleware" },
   { kind: "addon", payloadKey: "addon", authorFactory: "addon", registerMethod: "registerAddons" },
@@ -664,10 +666,11 @@ export function renderLlmsTxt(m: Manifest): string {
     "  `s.group(body)` and `s.util.post_process(body)` take it **positionally**.",
     "  `s.for` is **count-bounded** (`{ as, count, body }`), not from/to. See the",
     "  **Specials — authored signatures** block below.",
-    "- **Toolset tools take a `tool` handle.** `toolset.mcp({ tools: [{ tool: myTool }] })`",
-    "  / `agent({ tools: [{ tool: myTool }] })` — pass the `tool()` def handle (or",
-    "  its name); it resolves to the tool's guid like the call family. A raw numeric",
-    "  `id` is an escape hatch, not the default.",
+    "- **MCP servers & agents are distinct root kinds** that both persist under the",
+    "  `toolset` payload key (so a same-name pair collides). `mcpServer({...})` exposes",
+    "  tools over MCP (auth is per-tool — no server-level gate); `agent({...})` carries a",
+    "  typed `llm` block. Their `tools` take a `tool()` handle (or name), resolved to the",
+    "  tool's guid like the call family; a raw numeric `id` is an escape hatch.",
     "- **`task.schedule` is an array** of `{ startsOn, freq?, repeatEnabled?, endsOn? }`",
     "  (`ScheduleDef[]`), not a single `{ type, value }`. `freq` is seconds.",
     "- **`get_input`/`get_raw_input` read the whole payload**, not one named input",
