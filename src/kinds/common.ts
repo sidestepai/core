@@ -2,11 +2,14 @@
  * Small shapes shared across object kinds: the empty middleware block and the
  * tag encoding (`["a","b"]` → `[{tag:"a"},{tag:"b"}]`).
  */
+import type { StackItemXdo } from "../types/xdo.js";
+
 export interface MiddlewareBlock {
   pre_customize: boolean;
   post_customize: boolean;
-  pre: unknown[];
-  post: unknown[];
+  /** Pre/post attachment entries — `mvp:middleware` stack items (see middleware-attach.ts). */
+  pre: StackItemXdo[];
+  post: StackItemXdo[];
 }
 
 export function emptyMiddleware(): MiddlewareBlock {

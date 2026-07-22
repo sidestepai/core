@@ -11,6 +11,7 @@ import { encodeResponse, warnUnboundReturn } from "../responses/response.js";
 import { registerKind } from "./kind.js";
 import type { ObjectKind } from "./kind.js";
 import { defaultHistory, encodeTags } from "./common.js";
+import { buildMiddlewareBlock } from "./middleware-attach.js";
 
 /** Encode a `FunctionDef` into the flattened importable function `xdo`. */
 export function encodeFunction(fn: FunctionDef): FunctionXdo {
@@ -35,7 +36,7 @@ export function encodeFunction(fn: FunctionDef): FunctionXdo {
       env: [],
     },
     history: defaultHistory("function"),
-    middleware: { pre_customize: false, post_customize: false, pre: [], post: [] },
+    middleware: buildMiddlewareBlock(fn.middleware),
     tag: encodeTags(fn.tags),
     input: Object.entries(fn.input ?? {}).map(([name, descriptor]) =>
       encodeInput(name, descriptor),

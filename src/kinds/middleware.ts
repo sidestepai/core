@@ -14,6 +14,7 @@ import type { InputDescriptor } from "../inputs/input.js";
 import { registerKind } from "./kind.js";
 import type { ObjectKind } from "./kind.js";
 import { encodeTags, defaultHistory } from "./common.js";
+import { clear } from "./middleware-attach.js";
 
 export type ResultStrategy = "merge" | "replace";
 export type ExceptionPolicy = "silent" | "rethrow" | "critical";
@@ -72,6 +73,14 @@ export const middlewareKind: ObjectKind<MiddlewareDef, MiddlewareXdo> = {
 };
 registerKind(middlewareKind);
 
-export function middleware(def: MiddlewareDef): MiddlewareDef {
+function middlewareImpl(def: MiddlewareDef): MiddlewareDef {
   return def;
 }
+
+/**
+ * Author a middleware object. Callable as `middleware({…})`; also carries
+ * {@link clear} as `middleware.clear()` — the readable spelling of an explicit
+ * empty pre/post override (`pre: middleware.clear()` ⇒ customize the phase, run
+ * nothing, stop inheriting the parent tier).
+ */
+export const middleware = Object.assign(middlewareImpl, { clear });

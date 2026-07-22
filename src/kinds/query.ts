@@ -13,8 +13,10 @@ import { encodeInput } from "../inputs/input.js";
 import type { InputDescriptor } from "../inputs/input.js";
 import { registerKind } from "./kind.js";
 import type { ObjectKind } from "./kind.js";
-import { emptyMiddleware, defaultHistory, encodeTags } from "./common.js";
+import { defaultHistory, encodeTags } from "./common.js";
 import type { MiddlewareBlock } from "./common.js";
+import { buildMiddlewareBlock } from "./middleware-attach.js";
+import type { MiddlewareAttach } from "./middleware-attach.js";
 import type { ApiGroupDef } from "./api-group.js";
 import type { TableDef } from "./table.js";
 import { resolveRef } from "../refs/guid.js";
@@ -76,6 +78,15 @@ export interface QueryDef<
   apiEnabled?: boolean;
   disabled?: boolean;
   cache?: Partial<CacheXdo>;
+  /**
+   * Pre/post middleware attachment. `middleware: { pre: [mw], post: [...] }`
+   * runs the listed middleware around this endpoint's stack. Providing a phase
+   * sets its `_customize` flag (override); omitting it inherits from the API
+   * group, then the workspace (the engine resolves the chain — SideStep emits
+   * the flags and lists). `pre: middleware.clear()` overrides with nothing
+   * (stop inheriting). Reference a `middleware()` def handle or its name.
+   */
+  middleware?: MiddlewareAttach;
   /** Workspace tags (stored `tag: [{tag}]`), e.g. `["xano:quick-start"]`. */
   tags?: string[];
   input?: I;
@@ -239,7 +250,7 @@ export function encodeQuery(def: QueryDef<Record<string, InputDescriptor>, unkno
     },
     cache: defaultCache(def.cache),
     output: [],
-    middleware: emptyMiddleware(),
+    middleware: buildMiddlewareBlock(def.middleware),
     tag: encodeTags(def.tags),
     history: defaultHistory("query"),
     input: Object.entries(def.input ?? {}).map(([name, d]) => encodeInput(name, d)),

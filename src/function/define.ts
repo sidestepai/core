@@ -7,6 +7,7 @@
 import type { InputDescriptor } from "../inputs/input.js";
 import type { Statement } from "../statements/statement.js";
 import type { ResponseDef } from "../responses/response.js";
+import type { MiddlewareAttach } from "../kinds/middleware-attach.js";
 
 export type { ResponseDef };
 
@@ -45,6 +46,12 @@ export interface FunctionDef<
    * encoder; only its type is read. See {@link QueryDef.responseShape}.
    */
   responseShape?: Res;
+  /**
+   * Pre/post middleware attachment. Functions have no API-Group tier — an
+   * un-customized phase inherits straight from the workspace. Providing a phase
+   * sets its `_customize` flag; `pre: middleware.clear()` overrides with nothing.
+   */
+  middleware?: MiddlewareAttach;
   /** Workspace tags (stored `tag: [{tag}]`), e.g. `["xano:quick-start"]`. */
   tags?: string[];
 }

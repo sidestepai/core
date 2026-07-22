@@ -5,8 +5,10 @@
  */
 import { registerKind } from "./kind.js";
 import type { ObjectKind } from "./kind.js";
-import { emptyMiddleware, encodeTags } from "./common.js";
+import { encodeTags } from "./common.js";
 import type { MiddlewareBlock } from "./common.js";
+import { buildMiddlewareBlock } from "./middleware-attach.js";
+import type { MiddlewareAttach } from "./middleware-attach.js";
 
 export interface CorsConfig {
   mode?: string; // default | custom | disabled
@@ -35,6 +37,13 @@ export interface ApiGroupDef {
   apiGroupEnabled?: boolean;
   documentation?: { require_token: boolean; token: string };
   cors?: CorsConfig;
+  /**
+   * Group-level pre/post middleware. Queries in this group inherit this chain
+   * when they don't set their own `middleware` (the API-Group tier of the
+   * Query → API Group → Workspace fallback). Providing a phase sets its
+   * `_customize` flag; `pre: middleware.clear()` overrides with nothing.
+   */
+  middleware?: MiddlewareAttach;
   /** Workspace tags (stored `tag: [{tag}]`), e.g. `["xano:quick-start"]`. */
   tags?: string[];
 }
@@ -83,7 +92,7 @@ export function encodeApiGroup(def: ApiGroupDef): ApiGroupXdo {
     api_group_enabled: def.apiGroupEnabled ?? true,
     docs: def.docs ?? "",
     documentation: def.documentation ?? { require_token: false, token: "" },
-    middleware: emptyMiddleware(),
+    middleware: buildMiddlewareBlock(def.middleware),
     history: { inherit: true, query_enabled: true, query_limit: 100 },
     tag: encodeTags(def.tags),
     cors: encodeCors(def.cors),

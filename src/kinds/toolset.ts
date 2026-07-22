@@ -22,6 +22,8 @@ import { registerKind } from "./kind.js";
 import type { ObjectKind } from "./kind.js";
 import { emptyMiddleware, encodeTags, defaultHistory } from "./common.js";
 import type { MiddlewareBlock } from "./common.js";
+import { buildMiddlewareBlock } from "./middleware-attach.js";
+import type { MiddlewareAttach } from "./middleware-attach.js";
 import { resolveRef } from "../refs/guid.js";
 import type { ObjectRef } from "../refs/guid.js";
 
@@ -41,6 +43,13 @@ export interface ToolDef {
   input?: Record<string, InputDescriptor>;
   stack?: Statement[];
   response?: ResponseDef;
+  /**
+   * Pre/post middleware attachment (per-tool — the `tool_pre`/`tool_post`
+   * workspace keys). Providing a phase sets its `_customize` flag; an
+   * un-customized phase inherits from the workspace. `pre: middleware.clear()`
+   * overrides with nothing.
+   */
+  middleware?: MiddlewareAttach;
 }
 
 export interface ToolXdo {
@@ -69,7 +78,7 @@ export function encodeTool(def: ToolDef): ToolXdo {
     docs: def.docs ?? "",
     enabled: def.enabled ?? true,
     output: [],
-    middleware: emptyMiddleware(),
+    middleware: buildMiddlewareBlock(def.middleware),
     tag: encodeTags(def.tags),
     history: defaultHistory("toolset", def.history),
     toolset: { id: def.toolsetId ?? 0 },
