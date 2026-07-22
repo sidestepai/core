@@ -3,6 +3,7 @@ import { Xano } from "../../src/workspace/xano.js";
 import { middleware } from "../../src/kinds/middleware.js";
 import { query } from "../../src/kinds/query.js";
 import { task } from "../../src/kinds/task.js";
+import { tool } from "../../src/kinds/toolset.js";
 import { table } from "../../src/kinds/table.js";
 import { defineFunction } from "../../src/function/define.js";
 import "../../src/kinds/function.js"; // registers the "function" object kind
@@ -69,6 +70,15 @@ describe("validateMiddlewareAuth (issue #81 export guard)", () => {
       new Xano().registerMiddleware([authKeyedMw]).registerFunctions([fn]).export(),
     ).not.toThrow();
     expect(warn).toHaveBeenCalledWith(expect.stringMatching(/^sidestep: middleware "rl".*function "helper"/s));
+  });
+
+  it("warns (does not throw) when attached to a tool — caller-dependent auth", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const tl = tool({ name: "search", middleware: { post: [authKeyedMw] } });
+    expect(() =>
+      new Xano().registerMiddleware([authKeyedMw]).registerTools([tl]).export(),
+    ).not.toThrow();
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/^sidestep: middleware "rl".*tool "search"/s));
   });
 
   it("does not fire for a middleware that does not reference auth()", () => {

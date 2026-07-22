@@ -6,7 +6,7 @@
  * surfaces the error — what a guard wants; `silent`, the default, swallows it).
  *
  * A middleware runs only once *attached* to a host. Attach it with the host's
- * `middleware: { pre, post }` field — see `writeRateLimit` below. Providing a
+ * `middleware: { pre, post }` field — see `guardedEndpoint` below. Providing a
  * phase overrides that phase (sets its `_customize` flag); omitting it inherits
  * from the parent tier (Query → API Group → Workspace). `middleware.clear()`
  * overrides a phase with nothing (stop inheriting).
@@ -24,7 +24,7 @@ import { api, users } from "../_shared.js";
  * 2. **`auth("id")` needs an authenticated host.** It resolves to the caller's id
  *    only when the host has an auth table; on a public host it is `null` and every
  *    caller shares one bucket. `export()` throws if you attach this to a host with
- *    no auth table — so `writeRateLimit` below sets `auth: users`.
+ *    no auth table — so the `guardedEndpoint` query below sets `auth: users`.
  *
  * `exceptionPolicy: "rethrow"` makes a tripped limit abort the request (HTTP 429
  * with the authored `error`); the default `"silent"` would let it through.

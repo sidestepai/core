@@ -158,10 +158,13 @@ export function stackReferencesAuth(stack?: readonly unknown[]): boolean {
 
 /** Deep-walk any authored node for an `auth`-tagged value. */
 function nodeReferencesAuth(node: unknown): boolean {
-  if (node === null || typeof node !== "object") return false;
-  // A tagged value (including the function-carrying trigger form) is checked
-  // first; `auth()` is exactly `{ tag: "auth", ... }`. Non-auth tagged values
-  // fall through to the recursion so their `filters[].arg[]` are still walked.
+  // A tagged value can be a *callable* (the `t.new` trigger accessor form, which
+  // `isTaggedValue` accepts — issue #78), so admit functions as well as objects;
+  // rejecting them here would skip a callable's own `filters[].arg[]`.
+  if (node === null || (typeof node !== "object" && typeof node !== "function")) return false;
+  // A tagged value (including the function-carrying form) is checked first;
+  // `auth()` is exactly `{ tag: "auth", ... }`. Non-auth tagged values fall
+  // through to the recursion so their `filters[].arg[]` are still walked.
   if (isTaggedValue(node) && node.tag === "auth") return true;
   if (Array.isArray(node)) return node.some(nodeReferencesAuth);
   return Object.values(node as Record<string, unknown>).some(nodeReferencesAuth);

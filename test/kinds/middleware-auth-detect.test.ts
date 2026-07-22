@@ -38,6 +38,22 @@ describe("stackReferencesAuth", () => {
     expect(stackReferencesAuth(stack)).toBe(false);
   });
 
+  it("detects auth() carried on a callable (function-form) tagged value", () => {
+    // The `t.new` trigger accessor is a *callable* Value — a function carrying
+    // {value,tag,filters}. isTaggedValue accepts it, so the walk must too.
+    const callableAuth = Object.assign(() => undefined, { value: "id", tag: "auth", filters: [] });
+    expect(stackReferencesAuth([{ context: { key: callableAuth } }])).toBe(true);
+  });
+
+  it("detects auth() nested in a callable value's filter args", () => {
+    const callable = Object.assign(() => undefined, {
+      value: "",
+      tag: "var",
+      filters: [{ name: "concat", disabled: false, arg: [auth("id")] }],
+    });
+    expect(stackReferencesAuth([{ context: { key: callable } }])).toBe(true);
+  });
+
   it("is false for undefined and empty stacks", () => {
     expect(stackReferencesAuth(undefined)).toBe(false);
     expect(stackReferencesAuth([])).toBe(false);
