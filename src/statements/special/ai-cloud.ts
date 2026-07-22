@@ -5,8 +5,8 @@
  * (authoritative for the persisted form), so they're grounded — but still have
  * no golden fixture to deep-equal against.
  *
- * @TODO(byte-verify): no transform-temp golden for call_agent / cloud_job{,_await,
- *   _status}. Shapes are now decode()-accurate (agent: context.toolset.id + top-level
+ * @TODO(byte-verify): no persisted golden for call_agent / cloud_job{,_await,
+ *   _status}. Shapes are now decode-accurate (agent: context.toolset.id + top-level
  *   runtime + input[]; cloud jobs: everything in input[]), but unconfirmed details
  *   remain: input[] entry ORDER, whether `runtime` is emitted when mode is the
  *   default "shared", and CloudJobArgs.await ("default 60" in docs, not defaulted).
@@ -48,7 +48,7 @@ export interface AiAgentRunArgs {
 
 /**
  * `ai.agent.run <agent>` — invoke an AI agent (`mvp:call_agent`). Stored shape
- * from `AgentRun::decode`: the target is `context.toolset.id`, `runtime` is a
+ * from the engine's agent-run format: the target is `context.toolset.id`, `runtime` is a
  * TOP-LEVEL `{ mode }` block, and `args`/`allow_tool_execution`/`version` are
  * `input[]` entries (NOT context). `runtime` is emitted only when a mode is set.
  */
@@ -86,7 +86,7 @@ export interface CloudJobArgs {
 
 /**
  * `cloud.job { … }` — launch a containerized cloud job (`mvp:cloud_job`). Stored
- * shape from `CloudJob::decode`: every block (image/command/args/secret/template/
+ * shape from the engine's cloud-job format: every block (image/command/args/secret/template/
  * await) is an `input[]` entry; `context` is empty.
  *
  * @TODO(byte-verify): no golden — input[] entry ORDER is a guess (emitted
@@ -113,7 +113,7 @@ export interface CloudJobAwaitArgs {
 
 /**
  * `cloud.job.await { … }` — wait for cloud jobs to finish (`mvp:cloud_job_await`).
- * `ids`/`timeout` are `input[]` entries with empty context (`CloudJobAwait::decode`).
+ * `ids`/`timeout` are `input[]` entries with empty context (per the engine's cloud-job-await format).
  */
 export function cloudJobAwait(a: CloudJobAwaitArgs): Statement {
   return {
@@ -135,7 +135,7 @@ export interface CloudJobStatusArgs {
 
 /**
  * `cloud.job.status { … }` — read a cloud job's status (`mvp:cloud_job_status`).
- * `id` is an `input[]` entry with empty context (`CloudJobStatus::decode`).
+ * `id` is an `input[]` entry with empty context (per the engine's cloud-job-status format).
  */
 export function cloudJobStatus(a: CloudJobStatusArgs): Statement {
   return {

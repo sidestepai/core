@@ -4,7 +4,7 @@
  * Xano statements that invoke another workspace object (the call family —
  * `function.run`/`function.call`/`api.call`/…) store a reference to the target.
  * In a `packageExport` bundle that reference is the target's **guid** (the
- * engine's `Migrate::exportTypeId` converts a local numeric id → the object's
+ * engine converts a local numeric id → the object's
  * guid on export, and remaps it back on import). Engine object guids are
  * 32-char lowercase hex strings (e.g. `276ca71d0ecb26851107a4383daff23b`).
  *

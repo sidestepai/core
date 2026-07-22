@@ -1,7 +1,7 @@
 /**
  * Trigger kinds (U4). All 6 trigger types share ONE stored envelope
  * (`mvp_trigger`) discriminated by `obj_type` + a per-type `meta` block —
- * confirmed from `cloud-client: dbo/mvp/trigger.yaml`. The canonical `meta`
+ * confirmed against the Xano engine's stored trigger shape. The canonical `meta`
  * carries all four action groups (database / toolset / workspace /
  * workspace_realtime_channel); each trigger type populates its own group and
  * leaves the others at their skeleton defaults.
@@ -89,7 +89,7 @@ export type DatabaseInputs<Row, A> = {
 } & (HasNew<A> extends true ? { new: FieldAccessor<Row> } : { new: null }) &
   (HasOld<A> extends true ? { old: FieldAccessor<Row> } : { old: null });
 
-/** The canonical four-group meta skeleton (per dbo/trigger.yaml). */
+/** The canonical four-group meta skeleton (per the engine's stored trigger shape). */
 function baseMeta() {
   return {
     database: {

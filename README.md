@@ -577,7 +577,7 @@ column** with `{ array: true }` — `f.text({ array: true })` surfaces as `strin
 `InferRow<typeof table>` (the column analogue of `input.list`). Tables accept a named-map
 schema (`{ email: f.email({ required: true }) }`), filter methods carry args (`"min:8"`), and
 `views[]` (expression/sort/hiddenCols) encode via the shared comparison encoder. Byte-exact
-vs the engine's `Schema::TYPE_MAP`. A column **`default` must stay within the BMP** — a 4-byte
+vs the engine's column type map. A column **`default` must stay within the BMP** — a 4-byte
 character (codepoint > U+FFFF, e.g. an emoji) is mangled into invalid UTF-8 by the engine's
 default pipeline and is rejected at export rather than 500ing at deploy with Postgres `22021`;
 BMP defaults (accents, `€`, most CJK) are fine, or put the value on an endpoint input

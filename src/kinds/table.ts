@@ -1,8 +1,8 @@
 /**
  * Table (database) kind (U6) → payload key `dbo`. Columns reuse the shared
  * field encoder (KTD-6) with the column context; indexes, views, and
- * autocomplete have their own small shapes. Validated against `cloud-client:
- * …/transform-temp/schema:table*.json` (the full rich field-type corpus).
+ * autocomplete have their own small shapes. Validated against the Xano engine's
+ * persisted table shape (the full rich field-type corpus).
  */
 import type { FieldXdo, ExprStatement } from "../types/xdo.js";
 import { encodeField, COLUMN_CONTEXT } from "../fields/field.js";
@@ -29,7 +29,7 @@ export interface ColumnDef extends FieldOptions {
 export type SchemaDef = ColumnDef[] | FieldMap;
 
 /**
- * Index kind (`dbo-index-*.yaml`): `primary`/`btree` (+`btree|unique`) on
+ * Index kind (per the engine's index schema): `primary`/`btree` (+`btree|unique`) on
  * columns, `gin` on the internal JSON, `search` (full-text), `gist` (spatial),
  * `vector`. Open-ended (`string & {}`) since the stored layer accepts variants
  * (e.g. `gin|unique`) the authoring DSL doesn't enumerate.
@@ -75,7 +75,7 @@ export type IndexOp =
   | "vector_l2_ops"
   | (string & {});
 
-/** Full-text-search index language (`dbo-index-search.yaml`). */
+/** Full-text-search index language (per the engine's search-index schema). */
 export type IndexLang =
   | "simple"
   | "arabic"

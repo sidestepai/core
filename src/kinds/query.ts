@@ -2,7 +2,7 @@
  * Query (API endpoint) kind (U7) → payload key `query`. Function-like
  * (input/run/result) plus HTTP fields: `verb`, `app` (api_group binding),
  * `auth`, `response_type`, `cache`, `output`. Validated against
- * `cloud-client: …/transform-temp/schema:query.json`.
+ * the Xano engine's persisted shape.
  */
 import type { ResultItemXdo, StackItemXdo, InputXdo, CacheXdo } from "../types/xdo.js";
 import { encodeStatement } from "../statements/statement.js";

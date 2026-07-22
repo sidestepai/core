@@ -25,7 +25,7 @@ export interface TokenRecord {
   scope?: string;
   /** Instance origin the token is bound to (read from the token's `aud` claim). */
   instance: string;
-  /** cloud-master OAuth host the token was minted by (for refresh). */
+  /** Xano control-plane OAuth host the token was minted by (for refresh). */
   auth_host: string;
   /** OAuth client_id the token was minted under — required to refresh it. */
   client_id: string;

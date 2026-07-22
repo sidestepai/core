@@ -2,7 +2,7 @@
  * Auth-table reference resolution — shared by query endpoints (`query.auth`) and
  * toolset tools (`tool[].auth`). Both name an auth **table** (a
  * `table({ auth: true })`), and the engine stores/exports it through the same
- * `dbo` id↔guid remap (`Migrate::export/importDboId`): at rest a numeric
+ * `dbo` id↔guid remap: at rest a numeric
  * `dbo.id`, in a `packageExport` bundle the table's guid, `false` when there is
  * no auth. Modeling both on one resolver keeps the two surfaces from drifting.
  */

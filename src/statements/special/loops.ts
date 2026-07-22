@@ -1,20 +1,19 @@
 /**
- * Hand-authored control-flow block statements (U10). These carry `!class` /
- * `!function` transforms in the engine (ForLoop, schema:foreach, schema:while,
- * Group), so they're authored by hand — like `conditional` — rather than
- * codegen'd. Each nests a `run[]` stack encoded through the shared statement
- * encoder, and `while` reuses the conditional's `encodeComparison`.
+ * Hand-authored control-flow block statements (U10). These carry non-trivial
+ * transforms in the engine (for, foreach, while, group), so they're authored by
+ * hand — like `conditional` — rather than codegen'd. Each nests a `run[]` stack
+ * encoded through the shared statement encoder, and `while` reuses the
+ * conditional's `encodeComparison`.
  *
- * Stored shapes (cloud-client transform-temp/schema:{for,foreach}.json and
- * process/.../DEV-1481-while.json):
+ * Stored shapes (from the Xano engine's persisted for/foreach/while shapes):
  *   for     → context: { as, cnt:<Value>,  run:[…] }
  *   foreach → context: { as, list:<Value>, run:[…] }
  *   while   → context: { expr:<comparison>, run:[…] }
  *   group   → context: { run:[…] }
  *
  * @TODO(byte-verify): `for` and `foreach` ARE golden-verified. `while` and `group`
- *   are MODELED — no transform-temp golden in the corpus (last survey). The `while`
- *   shape is inferred from a process-dir fixture, not a persisted transform-temp one;
+ *   are MODELED — no persisted golden in the corpus (last survey). The `while`
+ *   shape is inferred from a non-persisted fixture;
  *   confirm `expr` vs the loops' `cnt`/`list` keying, and `group`'s bare `{run}`.
  */
 import type { Statement } from "../statement.js";

@@ -1,5 +1,5 @@
 /**
- * Minimal YAML-subset parser for the cloud-client statement schema files (U9).
+ * Minimal YAML-subset parser for the Xano engine's statement schema files (U9).
  *
  * The schema YAMLs are regular, 2-space-indented, and use custom tags
  * (`!class`, `!function`, `!kinds`, `!assign`, `static:text`, …) as scalar

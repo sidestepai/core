@@ -5,10 +5,10 @@
  * foundation (refs/guid.ts) the table resolves to its deterministic guid.
  *
  * All six share one rich envelope (engine-class metadata, not in the transform
- * schema — confirmed by the transform-temp fixtures): `description:""`,
+ * schema — confirmed against the Xano engine's persisted shape): `description:""`,
  * `settings_registry:[]`, an `output` block (`{customize:false,filters:[],items:[]}`
  * by default; a statement with column selection — `db.get`'s `output` arg — emits
- * `{customize:true, items:[{name,children:[]}]}` per the `schema:query-auth-me` golden),
+ * `{customize:true, items:[{name,children:[]}]}` per the engine's persisted golden),
  * `addon:[]`, an always-present `as` (""-default), and `context:{dbo:{id:guid}}`.
  * Input entries are the rich form `{name,value,tag,filters,ignore,expand,children}`.
  *
@@ -327,8 +327,8 @@ interface EnvelopeOpts {
 /**
  * The shared db-op envelope fields (everything except name/context/as/input).
  * `output` switches the output block to the engine's customized form —
- * `{customize:true, items:[{name,children:[]}]}` (byte shape per the
- * `schema:query-auth-me` golden); omitted, it stays the full-record default.
+ * `{customize:true, items:[{name,children:[]}]}` (byte shape per the engine's
+ * persisted golden); omitted, it stays the full-record default.
  */
 function envelope(
   opts: EnvelopeOpts = {},
@@ -409,7 +409,7 @@ export interface DbGetArgs<
   /**
    * Restrict the returned columns (XanoScript `output = [...]`). Encoded into
    * the customized output envelope — `{customize:true, items:[{name,children:[]}]}`
-   * (byte shape per the `schema:query-auth-me` engine golden). Omitting it
+   * (byte shape per the engine's persisted golden). Omitting it
    * returns the full record (`customize:false`). Note: an explicit `output`
    * list overrides column visibility — listing an `internal` column (e.g. a
    * password hash) pulls it into the statement result. Captured literally so
@@ -855,16 +855,15 @@ export function dbDirectQuery(args: DbDirectQueryArgs): Statement {
 // byte-verified once a golden is vendored). Each keeps the rich db envelope and
 // the `context.dbo.id` table reference where the engine schema implies one.
 //
-// @TODO(byte-verify): bulk add/patch/update are now grounded in DbBulk*::decode
-//   (context.dbo.id + LEAN input[items/allow_id_field], no rich envelope). Still
-//   unconfirmed without a golden: input[] entry order, and whether `as` is stored.
-//   bulk.delete uses context.search (see its own @TODO — search shape unknown).
-//   db.query (mvp:dbo_view) is now grounded in the cloud-client MVP schema +
-//   converter (cloud-client MVP/xs/type/mvp/{Context,Search,Sort,Return,Statement}
-//   + MVP::convertContextToConfig): filter → context.search {expression[]}, sort +
+// @TODO(byte-verify): bulk add/patch/update are now grounded in the engine's
+//   bulk-op formats (context.dbo.id + LEAN input[items/allow_id_field], no rich
+//   envelope). Still unconfirmed without a golden: input[] entry order, and whether
+//   `as` is stored. bulk.delete uses context.search (see its own @TODO — search
+//   shape unknown). db.query (mvp:dbo_view) is now grounded in the Xano engine's
+//   context/search/sort/return model: filter → context.search {expression[]}, sort +
 //   paging → context.return.list.{sort,paging}, output → statement output envelope
-//   (issue #41/#34/#36). Derived-from-source, not a vendored golden — the emit-shape
-//   fixtures cite those files; behavior is confirmed by the live cross-user repro.
+//   (issue #41/#34/#36). Derived-from-engine, not a vendored golden;
+//   behavior is confirmed by the live cross-user repro.
 //   The 5 external-SQL engines are still modeled. No dbo_bulk*/dbo_external_* goldens
 //   exist in the corpus — capture one before trusting bytes.
 // ---------------------------------------------------------------------------
@@ -879,9 +878,9 @@ export interface DbBulkAddArgs {
 }
 
 /**
- * Lean bulk-op envelope, modeled on `DbBulk*::decode`: `context.dbo.id` + LEAN
- * input entries (`convertFromAssignmentValue` → `{name,value,tag,filters}`), and
- * — unlike the rich `!map:dbo` family — NO rich envelope (decode never reads
+ * Lean bulk-op envelope, modeled on the engine's bulk-op format: `context.dbo.id` + LEAN
+ * input entries (`{name,value,tag,filters}`), and
+ * — unlike the rich db family — NO rich envelope (decode never reads
  * output/addon/etc). The leaner serialization generation, same as add_or_edit.
  */
 function bulkStatement(
@@ -917,7 +916,7 @@ export interface DbBulkDeleteArgs<As extends string = string> {
 
 /**
  * `db.bulk.delete <table>` — delete many rows by a search (`mvp:dbo_bulkdelete`).
- * Unlike the other bulk ops, the filter rides `context.search` (`DB::fromSearch`),
+ * Unlike the other bulk ops, the filter rides `context.search`,
  * NOT an input entry. The `where` is encoded through the shared {@link encodeSearch}
  * — the identical operand-based `{expression:[…]}` shape `s.db.query` emits — so the
  * modern DSL (`expr`/`cmp`/`and`/`or`) is fully supported here too.
@@ -1300,7 +1299,7 @@ export interface DbQueryArgs<
 
 /**
  * `db.query <table>` — the query-all search builder (`mvp:dbo_view`). Emits the
- * cloud-client context the engine actually reads (`MVP::convertContextToConfig`):
+ * context the engine actually reads:
  * the filter under `context.search` (`{expression:[…]}`, the same operand-based
  * shape as conditionals/trigger search), sort + paging under
  * `context.return.list`, and output-column restriction via the statement `output`
@@ -1332,7 +1331,7 @@ export function dbQuery<
   const evals = encodeEval(args.eval);
   if (evals) context.eval = evals;
   // Row lock rides `context.lock` as a tagged value (`{value, tag, filters}`),
-  // not a bare bool — the shape `MVP::convertLockToConfig` reads.
+  // not a bare bool — the shape the engine's lock-config converter reads.
   if (args.lock !== undefined) context.lock = c.bool(args.lock);
   // Input-bound paging (issue #66): `Value`-typed page/per_page/offset/search/sort
   // ride `context.simpleExternal` on top of the static block (which is the gate).
@@ -1385,7 +1384,7 @@ export interface DbTransactionArgs {
  * `db.transaction { … }` — run a sub-stack in a database transaction
  * (`mvp:db_transaction`). A pure block statement: the engine schema declares
  * `args: []`, so it carries no `as` — only the `run` sub-stack. Byte-verified
- * (parser-minimal) against `db_transaction.json`.
+ * (parser-minimal) against the engine's persisted shape.
  */
 export function dbTransaction(args: DbTransactionArgs): Statement {
   return {
@@ -1419,7 +1418,7 @@ export interface DbExternalQueryArgs {
 
 /**
  * `db.external.<engine>.direct_query` — raw SQL against an external database.
- * Stored shape from `DirectQuery::decode` (the shared base; these engines extend
+ * Stored shape from the engine's direct-query format (the shared base; these engines extend
  * it with `connection_string:true`): `context.{code, response_type,
  * connection_string_flex, arg[]}`. The connection string lands under
  * `connection_string_flex` (a tagged assignment value), NOT `connection_string`.

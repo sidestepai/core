@@ -86,7 +86,7 @@ export interface ParsedArgs {
    * load can serve a *previous* app's cached `index.html`.
    */
   staticHost: string | undefined;
-  /** `--origin <origin>`: cloud-master OAuth host. Default: $XANO_ORIGIN, then https://app.xano.com. */
+  /** `--origin <origin>`: Xano control-plane OAuth host. Default: $XANO_ORIGIN, then https://app.xano.com. */
   authHost: string | undefined;
   /** `--config <path>`: project-local token cache. Default: $XANO_CONFIG, then ./.xano/auth.json. */
   authFile: string | undefined;

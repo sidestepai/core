@@ -2,9 +2,7 @@
  * TypeScript mirror of Xano's stored `mvp_function` JSON contract (the
  * importable `xdo` subset, flattened per KTD-1 — no `xdo` wrapper).
  *
- * Field shapes are taken from the real engine fixtures:
- *  - cloud-client: extensions/MVP/includes/xano/test/script/data/transform-temp/schema:function.json
- *  - .../xs/type/mvp/{StackItem,Input,Filter,Tag}.php
+ * Field shapes are taken from the real Xano engine's persisted function shape.
  *
  * The SDK emits only authored fields. Server/auto-generated keys (`id`,
  * `created_at`, `_xsid`, `@guid`, `@index`, `guid`, `_draft`, `stack_id`, …)
@@ -13,7 +11,7 @@
  */
 
 /**
- * Xano tagged-value tags (cloud-client: xs/type/mvp/Tag.php). The runtime
+ * Xano tagged-value tags (verified against the Xano engine). The runtime
  * `TAGS` tuple is the single source of truth; the `Tag` type is derived from it
  * so the manifest can enumerate the tag catalog without drifting from the type.
  */

@@ -5,10 +5,9 @@
  * generator: `impliedInputs(objType)` returns the exact input array Xano stores
  * for a trigger of that type.
  *
- * Source of truth (mirror, do not "fix"):
- *   cloud-client/extensions/MVP/includes/xano/helper/mvp/Trigger.php
- *     - Trigger::updateDefaults()          (database / toolset / workspace / realtime)
- *     - Trigger::buildErrorTriggerInputSchema()
+ * Source of truth (mirror, do not "fix"): the Xano engine's trigger
+ * default-input generator (database / toolset / workspace / realtime, plus the
+ * error-trigger input schema).
  *
  * Fields are built through the canonical `input.*` / `f.*` constructors + shared
  * `encodeInput`, so they carry the same stored shape and defaults as every other

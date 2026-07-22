@@ -1,8 +1,8 @@
 /**
  * MCP server (`mcp_server`) — a first-class root primitive: a collection of
  * tools exposed over the MCP protocol. Persists as `obj_type=toolset` with
- * `type:"mcp"` (verified against `cloud-client` `transform/McpServer.php` +
- * stored `schema:mcp_server` fixtures), so it shares the `toolset` payload
+ * `type:"mcp"` (verified against the Xano engine's stored mcp_server format),
+ * so it shares the `toolset` payload
  * section and the `md5("toolset:"+name)` guid with agents (see the note in
  * `xano.ts`/`refs/guid.ts` about the shared identity namespace).
  *

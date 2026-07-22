@@ -1,6 +1,6 @@
 /**
  * OAuth 2.1 protocol layer for the CLI's login/push/logout flows, targeting the
- * cloud-master control-plane authorization server. Backed by `openid-client`
+ * Xano control-plane authorization server. Backed by `openid-client`
  * (OpenID-certified) — the same library the sidestep dashboard's BFF uses — so
  * the two share one battle-tested implementation of RFC 8414 discovery, PKCE,
  * the authorization-code grant, refresh (with rotation), and revocation.
@@ -42,7 +42,7 @@ export const DEFAULT_PORT = 47100;
 /** RFC 7591 `software_id` for the CLI's dynamically-registered client. */
 export const SOFTWARE_ID = "sidestep";
 
-/** Default cloud-master OAuth host when none is configured. */
+/** Default Xano control-plane OAuth host when none is configured. */
 export const DEFAULT_AUTH_HOST = "https://app.xano.com";
 
 /**
@@ -229,7 +229,7 @@ export class OpenIdProvider implements TokenProvider {
 
   private async build(): Promise<client.Configuration> {
     const server = new URL(this.opts.authHost);
-    // Allow plain-HTTP only when the target itself is http (local cloud-master).
+    // Allow plain-HTTP only when the target itself is http (local control-plane).
     const options =
       server.protocol === "http:" ? { execute: [client.allowInsecureRequests] } : undefined;
 

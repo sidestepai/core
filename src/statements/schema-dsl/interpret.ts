@@ -22,7 +22,7 @@
  *
  * Validated against real persisted fixtures (math_add, bitwise_and, object_keys,
  * array_push, array_pop). The codegen pipeline (scripts/codegen.ts) populates the
- * spec catalog from the cloud-client schema YAMLs; uninterpretable schemas are
+ * spec catalog from the Xano engine's schema definitions; uninterpretable schemas are
  * logged, never guessed.
  */
 import type { Statement } from "../statement.js";
@@ -129,7 +129,7 @@ function valueFields(v: Value): { value: string; tag: string; filters: unknown[]
 /**
  * A `context-nest` value block (`error`, `payload`, `array`, …). Unlike an
  * expression operand or a `context-spread`, the engine schema types `filters`
- * here WITHOUT a default (`filters[]: mvp_filter`, then `XS::optional`), so the
+ * here WITHOUT a default (an optional `filters[]`), so the
  * persisted form omits the key entirely when empty and keeps it only when a
  * filter is attached (verified against the live xdo corpus: 19/19 precondition
  * `error` blocks are `{tag,value}` with no `filters`). Mirror that.

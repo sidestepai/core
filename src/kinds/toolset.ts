@@ -5,8 +5,8 @@
  * (`mcp-server.ts`, `type:"mcp"`) and **agents** (`agent.ts`, `type:"agent"`) —
  * are their own root kinds; both build on the shared {@link encodeToolsetBase}
  * envelope exported here (name/description/instructions/docs/enabled/canonical/
- * spec/tags/tool-refs). Verified against `cloud-client` `transform/McpServer.php`
- * + `transform/Agent.php` and the stored `schema:{mcp_server,agent}` fixtures.
+ * spec/tags/tool-refs). Verified against the Xano engine's stored mcp_server and
+ * agent formats.
  *
  * Notes from that verification (see the PR for #85/#87):
  *  - Xano's MCP server has **no** server-level `authentication` field — auth is

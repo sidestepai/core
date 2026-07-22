@@ -9,7 +9,7 @@
  * deterministic guid via `resolveRef` (see refs/guid.ts), so the emitted call
  * and the target object's payload `guid` agree and the import remaps both.
  *
- * Stored shapes (engine context schemas; mvp:function.json fixture for run):
+ * Stored shapes (from the Xano engine's persisted context shapes):
  *   function.run     → mvp:function                 ctx { function: { id:<guid> } }   [+input]
  *   function.call    → mvp:workspace_run_function    ctx { id:<guid> }                 [+input]
  *   api.call         → mvp:workspace_run_endpoint     ctx { id:<guid> }                 [+input]
@@ -108,10 +108,10 @@ export interface ApiCallArgs {
  * `api.call <endpoint>` — invoke an API endpoint as a workspace run. The stored
  * `context` is `{ id, headers?, token?, token_ignore_expiration? }` (the engine
  * derives name/verb/api_group from the referenced query at encode time, so they
- * are intentionally NOT stored). Shape modeled on `ApiCall::decode`.
+ * are intentionally NOT stored). Shape modeled on the engine's stored api-call format.
  *
  * @TODO(byte-verify): no persisted golden — `context.headers` is emitted as a
- *   tagged assignment value (confirmed by `convertFromAssignmentValue` in decode),
+ *   tagged assignment value (confirmed against the engine's decode),
  *   but `context.token`'s stored form is `inlineAssign` (a static scalar) and is
  *   emitted here as a tagged value; confirm whether the stored token is a bare
  *   string or a {value,tag,filters} object once a fixture exists.
@@ -247,7 +247,7 @@ export interface ActionCallArgs {
 
 /**
  * `action.call <action>` — invoke a marketplace/action operation (`mvp:action`).
- * Stored shape from `ActionCall::decode`: `context.run_version.id` is the action
+ * Stored shape from the engine's action-call format: `context.run_version.id` is the action
  * id and `settings_registry` is always present.
  *
  * @TODO(byte-verify): sidestep has no `action` kind, so the id resolves via the
@@ -267,7 +267,7 @@ export function actionCall(args: ActionCallArgs): Statement {
 
 /**
  * `action.package.call <action>` — invoke an action-package operation
- * (`mvp:action_package`). Stored shape from `ActionPackageCall::decode`:
+ * (`mvp:action_package`). Stored shape from the engine's action-package format:
  * `context.{action:{trace_id}, package:{slug}, package_version:{id}}`.
  *
  * @TODO(byte-verify): MODELED skeleton only — sidestep doesn't model marketplace
@@ -300,7 +300,7 @@ export interface WorkflowTestCallArgs {
 
 /**
  * `workflow_test.call <test>` — run a workflow test
- * (`mvp:workspace_run_workflow_test`). Stored shape from `WorkflowTestCall::decode`:
+ * (`mvp:workspace_run_workflow_test`). Stored shape from the engine's workflow-test format:
  * `context.{datasource, id}` — `datasource` is ALWAYS present (default `""`).
  */
 export function workflowTestCall(args: WorkflowTestCallArgs): Statement {

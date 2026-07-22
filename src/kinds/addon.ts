@@ -2,9 +2,9 @@
  * Addon kind (U8) → payload key `addon`. An addon is a single table-bound db
  * query (an `input` block + an `output` selection + a `context` that carries the
  * dbo binding and `return`), *not* a statement stack — the engine runs it
- * straight off `context` (`XS::processAddOn`). The MVP models the common shape;
- * rich db-bound contexts pass through verbatim. Validated against
- * `cloud-client: dbo/mvp/addon.yaml` (whose xdo schema has no `run`/stack).
+ * straight off `context`. The MVP models the common shape;
+ * rich db-bound contexts pass through verbatim. Validated against the Xano
+ * engine's persisted addon shape (whose xdo schema has no `run`/stack).
  *
  * `addon()` optionally accepts a typed `table` handle and an `output` column
  * list; when given, it auto-fills the `context.dbo` binding (the guid the engine
@@ -36,7 +36,7 @@ export type AddonOutput = readonly string[] | { customize?: boolean; items?: unk
 
 /**
  * An addon's result cardinality — the query `return.type` the engine reads to
- * shape the graft (`XS::detectAddOnOptimization` / `getOutputSchema_`):
+ * shape the graft:
  *
  * - `"single"` — one object (Xano's Single toggle; `listable:false`).
  * - `"list"`   — an array (the default; absent `return` coerces to `list`).
@@ -55,8 +55,7 @@ export type AddonCardinality = "single" | "list" | "count" | "exists" | "aggrega
  * those); `"aggregate"` grafts an array keyed by the declared `group`/`eval`
  * aliases (values `unknown`), or `unknown` when neither is declared. Falls back to
  * `unknown` when the addon carries no typed `table` + `output` (a bare-name/raw-context addon the SDK can't shape).
- * Mirrors the engine's per-return-type graft (`XS::processOptimizedAddOn` +
- * `getOutputSchema_`).
+ * Mirrors the engine's per-return-type graft.
  */
 export type AddonGraft<
   Tbl,
@@ -88,9 +87,9 @@ export type AddonGraft<
  * An addon definition. An addon is a single table-bound db query, not a
  * statement stack — the engine executes it straight off its `context` (dbo
  * binding + `return` + search/sort/eval), which is exactly what `table`,
- * `cardinality`, and a raw `context` build here (`XS::processAddOn` reads
+ * `cardinality`, and a raw `context` build here (the engine reads
  * `context`; the fetched `run: [mvp:dbo_view]` is a server-derived artifact and
- * is not part of the stored addon schema — `dbo/mvp/addon.yaml`). Set `table` +
+ * is not part of the stored addon schema). Set `table` +
  * `output` to get a typed graft on attach; `cardinality:"single"` grafts a
  * single object (Xano's Single toggle) instead of the default array.
  *

@@ -6,9 +6,8 @@
  *
  * The value here over a verbatim `agent_settings` passthrough is a **typed,
  * ergonomic authoring surface that maps onto the engine's real stored shape**.
- * That shape was verified field-by-field against `cloud-client`
- * `transform/Agent.php` + the stored `schema:agent` fixtures, and it is
- * decidedly *not* flat snake_case (contra issue #85's premise):
+ * That shape was verified field-by-field against the Xano engine's stored agent
+ * format, and it is decidedly *not* flat snake_case (contra issue #85's premise):
  *
  *   agent_settings = {
  *     type, system_prompt, max_steps, prompt_type, prompt, prompt_messages,  // top-level snake_case
@@ -24,14 +23,14 @@
  * `apiKey`/`model`. Agents have **no** `instructions` field (the transform has
  * none) and no toolset-level middleware.
  *
- * @TODO(byte-verify): the wire shape is hand-modeled from the transform +
- * fixtures, not a golden export deep-equal (KTD-6). Lock it with a fixture when
+ * @TODO(byte-verify): the wire shape is hand-modeled from the engine format,
+ * not a golden export deep-equal (KTD-6). Lock it with a fixture when
  * an engine-authored agent export is available.
  *
  * ## Templating: how run inputs reach the agent
  *
  * At run time Xano renders the agent's **string** settings through Twig
- * (`MCP::runCallAgent`, cloud-client) *before* the LLM call, so config values
+ * by the Xano engine *before* the LLM call, so config values
  * are dynamic per invocation. Two variable namespaces are exposed:
  *   - `$args` — the `args` object passed to `s.ai.agent.run({ args })` (the
  *     `mvp:call_agent` input). This is where an endpoint's inputs enter the agent.

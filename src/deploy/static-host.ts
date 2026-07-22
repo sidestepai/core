@@ -21,7 +21,7 @@
  *
  * Archive format: a gzipped USTAR tarball, built dependency-free (the SDK stays
  * lean). The build endpoint dispatches on the uploaded filename's extension and
- * accepts `.tar.gz` (verified against `StaticHosting::uncompress` in cloud-client);
+ * accepts `.tar.gz` (verified against the Xano engine's static-hosting build);
  * we upload as `build.tar.gz`.
  *
  * Node-only (`node:fs`/`node:zlib`) and lazily imported so the browser-safe
@@ -124,7 +124,7 @@ export interface StaticHostResult {
 }
 
 /**
- * Pick the live URL out of the meta build response. `StaticHosting::packageUrls`
+ * Pick the live URL out of the meta build response. The engine
  * emits `default_url`/`custom_url` (built as `https://{env.host|custom}`); older
  * shapes nested them under `dev` or exposed a bare `host`. Prefer a custom domain,
  * then the default URL, and prefix a bare host with https as a last resort.

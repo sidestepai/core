@@ -1,12 +1,11 @@
 /**
  * Hand-authored branching block statements (U10) — `switch` and `try_catch`.
- * Both carry `!function schema:{switch,trycatch}` transforms in the engine, so
+ * Both carry structural control-flow transforms in the engine, so
  * (like `conditional` and the loops) they're authored by hand rather than
  * codegen'd. Each nests `run[]` stacks encoded through the shared statement
  * encoder.
  *
- * Stored shapes (cloud-client parser/script2json/minimal/{switch,mvp:try_catch}.json,
- * the SwitchStatement / SwitchCase / TryCatch context schemas):
+ * Stored shapes (from the Xano engine's persisted switch / try_catch shapes):
  *   switch      → context: { value:<Value>, elif:{ run:[switch_case…] }, else:{ run:[…] } }
  *   switch_case → context: { value:<Value>, break?:bool, if:{ run:[…] } }
  *   try_catch   → context: { if:{ run:[…try…] }, else:{ run:[…catch…] }, then:{ run:[…finally…] } }

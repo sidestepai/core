@@ -3,7 +3,7 @@
  * seam generalizes beyond `set_var`: nested `run[]` stacks plus a minimal
  * binary-comparison expression.
  *
- * Stored shape (from cloud-client transform-temp/schema:conditional.json):
+ * Stored shape (from the Xano engine's persisted conditional shape):
  *   context: {
  *     expr: { expression: [{ type:"statement", or:false, group:{expression:[]},
  *                            statement:{ op, left, right } }] },
@@ -60,8 +60,8 @@ function toExprStatement(when: Comparison): ExprStatement {
       left: toOperand(when.left),
       // The persisted form omits `ignore_empty` on the right operand: the engine
       // schema marks it `?=false` (optional, default false) and drops it at the
-      // default on save (verified: 0 occurrences across the live xdo corpus). The
-      // older transform-temp parser fixtures still carry it — a cross-generation
+      // default on save (verified: 0 occurrences across the live xdo corpus). An
+      // older generation of persisted fixtures still carries it — a cross-generation
       // artifact the conformance normalizer drops on both sides.
       right: toOperand(when.right),
     },

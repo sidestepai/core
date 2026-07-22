@@ -12,8 +12,8 @@ import type { StatementSpec } from "./interpret.js";
 /**
  * Apply every known upstream-schema correction to `spec` in place.
  *
- * - `mvp:mcp_call_tool` (`s.ai.external.mcp.tool.run`): the upstream
- *   `ai.external.mcp.tool.run.yaml` copy-pastes `connection_type`'s `?="sse"`
+ * - `mvp:mcp_call_tool` (`s.ai.external.mcp.tool.run`): the upstream engine
+ *   schema copy-pastes `connection_type`'s `?="sse"`
  *   default onto the unrelated `args` rule (`args?="sse"`), so the grounding
  *   doc renders a bogus `args = "sse"`. Drop that default; `connection_type`'s
  *   own legitimate "sse" default is left intact.

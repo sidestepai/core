@@ -35,9 +35,9 @@ import {
 export type { HttpMethod };
 
 /**
- * The `{request, response}` envelope every `Api::fetch`-backed statement binds to
+ * The `{request, response}` envelope every external-request statement binds to
  * its `as` variable (`api.request`, `webflow.request`, `api.microservice`). Shape
- * confirmed against the engine (`Api::fetch` in x2) and a live run: `headers` are
+ * confirmed against the Xano engine and a live run: `headers` are
  * arrays of raw `"Name: value"` lines, `result` is the response body (JSON-decoded
  * when possible, else the raw string — hence `unknown`), `status` the HTTP code,
  * and `error` is present only on a transport-level (curl) failure.

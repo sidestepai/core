@@ -6,13 +6,12 @@
  *
  * Xano stores a dynamic object as a single value with `tag: "const:expr2"` whose
  * `value` is the object rendered as a **XanoScript expression string** (verified
- * against `cloud-client` `transform/Transform.php::createInlineValue` and the
- * stored `const:expr2` fixtures — e.g. `DEV-4383`, `mike-newline`). So `obj`
+ * against the Xano engine's stored inline-value format). So `obj`
  * serializes each member to its XanoScript form (`$input.x`, `$var.x`, `$auth`,
  * `$db.col`, quoted strings, numbers) and wraps them in `{ … }`.
  *
- * Why `const:expr2` and not a structured `const:obj`: the runtime value
- * evaluator (`x2` `XS.php`) resolves `const:obj` by `\xano::decode($value)` — it
+ * Why `const:expr2` and not a structured `const:obj`: the Xano runtime value
+ * evaluator resolves `const:obj` by JSON-decoding its value — it
  * treats the value as a *static JSON string*, so dynamic members (`$input.x`)
  * would never resolve. Only `const:expr2` is run through the expression parser
  * (it normalizes to `const:expr` and evaluates), so it is the sole

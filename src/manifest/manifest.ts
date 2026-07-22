@@ -27,7 +27,7 @@ import { TAGS } from "../types/xdo.js";
 import { FILTER_NAMES, FILTER_SPECS } from "../values/generated/filters.generated.js";
 import { FIELD_METHODS } from "../fields/generated/field-methods.generated.js";
 
-/** Total engine object kinds (cloud-client: script/kind/schema/core). */
+/** Total engine object kinds. */
 export const TOTAL_OBJECT_KINDS = 24;
 
 /** A statement field, flattened from its generated spec rule. */

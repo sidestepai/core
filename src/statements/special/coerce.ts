@@ -165,8 +165,8 @@ function boolState(v: boolean | Value | undefined, engineDefault: boolean): "tru
 }
 
 /**
- * Enforce the engine's TLS/mTLS field interdependencies (`ApiRequest.php` /
- * `Api::fetch`) at build time — but ONLY when the combination is *statically
+ * Enforce the engine's TLS/mTLS field interdependencies (as enforced by the
+ * Xano engine's API-request handler) at build time — but ONLY when the combination is *statically
  * provable* invalid. A dynamic `Value` in any relevant field yields `"unknown"`
  * and is skipped, so this never rejects a workspace the engine would accept: it
  * is a strict superset of the engine's runtime checks, surfacing the same errors

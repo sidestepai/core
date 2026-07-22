@@ -168,9 +168,9 @@ export class Xano {
           def.useXdo === undefined ? { ...def, useXdo: wsUseXdo } : def,
         ) as Record<string, unknown>;
         // The engine decorates each dbo with an import directive *only* at
-        // package-export time (`Export.php::exportSchema`) — it isn't part of the
-        // stored dbo, so it lives here rather than in `encodeTable`. The import
-        // reader (`Migrate.php::importWorkspace`) switches on `import.mode`;
+        // package-export time — it isn't part of the stored dbo, so it lives
+        // here rather than in `encodeTable`. The import reader switches on
+        // `import.mode`;
         // "standard" = create-or-update by guid (merge/reference are the
         // marketplace-install modes). Without it the import fatals on an
         // undefined "import" key.

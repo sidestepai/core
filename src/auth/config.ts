@@ -6,7 +6,7 @@
 import type { ParsedArgs } from "../emit/cli.js";
 import { DEFAULT_AUTH_HOST, DEFAULT_SCOPE } from "./oauth.js";
 
-/** cloud-master OAuth host: `--origin` → `$XANO_ORIGIN` → saved → default. */
+/** Xano control-plane OAuth host: `--origin` → `$XANO_ORIGIN` → saved → default. */
 export function resolveAuthHost(args: ParsedArgs, saved?: string): string {
   return args.authHost ?? process.env.XANO_ORIGIN ?? saved ?? DEFAULT_AUTH_HOST;
 }
