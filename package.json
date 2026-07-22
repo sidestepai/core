@@ -1,7 +1,7 @@
 {
   "name": "@sidestep/core",
   "version": "3.6.1",
-  "description": "Sidestep — a standalone TypeScript SDK for driving Xano infrastructure from code. Compiles typed Xano workspaces into importable JSON.",
+  "description": "Sidestep \u2014 a standalone TypeScript SDK for driving Xano infrastructure from code. Compiles typed Xano workspaces into importable JSON.",
   "keywords": [
     "sidestep",
     "xano",
@@ -58,7 +58,12 @@
     "lint": "eslint .",
     "prepublishOnly": "npm run build",
     "release": "npm publish --access public",
-    "release:beta": "npm version prerelease --preid=beta -m \"chore(release): %s\" && npm publish --tag beta --access public"
+    "release:beta": "npm version prerelease --preid=beta -m \"chore(release): %s\" && npm publish --tag beta --access public",
+    "examples:index": "tsx scripts/gen-examples-index.ts",
+    "examples:check": "npm run examples:index && tsc --noEmit -p examples/implementations/tsconfig.json",
+    "examples:statements": "tsx scripts/gen-examples.ts",
+    "examples:filters": "tsx scripts/gen-filters.ts",
+    "examples:gen": "tsx scripts/gen-examples.ts && tsx scripts/gen-filters.ts && tsx scripts/gen-examples-index.ts"
   },
   "engines": {
     "node": ">=20"
