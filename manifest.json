@@ -503,8 +503,7 @@
         {
           "name": "args",
           "type": "value",
-          "optional": true,
-          "default": "sse"
+          "optional": true
         }
       ]
     },

@@ -678,7 +678,7 @@ Auth & calls:
 - `s.ai.agent.run(…)` → `mvp:call_agent` [special]
 - `s.ai.external.mcp.server_details({ as?: string; url?: value; bearer_token?: value = ""; connection_type?: value = "sse" })` → `mvp:mcp_server_details`
 - `s.ai.external.mcp.tool.list({ as?: string; url?: value; bearer_token?: value = ""; connection_type?: value = "sse" })` → `mvp:mcp_list_tools`
-- `s.ai.external.mcp.tool.run({ as?: string; url?: value; bearer_token?: value = ""; connection_type?: value = "sse"; tool?: value = ""; args?: value = "sse" })` → `mvp:mcp_call_tool`
+- `s.ai.external.mcp.tool.run({ as?: string; url?: value; bearer_token?: value = ""; connection_type?: value = "sse"; tool?: value = ""; args?: value })` → `mvp:mcp_call_tool`
 
 ### api
 

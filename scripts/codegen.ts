@@ -20,6 +20,7 @@ import { join, basename } from "node:path";
 import { homedir } from "node:os";
 import { parseYaml } from "../src/statements/schema-dsl/parse.ts";
 import { schemaToSpec } from "../src/statements/schema-dsl/generate.ts";
+import { applySpecOverrides } from "../src/statements/schema-dsl/overrides.ts";
 import type { EnvelopeProfile, StatementSpec } from "../src/statements/schema-dsl/interpret.ts";
 
 const CLOUD_CLIENT = join(homedir(), "git/cloud-client/extensions/MVP/includes/xano");
@@ -260,6 +261,7 @@ function main(): void {
       continue;
     }
     const spec = result.spec;
+    applySpecOverrides(spec);
     const { path, method } = namespaceOf(basename(file, ".yaml"));
     entries.push({ spec, path, method });
     const profile = fixtureProfiles.get(spec.name);
