@@ -11,9 +11,18 @@
  * serializes each member to its XanoScript form (`$input.x`, `$var.x`, `$auth`,
  * `$db.col`, quoted strings, numbers) and wraps them in `{ … }`.
  *
- * @TODO(byte-verify): the `const:expr2` render is modeled from the transform +
- * fixtures, not a golden deep-equal for this exact use (no `call_agent`
- * object-args fixture exists). Lock it once one is available.
+ * Why `const:expr2` and not a structured `const:obj`: the runtime value
+ * evaluator (`x2` `XS.php`) resolves `const:obj` by `\xano::decode($value)` — it
+ * treats the value as a *static JSON string*, so dynamic members (`$input.x`)
+ * would never resolve. Only `const:expr2` is run through the expression parser
+ * (it normalizes to `const:expr` and evaluates), so it is the sole
+ * representation that resolves live references inside an object literal. That
+ * choice is therefore runtime-verified, not a preference.
+ *
+ * @TODO(byte-verify): the *encoding* is confirmed against the runtime evaluator;
+ * what remains unproven by a golden deep-equal is the exact rendered string for
+ * a given input (spacing/escaping) — no `call_agent` object-args fixture exists.
+ * Lock the string form once one is available.
  *
  * **Supported members:** `inp()`, `ref()`, `auth()`, `col()`, `c.text/int/
  * decimal/bool/null`, nested `obj`-style records, and arrays of those. A value
