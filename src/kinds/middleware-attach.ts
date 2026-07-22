@@ -25,6 +25,7 @@ import { encodeStatement, registerStatement } from "../statements/statement.js";
 import type { Statement } from "../statements/statement.js";
 import { resolveRef } from "../refs/guid.js";
 import type { ObjectRef } from "../refs/guid.js";
+import { isTaggedValue } from "../values/value.js";
 import { emptyMiddleware } from "./common.js";
 import type { MiddlewareBlock } from "./common.js";
 
@@ -112,4 +113,40 @@ export function encodeMiddlewareList(entries?: MiddlewareAttachEntry[]): StackIt
  */
 export function clear(): MiddlewareAttachEntry[] {
   return [];
+}
+
+/**
+ * Does any statement in this authored middleware stack reference `auth()`
+ * (a tagged {@link Value} with `tag === "auth"`)?
+ *
+ * Detection for the export-time guard (see `Xano.validateMiddlewareAuth`):
+ * `auth("id")` is the idiomatic per-user rate-limit key, and when the middleware
+ * lands on a host that can't resolve a request identity the key silently becomes
+ * `null` — collapsing every caller into one shared bucket. This walk finds the
+ * reference so export can refuse (or warn) before that ships.
+ *
+ * The walk is a generic deep traversal of the pre-encode `Statement[]`: it
+ * descends every object/array member — statement `context`, `input` bindings,
+ * `output`, **and each value's `filters[].arg[]`** — testing each node for an
+ * `auth`-tagged value. The filter-arg descent is load-bearing: the canonical key
+ * `withFilters(c.text("p:"), fl.concat(auth("id")))` hides the `auth()` as a
+ * filter argument, not a top-level value.
+ *
+ * Boundary: it does **not** follow references into a *nested* function's own
+ * stack (`s.function.run`), so an `auth()` buried inside a called function is a
+ * known false negative — which degrades safely to today's no-guard behavior.
+ */
+export function stackReferencesAuth(stack?: Statement[]): boolean {
+  return (stack ?? []).some(nodeReferencesAuth);
+}
+
+/** Deep-walk any authored node for an `auth`-tagged value. */
+function nodeReferencesAuth(node: unknown): boolean {
+  if (node === null || typeof node !== "object") return false;
+  // A tagged value (including the function-carrying trigger form) is checked
+  // first; `auth()` is exactly `{ tag: "auth", ... }`. Non-auth tagged values
+  // fall through to the recursion so their `filters[].arg[]` are still walked.
+  if (isTaggedValue(node) && node.tag === "auth") return true;
+  if (Array.isArray(node)) return node.some(nodeReferencesAuth);
+  return Object.values(node as Record<string, unknown>).some(nodeReferencesAuth);
 }
