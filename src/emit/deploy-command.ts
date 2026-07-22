@@ -26,8 +26,8 @@
  *
  * Node-only and lazily imported so the browser-safe authoring bundle stays clean.
  */
-import { existsSync, readFileSync } from "node:fs";
-import { exportBundleJson, type ParsedArgs } from "./cli.js";
+import type { ParsedArgs } from "./cli.js";
+import { loadBundleText } from "./bundle-input.js";
 import { getAccessToken, type ResolvedAuth } from "../auth/token.js";
 import { postDeploy } from "../deploy/client.js";
 import { step, success, warn, detail, link } from "./ui.js";
@@ -47,23 +47,6 @@ interface DeploySummary {
   baseUrl: string | undefined;
   workspace: { id: number | undefined; name: string | undefined } | undefined;
   static?: { url: string | undefined };
-}
-
-/** Produce the bundle: from `--bundle <path>` or by compiling an entry `<file>` (mutually exclusive). */
-async function loadBundle(args: ParsedArgs): Promise<{ bundle: string; source: string }> {
-  if (args.bundle !== undefined) {
-    if (args.file !== undefined) {
-      throw new Error(`Pass either an entry <file> or --bundle <path>, not both.`);
-    }
-    if (!existsSync(args.bundle)) {
-      throw new Error(`${args.bundle} not found. Run \`sidestep export --out ${args.bundle}\` first.`);
-    }
-    return { bundle: readFileSync(args.bundle, "utf8"), source: args.bundle };
-  }
-  if (args.file !== undefined) {
-    return { bundle: await exportBundleJson(args), source: args.file };
-  }
-  throw new Error(`Missing input. Usage: sidestep sandbox deploy <file> | --bundle <path>.`);
 }
 
 /**
@@ -129,7 +112,10 @@ async function deployParentStatic(
 }
 
 export async function runDeployCommand(args: ParsedArgs): Promise<void> {
-  const { bundle, source } = await loadBundle(args);
+  const { bundle, source } = await loadBundleText(
+    args,
+    `Missing input. Usage: sidestep sandbox deploy <file> | --bundle <path>.`,
+  );
 
   step(
     args.reset

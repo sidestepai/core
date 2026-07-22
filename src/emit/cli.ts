@@ -111,6 +111,12 @@ export interface ParsedArgs {
   instance: string | undefined;
   /** `validate --workspace <id>`: override XANO_VALIDATE_WORKSPACE_ID for this run. */
   workspace: number | undefined;
+  /** `sandbox export --format <json|multidoc>`: which artifact to emit (validated at parse time). */
+  format: "json" | "multidoc" | undefined;
+  /** `sandbox export --path <p>`: output location (`-` for stdout; a dir or a full file path). */
+  path: string | undefined;
+  /** `sandbox export --name <n>`: output basename override (default `sandbox`). */
+  name: string | undefined;
 }
 
 /** Parse a `--port` value, rejecting NaN/out-of-range so `server.listen` never gets `NaN`. */
@@ -155,6 +161,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let verbose = false;
   let instance: string | undefined;
   let workspace: number | undefined;
+  let format: "json" | "multidoc" | undefined;
+  let path: string | undefined;
+  let name: string | undefined;
   const positionals: string[] = [];
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i]!;
@@ -222,6 +231,18 @@ export function parseArgs(argv: string[]): ParsedArgs {
       workspace = parseWorkspaceId(rest[++i]);
     } else if (arg.startsWith("--workspace=")) {
       workspace = parseWorkspaceId(arg.slice("--workspace=".length));
+    } else if (arg === "--format") {
+      format = parseFormat(rest[++i]);
+    } else if (arg.startsWith("--format=")) {
+      format = parseFormat(arg.slice("--format=".length));
+    } else if (arg === "--path") {
+      path = rest[++i];
+    } else if (arg.startsWith("--path=")) {
+      path = arg.slice("--path=".length);
+    } else if (arg === "--name") {
+      name = rest[++i];
+    } else if (arg.startsWith("--name=")) {
+      name = arg.slice("--name=".length);
     } else if (arg === "--profile" || arg.startsWith("--profile=")) {
       // Removed in the OAuth migration — fail loudly instead of letting the flag
       // (and its value) fall through into positionals and misparse as an entry file.
@@ -272,6 +293,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
     verbose,
     instance,
     workspace,
+    format,
+    path,
+    name,
   };
 }
 
@@ -282,6 +306,12 @@ function parseWorkspaceId(raw: string | undefined): number {
     throw new Error(`--workspace must be a positive integer (got "${raw ?? ""}").`);
   }
   return n;
+}
+
+/** Parse a `--format` value, rejecting anything but the two supported artifacts. */
+function parseFormat(raw: string | undefined): "json" | "multidoc" {
+  if (raw === "json" || raw === "multidoc") return raw;
+  throw new Error(`--format must be "json" or "multidoc" (got "${raw ?? ""}").`);
 }
 
 /**
@@ -388,6 +418,7 @@ const USAGE =
   "sidestep login [--origin <origin>] [--config <path>] [--global] [--port <n>] | " +
   "sidestep logout [--config <path>] [--global] | " +
   "sidestep sandbox deploy <file>|--bundle <path> [--reset] [--static <dir>] [--static-host <name>] [--static-env KEY=VALUE] [--config <path>] [--global] | " +
+  "sidestep sandbox export --format <json|multidoc> [--path <path>|-] [--name <name>] | " +
   "sidestep sandbox details [--config <path>] [--global] | " +
   "sidestep profile me [--config <path>] [--global] | " +
   "sidestep validate <file>|--bundle <path> [--runtime] [--capture] [--out <dir>] [--instance <url>] [--workspace <id>] [--verbose] | " +
@@ -483,9 +514,14 @@ export async function run(argv: string[]): Promise<void> {
       const { runSandboxDetailsCommand } = await import("./sandbox-details-command.js");
       return runSandboxDetailsCommand(args);
     }
+    if (args.subcommand === "export") {
+      // Node-only (fetch/fs + OAuth); lazily imported like the sibling sandbox commands.
+      const { runSandboxExportCommand } = await import("./sandbox-export-command.js");
+      return runSandboxExportCommand(args);
+    }
     throw new Error(
       `Unknown sandbox subcommand "${args.subcommand ?? ""}". ` +
-        `Did you mean \`sidestep sandbox deploy\` or \`sidestep sandbox details\`? ${USAGE}`,
+        `Did you mean \`sidestep sandbox deploy\`, \`sidestep sandbox export\`, or \`sidestep sandbox details\`? ${USAGE}`,
     );
   }
   if (command === "workspace") {

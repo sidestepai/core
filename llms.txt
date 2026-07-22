@@ -1,4 +1,4 @@
-# sidestep v3.9.4
+# sidestep v3.9.5
 
 > TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.
 
@@ -103,6 +103,15 @@ There is one deploy target plus a profile helper:
   the shared compile step — identically to `sidestep export`, and only when a
   lock exists or `--lock` is passed. `--bundle <path>` skips compiling, so it
   never touches the lock at all.
+- `sidestep sandbox export --format <json|multidoc>` — hand back a portable
+  artifact for the workspace you're iterating on. `--format json` compiles the
+  LOCAL workspace to the JSON bundle payload (the same bytes deploy/validate send;
+  accepts an entry `<file>` or `--bundle <path>`, no network). `--format multidoc`
+  GETs the sandbox tenant's XanoScript multidoc over OAuth and writes a `.xs` file —
+  it reflects the CURRENTLY DEPLOYED sandbox, so run `sandbox deploy` first and pass
+  no input. Output defaults to `./sandbox.<ext>`; `--name` overrides the basename,
+  `--path` the location, and `--path -` streams to stdout. env/records/draft are
+  unsupported (endpoint defaults).
 - `sidestep sandbox details` — prints the sandbox tenant as JSON, headlined by
   its public `baseUrl` (GET `/api:meta/sandbox/me`). An agent reads `baseUrl` to
   point the frontend at the deployed backend WITHOUT re-running a deploy just to
