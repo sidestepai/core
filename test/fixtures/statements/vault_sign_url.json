@@ -1,0 +1,24 @@
+{
+  "context": {},
+  "name": "mvp:vault_sign_url",
+  "as": "x5",
+  "input": [
+    {
+      "name": "pathname",
+      "value": "",
+      "tag": "const",
+      "filters": []
+    },
+    {
+      "name": "ttl",
+      "value": 30,
+      "tag": "const:int",
+      "filters": []
+    }
+  ],
+  "_xsid": "f:cdbe24fa-430a-4d2c-8e96-5e34fa49ad59",
+  "@guid": "f:cdbe24fa-430a-4d2c-8e96-5e34fa49ad59",
+  "@index": [
+    "undefined"
+  ]
+}

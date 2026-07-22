@@ -27,14 +27,14 @@
  * `service.guid`) and async `runtime` are deferred. api.call now emits the
  * `headers`/`auth` blocks (verb/name/api_group are engine-derived, not stored).
  *
- * @TODO(byte-verify): only `function.run` (mvp:function) has a golden. The
- *   `workspace_run_*` family is modeled. action/action_package/workflow_test now
- *   match their transforms' decode() (action→context.run_version.id+settings_registry;
- *   action_package→3-part skeleton, EMPTY/non-functional until an action-package
- *   identity model exists; workflow_test→context.{datasource,id}). Remaining weak
- *   spots: api.call's `context.token` scalar-vs-tagged; action id resolves via
- *   "function" migrate type (likely wrong — distinct action namespace); input[]
- *   lean-vs-rich (engine uses convertBlockToInput for actions). No goldens.
+ * @TODO(byte-verify): `function.run` (mvp:function) and `api.call` (context.token
+ *   confirmed tagged) are golden-verified. Still modeled/unverified:
+ *   - `workspace_run_*` (cross-workspace service.function.run) — deferred.
+ *   - `workflow_test` → context.{datasource,id} — decode-accurate, no golden.
+ *   - action / action_package — EXCLUDED from byte-verify: they need an
+ *     action-identity model first (action id currently resolves via the "function"
+ *     migrate type, likely wrong; action_package is emitted empty). See their own
+ *     @TODOs below — do not vendor/capture until the identity model exists.
  */
 import type { Statement } from "../statement.js";
 import { registerStatement } from "../statement.js";
@@ -110,11 +110,10 @@ export interface ApiCallArgs {
  * derives name/verb/api_group from the referenced query at encode time, so they
  * are intentionally NOT stored). Shape modeled on the engine's stored api-call format.
  *
- * @TODO(byte-verify): no persisted golden — `context.headers` is emitted as a
- *   tagged assignment value (confirmed against the engine's decode),
- *   but `context.token`'s stored form is `inlineAssign` (a static scalar) and is
- *   emitted here as a tagged value; confirm whether the stored token is a bare
- *   string or a {value,tag,filters} object once a fixture exists.
+ * Golden-verified against a live capture: `context.token` is persisted as a
+ * TAGGED `{value,tag,filters}` value (NOT a bare scalar), so the SDK's tagged
+ * emission is correct; `token_ignore_expiration` and the tagged `context.headers`
+ * match the engine's decode.
  */
 export function apiCall(args: ApiCallArgs): Statement {
   const context: Record<string, unknown> = { id: resolveRef("query", args.api) };

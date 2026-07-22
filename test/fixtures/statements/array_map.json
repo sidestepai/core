@@ -1,0 +1,36 @@
+{
+  "as": "x1",
+  "name": "mvp:array_map",
+  "_xsid": "f:4a682b72-2f26-47f5-bdca-fe4e08fb578e",
+  "addon": [],
+  "input": [],
+  "mocks": {},
+  "output": {
+    "items": [],
+    "filters": [],
+    "customize": false
+  },
+  "context": {
+    "collection": {
+      "tag": "const",
+      "value": "[1,2,3]",
+      "filters": [
+        {
+          "arg": [],
+          "name": "json_decode",
+          "disabled": false
+        }
+      ]
+    },
+    "output_type": "value",
+    "transform_value": {
+      "tag": "var",
+      "value": "$this",
+      "filters": []
+    }
+  },
+  "runtime": null,
+  "disabled": false,
+  "description": "",
+  "settings_registry": null
+}

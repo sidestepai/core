@@ -1,0 +1,46 @@
+{
+  "context": {
+    "value": "test1",
+    "tag": "var",
+    "filters": []
+  },
+  "name": "mvp:csv_stream",
+  "as": "stream1",
+  "input": [
+    {
+      "name": "separator",
+      "value": ",",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "enclosure",
+      "value": "\"",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "escape_char",
+      "value": "\"",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    }
+  ],
+  "_xsid": "f:dc8b72a2-0cb6-4e7f-8be0-e7479967f18c",
+  "@guid": "f:dc8b72a2-0cb6-4e7f-8be0-e7479967f18c",
+  "@index": [
+    "undefined"
+  ],
+  "output": {
+    "filters": []
+  }
+}

@@ -5,11 +5,11 @@
  * (authoritative for the persisted form), so they're grounded — but still have
  * no golden fixture to deep-equal against.
  *
- * @TODO(byte-verify): no persisted golden for call_agent / cloud_job{,_await,
- *   _status}. Shapes are now decode-accurate (agent: context.toolset.id + top-level
- *   runtime + input[]; cloud jobs: everything in input[]), but unconfirmed details
- *   remain: input[] entry ORDER, whether `runtime` is emitted when mode is the
- *   default "shared", and CloudJobArgs.await ("default 60" in docs, not defaulted).
+ * call_agent and cloud_job{,_await,_status} are golden-verified against live
+ * engine captures (see the conformance corpus): agent → context.toolset.id +
+ * top-level runtime + input[]; cloud jobs → everything in input[] with the
+ * captured entry order. `runtime` is omitted at the default "shared" mode, and
+ * `await` is passed through as authored.
  */
 import type { Statement, AsShapeBrand } from "../statement.js";
 import { registerStatement } from "../statement.js";
@@ -140,8 +140,8 @@ export interface CloudJobArgs {
  * shape from the engine's cloud-job format: every block (image/command/args/secret/template/
  * await) is an `input[]` entry; `context` is empty.
  *
- * @TODO(byte-verify): no golden — input[] entry ORDER is a guess (emitted
- *   image→command→args→secret→template→await); confirm against a fixture.
+ * Golden-verified against a live capture: the input[] entry order
+ * (image→command→args→secret→template→await) matches the persisted shape.
  */
 export function cloudJob(a: CloudJobArgs): Statement {
   const input: unknown[] = [];

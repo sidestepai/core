@@ -11,10 +11,10 @@
  *   while   → context: { expr:<comparison>, run:[…] }
  *   group   → context: { run:[…] }
  *
- * @TODO(byte-verify): `for` and `foreach` ARE golden-verified. `while` and `group`
- *   are MODELED — no persisted golden in the corpus (last survey). The `while`
- *   shape is inferred from a non-persisted fixture;
- *   confirm `expr` vs the loops' `cnt`/`list` keying, and `group`'s bare `{run}`.
+ * All four are golden-verified: `for`/`foreach` from vendored goldens, and
+ * `while`/`group` from live engine captures (see the conformance corpus). The
+ * `while` shape (`expr` comparison + `run[]`) and `group`'s bare `{run}` are
+ * confirmed byte-exact.
  */
 import type { Statement } from "../statement.js";
 import { encodeStatement, registerStatement } from "../statement.js";

@@ -1,0 +1,46 @@
+{
+  "as": "r4",
+  "name": "mvp:dbo_bulkdelete",
+  "_xsid": "f:0b2adee7-38f5-4e84-af55-ebe69a7c95f6",
+  "addon": [],
+  "input": [],
+  "mocks": {},
+  "output": {
+    "items": [],
+    "filters": [],
+    "customize": false
+  },
+  "context": {
+    "dbo": {
+      "id": "cf2cc051dbe0137aabe753c9c1310d9e"
+    },
+    "search": {
+      "expression": [
+        {
+          "or": false,
+          "type": "statement",
+          "group": {
+            "expression": []
+          },
+          "statement": {
+            "op": "=",
+            "left": {
+              "tag": "col",
+              "filters": [],
+              "operand": "name"
+            },
+            "right": {
+              "tag": "const",
+              "filters": [],
+              "operand": "x"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "runtime": null,
+  "disabled": false,
+  "description": "",
+  "settings_registry": null
+}

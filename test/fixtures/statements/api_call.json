@@ -1,0 +1,26 @@
+{
+  "as": "resp",
+  "name": "mvp:workspace_run_endpoint",
+  "_xsid": "f:f2b1425a-1323-443e-adb9-70930c67a3e7",
+  "addon": [],
+  "input": [],
+  "mocks": {},
+  "output": {
+    "items": [],
+    "filters": [],
+    "customize": false
+  },
+  "context": {
+    "id": "4ab32d45ab9522d445fa6934190320d3",
+    "token": {
+      "tag": "const",
+      "value": "mytoken",
+      "filters": []
+    },
+    "token_ignore_expiration": true
+  },
+  "runtime": null,
+  "disabled": false,
+  "description": "",
+  "settings_registry": null
+}

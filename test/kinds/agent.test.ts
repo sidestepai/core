@@ -3,6 +3,7 @@ import { agent, encodeAgent } from "../../src/kinds/agent.js";
 import { mcpServer } from "../../src/kinds/mcp-server.js";
 import { Xano } from "../../src/workspace/xano.js";
 import { deriveGuid } from "../../src/refs/guid.js";
+import { normalize, loadFixture } from "../conformance/harness.js";
 
 describe("agent kind — real agent_settings wire shape", () => {
   it("xano-free: snake_case top-level + configs.xano-free (no apiKey/model)", () => {
@@ -128,5 +129,32 @@ describe("agent kind — real agent_settings wire shape", () => {
       .registerMcpServers([mcpServer({ name: "dup" })])
       .registerAgents([agent({ name: "dup", llm: { type: "xano-free" } })]);
     expect(() => x.export()).toThrow(/[Dd]uplicate.*guid/);
+  });
+
+  // Locks the openai `agent_settings` wire shape against the engine-authored
+  // golden (KTD-6): provider config nests under `configs.openai` with camelCase
+  // keys, the top-level `model:""`/`temperature` string-serialization artifacts
+  // are absorbed by normalize, and the snake_case envelope matches byte-for-byte.
+  it("openai agent_settings deep-equals the engine golden", () => {
+    const a = encodeAgent({
+      name: "openai",
+      llm: {
+        type: "openai",
+        apiKey: "test",
+        model: "gpt-5-mini",
+        temperature: 1,
+        reasoningEffort: "medium",
+        baseURL: "test",
+        organization: "test",
+        project: "test",
+        headers: "test",
+        compatibility: "strict",
+        systemPrompt:
+          "You are a helpful AI Agent that completes tasks accurately. When you need additional information to complete a task, use the available tools. Always explain your reasoning and provide clear responses.",
+        maxSteps: 5,
+      },
+    });
+    const golden = loadFixture<{ agent_settings: unknown }>("toolset/agent.json");
+    expect(normalize(a.agent_settings)).toEqual(normalize(golden.agent_settings));
   });
 });

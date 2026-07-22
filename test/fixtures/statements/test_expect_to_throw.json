@@ -1,0 +1,43 @@
+{
+  "as": "",
+  "name": "mvp:test_expect_to_throw",
+  "_xsid": "f:7126f9ea-7f39-48d1-aad2-517218175913",
+  "addon": [],
+  "input": [],
+  "mocks": {},
+  "output": {
+    "items": [],
+    "filters": [],
+    "customize": false
+  },
+  "context": {
+    "run": [
+      {
+        "as": "x4",
+        "name": "mvp:set_var",
+        "_xsid": "f:a5641b22-efa7-4f6f-acf8-7e478ef01a00",
+        "addon": [],
+        "input": [],
+        "mocks": {},
+        "output": {
+          "items": [],
+          "filters": [],
+          "customize": false
+        },
+        "context": {
+          "tag": "const:int",
+          "value": "1",
+          "filters": []
+        },
+        "runtime": null,
+        "disabled": false,
+        "description": "",
+        "settings_registry": null
+      }
+    ]
+  },
+  "runtime": null,
+  "disabled": false,
+  "description": "",
+  "settings_registry": null
+}

@@ -1,0 +1,38 @@
+{
+  "context": {},
+  "name": "mvp:create_file_resource",
+  "input": [
+    {
+      "name": "filename",
+      "value": "abc.txt",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "filedata",
+      "value": "abc123",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    }
+  ],
+  "_xsid": "f:aa1ca3c3-e24f-47ca-a93e-1d03a3793fef",
+  "@guid": "f:aa1ca3c3-e24f-47ca-a93e-1d03a3793fef",
+  "@index": [
+    "undefined"
+  ],
+  "as": "ret",
+  "description": "",
+  "settings_registry": [],
+  "output": {
+    "customize": false,
+    "filters": [],
+    "items": []
+  },
+  "addon": []
+}

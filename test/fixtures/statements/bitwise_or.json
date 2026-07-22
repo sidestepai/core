@@ -1,0 +1,18 @@
+{
+  "context": {
+    "name": "x9",
+    "value": "123",
+    "tag": "const:int",
+    "filters": []
+  },
+  "name": "mvp:bitwise_or",
+  "input": [],
+  "_xsid": "f:724a2358-d980-4189-9083-b74b8581dbcd",
+  "@guid": "f:724a2358-d980-4189-9083-b74b8581dbcd",
+  "@index": [
+    "undefined"
+  ],
+  "output": {
+    "filters": []
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "context": {},
+  "name": "mvp:generate_pass",
+  "as": "x3",
+  "input": [
+    {
+      "name": "character_count",
+      "value": 12,
+      "tag": "const:int",
+      "filters": []
+    },
+    {
+      "name": "require_lowercase",
+      "value": "true",
+      "tag": "const:bool",
+      "filters": []
+    },
+    {
+      "name": "require_uppercase",
+      "value": "true",
+      "tag": "const:bool",
+      "filters": []
+    },
+    {
+      "name": "require_digit",
+      "value": "true",
+      "tag": "const:bool",
+      "filters": []
+    },
+    {
+      "name": "require_symbol",
+      "value": "false",
+      "tag": "const:bool",
+      "filters": []
+    },
+    {
+      "name": "symbol_whitelist",
+      "value": "",
+      "tag": "const",
+      "filters": []
+    }
+  ],
+  "_xsid": "f:9f5eaad9-1ca0-4f33-85f4-e83a9429e4c7",
+  "@guid": "f:9f5eaad9-1ca0-4f33-85f4-e83a9429e4c7",
+  "@index": [
+    "undefined"
+  ]
+}

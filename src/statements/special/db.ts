@@ -855,17 +855,15 @@ export function dbDirectQuery(args: DbDirectQueryArgs): Statement {
 // byte-verified once a golden is vendored). Each keeps the rich db envelope and
 // the `context.dbo.id` table reference where the engine schema implies one.
 //
-// @TODO(byte-verify): bulk add/patch/update are now grounded in the engine's
-//   bulk-op formats (context.dbo.id + LEAN input[items/allow_id_field], no rich
-//   envelope). Still unconfirmed without a golden: input[] entry order, and whether
-//   `as` is stored. bulk.delete uses context.search (see its own @TODO — search
-//   shape unknown). db.query (mvp:dbo_view) is now grounded in the Xano engine's
-//   context/search/sort/return model: filter → context.search {expression[]}, sort +
-//   paging → context.return.list.{sort,paging}, output → statement output envelope
-//   (issue #41/#34/#36). Derived-from-engine, not a vendored golden;
-//   behavior is confirmed by the live cross-user repro.
-//   The 5 external-SQL engines are still modeled. No dbo_bulk*/dbo_external_* goldens
-//   exist in the corpus — capture one before trusting bytes.
+// bulk add/patch/update/delete and one external-SQL engine (postgres) are now
+//   golden-verified against live engine captures (see the conformance corpus):
+//   context.dbo.id + LEAN input[items], the captured input order, and `as` storage
+//   are confirmed for the bulk ops; bulk.delete's context.search matches the
+//   dbo_view search reader. db.query (mvp:dbo_view) is golden-verified in
+//   db-query-shape.test.ts (context.search {expression[]}, return.list.{sort,paging},
+//   output envelope — issue #41/#34/#36).
+//   @TODO(byte-verify): external SQL captured for postgres only; mssql/mysql/oracle/
+//   snowflake share the format and stay modeled-by-analogy (1 of 5 captured).
 // ---------------------------------------------------------------------------
 
 export interface DbBulkAddArgs {
@@ -921,9 +919,8 @@ export interface DbBulkDeleteArgs<As extends string = string> {
  * — the identical operand-based `{expression:[…]}` shape `s.db.query` emits — so the
  * modern DSL (`expr`/`cmp`/`and`/`or`) is fully supported here too.
  *
- * @TODO(byte-verify): no `dbo_bulkdelete` golden yet — the `context.search` shape
- *   is shared with the (source-grounded) `dbo_view` search reader, but capture a
- *   fixture before trusting bytes. An empty/omitted `where` deletes all rows.
+ * Golden-verified against a live capture: `context.search` (shared with the
+ * `dbo_view` search reader) is byte-exact. An empty/omitted `where` deletes all rows.
  *
  * Binds the **deleted-row count** (the engine's `__self: int` output), so it's
  * branded with `as` + `number` for `InferResponse` — table-independent.
@@ -1423,10 +1420,11 @@ export interface DbExternalQueryArgs {
  * connection_string_flex, arg[]}`. The connection string lands under
  * `connection_string_flex` (a tagged assignment value), NOT `connection_string`.
  *
- * @TODO(byte-verify): no golden. `context.parser` ("prepared" default) is a valid
- *   stored key the engine reads but is NOT emitted here (matching the internal
- *   dbo_direct_query posture); confirm it's omittable. The rich envelope is kept by
- *   analogy to the (golden-verified) internal direct_query — unconfirmed for external.
+ * Golden-verified against a live postgres capture: the engine persists
+ * `context.{code,response_type,connection_string_flex,arg}` and does NOT store
+ * `parser` at its default, so the SDK's omission is correct. The rich envelope
+ * matches. @TODO(byte-verify): only postgres captured; the other 4 engines share
+ * the format and stay modeled-by-analogy.
  */
 export function dbExternalQuery(args: DbExternalQueryArgs): Statement {
   return {

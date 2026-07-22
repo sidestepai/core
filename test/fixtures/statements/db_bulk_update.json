@@ -1,0 +1,38 @@
+{
+  "as": "r3",
+  "name": "mvp:dbo_bulkupdate",
+  "_xsid": "f:cb876b2a-c270-40ed-95a9-4ff2f11d1c93",
+  "addon": [],
+  "input": [
+    {
+      "tag": "const",
+      "name": "items",
+      "value": "[{\"name\":\"a\"},{\"name\":\"b\"}]",
+      "expand": false,
+      "ignore": false,
+      "filters": [
+        {
+          "arg": [],
+          "name": "json_decode",
+          "disabled": false
+        }
+      ],
+      "children": []
+    }
+  ],
+  "mocks": {},
+  "output": {
+    "items": [],
+    "filters": [],
+    "customize": false
+  },
+  "context": {
+    "dbo": {
+      "id": "cf2cc051dbe0137aabe753c9c1310d9e"
+    }
+  },
+  "runtime": null,
+  "disabled": false,
+  "description": "",
+  "settings_registry": null
+}

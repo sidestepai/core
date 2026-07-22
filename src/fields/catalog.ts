@@ -214,13 +214,16 @@ export const f = {
    *   instead: `f.tableRef("tweets", { type: "int" })`. Identity guids derive
    *   from `(type, name)`, so the name form resolves to the same guid.
    *
-   * @TODO(byte-verify): MODELED on the engine's tableref schema — no
-   *   persisted tableref golden in the corpus. Round-trip-tested (the `@` arg guid
-   *   equals the target table's payload guid) but the exact stored method shape
-   *   (does `@` carry `disabled:false`? is it always last?) is unconfirmed. The
-   *   engine also asserts the referenced table's PK type matches (int↔int, uuid↔uuid);
-   *   sidestep does NOT validate that here (no access to the target's schema), so a
-   *   mismatched f.tableRef(uuidTable) on an int column would only fail at import.
+   * @TODO(byte-verify): MODELED on the engine's tableref schema. Round-trip-tested
+   *   (the `@` arg guid equals the target table's payload guid) but the exact stored
+   *   method shape (does `@` carry `disabled:false`? is it always last?) is
+   *   unconfirmed. Blocked on an object-level capture: `sidestep validate --capture`
+   *   round-trips FUNCTIONS, so it yields statement goldens but not a persisted TABLE
+   *   schema — a tableref golden needs a table-object readback the capture path
+   *   doesn't emit yet. The engine also asserts the referenced table's PK type
+   *   matches (int↔int, uuid↔uuid); sidestep does NOT validate that here (no access
+   *   to the target's schema), so a mismatched f.tableRef(uuidTable) on an int
+   *   column would only fail at import.
    */
   tableRef<
     const O extends ConstMethodOpts<TableRefMethod> & { type?: "int" | "uuid" } = Record<string, never>,

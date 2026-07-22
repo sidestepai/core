@@ -1,0 +1,38 @@
+{
+  "context": {},
+  "name": "mvp:check_pass",
+  "as": "x1",
+  "input": [
+    {
+      "name": "text_password",
+      "value": "test1",
+      "tag": "var",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "hash_password",
+      "value": "stream1",
+      "tag": "var",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    }
+  ],
+  "_xsid": "f:1f9a86a8-272e-40e2-8f87-a8767327aef3",
+  "@guid": "f:1f9a86a8-272e-40e2-8f87-a8767327aef3",
+  "@index": [
+    "undefined"
+  ],
+  "description": "",
+  "settings_registry": [],
+  "output": {
+    "customize": false,
+    "filters": [],
+    "items": []
+  },
+  "addon": []
+}

@@ -11,11 +11,12 @@
  * later). Block fields map to same-named `context` entries unless the schema's
  * declarative transform says otherwise.
  *
- * @TODO(byte-verify): no persisted golden for array_map, array_union,
- *   get_input, test_expect_to_throw (post_process IS parser-verified). Status:
- *   (1) array_map/union — shapes now match the transforms' decode()
- *       (collection/transform_value; left/right/transform_value). array_map's
- *       object-literal form (transform_object) is still unsupported.
+ * array_map, array_union, get_input, and test_expect_to_throw are now
+ * golden-verified against live engine captures (see the conformance corpus);
+ * post_process is parser-verified. Remaining unverified spots:
+ *   (1) array_map — the scalar `transform_value` path is byte-exact; the
+ *       object-literal form (engine `transform_object` + `output_type:"object"`)
+ *       is still UNSUPPORTED here (a feature gap, not a verification gap).
  *   (2) create_auth — input order (dbtable/extras/expiration/id) + empty context
  *       CONFIRMED by the schema transform; only the `dbtable` const tag is unverified.
  *   (3) realtime_event — context.{channel,data,auth.{dbo_id,row_id}} CONFIRMED by
@@ -50,9 +51,10 @@ export interface ArrayMapArgs {
 /**
  * `array.map <source>` — map each element through an expression (`mvp:array_map`).
  *
- * @TODO(byte-verify): no golden. The object-literal mapping form (engine
- *   `transform_object` + `output_type:"object"`) is NOT supported here — only the
- *   scalar `transform_value` path. `output_type` is hard-coded `"value"`.
+ * The scalar `transform_value` path is golden-verified (live capture). The
+ * object-literal mapping form (engine `transform_object` + `output_type:"object"`)
+ * is NOT supported here — only the scalar path; `output_type` is hard-coded
+ * `"value"`. @TODO(byte-verify): the object-literal form remains unimplemented.
  */
 export function arrayMap(a: ArrayMapArgs): Statement {
   const context: Record<string, unknown> = { output_type: "value", collection: vf(a.source) };
@@ -73,8 +75,8 @@ export interface ArrayUnionArgs {
 /**
  * `array.union <source>` — set-union of arrays (`mvp:array_union`).
  *
- * @TODO(byte-verify): no golden; field remap (expr→left, value→right, by→
- *   transform_value) modeled on the engine's array-union format.
+ * Golden-verified against a live capture: the field remap (source→left,
+ * with→right, transform→transform_value) matches the engine's array-union format.
  */
 export function arrayUnion(a: ArrayUnionArgs): Statement {
   const context: Record<string, unknown> = { left: vf(a.source) };

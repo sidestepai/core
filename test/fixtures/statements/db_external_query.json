@@ -1,0 +1,27 @@
+{
+  "as": "",
+  "name": "mvp:dbo_external_postgres_query",
+  "_xsid": "f:c7bd776e-7299-4956-a341-a2a28fccd086",
+  "addon": [],
+  "input": [],
+  "mocks": {},
+  "output": {
+    "items": [],
+    "filters": [],
+    "customize": false
+  },
+  "context": {
+    "arg": [],
+    "code": "SELECT 1",
+    "response_type": "list",
+    "connection_string_flex": {
+      "tag": "const",
+      "value": "postgres://localhost/db",
+      "filters": []
+    }
+  },
+  "runtime": null,
+  "disabled": false,
+  "description": "",
+  "settings_registry": null
+}
