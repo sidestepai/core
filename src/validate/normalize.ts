@@ -175,8 +175,14 @@ export function normalize<T>(value: T): T {
         out[k] = v.map((e) => (typeof e === "number" ? String(e) : normalize(e)));
         continue;
       }
-      // `temperature`: a provider LLM config number the engine persists as a
-      // string ("1"), the same number/string serialization artifact as `value`.
+      // `value` coercion absorbs a corpus inconsistency (the SDK always emits the
+      // string form; only older goldens carry the number). `temperature` is a
+      // different case: the SDK's agent encoder emits a NUMBER (buildProviderConfig
+      // in src/kinds/agent.ts) but the engine persists a string ("1"), so this
+      // absorbs a real SDK↔engine divergence — proven for the openai golden. The
+      // deeper fix is to stringify temperature in the encoder once goldens for the
+      // other providers confirm the same (agent objects aren't capturable via the
+      // function-only round-trip path today).
       out[k] =
         (k === "value" || k === "temperature") && typeof v === "number" ? String(v) : normalize(v);
     }

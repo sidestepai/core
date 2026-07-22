@@ -52,6 +52,10 @@ const capAssistant = agent({
 const stmt = (name: string, authored: Authored) => encodeStatement(getStatementFactory(name)(authored));
 const objArg = () =>
   withFilters(c.text('{"first_name":"first","last_name":"last"}'), [filter("json_decode")]);
+/** A decoded `[1,2,3]` array value — shared by the array_merge/map/union rows. */
+const intArr = () => withFilters(c.text("[1,2,3]"), [filter("json_decode")]);
+/** The "unset object" tagged value (`const:obj` with empty string) — no c.* constructor emits this form. */
+const emptyObj = () => ({ value: "", tag: "const:obj", filters: [] });
 
 /**
  * Centralized statement conformance table: fixture → authoring expression.
@@ -112,7 +116,7 @@ const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
     build: () =>
       stmt("mvp:array_merge", {
         name: "crypto1",
-        value: withFilters(c.text("[1,2,3]"), [filter("json_decode")]),
+        value: intArr(),
       }),
   },
   { fixture: "sleep", build: () => stmt("mvp:sleep", { value: c.int(60) }) },
@@ -163,7 +167,7 @@ const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
         as: "crypto5",
         token: c.text(""),
         key: c.text(""),
-        check_claims: { value: "", tag: "const:obj", filters: [] },
+        check_claims: emptyObj(),
         key_algorithm: c.text("A256KW"),
         content_algorithm: c.text("A256CBC-HS512"),
         timeDrift: c.int(0),
@@ -176,7 +180,7 @@ const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
         as: "crypto7",
         token: c.text(""),
         key: c.text(""),
-        check_claims: { value: "", tag: "const:obj", filters: [] },
+        check_claims: emptyObj(),
         signature_algorithm: c.text("HS256"),
         timeDrift: c.int(0),
       }),
@@ -186,8 +190,8 @@ const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
     build: () =>
       stmt("mvp:crypto_jws_encode2", {
         as: "crypto6",
-        headers: { value: "", tag: "const:obj", filters: [] },
-        claims: { value: "", tag: "const:obj", filters: [] },
+        headers: emptyObj(),
+        claims: emptyObj(),
         key: c.text(""),
         signature_algorithm: c.text("HS256"),
         ttl: c.int(0),
@@ -277,8 +281,8 @@ const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
     build: () =>
       stmt("mvp:crypto_jwe_encode3", {
         as: "crypto4",
-        headers: { value: "", tag: "const:obj", filters: [] },
-        claims: { value: "", tag: "const:obj", filters: [] },
+        headers: emptyObj(),
+        claims: emptyObj(),
         key: c.text(""),
         key_algorithm: c.text("A256KW"),
         content_algorithm: c.text("A256CBC-HS512"),
@@ -297,7 +301,7 @@ const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
       encodeStatement(
         foreachLoop({
           as: "item",
-          list: withFilters(c.text("[1,2,3]"), [filter("json_decode")]),
+          list: intArr(),
           body: [setVar("x2", c.int(123))],
         }),
       ),
@@ -318,7 +322,7 @@ const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
     build: () =>
       encodeStatement(
         arrayMap({
-          source: withFilters(c.text("[1,2,3]"), [filter("json_decode")]),
+          source: intArr(),
           as: "x1",
           transform: ref("$this"),
         }),
@@ -329,8 +333,8 @@ const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
     build: () =>
       encodeStatement(
         arrayUnion({
-          source: withFilters(c.text("[1,2,3]"), [filter("json_decode")]),
-          with: withFilters(c.text("[1,2,3]"), [filter("json_decode")]),
+          source: intArr(),
+          with: intArr(),
           as: "x2",
         }),
       ),
