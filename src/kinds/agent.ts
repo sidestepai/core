@@ -23,9 +23,11 @@
  * `apiKey`/`model`. Agents have **no** `instructions` field (the transform has
  * none) and no toolset-level middleware.
  *
- * @TODO(byte-verify): the wire shape is hand-modeled from the engine format,
- * not a golden export deep-equal (KTD-6). Lock it with a fixture when
- * an engine-authored agent export is available.
+ * The `agent_settings` wire shape is golden-verified: the openai provider config
+ * (configs.openai camelCase keys, snake_case envelope) deep-equals the
+ * engine-authored `test/fixtures/toolset/agent.json` golden (see agent.test.ts).
+ * The surrounding object envelope (canonical/docs/middleware/history) carries
+ * server-derived fields and stays field-asserted rather than deep-equaled.
  *
  * ## Templating: how run inputs reach the agent
  *

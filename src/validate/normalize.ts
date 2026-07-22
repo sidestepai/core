@@ -86,6 +86,11 @@ function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     case "description":
     case "sql_name":
       return v === "";
+    // Agent `agent_settings.model`: the engine persists a top-level empty
+    // `model:""` (the real model lives under `configs.<provider>.model`); the SDK
+    // omits the empty top-level field. Drop it on both sides when empty.
+    case "model":
+      return v === "";
     // Statement input-entry members: the lean parser form omits these; the full
     // persisted form carries them. Drop at their defaults (a meaningful
     // `ignore:true` on a system column, or non-empty `children`, is kept).
@@ -170,7 +175,10 @@ export function normalize<T>(value: T): T {
         out[k] = v.map((e) => (typeof e === "number" ? String(e) : normalize(e)));
         continue;
       }
-      out[k] = k === "value" && typeof v === "number" ? String(v) : normalize(v);
+      // `temperature`: a provider LLM config number the engine persists as a
+      // string ("1"), the same number/string serialization artifact as `value`.
+      out[k] =
+        (k === "value" || k === "temperature") && typeof v === "number" ? String(v) : normalize(v);
     }
     return out as unknown as T;
   }
