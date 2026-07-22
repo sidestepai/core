@@ -5,8 +5,8 @@
  * (authoritative for the persisted form), so they're grounded — but still have
  * no golden fixture to deep-equal against.
  *
- * @TODO(byte-verify): no transform-temp golden for call_agent / cloud_job{,_await,
- *   _status}. Shapes are now decode()-accurate (agent: context.toolset.id + top-level
+ * @TODO(byte-verify): no persisted golden for call_agent / cloud_job{,_await,
+ *   _status}. Shapes are now decode-accurate (agent: context.toolset.id + top-level
  *   runtime + input[]; cloud jobs: everything in input[]), but unconfirmed details
  *   remain: input[] entry ORDER, whether `runtime` is emitted when mode is the
  *   default "shared", and CloudJobArgs.await ("default 60" in docs, not defaulted).
@@ -14,6 +14,9 @@
 import type { Statement } from "../statement.js";
 import { registerStatement } from "../statement.js";
 import type { Value } from "../../values/value.js";
+import { isTaggedValue } from "../../values/value.js";
+import { obj } from "../../values/obj.js";
+import type { ObjInput } from "../../values/obj.js";
 import { resolveRef } from "../../refs/guid.js";
 import type { ObjectRef } from "../../refs/guid.js";
 
@@ -25,8 +28,16 @@ export interface AiAgentRunArgs {
   /** The target agent (toolset of type agent — def handle or name). */
   agent: ObjectRef;
   as?: string;
-  /** Run arguments passed to the agent. */
-  args?: Value;
+  /**
+   * Run arguments passed to the agent. Pass a single {@link Value}, or an object
+   * literal of values (`{ question: inp("question") }`) which is built into a
+   * dynamic object via {@link obj}. This becomes the agent's `$args` Twig
+   * namespace: the agent's string settings (system prompt, prompt, model,
+   * provider config) reference these as `{{ $args.propertyName }}`, resolved per
+   * invocation before the LLM call. (Env vars are `{{ $env.NAME }}`.) See
+   * `kinds/agent.ts` for the full templating rules.
+   */
+  args?: Value | ObjInput;
   /** Whether the agent may execute its tools. */
   allowToolExecution?: Value;
   /** Pinned agent version. */
@@ -37,13 +48,19 @@ export interface AiAgentRunArgs {
 
 /**
  * `ai.agent.run <agent>` — invoke an AI agent (`mvp:call_agent`). Stored shape
- * from `AgentRun::decode`: the target is `context.toolset.id`, `runtime` is a
+ * from the engine's agent-run format: the target is `context.toolset.id`, `runtime` is a
  * TOP-LEVEL `{ mode }` block, and `args`/`allow_tool_execution`/`version` are
  * `input[]` entries (NOT context). `runtime` is emitted only when a mode is set.
  */
 export function aiAgentRun(a: AiAgentRunArgs): Statement {
   const input: unknown[] = [];
-  if (a.args) input.push({ name: "args", ...vf(a.args) });
+  // `args` accepts a single Value or an object literal of values — a record is
+  // built into a dynamic object value (`obj`), so `{ q: inp("q") }` reaches the
+  // agent's `$args.q`.
+  if (a.args !== undefined) {
+    const argsValue = isTaggedValue(a.args) ? a.args : obj(a.args as ObjInput);
+    input.push({ name: "args", ...vf(argsValue) });
+  }
   if (a.allowToolExecution) input.push({ name: "allow_tool_execution", ...vf(a.allowToolExecution) });
   if (a.version) input.push({ name: "version", ...vf(a.version) });
   const stmt: Statement = {
@@ -69,7 +86,7 @@ export interface CloudJobArgs {
 
 /**
  * `cloud.job { … }` — launch a containerized cloud job (`mvp:cloud_job`). Stored
- * shape from `CloudJob::decode`: every block (image/command/args/secret/template/
+ * shape from the engine's cloud-job format: every block (image/command/args/secret/template/
  * await) is an `input[]` entry; `context` is empty.
  *
  * @TODO(byte-verify): no golden — input[] entry ORDER is a guess (emitted
@@ -96,7 +113,7 @@ export interface CloudJobAwaitArgs {
 
 /**
  * `cloud.job.await { … }` — wait for cloud jobs to finish (`mvp:cloud_job_await`).
- * `ids`/`timeout` are `input[]` entries with empty context (`CloudJobAwait::decode`).
+ * `ids`/`timeout` are `input[]` entries with empty context (per the engine's cloud-job-await format).
  */
 export function cloudJobAwait(a: CloudJobAwaitArgs): Statement {
   return {
@@ -118,7 +135,7 @@ export interface CloudJobStatusArgs {
 
 /**
  * `cloud.job.status { … }` — read a cloud job's status (`mvp:cloud_job_status`).
- * `id` is an `input[]` entry with empty context (`CloudJobStatus::decode`).
+ * `id` is an `input[]` entry with empty context (per the engine's cloud-job-status format).
  */
 export function cloudJobStatus(a: CloudJobStatusArgs): Statement {
   return {

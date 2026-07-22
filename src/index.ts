@@ -76,6 +76,8 @@ export type {
 } from "./fields/generated/field-methods.generated.js";
 export { c, ref, inp, col, auth, env, setting, out, filter, withFilters } from "./values/value.js";
 export type { Value, RefValue, FilteredValue } from "./values/value.js";
+export { obj } from "./values/obj.js";
+export type { ObjInput, ObjMember } from "./values/obj.js";
 export { fl, FILTER_NAMES } from "./values/generated/filters.generated.js";
 export { setVar, updateVar } from "./statements/set-var.js";
 export { conditional, expr } from "./statements/conditional.js";
@@ -296,15 +298,22 @@ export type {
   WorkspaceInputs,
   ErrorInputs,
 } from "./kinds/trigger-handle.js";
-export {
-  tool,
-  toolKind,
-  encodeTool,
-  toolsetKind,
-  encodeToolset,
-  toolset,
-  agent,
-} from "./kinds/toolset.js";
+export { tool, toolKind, encodeTool, encodeToolsetBase, encodeToolRefs } from "./kinds/toolset.js";
+export { mcpServer, mcpServerKind, encodeMcpServer } from "./kinds/mcp-server.js";
+export type { McpServerDef, McpServerXdo } from "./kinds/mcp-server.js";
+export { agent, agentKind, encodeAgent } from "./kinds/agent.js";
+export type {
+  AgentDef,
+  AgentXdo,
+  AgentSettingsXdo,
+  AgentOutput,
+  LlmSettings,
+  LlmProvider,
+  AnthropicLlm,
+  OpenAiLlm,
+  GoogleGenAiLlm,
+  XanoFreeLlm,
+} from "./kinds/agent.js";
 export { table, tableKind, encodeTable, encodeColumn, encodeIndex, encodeView } from "./kinds/table.js";
 export type {
   TableDef,
@@ -339,12 +348,12 @@ export type { WorkspaceConfigDef, WorkspaceConfigXdo, WorkspaceMiddlewareDef, Wo
 export type {
   ToolDef,
   ToolXdo,
-  ToolsetDef,
-  ToolsetXdo,
-  ToolsetType,
-  AgentSettings,
+  ToolsetBaseDef,
+  ToolsetBaseXdo,
   ToolsetToolRef,
 } from "./kinds/toolset.js";
+export { resolveAuthRef } from "./refs/auth.js";
+export type { AuthRef } from "./refs/auth.js";
 
 // Workspace registry + aggregate export
 export { Xano, workspace } from "./workspace/xano.js";

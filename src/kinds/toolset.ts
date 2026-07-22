@@ -1,15 +1,20 @@
 /**
- * Toolset family (U5): `tool`, `toolset` (type "mcp" | "agent"), and `agent`
- * (a toolset with type "agent" + agent_settings). Clarifies the AI-vs-MCP
- * distinction:
- *  - **MCP toolset** (`type:"mcp"`): a collection of independent tools exposed
- *    via the MCP protocol; carries `tool[]` references + an OpenAPI `spec`.
- *  - **AI/agent toolset** (`type:"agent"`): an LLM orchestrator; carries
- *    `agent_settings` (model/provider/system_prompt/…) plus its `tool[]`.
+ * Toolset family. A `tool` is its own kind (`mvp_tool`, payload key `tool`) —
+ * function-like (input/run/result) plus `instructions`/`middleware`. The two AI
+ * primitives that persist as `obj_type=toolset` — **MCP servers**
+ * (`mcp-server.ts`, `type:"mcp"`) and **agents** (`agent.ts`, `type:"agent"`) —
+ * are their own root kinds; both build on the shared {@link encodeToolsetBase}
+ * envelope exported here (name/description/instructions/docs/enabled/canonical/
+ * spec/tags/tool-refs). Verified against the Xano engine's stored mcp_server and
+ * agent formats.
  *
- * A `tool` is its own kind (`mvp_tool`, payload key `tool`) — function-like
- * (input/run/result) plus `instructions`/`middleware`. Tools reproduce cleanly
- * from the shared input/statement/response encoders.
+ * Notes from that verification (see the PR for #85/#87):
+ *  - Xano's MCP server has **no** server-level `authentication` field — auth is
+ *    per-tool (`tool[].auth`, a stored `json`, engine default `false`).
+ *  - Toolset-level middleware is **not** an engine feature: neither transform
+ *    reads a `middleware` block and `getMiddlewareForObject` hosts only
+ *    query/function/task/**tool**. The stored empty `middleware` skeleton is an
+ *    inert DBO default, emitted here for shape parity but never authorable.
  */
 import type { ResultItemXdo, StackItemXdo, InputXdo } from "../types/xdo.js";
 import { encodeStatement } from "../statements/statement.js";
@@ -26,6 +31,8 @@ import { buildMiddlewareBlock } from "./middleware-attach.js";
 import type { MiddlewareAttach } from "./middleware-attach.js";
 import { resolveRef } from "../refs/guid.js";
 import type { ObjectRef } from "../refs/guid.js";
+import { resolveAuthRef } from "../refs/auth.js";
+import type { AuthRef } from "../refs/auth.js";
 
 // ---------- tool ----------
 
@@ -101,9 +108,7 @@ export function tool(def: ToolDef): ToolDef {
   return def;
 }
 
-// ---------- toolset (mcp | agent) ----------
-
-export type ToolsetType = "mcp" | "agent";
+// ---------- shared toolset internals (used by mcp-server.ts + agent.ts) ----------
 
 /**
  * A tool reference within a toolset.
@@ -120,35 +125,46 @@ export interface ToolsetToolRef {
   /** Raw numeric engine id — escape hatch; prefer `tool`. */
   id?: number;
   enabled?: boolean;
-  auth?: unknown;
+  /**
+   * Per-tool auth — Xano's **only** MCP auth surface (there is no server-level
+   * gate). Works exactly like a query's `auth`: name an auth **table** (a
+   * `table({ auth: true })` def or its name) and it resolves to that table's
+   * guid at export (the engine's `dbo` id↔guid remap); a raw numeric `dbo.id`
+   * is the escape hatch, and `false`/omitted means no auth (the engine default).
+   */
+  auth?: AuthRef;
 }
 
-/** Encoded tool reference: `id` carries the resolved guid (or the raw numeric id). */
+/** Encoded tool reference: `id` carries the resolved guid; `auth` the resolved auth-table guid / dbo.id / `false`. */
 interface ToolsetToolXdo {
   id: number | string;
   enabled: boolean;
-  auth: unknown;
+  auth: false | number | string;
 }
 
-/** Agent (LLM) settings — present only when type === "agent". */
-export interface AgentSettings {
-  type?: string; // provider: anthropic | openai | ...
-  model?: string;
-  system_prompt?: string;
-  prompt?: string;
-  prompt_messages?: string;
-  prompt_type?: string;
-  max_steps?: number;
-  configs?: Record<string, unknown>;
-  structuredOutputs?: boolean;
-  structuredOutputsSchema?: unknown[];
+/** Resolve a list of {@link ToolsetToolRef}s to their stored `tool[]` entries. */
+export function encodeToolRefs(tools?: ToolsetToolRef[]): ToolsetToolXdo[] {
+  return (tools ?? []).map((t) => {
+    if (t.tool !== undefined && t.id !== undefined) {
+      throw new Error("toolset tool ref: set either `tool` (handle/name) or `id` (raw), not both.");
+    }
+    const id = t.tool !== undefined ? resolveRef("tool", t.tool) : (t.id ?? 0);
+    const label = typeof t.tool === "string" ? t.tool : (t.tool?.name ?? String(t.id ?? "?"));
+    return { id, enabled: t.enabled ?? true, auth: resolveAuthRef("toolset tool", label, t.auth) };
+  });
 }
 
-export interface ToolsetDef {
+/**
+ * Fields shared by every toolset-family primitive (MCP server + agent). The
+ * type-specific encoders add `type` and, for agents, `agent_settings`.
+ * `instructions` is a stored column for both but only authorable on MCP servers
+ * (Xano's `Agent` transform has no `instructions` field), so `AgentDef` simply
+ * omits it and it stays `""`.
+ */
+export interface ToolsetBaseDef {
   name: string;
   /** Explicit Xano `guid` (this object's identity). Defaults to a guid derived from `name`; set it to keep identity across a rename or to match an existing object. */
   guid?: string;
-  type: ToolsetType;
   description?: string;
   instructions?: string;
   docs?: string;
@@ -157,10 +173,10 @@ export interface ToolsetDef {
   spec?: string;
   tags?: string[];
   tools?: ToolsetToolRef[];
-  agentSettings?: AgentSettings;
 }
 
-export interface ToolsetXdo {
+/** The shared toolset envelope — everything except the type discriminator and agent-only `agent_settings`. */
+export interface ToolsetBaseXdo {
   name: string;
   description: string;
   instructions: string;
@@ -168,16 +184,20 @@ export interface ToolsetXdo {
   enabled: boolean;
   canonical: string;
   spec: string;
-  type: ToolsetType;
   middleware: MiddlewareBlock;
   tag: Array<{ tag: string }>;
   tool: ToolsetToolXdo[];
-  agent_settings?: AgentSettings;
 }
 
-export function encodeToolset(def: ToolsetDef): ToolsetXdo {
-  if (!def.name) throw new Error("toolset: `name` is required.");
-  const xdo: ToolsetXdo = {
+/**
+ * Build the shared toolset envelope. Assumes `def.name` is set — each kind's
+ * encoder validates `name` first so it can throw a kind-specific message.
+ * `middleware` is the inert empty skeleton (toolset-level middleware is not an
+ * engine feature — see the module header); `spec` is a stored column the
+ * XanoScript transform ignores, kept for DBO shape parity.
+ */
+export function encodeToolsetBase(def: ToolsetBaseDef): ToolsetBaseXdo {
+  return {
     name: def.name,
     description: def.description ?? "",
     instructions: def.instructions ?? "",
@@ -185,43 +205,8 @@ export function encodeToolset(def: ToolsetDef): ToolsetXdo {
     enabled: def.enabled ?? true,
     canonical: def.canonical ?? "",
     spec: def.spec ?? "",
-    type: def.type,
     middleware: emptyMiddleware(),
     tag: encodeTags(def.tags),
-    tool: (def.tools ?? []).map((t) => {
-      if (t.tool !== undefined && t.id !== undefined) {
-        throw new Error("toolset tool ref: set either `tool` (handle/name) or `id` (raw), not both.");
-      }
-      const id = t.tool !== undefined ? resolveRef("tool", t.tool) : (t.id ?? 0);
-      return { id, enabled: t.enabled ?? true, auth: t.auth ?? null };
-    }),
+    tool: encodeToolRefs(def.tools),
   };
-  if (def.type === "agent") {
-    xdo.agent_settings = def.agentSettings ?? {};
-  }
-  return xdo;
-}
-
-export const toolsetKind: ObjectKind<ToolsetDef, ToolsetXdo> = {
-  name: "toolset",
-  payloadKey: "toolset",
-  encode: encodeToolset,
-};
-registerKind(toolsetKind);
-
-/** Factory sugar for the toolset family. */
-export const toolset = {
-  /** An MCP toolset: a collection of tools exposed via MCP. */
-  mcp(args: Omit<ToolsetDef, "type" | "agentSettings">): ToolsetDef {
-    return { ...args, type: "mcp" };
-  },
-  /** An agent (AI) toolset: an LLM orchestrator with agent_settings. */
-  agent(args: Omit<ToolsetDef, "type">): ToolsetDef {
-    return { ...args, type: "agent" };
-  },
-};
-
-/** Convenience alias: author an agent toolset directly. */
-export function agent(args: Omit<ToolsetDef, "type">): ToolsetDef {
-  return toolset.agent(args);
 }

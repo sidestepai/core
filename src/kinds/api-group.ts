@@ -1,7 +1,7 @@
 /**
  * API group kind (U7) → payload key `app` (stored as `mvp_app`). A metadata
  * container: queries bind to it via `app.id`. Carries CORS + group middleware.
- * Validated against `cloud-client: …/process/schema:api_group`.
+ * Validated against the Xano engine's persisted shape.
  */
 import { registerKind } from "./kind.js";
 import type { ObjectKind } from "./kind.js";

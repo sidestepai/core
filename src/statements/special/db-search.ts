@@ -17,7 +17,7 @@ export type SortDir = "asc" | "desc" | "rand";
  * or random. `dir` maps to the engine's `orderBy`; the encoded element is the
  * `mvp_sort` shape `{ sortBy, orderBy }`. Each caller places that element
  * differently — `db.query` under `context.return.list.sort` (via
- * `MVP::convertContextToConfig`), an `addon()` at top-level `context.sort` — so
+ * the engine's context-to-config conversion), an `addon()` at top-level `context.sort` — so
  * this doc stays placement-neutral; see each caller's own doc for where it lands.
  */
 export interface SortDirective<C extends string = string> {
@@ -29,7 +29,7 @@ export interface SortDirective<C extends string = string> {
 
 /**
  * The full engine operator set for a search comparison (`op` values from
- * `x2 …/XS/xs/op/*.php` `getName()`). `cmp(...)` accepts these; the conditional
+ * the Xano engine's operator definitions). `cmp(...)` accepts these; the conditional
  * `expr(...)` stays intentionally narrow (`= != > < >= <=`) — see KTD3 in the
  * db.query parity plan.
  */

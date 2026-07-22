@@ -7,10 +7,10 @@
  */
 import type { FieldXdo, MethodXdo } from "../types/xdo.js";
 
-/** Field visibility — the engine's `access` enum (`dbo-schema-*.yaml`). */
+/** Field visibility — the engine's `access` enum. */
 export type FieldAccess = "public" | "private" | "internal";
 
-/** Valid `format` values for text fields (`dbo-schema-text.yaml`). */
+/** Valid `format` values for text fields (per the engine's text-field schema). */
 export type TextFormat = "" | "plaintext" | "yaml" | "html" | "xml" | "markdown";
 
 /** Field cardinality — `"single"` (scalar) or `"list"` (array column). */

@@ -27,7 +27,7 @@ import { TAGS } from "../types/xdo.js";
 import { FILTER_NAMES, FILTER_SPECS } from "../values/generated/filters.generated.js";
 import { FIELD_METHODS } from "../fields/generated/field-methods.generated.js";
 
-/** Total engine object kinds (cloud-client: script/kind/schema/core). */
+/** Total engine object kinds. */
 export const TOTAL_OBJECT_KINDS = 24;
 
 /** A statement field, flattened from its generated spec rule. */
@@ -217,9 +217,10 @@ const CLI_COMMANDS: readonly ManifestCliCommand[] = [
 ];
 
 /**
- * The 11 implemented object kinds with their authoring + registration metadata.
+ * The 12 implemented object kinds with their authoring + registration metadata.
  * `registered` is verified against the live kind registry at build time, and the
- * manifest test asserts payload keys match `registeredKinds()`.
+ * manifest test asserts payload keys match `registeredKinds()`. `mcp_server` and
+ * `agent` are distinct kinds that both persist under the `toolset` payload key.
  */
 const KIND_DESCRIPTORS: ReadonlyArray<Omit<ManifestKind, "registered">> = [
   { kind: "function", payloadKey: "function", authorFactory: "defineFunction", registerMethod: "registerFunctions" },
@@ -228,7 +229,8 @@ const KIND_DESCRIPTORS: ReadonlyArray<Omit<ManifestKind, "registered">> = [
   { kind: "api_group", payloadKey: "app", authorFactory: "apiGroup", registerMethod: "registerApiGroups" },
   { kind: "trigger", payloadKey: "trigger", authorFactory: "trigger.{table,realtime,mcpServer,agent,workspace,error}", registerMethod: "registerTriggers" },
   { kind: "tool", payloadKey: "tool", authorFactory: "tool", registerMethod: "registerTools" },
-  { kind: "toolset", payloadKey: "toolset", authorFactory: "toolset.mcp / agent", registerMethod: "registerToolsets" },
+  { kind: "mcp_server", payloadKey: "toolset", authorFactory: "mcpServer", registerMethod: "registerMcpServers" },
+  { kind: "agent", payloadKey: "toolset", authorFactory: "agent", registerMethod: "registerAgents" },
   { kind: "task", payloadKey: "task", authorFactory: "task", registerMethod: "registerTasks" },
   { kind: "middleware", payloadKey: "middleware", authorFactory: "middleware", registerMethod: "registerMiddleware" },
   { kind: "addon", payloadKey: "addon", authorFactory: "addon", registerMethod: "registerAddons" },
@@ -244,6 +246,7 @@ const VALUE_CONSTRUCTORS: ReadonlyArray<ManifestValue> = [
   { name: "c.null", signature: "() => Value", description: 'Null constant → tag "const:null".' },
   { name: "c.obj", signature: "(o: Json) => Value", description: 'Object constant (JSON string) → tag "const:obj". Plain JSON literals only — a nested tagged value (inp/ref/auth/c.*) is rejected; for a computed object response use a record of values, not c.obj (issue #42).' },
   { name: "c.array", signature: "(a: Json[]) => Value", description: 'Array constant (JSON string) → tag "const:array". Plain JSON literals only — a nested tagged value is rejected, same as c.obj (issue #42).' },
+  { name: "obj", signature: "(fields: Record<string, Value | nested>) => Value", description: 'Dynamic object value → tag "const:expr2" (a XanoScript object-literal expression). The dynamic sibling of c.obj (issue #42): members may be inp/ref/auth/col/c.* values, nested records, or arrays. A value with filters, or a less-common tag (env/setting/output/…), is rejected. Use for e.g. s.ai.agent.run args.' },
   { name: "ref", signature: "(name: string, opts?: { safe?: boolean }) => Value", description: 'Reference a stack variable → tag "var". Pass { safe: true } for null-safe nested access — a dotted ref("owner.user_id", { safe: true }) compiles through the get filter so it resolves to null instead of raising "Unable to locate var" when the base is null (issue #47).' },
   { name: "inp", signature: "(name: string) => Value", description: 'Reference a function input → tag "input".' },
   { name: "col", signature: "(name: string) => Value", description: 'Reference a table column → tag "col".' },
@@ -664,10 +667,11 @@ export function renderLlmsTxt(m: Manifest): string {
     "  `s.group(body)` and `s.util.post_process(body)` take it **positionally**.",
     "  `s.for` is **count-bounded** (`{ as, count, body }`), not from/to. See the",
     "  **Specials — authored signatures** block below.",
-    "- **Toolset tools take a `tool` handle.** `toolset.mcp({ tools: [{ tool: myTool }] })`",
-    "  / `agent({ tools: [{ tool: myTool }] })` — pass the `tool()` def handle (or",
-    "  its name); it resolves to the tool's guid like the call family. A raw numeric",
-    "  `id` is an escape hatch, not the default.",
+    "- **MCP servers & agents are distinct root kinds** that both persist under the",
+    "  `toolset` payload key (so a same-name pair collides). `mcpServer({...})` exposes",
+    "  tools over MCP (auth is per-tool — no server-level gate); `agent({...})` carries a",
+    "  typed `llm` block. Their `tools` take a `tool()` handle (or name), resolved to the",
+    "  tool's guid like the call family; a raw numeric `id` is an escape hatch.",
     "- **`task.schedule` is an array** of `{ startsOn, freq?, repeatEnabled?, endsOn? }`",
     "  (`ScheduleDef[]`), not a single `{ type, value }`. `freq` is seconds.",
     "- **`get_input`/`get_raw_input` read the whole payload**, not one named input",

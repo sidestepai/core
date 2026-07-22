@@ -7,13 +7,12 @@
  * An attachment entry is an ordinary stack item whose statement is
  * **`mvp:middleware`** with `context.middleware.id` = the target middleware's
  * guid (the engine remaps guid→local id on import). Verified against the live
- * xdo corpus: `cloud-client …/process/schema:function/minimal/DEV-4553.json`
- * shows each `middleware.pre[]` entry carrying the full 12-key `StackItemXdo`
- * envelope (`query.yaml` types `pre[]`/`post[]` as `mvp_stackitem`, the same as
- * the main `run[]` stack). So entries flow through `encodeStatement` — never a
+ * xdo corpus: each `middleware.pre[]` entry carries the full 12-key
+ * `StackItemXdo` envelope — the engine types `pre[]`/`post[]` the same as the
+ * main `run[]` stack. So entries flow through `encodeStatement` — never a
  * hand-built minimal literal.
  *
- * Inheritance is the engine's job (`Middleware::getMiddlewareForObject`), not
+ * Inheritance is the engine's job, not
  * ours: SideStep only emits each tier's list plus the `pre_customize`/
  * `post_customize` override flags. Presence-driven: providing a phase's list
  * sets that phase's `_customize` flag (override); omitting it leaves the flag

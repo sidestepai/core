@@ -1,8 +1,8 @@
 /**
  * Workspace config kind (U8) → payload key `workspace` (singleton object, not
  * an array). Emits the author-provided settings subset; the engine fills the
- * remaining server-managed fields on import (KTD-1). Authoring shape per
- * `cloud-client: script/kind/schema/core/workspace.yaml`.
+ * remaining server-managed fields on import (KTD-1). Authoring shape validated
+ * against the Xano engine's persisted workspace shape.
  */
 import type { StackItemXdo } from "../types/xdo.js";
 import { registerKind } from "./kind.js";

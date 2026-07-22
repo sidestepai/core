@@ -4,7 +4,7 @@
  * Xano statements that invoke another workspace object (the call family —
  * `function.run`/`function.call`/`api.call`/…) store a reference to the target.
  * In a `packageExport` bundle that reference is the target's **guid** (the
- * engine's `Migrate::exportTypeId` converts a local numeric id → the object's
+ * engine converts a local numeric id → the object's
  * guid on export, and remaps it back on import). Engine object guids are
  * 32-char lowercase hex strings (e.g. `276ca71d0ecb26851107a4383daff23b`).
  *
@@ -36,8 +36,10 @@ import { getLockedGuid } from "../lock/store.js";
  *
  * Every top-level object the engine tracks by guid belongs here. The guid's
  * *type* prefix is the kind's `payloadKey` (the engine's migrate type):
- * function/query/tool/toolset/task/trigger/middleware/addon map name-for-name;
- * `table` → `dbo`, `api_group` → `app`. A reference (call/db statement, or a
+ * function/query/tool/task/trigger/middleware/addon map name-for-name;
+ * `table` → `dbo`, `api_group` → `app`, and `mcp_server`/`agent` → `toolset`
+ * (both AI primitives share the toolset migrate type). A reference (call/db
+ * statement, a trigger's toolset binding, or a
  * query's `app` binding) resolves its target with that same migrate type, so
  * both sides agree.
  */
@@ -45,7 +47,12 @@ export const REFERENCEABLE_KIND_PAYLOAD_KEYS: Readonly<Record<string, string>> =
   function: "function",
   query: "query",
   tool: "tool",
-  toolset: "toolset",
+  // MCP servers and agents are distinct kinds that both persist as
+  // obj_type=toolset — they share the "toolset" migrate type, so both derive
+  // md5("toolset:"+name) and a same-name pair correctly collides. A trigger
+  // binds either by resolving against this same "toolset" migrate type.
+  mcp_server: "toolset",
+  agent: "toolset",
   task: "task",
   trigger: "trigger",
   middleware: "middleware",

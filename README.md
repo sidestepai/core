@@ -367,7 +367,7 @@ xano/
 ├── functions/   get-user.ts        export default defineFunction({...})
 ├── tables/      user.ts            export default table({...})
 ├── triggers/    on-insert.ts       export default trigger.table({...})
-├── toolsets/    assistant.ts       export default agent({...})
+├── ai/          assistant.ts       export default agent({...}) / mcpServer({...})
 └── index.ts     workspace("my-app").registerTables([...]).registerFunctions([...])…
 ```
 
@@ -393,7 +393,8 @@ method. Payload keys use the engine's singular names.
 | `apiGroup({ canonical, cors, ... })` | `registerApiGroups` | `app` |
 | `trigger.{table,realtime,mcpServer,agent,workspace,error}(...)` | `registerTriggers` | `trigger` |
 | `tool({...})` | `registerTools` | `tool` |
-| `toolset.mcp({...})` / `agent({...})` | `registerToolsets` | `toolset` |
+| `mcpServer({...})` | `registerMcpServers` | `toolset` |
+| `agent({ llm, ... })` | `registerAgents` | `toolset` |
 | `task({ schedule, ... })` | `registerTasks` | `task` |
 | `middleware({ resultStrategy, ... })` | `registerMiddleware` | `middleware` |
 | `addon({...})` | `registerAddons` | `addon` |
@@ -430,10 +431,49 @@ trigger.realtime({
 
 Per-type inputs: **table** `new`/`old`/`action`/`datasource`; **realtime** `action`/`channel`/`client`/`options`/`payload`; **mcpServer**/**agent** `toolset`/`tools`; **workspace** `to_branch`/`from_branch`/`action`; **error** `event`/`id`/`signature`/`error`/`caller`/`statement`/`actor`/`count`/`first_seen`/`last_seen`/`fixed_at`.
 
-**Toolsets — AI vs MCP** — `toolset.mcp({ name, tools })` exposes tools over the MCP
-protocol; `agent({ name, agentSettings: { type: "anthropic", model, system_prompt }, tools })`
-is an LLM orchestrator. A `tool({...})` is its own kind — a function-like operation a
-toolset references.
+**MCP servers & agents** — two first-class root primitives. Both persist under the
+`toolset` payload key (obj_type=`toolset`), so an `mcpServer` and an `agent` **sharing a
+name collide** (both derive `md5("toolset:"+name)`). A `tool({...})` is its own kind — a
+function-like operation both reference by handle.
+
+```ts
+// An MCP server exposes tools over the MCP protocol. Auth is PER-TOOL and works
+// exactly like a query's auth — name an auth table({ auth: true }); it resolves
+// to the table's guid (Xano has no server-level auth gate).
+mcpServer({ name: "books", tools: [{ tool: searchTool, auth: users }] });
+
+// An agent is an LLM orchestrator. The typed `llm` block maps onto the engine's
+// real agent_settings wire shape (provider config nested under configs.<provider>).
+// `xano-free` needs no API key.
+const assistant = agent({
+  name: "assistant",
+  llm: { type: "xano-free", systemPrompt: "Be helpful.", prompt: "Answer the question." },
+  tools: [{ tool: searchTool }],
+});
+
+// Invoke it from an endpoint (bound by handle, remapped on import like the call family):
+query({
+  name: "ask", verb: "POST", apiGroup: api,
+  input: { question: input.text({ required: true }) },
+  stack: [s.ai.agent.run({ agent: assistant, args: inp("question"), as: "answer" })],
+  response: ref("answer"),
+});
+```
+
+`llm` is a provider-discriminated union — `anthropic` / `openai` / `google-genai` /
+`xano-free` — each with its provider's typed fields (`apiKey`, `model`, `temperature`,
+`reasoningEffort`, `thinkingTokens`, `searchGrounding`, …), mapped to the engine's
+camelCase `configs.<provider>` keys. A connection trigger binds its target with
+`trigger.mcpServer({ mcpServer })` / `trigger.agent({ agent })`.
+
+**Run inputs → agent (Twig templating).** At run time Xano renders the agent's **string**
+settings through Twig before the LLM call. The `args` you pass to `s.ai.agent.run({ args })`
+become the `{{ $args }}` namespace (env vars are `{{ $env.NAME }}`) — this is how an
+endpoint's inputs reach the prompt. Templatable: `systemPrompt`, `prompt`/`messages`,
+`model`, `maxSteps`, and every **string** provider-config field. Numeric/boolean fields
+(e.g. `temperature`) are not templated. Pass a dynamic object arg with **`obj({...})`**
+(the dynamic sibling of `c.obj` — it allows nested `inp`/`ref`/… values):
+`s.ai.agent.run({ agent, args: obj({ name: inp("name") }) })` reaches `{{ $args.name }}`.
 
 **Middleware attachment** — a `middleware({...})` is reusable logic (`input`/`stack`/
 `response` + `resultStrategy: "merge"|"replace"` + `exceptionPolicy: "silent"|"rethrow"|
@@ -537,7 +577,7 @@ column** with `{ array: true }` — `f.text({ array: true })` surfaces as `strin
 `InferRow<typeof table>` (the column analogue of `input.list`). Tables accept a named-map
 schema (`{ email: f.email({ required: true }) }`), filter methods carry args (`"min:8"`), and
 `views[]` (expression/sort/hiddenCols) encode via the shared comparison encoder. Byte-exact
-vs the engine's `Schema::TYPE_MAP`. A column **`default` must stay within the BMP** — a 4-byte
+vs the engine's column type map. A column **`default` must stay within the BMP** — a 4-byte
 character (codepoint > U+FFFF, e.g. an emoji) is mangled into invalid UTF-8 by the engine's
 default pipeline and is rejected at export rather than 500ing at deploy with Postgres `22021`;
 BMP defaults (accents, `€`, most CJK) are fine, or put the value on an endpoint input
@@ -978,7 +1018,7 @@ the real Xano engine golden fixtures, and a coverage report prints on every test
 
 | Surface | Coverage |
 |---|---|
-| Object kinds | **11 / 24** — `function`, `table`, `query`, `api_group`, all 6 `trigger`s, `tool`, `toolset`/`agent`, `task`, `middleware`, `addon`, `workspace` |
+| Object kinds | **12 / 24** — `function`, `table`, `query`, `api_group`, all 6 `trigger`s, `tool`, `mcp_server`, `agent`, `task`, `middleware`, `addon`, `workspace` |
 | Statements (via `s`) | **214 / 214 (100%)** — every engine statement surface has a factory |
 
 The statement catalog is generated from the engine's own schema YAMLs (`npm run codegen`),

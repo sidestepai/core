@@ -1,7 +1,7 @@
 /**
  * Trigger kinds (U4). All 6 trigger types share ONE stored envelope
  * (`mvp_trigger`) discriminated by `obj_type` + a per-type `meta` block —
- * confirmed from `cloud-client: dbo/mvp/trigger.yaml`. The canonical `meta`
+ * confirmed against the Xano engine's stored trigger shape. The canonical `meta`
  * carries all four action groups (database / toolset / workspace /
  * workspace_realtime_channel); each trigger type populates its own group and
  * leaves the others at their skeleton defaults.
@@ -89,7 +89,7 @@ export type DatabaseInputs<Row, A> = {
 } & (HasNew<A> extends true ? { new: FieldAccessor<Row> } : { new: null }) &
   (HasOld<A> extends true ? { old: FieldAccessor<Row> } : { old: null });
 
-/** The canonical four-group meta skeleton (per dbo/trigger.yaml). */
+/** The canonical four-group meta skeleton (per the engine's stored trigger shape). */
 function baseMeta() {
   return {
     database: {
@@ -254,24 +254,35 @@ export const trigger = {
     };
   },
 
-  /** MCP server trigger (obj_type=toolset, connection action). Response-bearing. */
+  /**
+   * MCP server trigger (obj_type=toolset, connection action). Response-bearing.
+   * Bind the target MCP server with `mcpServer` (a `mcpServer()` def handle or
+   * its name) — it resolves to the toolset guid at export and survives a
+   * `--reset` deploy. A raw numeric `objId` stays the escape hatch.
+   */
   mcpServer(
     args: CommonArgs & {
+      mcpServer?: ObjectRef;
       stack?: (t: ToolsetInputs) => Statement[];
       response?: (t: ToolsetInputs) => ResponseDef;
     },
   ): TriggerDef {
-    return toolsetTrigger(args);
+    return toolsetTrigger(args, args.mcpServer);
   },
 
-  /** Agent trigger (obj_type=toolset, connection action). Response-bearing. */
+  /**
+   * Agent trigger (obj_type=toolset, connection action). Response-bearing.
+   * Bind the target agent with `agent` (an `agent()` def handle or its name),
+   * resolved to the toolset guid at export; `objId` is the raw escape hatch.
+   */
   agent(
     args: CommonArgs & {
+      agent?: ObjectRef;
       stack?: (t: ToolsetInputs) => Statement[];
       response?: (t: ToolsetInputs) => ResponseDef;
     },
   ): TriggerDef {
-    return toolsetTrigger(args);
+    return toolsetTrigger(args, args.agent);
   },
 
   /** Workspace lifecycle trigger (obj_type=workspace). Config-only. */
@@ -324,12 +335,20 @@ export const trigger = {
   },
 };
 
-/** Shared MCP-server / agent trigger construction (both are `obj_type=toolset`). */
+/**
+ * Shared MCP-server / agent trigger construction (both are `obj_type=toolset`).
+ * `target` is the bound toolset handle (from `mcpServer`/`agent`); it resolves
+ * against the shared `toolset` migrate type — matching the object's own
+ * `md5("toolset:"+name)` guid — so binding is guid-stable across a `--reset`.
+ * Mirrors the `table` trigger's handle-binding precedence (handle wins; a raw
+ * numeric `objId` is the fallback escape hatch).
+ */
 function toolsetTrigger(
   args: CommonArgs & {
     stack?: (t: ToolsetInputs) => Statement[];
     response?: (t: ToolsetInputs) => ResponseDef;
   },
+  target?: ObjectRef,
 ): TriggerDef {
   const meta = baseMeta();
   meta.toolset.action.connection = true;
@@ -340,7 +359,7 @@ function toolsetTrigger(
     description: args.description,
     active: args.active,
     tags: args.tags,
-    objId: args.objId,
+    objId: target !== undefined ? resolveRef("toolset", target) : args.objId,
     objType: "toolset",
     hasResult: true,
     meta,

@@ -1,10 +1,10 @@
 /**
- * Aggregate `packageExport` bundle assembly (KTD-1). Mirrors the engine's
- * `cloud-client: extensions/MVP/includes/xano/helper/mvp/Migrate.php`:
+ * Aggregate `packageExport` bundle assembly (KTD-1). Mirrors the Xano engine's
+ * package-migration format:
  *
  *   { app:"xano", version:"1.03", type, payload:{ partial, <kind keys...>, workspace }, sig }
  *
- * The `sig` is computed exactly as `Migrate::calcSignatureJson`: sort the
+ * The `sig` is computed exactly as the engine's signature routine: sort the
  * top-level keys ({app,payload,type,version}), PHP-`json_encode` them, SHA1 the
  * bytes, and websafe-base64 the digest (`+/=` -> `-_.`, padding kept as `.`).
  * PHP `json_encode` escapes `/` and non-ASCII; we replicate that so the
@@ -21,7 +21,7 @@ export const BUNDLE_VERSION_JSON = "1.03";
 export type BundleType = "workspace" | "schema" | "content" | "share";
 
 /**
- * Canonical payload key order, matching `Migrate::partialExport`. Each kind's
+ * Canonical payload key order, matching the engine's partial-export order. Each kind's
  * encoded objects land under its key; unsupported sections stay empty arrays so
  * the bundle shape matches the engine's full export.
  */
@@ -63,8 +63,8 @@ export interface Bundle {
 }
 
 /**
- * Replicates the engine's `\xano::json_encode` (extensions/Json/.../Json.php),
- * which is what `Migrate::calcSignatureJson` hashes. Its flags are
+ * Replicates the engine's canonical JSON encoding, which is what the
+ * signature routine hashes. Its flags are
  * `JSON_HEX_QUOT | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS |
  *  JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE`, i.e.:
  *
@@ -134,7 +134,7 @@ export function phpJsonEncode(value: unknown): string {
   }
 }
 
-// Xano's `Crypto::base64_encodewebsafe` is `strtr($b, '+/=', '-_.')` — note it
+// Xano's websafe base64 maps `+/=` to `-_.` — note it
 // maps the padding `=` to `.` rather than stripping it (so it is NOT standard
 // base64url). The engine recomputes and compares byte-for-byte, so the `.` must
 // be preserved or the import fails with "Invalid workspace signature".
@@ -144,7 +144,7 @@ function base64websafe(bytes: Uint8Array): string {
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, ".");
 }
 
-/** Replicates `Migrate::calcSignatureJson`: sort top-level keys, encode, sha1, websafe base64. */
+/** Replicates the engine's signature routine: sort top-level keys, encode, sha1, websafe base64. */
 export function calcSignatureJson(exportObj: Record<string, unknown>): string {
   const sorted: Record<string, unknown> = {};
   for (const key of Object.keys(exportObj).sort()) {

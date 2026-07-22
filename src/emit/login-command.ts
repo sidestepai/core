@@ -1,6 +1,6 @@
 /**
  * `sidestep login` — run the OAuth 2.1 authorization-code + PKCE flow against the
- * cloud-master control-plane and cache the resulting tokens locally for reuse by
+ * Xano control-plane and cache the resulting tokens locally for reuse by
  * `push`.
  *
  * Flow: start a fixed-port 127.0.0.1 loopback server → build an OpenIdProvider

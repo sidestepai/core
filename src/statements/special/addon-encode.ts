@@ -1,7 +1,7 @@
 /**
  * Addon-authoring encoder — the one place that turns an authored {@link AddonSpec}
  * into the stored `addon[]` block a db statement carries (the shape the engine's
- * `Migrate::exportAddonImpls` / `importAddonImpls` walk).
+ * addon import/export walk reads).
  *
  * Xano addons graft related-table data onto the rows a `db.query`/`db.get` (and
  * the other row-returning db ops) return. Each attached addon references a

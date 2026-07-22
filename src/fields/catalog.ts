@@ -3,7 +3,7 @@
  * shared field encoder. Each constructor returns a {@link FieldDescriptor}
  * (`{ type, options }`) carrying the **stored** type string — the engine's
  * author-facing names differ from what it persists, so this layer applies the
- * authoritative mapping (`cloud-client: helper/mvp/dbo/Schema.php::TYPE_MAP`):
+ * authoritative mapping (the engine's stored-type map):
  *
  *   object → obj · timestamp → epochms · image → blob_img ·
  *   video → blob_video · audio → blob_audio · attachment → blob
@@ -59,8 +59,8 @@ export type ConstMethodOpts<N extends string> = ReadonlyMethods<MethodOpts<N>, N
 
 /**
  * The stored types that persist a `default` value. The engine drops `default`
- * on every other type at import (`cloud-client: helper/mvp/dbo/Schema.php::
- * processSchema`), so authoring one would silently lose data — guard it instead.
+ * on every other type at import (per the engine's schema processing), so
+ * authoring one would silently lose data — guard it instead.
  */
 const DEFAULTABLE_TYPES = new Set([
   "text",
@@ -74,10 +74,10 @@ const DEFAULTABLE_TYPES = new Set([
   "epochms",
 ]);
 
-/** Field visibility — the engine's `access` enum (`dbo-schema-*.yaml`). */
+/** Field visibility — the engine's `access` enum. */
 const ACCESS_VALUES = new Set(["public", "private", "internal"]);
 
-/** Valid `format` values for text fields (`dbo-schema-text.yaml`). */
+/** Valid `format` values for text fields (per the engine's text-field schema). */
 const FORMAT_VALUES = new Set(["", "plaintext", "yaml", "html", "xml", "markdown"]);
 
 function descriptor(type: string, options: FieldOptions): FieldDescriptor {
@@ -199,8 +199,7 @@ export const f = {
    * Table-reference (foreign-key) field — the column holds the referenced
    * table's primary key. The engine persists the link as a trailing `@` method
    * carrying the target table's id (`{name:"@", arg:["dbo=<guid>"]}`); on import
-   * it parses that back into the column's `tableref_id`
-   * (`cloud-client: helper/mvp/dbo/Meta.php`). The reference resolves to the
+   * it parses that back into the column's `tableref_id`. The reference resolves to the
    * table's deterministic guid via the shared cross-object resolver, so it
    * agrees with the target table's payload `guid` with no shared registry.
    *
@@ -215,7 +214,7 @@ export const f = {
    *   instead: `f.tableRef("tweets", { type: "int" })`. Identity guids derive
    *   from `(type, name)`, so the name form resolves to the same guid.
    *
-   * @TODO(byte-verify): MODELED on dbo-schema-tableref.yaml + Meta.php — no
+   * @TODO(byte-verify): MODELED on the engine's tableref schema — no
    *   persisted tableref golden in the corpus. Round-trip-tested (the `@` arg guid
    *   equals the target table's payload guid) but the exact stored method shape
    *   (does `@` carry `disabled:false`? is it always last?) is unconfirmed. The

@@ -10,8 +10,8 @@
  * id/name/display/state/domain/expiry — never the raw tenant blob, which carries
  * cluster/k8s/license internals that would land in shell history and CI logs.
  *
- * The base URL is derived from the tenant exactly as the backend does
- * (`Run::getBaseUrl` in cloud-client): `https://{xano_domain}` when the tenant
+ * The base URL is derived from the tenant exactly as the backend does:
+ * `https://{xano_domain}` when the tenant
  * has its own domain, else the instance origin with a `/tenant/{name}` prefix
  * (the self-hosted / local fallback). `localhost:*` hosts stay `http`.
  *
@@ -46,7 +46,7 @@ function asString(v: unknown): string | undefined {
 
 /**
  * Derive the sandbox's public base URL from its tenant record, mirroring the
- * backend's `Run::getBaseUrl`: prefer the tenant's own `xano_domain`, else fall
+ * backend's base-URL derivation: prefer the tenant's own `xano_domain`, else fall
  * back to the instance origin with a `/tenant/{name}` prefix. Never throws — a
  * tenant with neither field yields the bare instance origin.
  */

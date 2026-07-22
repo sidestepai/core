@@ -28,7 +28,7 @@ export interface HistoryBlock {
 
 /**
  * Object kinds whose request-history default is OFF. Mirrors the engine's
- * `History::getHistorySettings` default (`cloud-client …/helper/mvp/History.php`):
+ * request-history default:
  *   $defaultEnabled = !in_array($objType, ["function", "middleware", "trigger"]);
  * i.e. query/task/tool default ON, function/middleware/trigger default OFF —
  * confirmed against the live xdo corpus (query 44/44 `true`, function 4/4 `false`,

@@ -2,8 +2,8 @@
  * Generated statement catalog (U9) — the hand-written wrapper around the
  * machine-generated spec data in `specs.generated.ts`.
  *
- * `specs.generated.ts` is produced by `scripts/codegen.ts` from the cloud-client
- * statement schema YAMLs (run `npm run codegen` to regenerate). This file owns
+ * `specs.generated.ts` is produced by `scripts/codegen.ts` from the Xano engine's
+ * statement schema definitions (run `npm run codegen` to regenerate). This file owns
  * the stable surface: it registers every generated spec on the statement
  * registry and exposes ergonomic, typed factories for the common families.
  * Widening coverage = regenerating the spec data, not editing bespoke code.

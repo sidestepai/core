@@ -11,7 +11,7 @@
  * later). Block fields map to same-named `context` entries unless the schema's
  * declarative transform says otherwise.
  *
- * @TODO(byte-verify): no transform-temp golden for array_map, array_union,
+ * @TODO(byte-verify): no persisted golden for array_map, array_union,
  *   get_input, test_expect_to_throw (post_process IS parser-verified). Status:
  *   (1) array_map/union — shapes now match the transforms' decode()
  *       (collection/transform_value; left/right/transform_value). array_map's
@@ -74,7 +74,7 @@ export interface ArrayUnionArgs {
  * `array.union <source>` — set-union of arrays (`mvp:array_union`).
  *
  * @TODO(byte-verify): no golden; field remap (expr→left, value→right, by→
- *   transform_value) modeled on ArrayUnion::decode.
+ *   transform_value) modeled on the engine's array-union format.
  */
 export function arrayUnion(a: ArrayUnionArgs): Statement {
   const context: Record<string, unknown> = { left: vf(a.source) };
@@ -107,7 +107,7 @@ export interface GetRawInputArgs {
 
 /**
  * `util.get_raw_input` / `util.get_input` — capture the raw request body
- * (`mvp:get_input`). Stored shape from `GetRawInput::decode`: empty context, and
+ * (`mvp:get_input`). Stored shape from the engine's get-raw-input format: empty context, and
  * TWO always-present `input[]` entries — `encoding` (default `"json"`) and
  * `exclude_middleware_modification` (note the full stored name; default `false`).
  */
@@ -126,7 +126,7 @@ export function getRawInput(a: GetRawInputArgs = {}): Statement {
 /**
  * `util.post_process { … }` — run a post-response sub-stack (`mvp:post_process`).
  * A pure block statement (engine schema `args: []`): no `as`, just the `run`
- * stack. Byte-verified (parser-minimal) against `post_process.json`.
+ * stack. Byte-verified (parser-minimal) against the engine's persisted shape.
  */
 export function postProcess(body: Statement[]): Statement {
   return { name: "mvp:post_process", context: { run: body.map(encodeStatement) }, input: [] };

@@ -1,4 +1,4 @@
-# sidestep v3.8.0
+# sidestep v3.9.0
 
 > TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.
 
@@ -6,7 +6,7 @@ Author a Xano workspace in TypeScript: build typed objects, register them on a
 `new Xano()` instance, and call `.export()` to get one importable bundle. Compile
 with `sidestep export ./xano/index.js`.
 
-Coverage: object kinds 11/24, statement surfaces 214/214, filters 345 (134 typed).
+Coverage: object kinds 12/24, statement surfaces 214/214, filters 345 (134 typed).
 
 ## Quickstart
 
@@ -259,10 +259,11 @@ Where a cold reader's intuition usually diverges from this API:
   `s.group(body)` and `s.util.post_process(body)` take it **positionally**.
   `s.for` is **count-bounded** (`{ as, count, body }`), not from/to. See the
   **Specials — authored signatures** block below.
-- **Toolset tools take a `tool` handle.** `toolset.mcp({ tools: [{ tool: myTool }] })`
-  / `agent({ tools: [{ tool: myTool }] })` — pass the `tool()` def handle (or
-  its name); it resolves to the tool's guid like the call family. A raw numeric
-  `id` is an escape hatch, not the default.
+- **MCP servers & agents are distinct root kinds** that both persist under the
+  `toolset` payload key (so a same-name pair collides). `mcpServer({...})` exposes
+  tools over MCP (auth is per-tool — no server-level gate); `agent({...})` carries a
+  typed `llm` block. Their `tools` take a `tool()` handle (or name), resolved to the
+  tool's guid like the call family; a raw numeric `id` is an escape hatch.
 - **`task.schedule` is an array** of `{ startsOn, freq?, repeatEnabled?, endsOn? }`
   (`ScheduleDef[]`), not a single `{ type, value }`. `freq` is seconds.
 - **`get_input`/`get_raw_input` read the whole payload**, not one named input
@@ -279,7 +280,8 @@ Author with the factory, register on the Xano instance, lands under the payload 
 - api_group: `apiGroup` → `Xano.registerApiGroups` → payload `app`
 - trigger: `trigger.{table,realtime,mcpServer,agent,workspace,error}` → `Xano.registerTriggers` → payload `trigger`
 - tool: `tool` → `Xano.registerTools` → payload `tool`
-- toolset: `toolset.mcp / agent` → `Xano.registerToolsets` → payload `toolset`
+- mcp_server: `mcpServer` → `Xano.registerMcpServers` → payload `toolset`
+- agent: `agent` → `Xano.registerAgents` → payload `toolset`
 - task: `task` → `Xano.registerTasks` → payload `task`
 - middleware: `middleware` → `Xano.registerMiddleware` → payload `middleware`
 - addon: `addon` → `Xano.registerAddons` → payload `addon`
@@ -347,6 +349,7 @@ response-bearing triggers) maps to the stored `result[]`:
 - `c.null() => Value` — Null constant → tag "const:null".
 - `c.obj(o: Json) => Value` — Object constant (JSON string) → tag "const:obj". Plain JSON literals only — a nested tagged value (inp/ref/auth/c.*) is rejected; for a computed object response use a record of values, not c.obj (issue #42).
 - `c.array(a: Json[]) => Value` — Array constant (JSON string) → tag "const:array". Plain JSON literals only — a nested tagged value is rejected, same as c.obj (issue #42).
+- `obj(fields: Record<string, Value | nested>) => Value` — Dynamic object value → tag "const:expr2" (a XanoScript object-literal expression). The dynamic sibling of c.obj (issue #42): members may be inp/ref/auth/col/c.* values, nested records, or arrays. A value with filters, or a less-common tag (env/setting/output/…), is rejected. Use for e.g. s.ai.agent.run args.
 - `ref(name: string, opts?: { safe?: boolean }) => Value` — Reference a stack variable → tag "var". Pass { safe: true } for null-safe nested access — a dotted ref("owner.user_id", { safe: true }) compiles through the get filter so it resolves to null instead of raising "Unable to locate var" when the base is null (issue #47).
 - `inp(name: string) => Value` — Reference a function input → tag "input".
 - `col(name: string) => Value` — Reference a table column → tag "col".
@@ -357,7 +360,7 @@ response-bearing triggers) maps to the stored `result[]`:
 - `fl.*(...args: Value[]) => FilterXdo` — Typed value-pipeline filters; see the `filters` catalog.
 - `withFilters(value: Value, ...filters: FilterXdo[]) => Value` — Attach a filter chain to a value (filters passed spread; an array is also accepted).
 
-Tags: const, const:int, const:decimal, const:bool, const:array, const:obj, const:null, const:expr, var, input, auth, env, setting, col, output, response, trycatch, toolset.
+Tags: const, const:int, const:decimal, const:bool, const:array, const:obj, const:null, const:expr, const:expr2, var, input, auth, env, setting, col, output, response, trycatch, toolset.
 
 ## Fields
 
@@ -676,7 +679,7 @@ Auth & calls:
 - `s.ai.agent.run(…)` → `mvp:call_agent` [special]
 - `s.ai.external.mcp.server_details({ as?: string; url?: value; bearer_token?: value = ""; connection_type?: value = "sse" })` → `mvp:mcp_server_details`
 - `s.ai.external.mcp.tool.list({ as?: string; url?: value; bearer_token?: value = ""; connection_type?: value = "sse" })` → `mvp:mcp_list_tools`
-- `s.ai.external.mcp.tool.run({ as?: string; url?: value; bearer_token?: value = ""; connection_type?: value = "sse"; tool?: value = ""; args?: value = "sse" })` → `mvp:mcp_call_tool`
+- `s.ai.external.mcp.tool.run({ as?: string; url?: value; bearer_token?: value = ""; connection_type?: value = "sse"; tool?: value = ""; args?: value })` → `mvp:mcp_call_tool`
 
 ### api
 

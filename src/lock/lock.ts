@@ -336,7 +336,7 @@ export function serializeLock(lock: LockFile): string {
 
 /**
  * Mint a canonical: 8 chars of websafe base64 from crypto randomness, the
- * engine's `MVP::generateCanonical` format. Random (NOT name-derived — a
+ * engine's canonical format. Random (NOT name-derived — a
  * canonical is a public URL token; deriving it from names would make API paths
  * guessable). This is the repo's only intentional randomness; determinism is
  * preserved because a minted value is immediately frozen in the lock.

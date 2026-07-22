@@ -45,4 +45,27 @@ describe("examples/sandbox", () => {
       expect(count(kind), `expected at least one "${kind}" example`).toBeGreaterThan(0);
     }
   });
+
+  it("the toolset section holds both a mcp_server and an agent", () => {
+    const types = (payload.toolset as Array<{ type: string }>).map((t) => t.type).sort();
+    expect(types).toContain("mcp");
+    expect(types).toContain("agent");
+  });
+
+  it("the worked s.ai.agent.run endpoint binds the agent by its toolset guid", async () => {
+    const { deriveGuid } = await import("../src/refs/guid.js");
+    const agentObj = (payload.toolset as Array<{ type: string; name: string; guid: string }>).find(
+      (t) => t.type === "agent",
+    )!;
+    // The agent's own guid is md5("toolset:"+name)...
+    expect(agentObj.guid).toBe(deriveGuid("toolset", agentObj.name));
+    // ...and the ex_ask_assistant endpoint's call_agent references that same guid.
+    const endpoint = (payload.query as Array<{ name: string; run: unknown[] }>).find(
+      (q) => q.name === "ex_ask_assistant",
+    )!;
+    const callAgent = endpoint.run.find(
+      (st) => (st as { name?: string }).name === "mvp:call_agent",
+    ) as { context: { toolset: { id: string } } };
+    expect(callAgent.context.toolset.id).toBe(agentObj.guid);
+  });
 });

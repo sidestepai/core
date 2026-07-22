@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { parseYaml } from "../../../src/statements/schema-dsl/parse.js";
 import { schemaToSpec } from "../../../src/statements/schema-dsl/generate.js";
+import { applySpecOverrides } from "../../../src/statements/schema-dsl/overrides.js";
 import type { StatementSpec } from "../../../src/statements/schema-dsl/interpret.js";
 import { GENERATED_SPECS } from "../../../src/statements/generated/catalog.js";
 
@@ -30,7 +31,10 @@ function regenerate(): StatementSpec[] {
   for (const file of readdirSync(SCHEMA_DIR).sort()) {
     if (!file.endsWith(".yaml")) continue;
     const result = schemaToSpec(parseYaml(readFileSync(join(SCHEMA_DIR, file), "utf8")));
-    if ("spec" in result) specs.push(result.spec);
+    if ("spec" in result) {
+      applySpecOverrides(result.spec);
+      specs.push(result.spec);
+    }
   }
   return specs.sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -47,5 +51,27 @@ describe("U9 codegen reproducibility", () => {
 
   it.skipIf(available)("skipped: cloud-client schema source not present", () => {
     expect(GENERATED_SPECS.length).toBeGreaterThan(0);
+  });
+});
+
+describe("upstream-schema overrides (applySpecOverrides)", () => {
+  const callTool = GENERATED_SPECS.find((s) => s.name === "mvp:mcp_call_tool");
+
+  it("mvp:mcp_call_tool `args` has no bogus default (#86.3)", () => {
+    const args = callTool?.rules.find((r) => r.field === "args");
+    expect(args).toBeDefined();
+    expect(args?.default).toBeUndefined();
+  });
+
+  it("mvp:mcp_call_tool `connection_type` keeps its legitimate 'sse' default (no over-scrub)", () => {
+    const ct = callTool?.rules.find((r) => r.field === "connection_type");
+    expect(ct?.default).toBe("sse");
+  });
+
+  it("the override is idempotent (re-applying leaves the scrubbed spec unchanged)", () => {
+    const spec = structuredClone(callTool!);
+    applySpecOverrides(spec);
+    expect(spec.rules.find((r) => r.field === "args")?.default).toBeUndefined();
+    expect(spec.rules.find((r) => r.field === "connection_type")?.default).toBe("sse");
   });
 });

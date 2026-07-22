@@ -1,8 +1,7 @@
 /**
  * Middleware kind (U8) → payload key `middleware`. Function-like
  * (input/run/result) plus `result_type` (merge|replace) and `exception`
- * (silent|rethrow|critical). Validated against `cloud-client: …/process/
- * schema:middleware`.
+ * (silent|rethrow|critical). Validated against the Xano engine's persisted shape.
  */
 import type { ResultItemXdo, StackItemXdo, InputXdo } from "../types/xdo.js";
 import { encodeStatement } from "../statements/statement.js";
@@ -20,7 +19,7 @@ export type ResultStrategy = "merge" | "replace";
 /**
  * What Xano does to the request when the middleware stack **throws** (e.g. a
  * tripped `s.redis.ratelimit`). SideStep passes the value through verbatim; the
- * engine (`Api\handler\ApiQuery` + `helper\Middleware`) interprets it:
+ * Xano engine interprets it:
  *
  * - `"silent"` **(default)** — the throw is swallowed; the host continues as if
  *   the middleware succeeded. For a guard (rate limit, auth check) this means the

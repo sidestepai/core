@@ -1,7 +1,7 @@
 /**
  * Task (scheduled/background job) kind (U8) → payload key `task`. Function-like
  * `run[]` plus a `schedule[]` of cron-like entries. Validated against
- * `cloud-client: …/transform-temp/schema:task.json`.
+ * the Xano engine's persisted shape.
  */
 import type { StackItemXdo } from "../types/xdo.js";
 import { encodeStatement } from "../statements/statement.js";

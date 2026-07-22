@@ -1,12 +1,11 @@
 /**
  * The canonical statement authoring-surface catalog — one entry per engine
- * statement schema file (`script/kind/schema/statement/*.yaml`), mapping the
- * surface key to its stored `mvp:` name. This is SDK metadata (it drives the
- * agent-grounding manifest and the coverage report), so it lives in `src` rather
- * than the test tree.
+ * statement schema, mapping the surface key to its stored `mvp:` name. This is
+ * SDK metadata (it drives the agent-grounding manifest and the coverage report),
+ * so it lives in `src` rather than the test tree.
  *
- * Two file-pairs share a stored name (so the catalog has fewer unique stored
- * names than files): `function.run`/`service.function.run` → `mvp:function`, and
+ * Two surface-pairs share a stored name (so the catalog has fewer unique stored
+ * names than surfaces): `function.run`/`service.function.run` → `mvp:function`, and
  * `util.get_raw_input`/`util.get_input` → `mvp:get_input`.
  */
 

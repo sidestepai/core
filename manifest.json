@@ -1,10 +1,10 @@
 {
   "name": "sidestep",
-  "version": "3.8.0",
+  "version": "3.9.0",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
-      "implemented": 11,
+      "implemented": 12,
       "total": 24
     },
     "statements": {
@@ -52,6 +52,11 @@
         "name": "c.array",
         "signature": "(a: Json[]) => Value",
         "description": "Array constant (JSON string) → tag \"const:array\". Plain JSON literals only — a nested tagged value is rejected, same as c.obj (issue #42)."
+      },
+      {
+        "name": "obj",
+        "signature": "(fields: Record<string, Value | nested>) => Value",
+        "description": "Dynamic object value → tag \"const:expr2\" (a XanoScript object-literal expression). The dynamic sibling of c.obj (issue #42): members may be inp/ref/auth/col/c.* values, nested records, or arrays. A value with filters, or a less-common tag (env/setting/output/…), is rejected. Use for e.g. s.ai.agent.run args."
       },
       {
         "name": "ref",
@@ -108,6 +113,7 @@
       "const:obj",
       "const:null",
       "const:expr",
+      "const:expr2",
       "var",
       "input",
       "auth",
@@ -164,10 +170,17 @@
       "registered": true
     },
     {
-      "kind": "toolset",
+      "kind": "mcp_server",
       "payloadKey": "toolset",
-      "authorFactory": "toolset.mcp / agent",
-      "registerMethod": "registerToolsets",
+      "authorFactory": "mcpServer",
+      "registerMethod": "registerMcpServers",
+      "registered": true
+    },
+    {
+      "kind": "agent",
+      "payloadKey": "toolset",
+      "authorFactory": "agent",
+      "registerMethod": "registerAgents",
       "registered": true
     },
     {
@@ -496,8 +509,7 @@
         {
           "name": "args",
           "type": "value",
-          "optional": true,
-          "default": "sse"
+          "optional": true
         }
       ]
     },
