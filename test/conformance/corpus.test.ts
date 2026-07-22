@@ -11,9 +11,21 @@ import { setVar } from "../../src/statements/set-var.js";
 import { expr } from "../../src/statements/conditional.js";
 import { arrayMap, arrayUnion, getRawInput, expectToThrow } from "../../src/statements/special/misc.js";
 import { aiAgentRun, cloudJob, cloudJobAwait, cloudJobStatus } from "../../src/statements/special/ai-cloud.js";
-import { agent } from "../../src/index.js";
+import {
+  dbBulkAdd,
+  dbBulkPatch,
+  dbBulkUpdate,
+  dbBulkDelete,
+  dbExternalQuery,
+} from "../../src/statements/special/db.js";
+import { agent, table, f } from "../../src/index.js";
 import { obj } from "../../src/values/obj.js";
-import { c, inp, ref, filter, withFilters } from "../../src/values/value.js";
+import { c, inp, ref, col, filter, withFilters } from "../../src/values/value.js";
+
+/** Table def reused by the bulk rows — its dbo guid derives from `name`. */
+const capUsers = table({ name: "cap_users", schema: { name: f.text({}) } });
+const capRows = () =>
+  withFilters(c.text('[{"name":"a"},{"name":"b"}]'), [filter("json_decode")]);
 
 /** Agent def reused by the call_agent row — its toolset guid derives from `canonical`. */
 const capAssistant = agent({
@@ -330,6 +342,40 @@ const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
     build: () => encodeStatement(cloudJobAwait({ ids: ref("job"), timeout: c.int(30) })),
   },
   { fixture: "cloud_job_status", build: () => encodeStatement(cloudJobStatus({ id: ref("job") })) },
+  // DB bulk ops + external SQL proven byte-exact against live captures (U7):
+  // context.dbo.id + lean input[items]; bulk.delete's context.search; external
+  // query's {code,response_type,connection_string_flex,arg} with NO context.parser.
+  {
+    fixture: "db_bulk_add",
+    build: () => encodeStatement(dbBulkAdd({ table: capUsers, items: capRows(), as: "r1" })),
+  },
+  {
+    fixture: "db_bulk_patch",
+    build: () => encodeStatement(dbBulkPatch({ table: capUsers, items: capRows(), as: "r2" })),
+  },
+  {
+    fixture: "db_bulk_update",
+    build: () => encodeStatement(dbBulkUpdate({ table: capUsers, items: capRows(), as: "r3" })),
+  },
+  {
+    fixture: "db_bulk_delete",
+    build: () =>
+      encodeStatement(
+        dbBulkDelete({ table: capUsers, where: expr(col("name"), "=", c.text("x")), as: "r4" }),
+      ),
+  },
+  {
+    fixture: "db_external_query",
+    build: () =>
+      encodeStatement(
+        dbExternalQuery({
+          engine: "postgres",
+          connectionString: c.text("postgres://localhost/db"),
+          sql: "SELECT 1",
+          responseType: "list",
+        }),
+      ),
+  },
   { fixture: "return-null", build: () => encodeStatement(returnValue(c.null())) },
   { fixture: "die", build: () => encodeStatement(die(c.int(123))) },
   { fixture: "debug_log", build: () => encodeStatement(debugLog(c.int(123))) },

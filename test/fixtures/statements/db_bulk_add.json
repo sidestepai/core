@@ -1,0 +1,47 @@
+{
+  "as": "r1",
+  "name": "mvp:dbo_bulkadd",
+  "_xsid": "f:f40ce37c-23cc-4d0e-a938-7120e40192e0",
+  "addon": [],
+  "input": [
+    {
+      "tag": "const:bool",
+      "name": "allow_id_field",
+      "value": "false",
+      "expand": false,
+      "ignore": false,
+      "filters": [],
+      "children": []
+    },
+    {
+      "tag": "const",
+      "name": "items",
+      "value": "[{\"name\":\"a\"},{\"name\":\"b\"}]",
+      "expand": false,
+      "ignore": false,
+      "filters": [
+        {
+          "arg": [],
+          "name": "json_decode",
+          "disabled": false
+        }
+      ],
+      "children": []
+    }
+  ],
+  "mocks": {},
+  "output": {
+    "items": [],
+    "filters": [],
+    "customize": false
+  },
+  "context": {
+    "dbo": {
+      "id": "cf2cc051dbe0137aabe753c9c1310d9e"
+    }
+  },
+  "runtime": null,
+  "disabled": false,
+  "description": "",
+  "settings_registry": null
+}

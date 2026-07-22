@@ -1,0 +1,38 @@
+{
+  "as": "r2",
+  "name": "mvp:dbo_bulkpatch",
+  "_xsid": "f:3e8835e0-a877-441b-afb9-5c4831e1ecf6",
+  "addon": [],
+  "input": [
+    {
+      "tag": "const",
+      "name": "items",
+      "value": "[{\"name\":\"a\"},{\"name\":\"b\"}]",
+      "expand": false,
+      "ignore": false,
+      "filters": [
+        {
+          "arg": [],
+          "name": "json_decode",
+          "disabled": false
+        }
+      ],
+      "children": []
+    }
+  ],
+  "mocks": {},
+  "output": {
+    "items": [],
+    "filters": [],
+    "customize": false
+  },
+  "context": {
+    "dbo": {
+      "id": "cf2cc051dbe0137aabe753c9c1310d9e"
+    }
+  },
+  "runtime": null,
+  "disabled": false,
+  "description": "",
+  "settings_registry": null
+}
