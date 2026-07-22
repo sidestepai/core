@@ -365,6 +365,30 @@ describe("InferResponse — single-variable trace (U5, type-level)", () => {
     expectTypeOf<InferResponse<typeof bulkAddLinks>>().toEqualTypeOf<unknown>();
   });
 
+  it("a dotted ref projects a column out of a traced db row (#93)", () => {
+    const slugOf = query({
+      verb: "GET",
+      apiGroup: links,
+      name: "slug_of",
+      stack: [s.db.get({ table: link, fieldValue: c.int(1), as: "row" })],
+      response: ref("row.slug"),
+    });
+    expect(slugOf.name).toBe("slug_of");
+    expectTypeOf<InferResponse<typeof slugOf>>().toEqualTypeOf<string>();
+  });
+
+  it("a dotted ref into an untraceable (set_var) base stays unknown", () => {
+    const dottedSetVar = query({
+      verb: "GET",
+      apiGroup: links,
+      name: "dotted_set_var",
+      stack: [s.set_var("computed", c.int(1))],
+      response: ref("computed.whatever"),
+    });
+    expect(dottedSetVar.name).toBe("dotted_set_var");
+    expectTypeOf<InferResponse<typeof dottedSetVar>>().toEqualTypeOf<unknown>();
+  });
+
   it("defineFunction carries a declared responseShape identically", () => {
     expectTypeOf<InferResponse<typeof computeStats>>().toEqualTypeOf<{ total: number }>();
   });

@@ -44,8 +44,9 @@ const askStructured = query({
   response: ref("answer"),
 });
 
-// Dotted ref: intentionally still `unknown` — dotted-path narrowing across the
-// shared InferResponse trace is deferred (see plan KTD-1 / Scope Boundaries).
+// Dotted ref: projects the `.result` completion out of the traced envelope (#93)
+// — `string` by default, so `responseShape` is no longer needed for the common
+// "return just the completion" case.
 const askDotted = query({
   verb: "POST",
   apiGroup: api,
@@ -54,9 +55,45 @@ const askDotted = query({
   response: ref("answer.result"),
 });
 
+// Dotted ref against a structured-output agent: `.result` narrows to the object.
+const askDottedStructured = query({
+  verb: "POST",
+  apiGroup: api,
+  name: "ask_dotted_structured",
+  stack: [s.ai.agent.run({ agent: "classifier", as: "answer", resultShape: {} as { sentiment: string } })],
+  response: ref("answer.result"),
+});
+
+// Dotted ref wrapped in an object literal — the endgame the issue describes:
+// `{ text: ref("answer.result") }` now types `text` to the completion.
+const askDottedWrapped = query({
+  verb: "POST",
+  apiGroup: api,
+  name: "ask_dotted_wrapped",
+  stack: [s.ai.agent.run({ agent: "assistant", as: "answer" })],
+  response: { text: ref("answer.result") },
+});
+
+// A dotted ref whose head names no bound variable stays `unknown` (honest floor).
+const askDottedUntraceable = query({
+  verb: "POST",
+  apiGroup: api,
+  name: "ask_dotted_untraceable",
+  stack: [s.ai.agent.run({ agent: "assistant", as: "answer" })],
+  response: ref("missing.result"),
+});
+
 describe("InferResponse — s.ai.agent.run brand (#89, type-level)", () => {
   it("fixtures construct (runtime touch)", () => {
-    const names = [askEnvelope.name, askWrapped.name, askStructured.name, askDotted.name];
+    const names = [
+      askEnvelope.name,
+      askWrapped.name,
+      askStructured.name,
+      askDotted.name,
+      askDottedStructured.name,
+      askDottedWrapped.name,
+      askDottedUntraceable.name,
+    ];
     expect(names.every((n) => n.length > 0)).toBe(true);
   });
 
@@ -77,7 +114,19 @@ describe("InferResponse — s.ai.agent.run brand (#89, type-level)", () => {
     expectTypeOf<InferResponse<typeof askStructured>["result"]>().toEqualTypeOf<{ sentiment: string }>();
   });
 
-  it("a dotted ref stays unknown (deferred boundary — documents the conscious limit)", () => {
-    expectTypeOf<InferResponse<typeof askDotted>>().toEqualTypeOf<unknown>();
+  it("a dotted ref projects the completion: ref('answer.result') → string (#93)", () => {
+    expectTypeOf<InferResponse<typeof askDotted>>().toEqualTypeOf<string>();
+  });
+
+  it("a dotted ref narrows to the structured .result type", () => {
+    expectTypeOf<InferResponse<typeof askDottedStructured>>().toEqualTypeOf<{ sentiment: string }>();
+  });
+
+  it("a dotted ref inside an object literal resolves that key to the completion", () => {
+    expectTypeOf<InferResponse<typeof askDottedWrapped>>().toEqualTypeOf<{ text: string }>();
+  });
+
+  it("a dotted ref whose head names no binding stays unknown (honest floor)", () => {
+    expectTypeOf<InferResponse<typeof askDottedUntraceable>>().toEqualTypeOf<unknown>();
   });
 });

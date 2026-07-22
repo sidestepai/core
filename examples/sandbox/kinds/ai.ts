@@ -47,9 +47,9 @@ export const assistant = agent({
  * The `as` var is the rich result ENVELOPE, not the completion — the model's text
  * is at **`.result`** (alongside `finishReason`, `providerMetadata`, `steps`, …).
  * So return `ref("answer.result")` to ship the text; returning `ref("answer")`
- * bare would ship the whole metadata object. `{ safe: true }` makes the nested
- * access null-safe. `ref("answer")` is typed as `AgentRunResult`, so
- * `InferResponse` sees the real shape either way.
+ * bare would ship the whole metadata object. The dotted ref is typed: it projects
+ * `.result` off the `AgentRunResult` envelope, so `InferResponse` sees `{ text:
+ * string }` here with no `responseShape` (#93).
  */
 export const askAssistant = query({
   name: "ex_ask_assistant",
@@ -57,8 +57,7 @@ export const askAssistant = query({
   apiGroup: api,
   input: { question: input.text({ required: true }) },
   stack: [s.ai.agent.run({ agent: assistant, args: obj({ question: inp("question") }), as: "answer" })],
-  response: { text: ref("answer.result", { safe: true }) },
-  responseShape: { text: "" as string },
+  response: { text: ref("answer.result") },
 });
 
 /**

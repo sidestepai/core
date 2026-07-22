@@ -97,6 +97,8 @@ export interface AiAgentRunArgs<As extends string = "", R = string> {
  * Branded with `AsShapeBrand<As, AgentRunResult<R>>` (like the `db.*` producers)
  * so `ref(as)` traces to the typed {@link AgentRunResult} envelope via
  * `InferResponse` instead of `unknown` — the completion is at `.result` (#89).
+ * A dotted `ref("<as>.result")` now projects that completion directly (#93), so
+ * the common "return just the answer" endpoint no longer needs a `responseShape`.
  * The brand is phantom; the emitted statement bytes are unchanged.
  */
 export function aiAgentRun<const As extends string = "", R = string>(
