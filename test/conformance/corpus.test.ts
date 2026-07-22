@@ -10,7 +10,22 @@ import { forLoop, foreachLoop, whileLoop, group } from "../../src/statements/spe
 import { setVar } from "../../src/statements/set-var.js";
 import { expr } from "../../src/statements/conditional.js";
 import { arrayMap, arrayUnion, getRawInput, expectToThrow } from "../../src/statements/special/misc.js";
+import { aiAgentRun, cloudJob, cloudJobAwait, cloudJobStatus } from "../../src/statements/special/ai-cloud.js";
+import { agent } from "../../src/index.js";
+import { obj } from "../../src/values/obj.js";
 import { c, inp, ref, filter, withFilters } from "../../src/values/value.js";
+
+/** Agent def reused by the call_agent row — its toolset guid derives from `canonical`. */
+const capAssistant = agent({
+  name: "cap_assistant",
+  canonical: "cap-assistant-agent",
+  llm: {
+    type: "xano-free",
+    systemPrompt: "You are helpful.",
+    prompt: "Answer: {{ $args.question }}",
+    maxSteps: 5,
+  },
+});
 
 /** Build a generated statement by name (for families without an ergonomic factory). */
 const stmt = (name: string, authored: Authored) => encodeStatement(getStatementFactory(name)(authored));
@@ -295,6 +310,26 @@ const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
     fixture: "test_expect_to_throw",
     build: () => encodeStatement(expectToThrow({ body: [setVar("x4", c.int(1))] })),
   },
+  // AI agent run + cloud jobs proven byte-exact against live captures (U6).
+  // call_agent doubles as the obj() rendered-string proof: its object-literal
+  // `args` render into a `const:expr` value the golden pins.
+  {
+    fixture: "call_agent",
+    build: () =>
+      encodeStatement(
+        aiAgentRun({ agent: capAssistant, args: obj({ question: inp("question") }), as: "answer" }),
+      ),
+  },
+  {
+    fixture: "cloud_job",
+    build: () =>
+      encodeStatement(cloudJob({ image: c.text("alpine"), command: c.text("echo hi"), await: c.int(60) })),
+  },
+  {
+    fixture: "cloud_job_await",
+    build: () => encodeStatement(cloudJobAwait({ ids: ref("job"), timeout: c.int(30) })),
+  },
+  { fixture: "cloud_job_status", build: () => encodeStatement(cloudJobStatus({ id: ref("job") })) },
   { fixture: "return-null", build: () => encodeStatement(returnValue(c.null())) },
   { fixture: "die", build: () => encodeStatement(die(c.int(123))) },
   { fixture: "debug_log", build: () => encodeStatement(debugLog(c.int(123))) },

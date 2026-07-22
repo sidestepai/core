@@ -1,0 +1,28 @@
+{
+  "as": "",
+  "name": "mvp:cloud_job_status",
+  "_xsid": "f:6c7c33b5-dab6-4257-8653-14a1f9107f6d",
+  "addon": [],
+  "input": [
+    {
+      "tag": "var",
+      "name": "id",
+      "value": "job",
+      "expand": false,
+      "ignore": false,
+      "filters": [],
+      "children": []
+    }
+  ],
+  "mocks": {},
+  "output": {
+    "items": [],
+    "filters": [],
+    "customize": false
+  },
+  "context": {},
+  "runtime": null,
+  "disabled": false,
+  "description": "",
+  "settings_registry": null
+}

@@ -1,0 +1,37 @@
+{
+  "as": "",
+  "name": "mvp:cloud_job_await",
+  "_xsid": "f:fc7ef299-9ac9-4fb2-ae52-eb19ad7e13ea",
+  "addon": [],
+  "input": [
+    {
+      "tag": "var",
+      "name": "ids",
+      "value": "job",
+      "expand": false,
+      "ignore": false,
+      "filters": [],
+      "children": []
+    },
+    {
+      "tag": "const:int",
+      "name": "timeout",
+      "value": "30",
+      "expand": false,
+      "ignore": false,
+      "filters": [],
+      "children": []
+    }
+  ],
+  "mocks": {},
+  "output": {
+    "items": [],
+    "filters": [],
+    "customize": false
+  },
+  "context": {},
+  "runtime": null,
+  "disabled": false,
+  "description": "",
+  "settings_registry": null
+}

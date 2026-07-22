@@ -1,0 +1,32 @@
+{
+  "as": "answer",
+  "name": "mvp:call_agent",
+  "_xsid": "f:7daec163-3a02-460a-a60d-acad62738330",
+  "addon": [],
+  "input": [
+    {
+      "tag": "const:expr2",
+      "name": "args",
+      "value": "{ question: $input.question }",
+      "expand": false,
+      "ignore": false,
+      "filters": [],
+      "children": []
+    }
+  ],
+  "mocks": {},
+  "output": {
+    "items": [],
+    "filters": [],
+    "customize": false
+  },
+  "context": {
+    "toolset": {
+      "id": "68906cb3e8dbeeed4062866fc37fb063"
+    }
+  },
+  "runtime": null,
+  "disabled": false,
+  "description": "",
+  "settings_registry": null
+}

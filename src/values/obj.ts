@@ -18,10 +18,9 @@
  * representation that resolves live references inside an object literal. That
  * choice is therefore runtime-verified, not a preference.
  *
- * @TODO(byte-verify): the *encoding* is confirmed against the runtime evaluator;
- * what remains unproven by a golden deep-equal is the exact rendered string for
- * a given input (spacing/escaping) — no `call_agent` object-args fixture exists.
- * Lock the string form once one is available.
+ * The rendered string form (spacing/escaping) is now golden-verified: the
+ * `call_agent` object-args fixture in the conformance corpus pins the exact
+ * `const:expr` string this encoder emits for `obj({ question: inp(...) })`.
  *
  * **Supported members:** `inp()`, `ref()`, `auth()`, `col()`, `c.text/int/
  * decimal/bool/null`, nested `obj`-style records, and arrays of those. A value
