@@ -10,3 +10,7 @@ CLAUDE.md
 .env
 .env.local
 validate-out/
+
+# Claude Code skill eval artifacts + transient worktrees (skill sources are committed)
+.claude/skills/*-workspace/
+.claude/worktrees/

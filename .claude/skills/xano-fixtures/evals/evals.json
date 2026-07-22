@@ -1,0 +1,26 @@
+{
+  "skill_name": "xano-fixtures",
+  "evals": [
+    {
+      "id": 0,
+      "name": "add-fixture-bitwise-or",
+      "prompt": "Let's knock `bitwise_or` off the byte-verify worklist. Wire up its conformance fixture and corpus row.",
+      "expected_output": "Places golden JSON at test/fixtures/statements/bitwise_or.json (unmodified engine output, server keys kept), adds a {fixture:\"bitwise_or\", build: () => ...} row to STATEMENT_CORPUS in test/conformance/corpus.test.ts using the bitwiseOr/generated factory with value constructors read from the fixture input[], and runs `npm test -- corpus`. Does NOT hand-edit the fixture.",
+      "files": []
+    },
+    {
+      "id": 1,
+      "name": "interpret-diff-branch-b",
+      "prompt": "My new `array_merge` conformance test is red. The diff shows my compiled output has `tag: \"const:int\"` on the second argument but the golden has `tag: \"const:text\"`. Can I just add a normalize rule to ignore the tag difference so it passes?",
+      "expected_output": "Answers NO. Identifies this as a real encoder bug (Branch B) — a tag mismatch is authored intent, not engine bookkeeping. Directs fixing the statement factory / value constructor in src/, NOT editing the fixture and NOT adding a normalizer strip rule. Explains that stripping it would turn off the oracle.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "capture-from-live-send-email",
+      "prompt": "I've got a local Docker Xano running. I want to source a golden for the `send_email` statement off it and get it into the test suite properly.",
+      "expected_output": "Sets up .env from .env.example (XANO_VALIDATE_INSTANCE=http://localhost:8080 style, XANO_VALIDATE_TOKEN, token never a CLI flag), runs `sidestep validate <entry> --capture --out validate-out`, treats captured JSON as a candidate (not auto-promoted), then manually promotes into test/fixtures/statements/ + wires a corpus row + runs the corpus test. Notes .env is gitignored.",
+      "files": []
+    }
+  ]
+}
