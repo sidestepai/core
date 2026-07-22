@@ -36,8 +36,10 @@ import { getLockedGuid } from "../lock/store.js";
  *
  * Every top-level object the engine tracks by guid belongs here. The guid's
  * *type* prefix is the kind's `payloadKey` (the engine's migrate type):
- * function/query/tool/toolset/task/trigger/middleware/addon map name-for-name;
- * `table` → `dbo`, `api_group` → `app`. A reference (call/db statement, or a
+ * function/query/tool/task/trigger/middleware/addon map name-for-name;
+ * `table` → `dbo`, `api_group` → `app`, and `mcp_server`/`agent` → `toolset`
+ * (both AI primitives share the toolset migrate type). A reference (call/db
+ * statement, a trigger's toolset binding, or a
  * query's `app` binding) resolves its target with that same migrate type, so
  * both sides agree.
  */

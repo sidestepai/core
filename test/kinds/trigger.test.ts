@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { trigger, encodeTrigger } from "../../src/kinds/trigger.js";
+import { mcpServer } from "../../src/kinds/mcp-server.js";
+import { agent } from "../../src/kinds/agent.js";
+import { deriveGuid } from "../../src/refs/guid.js";
 import { Xano } from "../../src/workspace/xano.js";
 import { setVar } from "../../src/statements/set-var.js";
 import { c } from "../../src/values/value.js";
@@ -85,6 +88,28 @@ describe("trigger kind — envelope + obj_type discrimination", () => {
     const t = encodeTrigger(trigger.agent({ name: "a", objId: 2 }));
     expect(t.obj_type).toBe("toolset");
     expect(t.meta).toEqual(metaOf("agent"));
+  });
+
+  it("mcp_server trigger binds by handle → md5('toolset:'+name) guid (guid-stable, not id)", () => {
+    const server = mcpServer({ name: "books" });
+    const t = encodeTrigger(trigger.mcpServer({ name: "m", mcpServer: server }));
+    expect(t.obj_id).toBe(deriveGuid("toolset", "books"));
+    // Binding by bare name resolves identically.
+    const byName = encodeTrigger(trigger.mcpServer({ name: "m", mcpServer: "books" }));
+    expect(byName.obj_id).toBe(deriveGuid("toolset", "books"));
+  });
+
+  it("agent trigger binds by handle → the same toolset guid the agent stamps", () => {
+    const a = agent({ name: "assistant", llm: { type: "xano-free" } });
+    const t = encodeTrigger(trigger.agent({ name: "a", agent: a }));
+    expect(t.obj_id).toBe(deriveGuid("toolset", "assistant"));
+  });
+
+  it("toolset trigger: raw objId escape hatch still works; handle wins over objId", () => {
+    expect(encodeTrigger(trigger.mcpServer({ name: "m", objId: 7 })).obj_id).toBe(7);
+    // Handle takes precedence over a raw objId (mirrors the table trigger).
+    const t = encodeTrigger(trigger.mcpServer({ name: "m", mcpServer: "books", objId: 7 }));
+    expect(t.obj_id).toBe(deriveGuid("toolset", "books"));
   });
 
   it("workspace trigger: obj_type=workspace, branch actions, config-only", () => {
