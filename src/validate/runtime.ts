@@ -1,7 +1,7 @@
 /**
  * Runtime execution (R3): prove deployed logic actually runs, not just that it
  * imports and round-trips. Two paths — run a workspace function via the meta
- * debugger, or invoke a deployed public API at `/api:{canonical}/...` (the
+ * function-run route, or invoke a deployed public API at `/api:{canonical}/...` (the
  * canonical is resolved from the workspace, never guessed; KTD-6).
  *
  * `smokeRunFunctions` is the generally-applicable default the `--runtime` flag

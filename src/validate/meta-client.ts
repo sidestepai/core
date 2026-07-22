@@ -128,7 +128,7 @@ export class MetaClient {
       .filter((g) => Number.isFinite(g.id));
   }
 
-  /** Run a named workspace function via the meta debugger; returns status + parsed body. */
+  /** Run a named workspace function via the meta function-run route; returns status + parsed body. */
   runFunction(workspaceId: number, name: string, input?: unknown): Promise<InvokeResult> {
     return this.postJson(`/api:meta/workspace/${workspaceId}/function/run`, { name, input: input ?? {} });
   }

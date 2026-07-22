@@ -4,7 +4,7 @@
  * This is engineer tooling, not a consumer product: the target instance is a
  * plain base-URL + bearer token, read from the environment (a cwd `.env` is
  * autoloaded when present). No OAuth, no login handshake — the engineer supplies
- * a token they already have. Switching cloud-dev ↔ local Docker is just a
+ * a token they already have. Switching a cloud instance ↔ local Docker is just a
  * different `XANO_VALIDATE_INSTANCE`.
  *
  * Node-only (reads process.env / the filesystem); lazily imported by the command
