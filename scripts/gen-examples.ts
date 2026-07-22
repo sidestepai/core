@@ -10,7 +10,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { GENERATED_SPECS } from "../src/statements/generated/specs.generated.js";
 
-const ROOT = fileURLToPath(new URL("../examples/implementations", import.meta.url));
+const ROOT = fileURLToPath(new URL("../examples/sandbox", import.meta.url));
 const manifest = JSON.parse(readFileSync(fileURLToPath(new URL("../manifest.json", import.meta.url)), "utf8"));
 
 /** storedName -> public sPath (e.g. "mvp:array_find" -> "array.find"). */

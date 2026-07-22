@@ -1,5 +1,5 @@
 /**
- * Generate `examples/implementations/_auto.ts` — the barrel that imports every
+ * Generate `examples/sandbox/_auto.ts` — the barrel that imports every
  * statement / value / filter / field example and buckets each exported def by
  * kind (a table has `schema`, a query has `verb`, everything else is a function).
  *
@@ -10,7 +10,7 @@ import { readdirSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ROOT = fileURLToPath(new URL("../examples/implementations", import.meta.url));
+const ROOT = fileURLToPath(new URL("../examples/sandbox", import.meta.url));
 const AUTO_DIRS = ["statements", "values", "filters", "fields"];
 
 function walk(dir: string): string[] {
@@ -74,4 +74,4 @@ export { autoTables, autoQueries, autoFunctions };
 `;
 
 writeFileSync(join(ROOT, "_auto.ts"), body);
-console.log(`Wrote examples/implementations/_auto.ts (${files.length} modules).`);
+console.log(`Wrote examples/sandbox/_auto.ts (${files.length} modules).`);

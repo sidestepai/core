@@ -1,4 +1,4 @@
-# Implementation examples
+# Sandbox — implementation examples
 
 A **full, deployable sandbox** demonstrating every primitive and statement in
 `@sidestep/core`. One file per statement / filter / field type / value

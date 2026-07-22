@@ -60,7 +60,7 @@
     "release": "npm publish --access public",
     "release:beta": "npm version prerelease --preid=beta -m \"chore(release): %s\" && npm publish --tag beta --access public",
     "examples:index": "tsx scripts/gen-examples-index.ts",
-    "examples:check": "npm run examples:index && tsc --noEmit -p examples/implementations/tsconfig.json",
+    "examples:check": "npm run examples:index && tsc --noEmit -p examples/sandbox/tsconfig.json",
     "examples:statements": "tsx scripts/gen-examples.ts",
     "examples:filters": "tsx scripts/gen-filters.ts",
     "examples:gen": "tsx scripts/gen-examples.ts && tsx scripts/gen-filters.ts && tsx scripts/gen-examples-index.ts"

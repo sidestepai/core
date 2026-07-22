@@ -1,5 +1,5 @@
 /**
- * Guarantees the `examples/implementations` sandbox stays a valid, deployable
+ * Guarantees the `examples/sandbox` stays a valid, deployable
  * Xano workspace: it must `export()` cleanly with every object kind represented.
  * If an example drifts out of sync with the SDK, this fails loudly.
  *
@@ -11,9 +11,9 @@
  */
 import { describe, it, expect, beforeAll } from "vitest";
 
-const INDEX = "../examples/implementations/index.js";
+const INDEX = "../examples/sandbox/index.js";
 
-describe("examples/implementations sandbox", () => {
+describe("examples/sandbox", () => {
   let payload: Record<string, unknown[]>;
   let sig: unknown;
 

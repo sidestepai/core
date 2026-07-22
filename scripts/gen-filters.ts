@@ -9,7 +9,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { FILTER_NAMES, FILTER_SPECS } from "../src/values/generated/filters.generated.js";
 
-const ROOT = fileURLToPath(new URL("../examples/implementations/filters", import.meta.url));
+const ROOT = fileURLToPath(new URL("../examples/sandbox/filters", import.meta.url));
 
 function groupDir(g?: string): string {
   if (!g || g === "?") return "misc";
