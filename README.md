@@ -455,8 +455,10 @@ const assistant = agent({
 query({
   name: "ask", verb: "POST", apiGroup: api,
   input: { question: input.text({ required: true }) },
-  stack: [s.ai.agent.run({ agent: assistant, args: inp("question"), as: "answer" })],
-  response: ref("answer"),
+  stack: [s.ai.agent.run({ agent: assistant, args: obj({ question: inp("question") }), as: "answer" })],
+  // The completion is at `.result` — see "Agent run result" below.
+  response: { text: ref("answer.result", { safe: true }) },
+  responseShape: { text: "" as string },
 });
 ```
 
@@ -465,6 +467,36 @@ query({
 `reasoningEffort`, `thinkingTokens`, `searchGrounding`, …), mapped to the engine's
 camelCase `configs.<provider>` keys. A connection trigger binds its target with
 `trigger.mcpServer({ mcpServer })` / `trigger.agent({ agent })`.
+
+**Agent run result.** The `as` variable of `s.ai.agent.run` is a **rich envelope**, not
+the bare completion — the model's text is nested under **`.result`**:
+
+```ts
+// shape of the `answer` var:
+{ result, finishReason, providerMetadata, reasoningDetails, steps, /* toolCalls?, usage?, … */ }
+```
+
+So `ref("answer.result")` returns the text; a bare `ref("answer")` returns the whole
+metadata object. `ref("answer")` is typed as `AgentRunResult`, so `InferResponse` reflects
+the real shape (it is no longer `unknown`). `result` is a `string` for a text agent; for a
+structured-output agent narrow it with the type-only `resultShape` witness:
+`s.ai.agent.run({ agent, as: "answer", resultShape: {} as { sentiment: string } })`.
+
+**MCP endpoint URL.** An `mcpServer()` handle derives its endpoint from the def — no
+hardcoding, the same contract `query.getPath()` gives API endpoints:
+
+```ts
+const books = mcpServer({ name: "books", canonical: "books", tools: [/* … */] });
+books.getUrl(HOST);  // https://<host>/x2/mcp/books/mcp/stream   (Streamable HTTP)
+books.getPath();     // /x2/mcp/books/mcp/stream
+```
+
+It targets **Streamable HTTP** (the deprecated HTTP+SSE transport is not surfaced). The
+`mcp` path segment is the token slot — the literal `mcp` means "no URL auth" (pass a
+`Authorization: Bearer …` header, or embed a token via `getUrl(HOST, { token })`). The
+`canonical` resolves from the def (or `xano.lock`), exactly like a query's. Agents have no
+public endpoint (they run in-stack via `s.ai.agent.run`), so `agent()` exposes only
+`getCanonical()`, not a URL.
 
 **Run inputs → agent (Twig templating).** At run time Xano renders the agent's **string**
 settings through Twig before the LLM call. The `args` you pass to `s.ai.agent.run({ args })`
