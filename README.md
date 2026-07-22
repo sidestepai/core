@@ -480,6 +480,45 @@ runtime, which `InferResponse` can't see — declare `responseShape` on the endp
 Distinct from `s.middleware.call` (invoke a middleware inline from a stack). Branch-tier
 middleware is not modeled — SideStep does not touch branches.
 
+**`exceptionPolicy` — what a throw does to the request.** SideStep passes the value through; Xano
+interprets it. `"silent"` **(the default)** swallows the throw — the host continues as if the
+middleware succeeded, so a guard (rate limit, auth check) authored without an explicit policy is
+**not enforced**. `"rethrow"` aborts the request and surfaces the authored `error`/status (a
+tripped `s.redis.ratelimit` → HTTP 429); the `post` chain still runs — this is what a guard wants.
+`"critical"` is like `"rethrow"` (same status) but additionally **skips the entire `post` chain**.
+The only difference between the two is whether `post` runs.
+
+**Request context & the `auth()` guard.** A `pre` middleware runs *after* auth resolution, so
+`auth("id")` is the caller's id when the host is authenticated (its `auth` names an auth table) and
+`null` on a public host. That `null` is the footgun: a rate limit keyed by `auth("id")` on a public
+endpoint collapses every caller into one shared bucket, silently. `export()` **throws** when an
+`auth()`-keyed middleware is directly attached to a host with no request identity — a `query` with
+no auth table, or a `task` — and **warns** for a `function`/`tool` (auth is caller-dependent). The
+check is direct-attachment only; tier-inherited attachment is not caught.
+
+**Rate-limit recipe (the canonical middleware).** Build the per-user key with the filter chain
+(`"prefix" + auth("id")` doesn't exist):
+
+```ts
+const writeRl = middleware({
+  name: "write_rl",
+  exceptionPolicy: "rethrow", // a tripped limit must abort (silent would let it through)
+  stack: [
+    s.redis.ratelimit({
+      key: withFilters(c.text("rl:write:"), fl.concat(auth("id"))), // "rl:write:<id>"
+      max: c.int(10), ttl: c.int(30), error: c.text("Too fast."),
+    }),
+  ],
+});
+
+query({ name: "create_post", verb: "POST", apiGroup: blog, auth: users, // authed ⇒ auth("id") is per-user
+  middleware: { pre: [writeRl] }, stack: [/* ... */], response: ref("post") });
+```
+
+**Shared-bucket rule:** co-attaching one middleware object to N hosts means all N share the *same*
+key ⇒ *one* counter — `max: 10` is a global per-user budget across them, not 10-per-host. Vary the
+key (fold the host/action name into the prefix) for an independent limit per host.
+
 </details>
 
 <details>
