@@ -437,9 +437,10 @@ name collide** (both derive `md5("toolset:"+name)`). A `tool({...})` is its own 
 function-like operation both reference by handle.
 
 ```ts
-// An MCP server exposes tools over the MCP protocol. Auth is PER-TOOL
-// (tool[].auth) — Xano has no server-level auth gate.
-mcpServer({ name: "books", tools: [{ tool: searchTool }] });
+// An MCP server exposes tools over the MCP protocol. Auth is PER-TOOL and works
+// exactly like a query's auth — name an auth table({ auth: true }); it resolves
+// to the table's guid (Xano has no server-level auth gate).
+mcpServer({ name: "books", tools: [{ tool: searchTool, auth: users }] });
 
 // An agent is an LLM orchestrator. The typed `llm` block maps onto the engine's
 // real agent_settings wire shape (provider config nested under configs.<provider>).
@@ -464,6 +465,14 @@ query({
 `reasoningEffort`, `thinkingTokens`, `searchGrounding`, …), mapped to the engine's
 camelCase `configs.<provider>` keys. A connection trigger binds its target with
 `trigger.mcpServer({ mcpServer })` / `trigger.agent({ agent })`.
+
+**Run inputs → agent (Twig templating).** At run time Xano renders the agent's **string**
+settings through Twig before the LLM call. The `args` you pass to `s.ai.agent.run({ args })`
+become the `{{ $args }}` namespace (env vars are `{{ $env.NAME }}`) — this is how an
+endpoint's inputs reach the prompt. Templatable: `systemPrompt`, `prompt`/`messages`,
+`model`, `maxSteps`, and every **string** provider-config field. Numeric/boolean fields
+(e.g. `temperature`) are not templated. Example: `systemPrompt: "Greet {{ $args.name }}."`
+invoked with `s.ai.agent.run({ agent, args: obj })`.
 
 **Middleware attachment** — a `middleware({...})` is reusable logic (`input`/`stack`/
 `response` + `resultStrategy: "merge"|"replace"` + `exceptionPolicy: "silent"|"rethrow"|

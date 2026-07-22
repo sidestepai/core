@@ -350,6 +350,8 @@ export type {
   ToolsetBaseXdo,
   ToolsetToolRef,
 } from "./kinds/toolset.js";
+export { resolveAuthRef } from "./refs/auth.js";
+export type { AuthRef } from "./refs/auth.js";
 
 // Workspace registry + aggregate export
 export { Xano, workspace } from "./workspace/xano.js";

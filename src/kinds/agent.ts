@@ -27,6 +27,32 @@
  * @TODO(byte-verify): the wire shape is hand-modeled from the transform +
  * fixtures, not a golden export deep-equal (KTD-6). Lock it with a fixture when
  * an engine-authored agent export is available.
+ *
+ * ## Templating: how run inputs reach the agent
+ *
+ * At run time Xano renders the agent's **string** settings through Twig
+ * (`MCP::runCallAgent`, cloud-client) *before* the LLM call, so config values
+ * are dynamic per invocation. Two variable namespaces are exposed:
+ *   - `$args` — the `args` object passed to `s.ai.agent.run({ args })` (the
+ *     `mvp:call_agent` input). This is where an endpoint's inputs enter the agent.
+ *   - `$env` — workspace environment variables.
+ *
+ * Write placeholders as `{{ $args.propertyName }}` / `{{ $env.NAME }}` (full
+ * Twig: nesting `{{ $args.user.email }}`, indexing `{{ $args.items[0] }}`,
+ * filters `{{ $args.q|upper }}`). Templated fields: `systemPrompt`, `prompt` /
+ * `messages`, `model`, `maxSteps`, and every **string** provider-config field
+ * (`apiKey`, `baseURL`, `headers`, `model`, `organization`, `project`,
+ * `reasoningEffort`, …). Numeric/boolean fields (notably `temperature`) are
+ * NOT templated — they're stored as typed literals. So an author references a
+ * run input like:
+ *
+ * ```ts
+ * agent({ name: "greeter", llm: {
+ *   type: "xano-free",
+ *   systemPrompt: "You greet {{ $args.name }} in {{ $args.locale }}.",
+ * }});
+ * // invoked via: s.ai.agent.run({ agent: greeter, args: obj({ name: inp("name"), locale: c.text("en") }) })
+ * ```
  */
 import { registerKind } from "./kind.js";
 import type { ObjectKind } from "./kind.js";
@@ -36,15 +62,19 @@ import type { ToolsetBaseXdo, ToolsetToolRef } from "./toolset.js";
 /** The LLM provider — the `agent_settings.type` value and the `configs` key. */
 export type LlmProvider = "xano-free" | "openai" | "anthropic" | "google-genai";
 
-/** Fields common to every provider's LLM settings. */
+/**
+ * Fields common to every provider's LLM settings. String fields accept Twig
+ * placeholders (`{{ $args.x }}` for run inputs, `{{ $env.X }}` for env vars) —
+ * see the module header for the full templating contract.
+ */
 interface LlmCommon {
-  /** The agent's system prompt (`agent_settings.system_prompt`). */
+  /** The agent's system prompt (`agent_settings.system_prompt`). Templatable. */
   systemPrompt?: string;
   /** Max reasoning/tool steps (`agent_settings.max_steps`). Defaults to 5. */
   maxSteps?: number;
-  /** A single prompt string (`prompt_type:"prompt"`). Mutually exclusive with `messages`. */
+  /** A single prompt string (`prompt_type:"prompt"`). Templatable. Mutually exclusive with `messages`. */
   prompt?: string;
-  /** A messages template (`prompt_type:"messages"`). Mutually exclusive with `prompt`. */
+  /** A messages template (`prompt_type:"messages"`). Templatable. Mutually exclusive with `prompt`. */
   messages?: string;
   /**
    * Forward-compat escape hatch: extra keys merged into `configs.<provider>`

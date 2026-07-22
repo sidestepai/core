@@ -25,7 +25,14 @@ export interface AiAgentRunArgs {
   /** The target agent (toolset of type agent — def handle or name). */
   agent: ObjectRef;
   as?: string;
-  /** Run arguments passed to the agent. */
+  /**
+   * Run arguments passed to the agent — typically an object. This value becomes
+   * the agent's `$args` Twig namespace: the agent's string settings (system
+   * prompt, prompt, model, provider config) reference these inputs as
+   * `{{ $args.propertyName }}`, resolved per invocation before the LLM call.
+   * (Workspace env vars are `{{ $env.NAME }}`.) See `kinds/agent.ts` for the
+   * full templating rules.
+   */
   args?: Value;
   /** Whether the agent may execute its tools. */
   allowToolExecution?: Value;

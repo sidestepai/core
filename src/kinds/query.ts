@@ -20,6 +20,7 @@ import type { MiddlewareAttach } from "./middleware-attach.js";
 import type { ApiGroupDef } from "./api-group.js";
 import type { TableDef } from "./table.js";
 import { resolveRef } from "../refs/guid.js";
+import { resolveAuthRef } from "../refs/auth.js";
 import { lockKey } from "../lock/lock.js";
 import { getLockedCanonical } from "../lock/store.js";
 
@@ -187,50 +188,18 @@ function defaultCache(override?: Partial<CacheXdo>): CacheXdo {
 
 /**
  * Resolve a query's `auth` to what the engine stores: `false` (no auth), a raw
- * numeric `dbo.id` (escape hatch), or the auth table's guid. A `TableDef` handle
- * or bare table name flows through `resolveRef("dbo", …)` — the same guid path
- * `apiGroup` uses — so the reference stays stable across syncs and any number of
- * auth tables coexist (the endpoint names the one it authenticates against). A
- * bare boolean is rejected: the engine can't store `true` (the importer's loose
- * `==` mis-resolves it to a template table), so it must name a table.
+ * numeric `dbo.id` (escape hatch), or the auth table's guid. Shared with toolset
+ * tools via {@link resolveAuthRef} — a `TableDef` handle or bare table name
+ * flows through `resolveRef("dbo", …)` (the same guid path `apiGroup` uses), so
+ * the reference stays stable across syncs and any number of auth tables coexist.
  *
  * This runs per-def with no registry visibility, so it validates only what a
- * single def can prove: a `TableDef` handle carries its own `auth` flag (a
- * non-auth table is rejected here, by name), and a number must at least be a
- * plausible id. A *bare-name* reference can't be checked here — `Xano.export()`
- * cross-checks the resolved guid against the registered auth tables.
+ * single def can prove (a `TableDef` handle's own `auth` flag; a plausible id).
+ * A *bare-name* reference can't be checked here — `Xano.export()` cross-checks
+ * the resolved guid against the registered auth tables.
  */
 function resolveAuth(name: string, auth: QueryDef["auth"]): false | number | string {
-  if (auth === undefined || auth === false) return false;
-  // Guard the retired boolean shorthand for untyped (JS) callers — `true` isn't
-  // in the param's type, so the cast is what lets the comparison narrow.
-  if ((auth as unknown) === true) {
-    throw new Error(
-      `query "${name}": \`auth: true\` is no longer supported. Pass the auth table ` +
-        `(e.g. \`auth: user\` for a \`table({ auth: true })\`) or its numeric id.`,
-    );
-  }
-  if (typeof auth === "number") {
-    // The raw `dbo.id` escape hatch. sidestep can't resolve a table id against
-    // the registry, but it can reject values that could never be one — a
-    // fat-fingered id should fail here, not with an opaque engine error at deploy.
-    if (!Number.isInteger(auth) || auth <= 0) {
-      throw new Error(
-        `query "${name}": numeric \`auth\` must be a positive integer \`dbo.id\` (got ${auth}). ` +
-          `Use \`false\` for a public endpoint, or pass the auth table def/name.`,
-      );
-    }
-    return auth;
-  }
-  // A `TableDef` handle carries its `auth` flag — reject a non-auth table at the
-  // source, with its name. (A bare-name string has no flag to inspect here.)
-  if (typeof auth === "object" && auth.auth !== true) {
-    throw new Error(
-      `query "${name}": table "${auth.name}" is not an auth table. ` +
-        `Mark it with \`table({ auth: true })\`, or pass a different table.`,
-    );
-  }
-  return resolveRef("dbo", auth);
+  return resolveAuthRef("query", name, auth);
 }
 
 export function encodeQuery(def: QueryDef<Record<string, InputDescriptor>, unknown>): QueryXdo {

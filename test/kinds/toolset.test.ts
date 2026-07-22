@@ -61,16 +61,16 @@ describe("shared toolset base (encodeToolsetBase / encodeToolRefs)", () => {
 
   it("tool refs: raw id passes through; enabled defaults true", () => {
     expect(encodeToolRefs([{ id: 1 }, { id: 2, enabled: false }])).toEqual([
-      { id: 1, enabled: true, auth: null },
-      { id: 2, enabled: false, auth: null },
+      { id: 1, enabled: true, auth: false },
+      { id: 2, enabled: false, auth: false },
     ]);
   });
 
   it("tool ref by handle resolves to the tool's guid (like the call family)", () => {
     const myTool = tool({ name: "search" });
     expect(encodeToolRefs([{ tool: myTool }, { tool: "lookup" }])).toEqual([
-      { id: deriveGuid("tool", "search"), enabled: true, auth: null },
-      { id: deriveGuid("tool", "lookup"), enabled: true, auth: null },
+      { id: deriveGuid("tool", "search"), enabled: true, auth: false },
+      { id: deriveGuid("tool", "lookup"), enabled: true, auth: false },
     ]);
   });
 

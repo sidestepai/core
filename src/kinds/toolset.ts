@@ -31,6 +31,8 @@ import { buildMiddlewareBlock } from "./middleware-attach.js";
 import type { MiddlewareAttach } from "./middleware-attach.js";
 import { resolveRef } from "../refs/guid.js";
 import type { ObjectRef } from "../refs/guid.js";
+import { resolveAuthRef } from "../refs/auth.js";
+import type { AuthRef } from "../refs/auth.js";
 
 // ---------- tool ----------
 
@@ -125,17 +127,19 @@ export interface ToolsetToolRef {
   enabled?: boolean;
   /**
    * Per-tool auth — Xano's **only** MCP auth surface (there is no server-level
-   * gate). A stored `json` field, engine default `false`; passed through
-   * verbatim. Left `unknown` because it accepts arbitrary json.
+   * gate). Works exactly like a query's `auth`: name an auth **table** (a
+   * `table({ auth: true })` def or its name) and it resolves to that table's
+   * guid at export (the engine's `dbo` id↔guid remap); a raw numeric `dbo.id`
+   * is the escape hatch, and `false`/omitted means no auth (the engine default).
    */
-  auth?: unknown;
+  auth?: AuthRef;
 }
 
-/** Encoded tool reference: `id` carries the resolved guid (or the raw numeric id). */
+/** Encoded tool reference: `id` carries the resolved guid; `auth` the resolved auth-table guid / dbo.id / `false`. */
 interface ToolsetToolXdo {
   id: number | string;
   enabled: boolean;
-  auth: unknown;
+  auth: false | number | string;
 }
 
 /** Resolve a list of {@link ToolsetToolRef}s to their stored `tool[]` entries. */
@@ -145,7 +149,8 @@ export function encodeToolRefs(tools?: ToolsetToolRef[]): ToolsetToolXdo[] {
       throw new Error("toolset tool ref: set either `tool` (handle/name) or `id` (raw), not both.");
     }
     const id = t.tool !== undefined ? resolveRef("tool", t.tool) : (t.id ?? 0);
-    return { id, enabled: t.enabled ?? true, auth: t.auth ?? null };
+    const label = typeof t.tool === "string" ? t.tool : (t.tool?.name ?? String(t.id ?? "?"));
+    return { id, enabled: t.enabled ?? true, auth: resolveAuthRef("toolset tool", label, t.auth) };
   });
 }
 

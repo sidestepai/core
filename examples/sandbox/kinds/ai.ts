@@ -28,7 +28,10 @@ export const assistant = agent({
   llm: {
     type: "xano-free",
     systemPrompt: "You are a helpful assistant.",
-    prompt: "Answer the user's question.",
+    // `{{ $args }}` is a Twig placeholder resolved at run time from the `args`
+    // passed to s.ai.agent.run (below). When `args` is an object you address
+    // fields as `{{ $args.field }}`; `{{ $env.NAME }}` reads env vars.
+    prompt: "Answer this question: {{ $args }}",
     maxSteps: 5,
   },
   tools: [{ tool: searchTool }],
@@ -37,7 +40,9 @@ export const assistant = agent({
 /**
  * Gate 3 — a worked endpoint that invokes the agent. `s.ai.agent.run` binds the
  * target by the agent's def handle (resolved to its `toolset` guid, remapped on
- * import like the call family), runs it, and returns the result.
+ * import like the call family), runs it, and returns the result. The endpoint's
+ * `question` input is passed as `args`, landing in the agent's `$args` template
+ * namespace — so `{{ $args }}` in the prompt above resolves to it at run time.
  */
 export const askAssistant = query({
   name: "ex_ask_assistant",
