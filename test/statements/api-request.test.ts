@@ -2,7 +2,7 @@ import { describe, it, expect, expectTypeOf } from "vitest";
 import "../../src/index.js"; // register all statements
 import { s } from "../../src/statements/s.js";
 import { c, inp, ref, filter } from "../../src/values/value.js";
-import { coerceObj } from "../../src/statements/special/coerce.js";
+import { coerceObj, coerceText } from "../../src/statements/special/coerce.js";
 import { encodeStatement } from "../../src/statements/statement.js";
 import { query } from "../../src/kinds/query.js";
 import { apiGroup } from "../../src/kinds/api-group.js";
@@ -206,6 +206,44 @@ describe("params record-of-values (issues #74/#75)", () => {
     expect(() => coerceObj({ "items[0]": ref("x") })).toThrow(/nested path/);
     // The same dotted key with a plain value stays flat (pre-existing behavior).
     expect(coerceObj({ "a.b": 1 })).toEqual({ value: '{"a.b":1}', tag: "const:obj", filters: [] });
+  });
+});
+
+describe("bare callable Value as params (issue #78 regression)", () => {
+  // A trigger field accessor (`t.new`) is a *callable* Value — a function object
+  // carrying the `{value,tag,filters}` props (see `accessor` in trigger-handle.ts).
+  // Build one the same way here so the test does not depend on trigger wiring.
+  const makeAccessor = (): object =>
+    Object.assign((p: string) => inp(`new.${p}`), inp("new"));
+
+  it("passes a bare accessor through as a plain object Value (not the #42 c.obj error)", () => {
+    const acc = makeAccessor();
+    // 3.6.0 threw the misleading `c.obj` #42 error here; now it flattens to a
+    // plain Value, byte-identical to `inp("new")`.
+    expect(coerceObj(acc)).toEqual({ value: "new", tag: "input", filters: [] });
+  });
+
+  it("normalizes the function to a plain object so it survives serialization", () => {
+    // The raw accessor is `typeof 'function'`, which `phpJsonEncode` serializes to
+    // `null` — a silent drop. The coercer must hand back a real object.
+    const coerced = coerceObj(makeAccessor());
+    expect(typeof coerced).toBe("object");
+    expect(typeof (coerced as object as (p: string) => unknown)).not.toBe("function");
+  });
+
+  it("integrates end-to-end through s.api.request params (the issue repro shape)", () => {
+    const encoded = encodeStatement(
+      s.api.request({ url: "https://x", method: "POST", params: makeAccessor() }),
+    );
+    expect(field(encoded, "params")).toEqual({ value: "new", tag: "input" });
+  });
+
+  it("coerceText also flattens a callable Value (any typed field, not just params)", () => {
+    expect(coerceText(makeAccessor() as unknown as string)).toEqual({
+      value: "new",
+      tag: "input",
+      filters: [],
+    });
   });
 });
 

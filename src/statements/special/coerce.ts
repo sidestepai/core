@@ -13,22 +13,50 @@ import { c, filter, withFilters, isTaggedValue } from "../../values/value.js";
 /** The HTTP verbs the engine's runtime input schema accepts (suggested, not enforced). */
 export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "HEAD" | "OPTIONS" | "PATCH";
 
-/** A tagged {@link Value} — the dynamic-binding escape hatch for any typed field. */
+/**
+ * A tagged {@link Value} — the dynamic-binding escape hatch for any typed field.
+ * Accepts a *callable* Value too: a trigger field accessor (`t.new`) is a
+ * function carrying the `{value,tag,filters}` props, so `typeof` is "function"
+ * (issue #78).
+ */
 export function isValue(w: unknown): w is Value {
-  return typeof w === "object" && w !== null && !Array.isArray(w) && "tag" in w && "value" in w;
+  return (
+    (typeof w === "object" || typeof w === "function") &&
+    w !== null &&
+    !Array.isArray(w) &&
+    "tag" in w &&
+    "value" in w
+  );
 }
 
+/**
+ * Flatten a {@link Value} to a plain `{value,tag,filters}` object. A trigger
+ * field accessor (`t.new`) is a *callable* Value — a function object — and the
+ * workspace encoder (`phpJsonEncode`) serializes a function to `null`, silently
+ * dropping the field. Passing the accessor through a coercer normalizes it to a
+ * plain object so it survives export (issue #78). A plain Value is returned
+ * unchanged (byte-identical shape).
+ */
+const plain = (v: Value): Value => {
+  // `v` is typed `Value` (not callable), but an accessor is a function at
+  // runtime; read the props off it through an untyped view.
+  if (typeof v !== "function") return v;
+  const { value, tag, filters } = v as unknown as Value;
+  return { value, tag, filters };
+};
+
 export const coerceText = (v: string | Value | undefined): Value | undefined =>
-  v === undefined ? undefined : isValue(v) ? v : c.text(v);
+  v === undefined ? undefined : isValue(v) ? plain(v) : c.text(v);
 export const coerceInt = (v: number | Value | undefined): Value | undefined =>
-  v === undefined ? undefined : isValue(v) ? v : c.int(v);
+  v === undefined ? undefined : isValue(v) ? plain(v) : c.int(v);
 export const coerceBool = (v: boolean | Value | undefined): Value | undefined =>
-  v === undefined ? undefined : isValue(v) ? v : c.bool(v);
+  v === undefined ? undefined : isValue(v) ? plain(v) : c.bool(v);
 /**
  * Coerce an object field (`params`, …) to its `Value` form.
  *
  * - `undefined` → dropped downstream.
- * - a tagged {@link Value} → passed through (the dynamic escape hatch).
+ * - a tagged {@link Value} → passed through (the dynamic escape hatch), flattened
+ *   to a plain object if it is a callable accessor like `t.new` (issue #78).
  * - an array → a `c.obj` constant, as before (a pure-JSON array stays `[…]`; an
  *   array holding a tagged value still throws #42). An object-of-values is a
  *   record, never a list, so arrays never take the `set`-filter path.
@@ -51,7 +79,7 @@ export const coerceObj = (v: object | Value | undefined): Value | undefined => {
   // matches the loose shape and would be passed through as a bogus node. The
   // strict check — the same one `c.obj`'s #42 guard rejects on — only matches an
   // actual Value, so such a record correctly falls through to the record path.
-  if (isTaggedValue(v)) return v;
+  if (isTaggedValue(v)) return plain(v);
   // Arrays keep their pre-change behavior: a pure array serializes as an array
   // constant, an array holding a Value throws #42. They never become an
   // object-of-values (that shape is a record, not a list).
@@ -85,7 +113,7 @@ export const coerceObj = (v: object | Value | undefined): Value | undefined => {
   );
 };
 export const coerceArray = (v: readonly string[] | Value | undefined): Value | undefined =>
-  v === undefined ? undefined : isValue(v) ? v : c.array(v as string[]);
+  v === undefined ? undefined : isValue(v) ? plain(v) : c.array(v as string[]);
 
 /** The shared TLS/HTTP fields carried by `api.request` / `stream.from_request` / `webflow.request`. */
 export interface HttpRequestFields {
