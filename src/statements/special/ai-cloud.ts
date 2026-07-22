@@ -11,7 +11,7 @@
  *   remain: input[] entry ORDER, whether `runtime` is emitted when mode is the
  *   default "shared", and CloudJobArgs.await ("default 60" in docs, not defaulted).
  */
-import type { Statement } from "../statement.js";
+import type { Statement, AsShapeBrand } from "../statement.js";
 import { registerStatement } from "../statement.js";
 import type { Value } from "../../values/value.js";
 import { isTaggedValue } from "../../values/value.js";
@@ -24,10 +24,45 @@ function vf(v: Value): { value: string; tag: string; filters: unknown[] } {
   return { value: v.value, tag: v.tag, filters: v.filters };
 }
 
-export interface AiAgentRunArgs {
+/**
+ * The rich result object an agent run binds to its `as` variable — modeled on
+ * the engine's agent-run result envelope (issue #89). **The completion is at
+ * `.result`**, not the top level; the surrounding fields are run metadata.
+ *
+ * `R` is the completion type: `string` for a text agent (the default — including
+ * `xano-free`), or an object when structured outputs (a schema) are enabled.
+ * Narrow it with the `resultShape` witness on {@link AiAgentRunArgs}.
+ *
+ * `finishReasonCandidate`/`toolCalls`/`usage`/`totalUsage` are optional: they are
+ * absent or empty depending on the run (no tools, single provider, engine
+ * version), so a returned envelope may carry only a subset.
+ */
+export interface AgentRunResult<R = string> {
+  /** The model's completion — the field almost every caller wants. `string` unless structured outputs are enabled (then an object; narrow via `resultShape`). */
+  result: R;
+  /** Why generation stopped: `'stop' | 'length' | 'content-filter' | 'tool-calls' | 'error' | 'other' | 'unknown'`. */
+  finishReason: string;
+  /** Provider-specific metadata (e.g. usage counters, safety signals), keyed by provider. */
+  providerMetadata: Record<string, Record<string, unknown>>;
+  /** Reasoning parts emitted by the model; `[]` when none. */
+  reasoningDetails: unknown[];
+  /** Per-step records (each with e.g. `text`, `finishReason`, `usage`, `toolCalls`, `providerMetadata`). */
+  steps: unknown[];
+  /** Fallback finish reason, populated only when `finishReason` is `'unknown'`; otherwise empty/absent. */
+  finishReasonCandidate?: string;
+  /** Merged tool-call + result records; absent or empty when no tools ran. */
+  toolCalls?: unknown[];
+  /** Token usage for the final generation (`inputTokens`, `outputTokens`, `totalTokens`, …). */
+  usage?: Record<string, unknown>;
+  /** Token usage aggregated across all steps. */
+  totalUsage?: Record<string, unknown>;
+}
+
+export interface AiAgentRunArgs<As extends string = "", R = string> {
   /** The target agent (toolset of type agent — def handle or name). */
   agent: ObjectRef;
-  as?: string;
+  /** The stack variable this run binds. Captured literally so `InferResponse` can trace a `ref` back to the typed {@link AgentRunResult}. */
+  as?: As;
   /**
    * Run arguments passed to the agent. Pass a single {@link Value}, or an object
    * literal of values (`{ question: inp("question") }`) which is built into a
@@ -44,6 +79,13 @@ export interface AiAgentRunArgs {
   version?: Value;
   /** Execution mode (`"shared"` default). */
   runtimeMode?: string;
+  /**
+   * Type-only witness narrowing the `.result` completion type (default `string`).
+   * Pass a witness value for a structured-output agent so `ref(as).result` is
+   * checkable — e.g. `resultShape: {} as { sentiment: string }`. Never emitted
+   * into the statement (phantom, like the response brand).
+   */
+  resultShape?: R;
 }
 
 /**
@@ -51,8 +93,15 @@ export interface AiAgentRunArgs {
  * from the engine's agent-run format: the target is `context.toolset.id`, `runtime` is a
  * TOP-LEVEL `{ mode }` block, and `args`/`allow_tool_execution`/`version` are
  * `input[]` entries (NOT context). `runtime` is emitted only when a mode is set.
+ *
+ * Branded with `AsShapeBrand<As, AgentRunResult<R>>` (like the `db.*` producers)
+ * so `ref(as)` traces to the typed {@link AgentRunResult} envelope via
+ * `InferResponse` instead of `unknown` — the completion is at `.result` (#89).
+ * The brand is phantom; the emitted statement bytes are unchanged.
  */
-export function aiAgentRun(a: AiAgentRunArgs): Statement {
+export function aiAgentRun<const As extends string = "", R = string>(
+  a: AiAgentRunArgs<As, R>,
+): Statement & AsShapeBrand<As, AgentRunResult<R>> {
   const input: unknown[] = [];
   // `args` accepts a single Value or an object literal of values — a record is
   // built into a dynamic object value (`obj`), so `{ q: inp("q") }` reaches the
@@ -70,7 +119,7 @@ export function aiAgentRun(a: AiAgentRunArgs): Statement {
     input,
   };
   if (a.runtimeMode) stmt.runtime = { mode: a.runtimeMode };
-  return stmt;
+  return stmt as unknown as Statement & AsShapeBrand<As, AgentRunResult<R>>;
 }
 
 export interface CloudJobArgs {

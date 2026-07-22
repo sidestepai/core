@@ -139,6 +139,7 @@ export {
 } from "./statements/special/ai-cloud.js";
 export type {
   AiAgentRunArgs,
+  AgentRunResult,
   CloudJobArgs,
   CloudJobAwaitArgs,
   CloudJobStatusArgs,
