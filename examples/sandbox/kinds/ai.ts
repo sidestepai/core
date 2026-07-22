@@ -43,6 +43,13 @@ export const assistant = agent({
  * `question` input is passed as an object arg via `obj({...})` — a dynamic object
  * value — landing in the agent's `$args` namespace, so `{{ $args.question }}` in
  * the prompt above resolves to it at run time.
+ *
+ * The `as` var is the rich result ENVELOPE, not the completion — the model's text
+ * is at **`.result`** (alongside `finishReason`, `providerMetadata`, `steps`, …).
+ * So return `ref("answer.result")` to ship the text; returning `ref("answer")`
+ * bare would ship the whole metadata object. `{ safe: true }` makes the nested
+ * access null-safe. `ref("answer")` is typed as `AgentRunResult`, so
+ * `InferResponse` sees the real shape either way.
  */
 export const askAssistant = query({
   name: "ex_ask_assistant",
@@ -50,5 +57,17 @@ export const askAssistant = query({
   apiGroup: api,
   input: { question: input.text({ required: true }) },
   stack: [s.ai.agent.run({ agent: assistant, args: obj({ question: inp("question") }), as: "answer" })],
-  response: ref("answer"),
+  response: { text: ref("answer.result", { safe: true }) },
+  responseShape: { text: "" as string },
 });
+
+/**
+ * Gate 4 — deriving the MCP server's endpoint URL from the def (no hardcoding).
+ * `getUrl(host)` resolves the pinned `canonical` into the Streamable HTTP URL a
+ * client connects to; `getPath()` is the host-relative form. The default token
+ * segment `mcp` means "no URL auth" (pass a Bearer `Authorization` header, or
+ * embed a token via `getUrl(host, { token })`). Agents are not externally
+ * addressable, so `agent()` exposes only `getCanonical()`, not a URL.
+ */
+export const exampleMcpUrl = exampleMcpServer.getUrl("https://your-instance.dev.xano.io");
+export const exampleAgentCanonical = assistant.getCanonical();

@@ -139,6 +139,7 @@ export {
 } from "./statements/special/ai-cloud.js";
 export type {
   AiAgentRunArgs,
+  AgentRunResult,
   CloudJobArgs,
   CloudJobAwaitArgs,
   CloudJobStatusArgs,
@@ -298,12 +299,13 @@ export type {
   WorkspaceInputs,
   ErrorInputs,
 } from "./kinds/trigger-handle.js";
-export { tool, toolKind, encodeTool, encodeToolsetBase, encodeToolRefs } from "./kinds/toolset.js";
+export { tool, toolKind, encodeTool, encodeToolsetBase, encodeToolRefs, resolveToolsetCanonical } from "./kinds/toolset.js";
 export { mcpServer, mcpServerKind, encodeMcpServer } from "./kinds/mcp-server.js";
-export type { McpServerDef, McpServerXdo } from "./kinds/mcp-server.js";
+export type { McpServerDef, McpServerXdo, McpServerHandle, McpPathOptions } from "./kinds/mcp-server.js";
 export { agent, agentKind, encodeAgent } from "./kinds/agent.js";
 export type {
   AgentDef,
+  AgentHandle,
   AgentXdo,
   AgentSettingsXdo,
   AgentOutput,

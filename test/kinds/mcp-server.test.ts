@@ -51,9 +51,14 @@ describe("mcp_server kind", () => {
     expect(() => encodeMcpServer({})).toThrow("mcp server: `name` is required.");
   });
 
-  it("mcpServer() factory passes the def through", () => {
-    const def = mcpServer({ name: "s" });
-    expect(def).toEqual({ name: "s" });
+  it("mcpServer() factory preserves the def fields and adds URL accessors", () => {
+    const handle = mcpServer({ name: "s" });
+    // The def fields are carried through on the handle...
+    expect(handle.name).toBe("s");
+    // ...plus getPath()/getUrl() accessors (which JSON serialization drops).
+    expect(typeof handle.getPath).toBe("function");
+    expect(typeof handle.getUrl).toBe("function");
+    expect(JSON.parse(JSON.stringify(handle))).toEqual({ name: "s" });
   });
 
   it("registers under the 'toolset' payload key with a md5('toolset:'+name) guid", () => {
