@@ -1,0 +1,42 @@
+{
+  "context": {},
+  "name": "mvp:crypto_jws_decode2",
+  "as": "crypto7",
+  "input": [
+    {
+      "name": "token",
+      "value": "",
+      "tag": "const",
+      "filters": []
+    },
+    {
+      "name": "key",
+      "value": "",
+      "tag": "const",
+      "filters": []
+    },
+    {
+      "name": "check_claims",
+      "value": "",
+      "tag": "const:obj",
+      "filters": []
+    },
+    {
+      "name": "signature_algorithm",
+      "value": "HS256",
+      "tag": "const",
+      "filters": []
+    },
+    {
+      "name": "timeDrift",
+      "value": 0,
+      "tag": "const:int",
+      "filters": []
+    }
+  ],
+  "_xsid": "f:87447ed9-dc53-481c-a022-54848bb3706b",
+  "@guid": "f:87447ed9-dc53-481c-a022-54848bb3706b",
+  "@index": [
+    "undefined"
+  ]
+}

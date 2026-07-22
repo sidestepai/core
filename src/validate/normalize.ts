@@ -99,6 +99,19 @@ function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
       return v === false;
     case "children":
       return isEmptyArray(v);
+    // A value's filter chain: an empty `filters:[]` is identical to no filter
+    // chain. The engine always serializes it on a nested value (e.g. a
+    // `context`-nested `filename`); the SDK omits it there. Drop the empty form
+    // on both sides so the representational gap doesn't fail an otherwise-equal
+    // value. A non-empty chain is preserved and still compared.
+    case "filters":
+      return isEmptyArray(v);
+    // Statement/object input-entry array: the lean parser form omits an empty
+    // `input`; the full persisted form carries `input:[]`. Same generational gap
+    // as the members above — an empty input array is identical to no inputs.
+    // Drop the empty form on both sides; a populated `input` is preserved.
+    case "input":
+      return isEmptyArray(v);
     case "example":
       return isEmptyObject(v);
     case "shared_workspace":

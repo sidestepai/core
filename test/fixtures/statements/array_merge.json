@@ -1,0 +1,24 @@
+{
+  "context": {
+    "name": "crypto1",
+    "value": "[1,2,3]",
+    "tag": "const",
+    "filters": [
+      {
+        "name": "json_decode",
+        "disabled": false,
+        "arg": []
+      }
+    ]
+  },
+  "name": "mvp:array_merge",
+  "input": [],
+  "_xsid": "f:252730df-4788-4599-b591-971b0b5af4d0",
+  "@guid": "f:252730df-4788-4599-b591-971b0b5af4d0",
+  "@index": [
+    "undefined"
+  ],
+  "output": {
+    "filters": []
+  }
+}

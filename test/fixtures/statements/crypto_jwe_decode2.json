@@ -1,0 +1,48 @@
+{
+  "context": {},
+  "name": "mvp:crypto_jwe_decode2",
+  "as": "crypto5",
+  "input": [
+    {
+      "name": "token",
+      "value": "",
+      "tag": "const",
+      "filters": []
+    },
+    {
+      "name": "key",
+      "value": "",
+      "tag": "const",
+      "filters": []
+    },
+    {
+      "name": "check_claims",
+      "value": "",
+      "tag": "const:obj",
+      "filters": []
+    },
+    {
+      "name": "key_algorithm",
+      "value": "A256KW",
+      "tag": "const",
+      "filters": []
+    },
+    {
+      "name": "content_algorithm",
+      "value": "A256CBC-HS512",
+      "tag": "const",
+      "filters": []
+    },
+    {
+      "name": "timeDrift",
+      "value": 0,
+      "tag": "const:int",
+      "filters": []
+    }
+  ],
+  "_xsid": "f:7e85f100-e1f1-43af-a1f3-8fe26a5ee981",
+  "@guid": "f:7e85f100-e1f1-43af-a1f3-8fe26a5ee981",
+  "@index": [
+    "undefined"
+  ]
+}

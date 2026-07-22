@@ -1,0 +1,42 @@
+{
+  "context": {},
+  "name": "mvp:crypto_jws_encode2",
+  "as": "crypto6",
+  "input": [
+    {
+      "name": "headers",
+      "value": "",
+      "tag": "const:obj",
+      "filters": []
+    },
+    {
+      "name": "claims",
+      "value": "",
+      "tag": "const:obj",
+      "filters": []
+    },
+    {
+      "name": "key",
+      "value": "",
+      "tag": "const",
+      "filters": []
+    },
+    {
+      "name": "signature_algorithm",
+      "value": "HS256",
+      "tag": "const",
+      "filters": []
+    },
+    {
+      "name": "ttl",
+      "value": 0,
+      "tag": "const:int",
+      "filters": []
+    }
+  ],
+  "_xsid": "f:2e7dac47-085c-4132-9008-060cd2912bdf",
+  "@guid": "f:2e7dac47-085c-4132-9008-060cd2912bdf",
+  "@index": [
+    "undefined"
+  ]
+}

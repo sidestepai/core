@@ -1,0 +1,82 @@
+{
+  "context": {},
+  "name": "mvp:algolia_request",
+  "input": [
+    {
+      "name": "application_id",
+      "value": "abc123",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "api_key",
+      "value": "MY_KEY",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "url",
+      "value": "https://test.com",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "method",
+      "value": "POST",
+      "tag": "const",
+      "filters": [],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    },
+    {
+      "name": "payload",
+      "value": "{}",
+      "tag": "const:obj",
+      "filters": [
+        {
+          "name": "set",
+          "disabled": false,
+          "arg": [
+            {
+              "value": "q",
+              "tag": "const",
+              "filters": []
+            },
+            {
+              "value": "abc",
+              "tag": "const",
+              "filters": []
+            }
+          ]
+        }
+      ],
+      "ignore": false,
+      "expand": false,
+      "children": []
+    }
+  ],
+  "_xsid": "f:84465d0c-61c1-4460-bfbe-7892dec7696b",
+  "@guid": "f:84465d0c-61c1-4460-bfbe-7892dec7696b",
+  "@index": [
+    "undefined"
+  ],
+  "as": "ret",
+  "description": "",
+  "settings_registry": [],
+  "output": {
+    "customize": false,
+    "filters": [],
+    "items": []
+  },
+  "addon": []
+}

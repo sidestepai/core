@@ -1,0 +1,15 @@
+{
+  "name": "mvp:create_attachment",
+  "as": "x4",
+  "context": {
+      "access": "public",
+      "tag": "input",
+      "value": "file",
+      "filters": [],
+      "filename": {
+          "tag": "const",
+          "value": "",
+          "filters": []
+      }
+  }
+}
