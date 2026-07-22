@@ -1,0 +1,67 @@
+{
+  "as": "",
+  "name": "mvp:while",
+  "_xsid": "f:29064715-da6b-4641-99a7-1f3355a1543f",
+  "addon": [],
+  "input": [],
+  "mocks": {},
+  "output": {
+    "items": [],
+    "filters": [],
+    "customize": false
+  },
+  "context": {
+    "run": [
+      {
+        "as": "x1",
+        "name": "mvp:set_var",
+        "_xsid": "f:2d6b3f89-eaed-4836-9840-b959086b4c59",
+        "addon": [],
+        "input": [],
+        "mocks": {},
+        "output": {
+          "items": [],
+          "filters": [],
+          "customize": false
+        },
+        "context": {
+          "tag": "const:int",
+          "value": "1",
+          "filters": []
+        },
+        "runtime": null,
+        "disabled": false,
+        "description": "",
+        "settings_registry": null
+      }
+    ],
+    "expr": {
+      "expression": [
+        {
+          "or": false,
+          "type": "statement",
+          "group": {
+            "expression": []
+          },
+          "statement": {
+            "op": "<",
+            "left": {
+              "tag": "var",
+              "filters": [],
+              "operand": "x1"
+            },
+            "right": {
+              "tag": "const:int",
+              "filters": [],
+              "operand": "10"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "runtime": null,
+  "disabled": false,
+  "description": "",
+  "settings_registry": null
+}

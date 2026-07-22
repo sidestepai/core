@@ -1,0 +1,43 @@
+{
+  "as": "",
+  "name": "mvp:group",
+  "_xsid": "f:628b4b95-7baa-4ee9-9a9d-0f3c7db4f68b",
+  "addon": [],
+  "input": [],
+  "mocks": {},
+  "output": {
+    "items": [],
+    "filters": [],
+    "customize": false
+  },
+  "context": {
+    "run": [
+      {
+        "as": "x2",
+        "name": "mvp:set_var",
+        "_xsid": "f:1f4ecac9-c0a7-40b5-b52c-b576093f583c",
+        "addon": [],
+        "input": [],
+        "mocks": {},
+        "output": {
+          "items": [],
+          "filters": [],
+          "customize": false
+        },
+        "context": {
+          "tag": "const:int",
+          "value": "2",
+          "filters": []
+        },
+        "runtime": null,
+        "disabled": false,
+        "description": "",
+        "settings_registry": null
+      }
+    ]
+  },
+  "runtime": null,
+  "disabled": false,
+  "description": "",
+  "settings_registry": null
+}

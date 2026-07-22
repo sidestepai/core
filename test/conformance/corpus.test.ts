@@ -6,8 +6,9 @@ import { encodeStatement, getStatementFactory } from "../../src/statements/state
 import type { Authored } from "../../src/statements/schema-dsl/interpret.js";
 import { mathAdd, bitwiseAnd, bitwiseOr, bitwiseXor, objectKeys, objectValues, objectEntries } from "../../src/statements/generated/catalog.js";
 import { returnValue, die, debugLog, foreachBreak, foreachContinue, foreachRemove } from "../../src/statements/special/control-flow.js";
-import { forLoop, foreachLoop } from "../../src/statements/special/loops.js";
+import { forLoop, foreachLoop, whileLoop, group } from "../../src/statements/special/loops.js";
 import { setVar } from "../../src/statements/set-var.js";
+import { expr } from "../../src/statements/conditional.js";
 import { c, inp, ref, filter, withFilters } from "../../src/values/value.js";
 
 /** Build a generated statement by name (for families without an ergonomic factory). */
@@ -255,6 +256,14 @@ const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
         }),
       ),
   },
+  // Block-body loops proven byte-exact against live captures (U4): while carries a
+  // comparison `expr` + nested run[]; group is a bare `{run}` envelope.
+  {
+    fixture: "while",
+    build: () =>
+      encodeStatement(whileLoop({ when: expr(ref("x1"), "<", c.int(10)), body: [setVar("x1", c.int(1))] })),
+  },
+  { fixture: "group", build: () => encodeStatement(group([setVar("x2", c.int(2))])) },
   { fixture: "return-null", build: () => encodeStatement(returnValue(c.null())) },
   { fixture: "die", build: () => encodeStatement(die(c.int(123))) },
   { fixture: "debug_log", build: () => encodeStatement(debugLog(c.int(123))) },
