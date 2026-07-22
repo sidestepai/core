@@ -8,8 +8,10 @@ import { encodeStatement } from "../statements/statement.js";
 import type { Statement } from "../statements/statement.js";
 import { registerKind } from "./kind.js";
 import type { ObjectKind } from "./kind.js";
-import { emptyMiddleware, encodeTags, defaultHistory } from "./common.js";
+import { encodeTags, defaultHistory } from "./common.js";
 import type { MiddlewareBlock } from "./common.js";
+import { buildMiddlewareBlock } from "./middleware-attach.js";
+import type { MiddlewareAttach } from "./middleware-attach.js";
 
 export interface ScheduleDef {
   startsOn: string;
@@ -31,6 +33,12 @@ export interface TaskDef {
   tags?: string[];
   schedule?: ScheduleDef[];
   stack?: Statement[];
+  /**
+   * Pre/post middleware attachment. Tasks have no API-Group tier — an
+   * un-customized phase inherits straight from the workspace. Providing a phase
+   * sets its `_customize` flag; `pre: middleware.clear()` overrides with nothing.
+   */
+  middleware?: MiddlewareAttach;
 }
 
 export interface ScheduleXdo {
@@ -70,7 +78,7 @@ export function encodeTask(def: TaskDef): TaskXdo {
     docs: def.docs ?? "",
     datasource: def.datasource ?? "",
     active: def.active ?? false,
-    middleware: emptyMiddleware(),
+    middleware: buildMiddlewareBlock(def.middleware),
     tag: encodeTags(def.tags),
     history: defaultHistory("task"),
     run: (def.stack ?? []).map(encodeStatement),

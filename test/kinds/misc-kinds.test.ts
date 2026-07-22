@@ -99,3 +99,34 @@ describe("U8 kinds on Xano", () => {
     expect(bundle.payload.workspace).toMatchObject({ name: "ws", description: "hi" });
   });
 });
+
+describe("workspace-tier middleware", () => {
+  it("omits the middleware key when the author sets none", () => {
+    const w = encodeWorkspaceConfig({ name: "b12" });
+    expect("middleware" in w).toBe(false);
+  });
+
+  it("emits the full 8-key map (no _customize flags) when provided", () => {
+    const w = encodeWorkspaceConfig({
+      name: "b12",
+      middleware: { query: { pre: ["rateLimit"] }, function: { post: ["audit"] }, tool: { pre: ["guard"] } },
+    });
+    const m = w.middleware!;
+    expect(Object.keys(m).sort()).toEqual([
+      "function_post", "function_pre", "query_post", "query_pre",
+      "task_post", "task_pre", "tool_post", "tool_pre",
+    ]);
+    // Only the specified host/phase populated; the rest empty.
+    expect(m.query_pre).toHaveLength(1);
+    expect(m.function_post).toHaveLength(1);
+    expect(m.tool_pre).toHaveLength(1);
+    expect(m.query_post).toEqual([]);
+    expect(m.task_pre).toEqual([]);
+    // No _customize flags at this (terminal) tier — the 8-key assertion above
+    // already pins the exact key set; here we confirm the override flags are absent.
+    expect("pre_customize" in m).toBe(false);
+    expect("post_customize" in m).toBe(false);
+    // Entry is a full mvp:middleware stack item.
+    expect((m.query_pre[0] as { name: string }).name).toBe("mvp:middleware");
+  });
+});

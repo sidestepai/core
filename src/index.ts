@@ -330,10 +330,12 @@ export { task, taskKind, encodeTask, encodeSchedule } from "./kinds/task.js";
 export type { TaskDef, TaskXdo, ScheduleDef } from "./kinds/task.js";
 export { middleware, middlewareKind, encodeMiddleware } from "./kinds/middleware.js";
 export type { MiddlewareDef, MiddlewareXdo, ResultStrategy, ExceptionPolicy } from "./kinds/middleware.js";
+export { buildMiddlewareBlock, encodeMiddlewareEntry, encodeMiddlewareList } from "./kinds/middleware-attach.js";
+export type { MiddlewareAttach, MiddlewareAttachEntry } from "./kinds/middleware-attach.js";
 export { addon, addonKind, encodeAddon } from "./kinds/addon.js";
 export type { AddonDef, AddonXdo } from "./kinds/addon.js";
 export { workspaceConfig, workspaceKind, encodeWorkspaceConfig } from "./kinds/workspace-config.js";
-export type { WorkspaceConfigDef, WorkspaceConfigXdo } from "./kinds/workspace-config.js";
+export type { WorkspaceConfigDef, WorkspaceConfigXdo, WorkspaceMiddlewareDef, WorkspaceMiddlewareXdo } from "./kinds/workspace-config.js";
 export type {
   ToolDef,
   ToolXdo,

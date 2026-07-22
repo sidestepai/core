@@ -14,6 +14,7 @@ import { setVar } from "../../src/statements/set-var.js";
 import { c, ref } from "../../src/values/value.js";
 import { f } from "../../src/fields/catalog.js";
 import { resolveRef } from "../../src/refs/guid.js";
+import { middleware } from "../../src/kinds/middleware.js";
 
 describe("query kind", () => {
   it("encodes the HTTP/function-like envelope", () => {
@@ -300,5 +301,54 @@ describe("query + api_group on Xano", () => {
       // doc). A `@ts-expect-error` here would FAIL, pinning that documented tradeoff.
       expect(() => toSearchParams({ o: { nested: true } })).toThrow(/not a scalar/);
     });
+  });
+});
+
+describe("query middleware attachment", () => {
+  it("emits the empty block when no middleware is set (unchanged)", () => {
+    const q = encodeQuery({ name: "q", verb: "GET" });
+    expect(q.middleware).toEqual({ pre_customize: false, post_customize: false, pre: [], post: [] });
+  });
+
+  it("sets post_customize and emits the entry when post is provided", () => {
+    const q = encodeQuery({ name: "q", verb: "GET", middleware: { post: ["audit"] } });
+    expect(q.middleware.pre_customize).toBe(false);
+    expect(q.middleware.post_customize).toBe(true);
+    expect(q.middleware.pre).toEqual([]);
+    expect(q.middleware.post).toHaveLength(1);
+    const entry = q.middleware.post[0] as { name: string; context: { middleware: { id: string } } };
+    expect(entry.name).toBe("mvp:middleware");
+    expect(entry.context.middleware.id).toBe(resolveRef("middleware", "audit"));
+  });
+
+  it("preserves order and resolves both phases independently", () => {
+    const q = encodeQuery({ name: "q", verb: "GET", middleware: { pre: [], post: ["a", "b"] } });
+    expect(q.middleware.pre_customize).toBe(true); // present-empty override
+    expect(q.middleware.pre).toEqual([]);
+    const ids = (q.middleware.post as Array<{ context: { middleware: { id: string } } }>).map(
+      (e) => e.context.middleware.id,
+    );
+    expect(ids).toEqual([resolveRef("middleware", "a"), resolveRef("middleware", "b")]);
+  });
+
+  it("middleware.clear() overrides a phase with nothing", () => {
+    const q = encodeQuery({ name: "q", verb: "GET", middleware: { pre: middleware.clear() } });
+    expect(q.middleware.pre_customize).toBe(true);
+    expect(q.middleware.pre).toEqual([]);
+  });
+});
+
+describe("api group middleware attachment", () => {
+  it("defaults to the empty block", () => {
+    const g = encodeApiGroup({ name: "g" });
+    expect(g.middleware).toEqual({ pre_customize: false, post_customize: false, pre: [], post: [] });
+  });
+
+  it("emits a group-level pre chain queries inherit from", () => {
+    const g = encodeApiGroup({ name: "g", middleware: { pre: ["tenant"] } });
+    expect(g.middleware.pre_customize).toBe(true);
+    expect(g.middleware.post_customize).toBe(false);
+    const entry = g.middleware.pre[0] as { context: { middleware: { id: string } } };
+    expect(entry.context.middleware.id).toBe(resolveRef("middleware", "tenant"));
   });
 });

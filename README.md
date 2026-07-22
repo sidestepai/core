@@ -435,6 +435,51 @@ protocol; `agent({ name, agentSettings: { type: "anthropic", model, system_promp
 is an LLM orchestrator. A `tool({...})` is its own kind — a function-like operation a
 toolset references.
 
+**Middleware attachment** — a `middleware({...})` is reusable logic (`input`/`stack`/
+`response` + `resultStrategy: "merge"|"replace"` + `exceptionPolicy: "silent"|"rethrow"|
+"critical"`). To run one, *attach* it with a host's `middleware: { pre, post }` field on
+`query`/`apiGroup`/`defineFunction`/`task`/`tool` (not triggers):
+
+```ts
+const rateLimit = middleware({ name: "rate_limit", resultStrategy: "merge", /* ... */ });
+const audit = middleware({ name: "audit", /* ... */ });
+
+query({
+  name: "get_user", verb: "GET", apiGroup: blog,
+  middleware: { pre: [rateLimit], post: [audit] }, // runs rateLimit before, audit after
+  stack: [/* ... */], response: ref("user"),
+});
+```
+
+Prefer a def handle (`[rateLimit]`); a bare name (`["rate_limit"]`) only matches when the target
+middleware uses its name-derived guid — pass the handle when the middleware pins an explicit
+`guid` (same rule as `auth`/`apiGroup` references). Use `{ middleware: mw, active: false }` to
+keep an entry but disabled. **Inheritance:** providing a phase **overrides** it (sets the stored
+`pre_customize`/`post_customize` flag); omitting a phase **inherits** the parent tier's chain.
+Xano resolves the fallback at request time — **Query → API Group → Workspace** (override, not
+merge; the API-Group tier applies to queries — functions, tasks, and tools have no API-group
+binding, so they inherit straight from the workspace). `pre: middleware.clear()` overrides a
+phase with nothing (stop inheriting). Workspace-level defaults are the terminal tier:
+
+```ts
+workspaceConfig({
+  name: "my-app",
+  middleware: { query: { pre: [rateLimit] }, function: { post: [audit] } }, // {host}_{phase} map
+});
+```
+
+**`workspaceConfig.middleware` is the whole workspace map.** Omit the field and SideStep leaves
+the workspace's existing (e.g. UI-configured) middleware untouched. But once you set it, the full
+`{host}_{phase}` map is emitted — any host/phase you don't list is emitted empty, which **clears**
+that tier on deploy (the workspace tier has no per-key customize flag, so empty means "none").
+Declare every workspace-level chain you want to keep.
+
+SideStep emits each tier's lists + the customize flags; it does not compute the fallback (the
+engine does). A `resultStrategy: "replace"` middleware attached `post` rewrites the response at
+runtime, which `InferResponse` can't see — declare `responseShape` on the endpoint in that case.
+Distinct from `s.middleware.call` (invoke a middleware inline from a stack). Branch-tier
+middleware is not modeled — SideStep does not touch branches.
+
 </details>
 
 <details>
