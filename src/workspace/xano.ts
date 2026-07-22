@@ -9,6 +9,7 @@
  * generic `register(kindName, …)`. More sugar is added as each kind lands.
  */
 import { getKind, encodeObject } from "../kinds/kind.js";
+import { stackReferencesAuth } from "../kinds/middleware-attach.js";
 import { deriveGuid, resolveRef, REFERENCEABLE_KINDS } from "../refs/guid.js";
 import { buildBundle } from "./export.js";
 import type { Bundle, BundleType, PayloadArrayKey } from "./export.js";
@@ -178,6 +179,9 @@ export class Xano {
     // auth table. Xano supports any number of auth tables; each endpoint names
     // the one it authenticates against.
     this.validateQueryAuth(sections);
+    // Catch an `auth()`-keyed middleware directly attached to a host that can't
+    // resolve a request identity — the silent null-bucket collapse (issue #81).
+    this.validateMiddlewareAuth(sections);
     if (lockCtx) this.applyLock(lockCtx, sections);
     return buildBundle({
       type: this.bundleType,
@@ -230,6 +234,120 @@ export class Xano {
               `Check for a typo, or register the auth table; if it pins an explicit \`guid\`, pass the ` +
               `table def rather than its name.`,
       );
+    }
+  }
+
+  /**
+   * Refuse (or warn about) an `auth()`-keyed middleware **directly attached** to
+   * a host that cannot resolve a request identity (issue #81).
+   *
+   * The footgun: a rate limiter keyed by `auth("id")` is the canonical middleware,
+   * but attach it to a host with no authenticated caller and `auth()` silently
+   * resolves to `null` — every caller collapses into one shared bucket, with no
+   * error at author, export, or runtime. This catches it at export, where the
+   * middleware registry is known (an attachment entry only carries the target's
+   * guid; we resolve it back to the encoded `run` to inspect for `auth()`).
+   *
+   * Enforcement is graded by how resolvable the host's identity is:
+   * - **Throw** where `auth()` is *provably* `null`: a `query` with no auth table,
+   *   or a `task` (scheduled/background — never a request identity).
+   * - **Warn** where identity is *caller-dependent* and may legitimately be
+   *   non-null: a `function` or `tool`, both of which inherit the auth context of
+   *   whatever invoked them. A hard throw there would fail exports of valid
+   *   authenticated-caller setups.
+   *
+   * Scope: **direct attachment only** — a host's own `middleware.pre`/`post`.
+   * SideStep does not resolve the engine's Query→API-Group→Workspace inheritance
+   * walk (`getMiddlewareForObject`), so a middleware reaching a public query only
+   * via a workspace/API-group tier is a documented limitation, not caught here.
+   */
+  private validateMiddlewareAuth(
+    sections: Partial<Record<PayloadArrayKey, unknown[]>>,
+  ): void {
+    const middlewares = sections["middleware" as PayloadArrayKey];
+    if (!Array.isArray(middlewares) || middlewares.length === 0) return;
+    // guid → does the middleware's stack reference auth(); guid → display name.
+    const usesAuthByGuid = new Map<string, boolean>();
+    const nameByGuid = new Map<string, string>();
+    for (const mw of middlewares) {
+      if (!mw || typeof mw !== "object") continue;
+      const guid = (mw as { guid?: unknown }).guid;
+      if (typeof guid !== "string") continue;
+      nameByGuid.set(guid, String((mw as { name?: unknown }).name ?? guid));
+      // The registry keeps only the encoded middleware; walk its `run` (the tag
+      // survives encoding — see `stackReferencesAuth`).
+      const run = (mw as { run?: unknown }).run;
+      usesAuthByGuid.set(guid, stackReferencesAuth(Array.isArray(run) ? run : undefined));
+    }
+    // Nothing references auth() ⇒ no attachment can trip the footgun.
+    if (![...usesAuthByGuid.values()].some(Boolean)) return;
+
+    // Host kinds carrying a `middleware` block, paired with how their identity
+    // resolves. `query` is conditional (depends on its own `auth` field).
+    const hostKinds: {
+      key: PayloadArrayKey;
+      label: string;
+      // undefined ⇒ decide per-host; true ⇒ always identity-resolvable (never
+      // fires); false ⇒ provably null (throw); "warn" ⇒ caller-dependent (warn).
+      identity: false | "warn";
+    }[] = [
+      { key: "query" as PayloadArrayKey, label: "query", identity: false },
+      { key: "task" as PayloadArrayKey, label: "task", identity: false },
+      { key: "function" as PayloadArrayKey, label: "function", identity: "warn" },
+      { key: "tool" as PayloadArrayKey, label: "tool", identity: "warn" },
+    ];
+
+    for (const { key, label, identity } of hostKinds) {
+      const hosts = sections[key];
+      if (!Array.isArray(hosts)) continue;
+      for (const host of hosts) {
+        if (!host || typeof host !== "object") continue;
+        const block = (host as { middleware?: unknown }).middleware;
+        if (!block || typeof block !== "object") continue;
+        const pre = (block as { pre?: unknown }).pre;
+        const post = (block as { post?: unknown }).post;
+        const entries = [...(Array.isArray(pre) ? pre : []), ...(Array.isArray(post) ? post : [])];
+        const hostName = String((host as { name?: unknown }).name ?? "?");
+
+        for (const entry of entries) {
+          if (!entry || typeof entry !== "object") continue;
+          // A disabled attachment doesn't run, so it can't collapse a bucket.
+          if ((entry as { disabled?: unknown }).disabled === true) continue;
+          const ctx = (entry as { context?: { middleware?: { id?: unknown } } }).context;
+          const guid = ctx?.middleware?.id;
+          if (typeof guid !== "string" || !usesAuthByGuid.get(guid)) continue;
+
+          const mwName = nameByGuid.get(guid) ?? guid;
+          // A query with a resolved auth table (guid string or numeric dbo id)
+          // *does* have an identity — auth() is fine there.
+          if (key === ("query" as PayloadArrayKey)) {
+            const auth = (host as { auth?: unknown }).auth;
+            const authed = auth !== false && auth != null && auth !== 0 && auth !== "";
+            if (authed) continue;
+          }
+
+          if (identity === "warn") {
+            console.warn(
+              `sidestep: middleware "${mwName}" references auth() and is attached to ${label} ` +
+                `"${hostName}". auth() is null unless a caller establishes an identity — confirm ` +
+                `this ${label} runs under an authenticated caller, or the key collapses all callers ` +
+                `into one bucket.`,
+            );
+            continue;
+          }
+
+          const noIdentity =
+            key === ("task" as PayloadArrayKey)
+              ? "a task is scheduled/background and never has a request identity"
+              : "this endpoint has no auth table";
+          throw new Error(
+            `middleware "${mwName}" references auth() but is attached to ${label} "${hostName}", ` +
+              `where auth() resolves to null (${noIdentity}) — collapsing all callers into one ` +
+              `shared key. Attach it only to authenticated endpoints (set the query's \`auth\` ` +
+              `table), or remove auth() from the middleware.`,
+          );
+        }
+      }
     }
   }
 

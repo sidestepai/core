@@ -116,8 +116,8 @@ export function clear(): MiddlewareAttachEntry[] {
 }
 
 /**
- * Does any statement in this authored middleware stack reference `auth()`
- * (a tagged {@link Value} with `tag === "auth"`)?
+ * Does any statement in this middleware stack reference `auth()` (a tagged
+ * {@link Value} with `tag === "auth"`)?
  *
  * Detection for the export-time guard (see `Xano.validateMiddlewareAuth`):
  * `auth("id")` is the idiomatic per-user rate-limit key, and when the middleware
@@ -125,10 +125,15 @@ export function clear(): MiddlewareAttachEntry[] {
  * `null` — collapsing every caller into one shared bucket. This walk finds the
  * reference so export can refuse (or warn) before that ships.
  *
- * The walk is a generic deep traversal of the pre-encode `Statement[]`: it
- * descends every object/array member — statement `context`, `input` bindings,
- * `output`, **and each value's `filters[].arg[]`** — testing each node for an
- * `auth`-tagged value. The filter-arg descent is load-bearing: the canonical key
+ * Accepts either the pre-encode authored `Statement[]` or the encoded `run[]`
+ * (`StackItemXdo[]`) — the tag survives encoding, so the same deep walk finds it
+ * in both. The export registry keeps only the encoded middleware, so the guard
+ * passes the `run`; unit tests pass authored stacks. Hence `readonly unknown[]`.
+ *
+ * The walk is a generic deep traversal: it descends every object/array member —
+ * statement `context`, `input` bindings, `output`, **and each value's
+ * `filters[].arg[]`** — testing each node for an `auth`-tagged value. The
+ * filter-arg descent is load-bearing: the canonical key
  * `withFilters(c.text("p:"), fl.concat(auth("id")))` hides the `auth()` as a
  * filter argument, not a top-level value.
  *
@@ -136,7 +141,7 @@ export function clear(): MiddlewareAttachEntry[] {
  * stack (`s.function.run`), so an `auth()` buried inside a called function is a
  * known false negative — which degrades safely to today's no-guard behavior.
  */
-export function stackReferencesAuth(stack?: Statement[]): boolean {
+export function stackReferencesAuth(stack?: readonly unknown[]): boolean {
   return (stack ?? []).some(nodeReferencesAuth);
 }
 
