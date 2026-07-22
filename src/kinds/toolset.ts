@@ -33,6 +33,8 @@ import { resolveRef } from "../refs/guid.js";
 import type { ObjectRef } from "../refs/guid.js";
 import { resolveAuthRef } from "../refs/auth.js";
 import type { AuthRef } from "../refs/auth.js";
+import { lockKey } from "../lock/lock.js";
+import { getLockedCanonical } from "../lock/store.js";
 
 // ---------- tool ----------
 
@@ -187,6 +189,41 @@ export interface ToolsetBaseXdo {
   middleware: MiddlewareBlock;
   tag: Array<{ tag: string }>;
   tool: ToolsetToolXdo[];
+}
+
+/**
+ * Resolve a toolset's `canonical` URL token — the public token an MCP server's
+ * endpoint URL (or an agent's addressable identity) is built from. Mirrors
+ * `query`'s `resolveCanonical` exactly, in priority order:
+ *   1. an explicit `{ canonical }` override;
+ *   2. the def's non-empty in-code `canonical`;
+ *   3. the canonical minted-and-frozen in `xano.lock` under `toolset:<name>`
+ *      (toolsets carry a mintable canonical, like api groups — see
+ *      `CANONICAL_PAYLOAD_KEYS` in `lock/lock.ts`), read via the seeded override
+ *      store (populated by `seedLockOverrides`).
+ *
+ * We deliberately do NOT mint here: a canonical is unique per Xano *instance
+ * across all workspaces*, so the only safe place to generate one is
+ * `export --lock` (random, collision-checked, then frozen so every later export
+ * and every client agrees). When nothing resolves we throw with the fix.
+ */
+export function resolveToolsetCanonical(
+  def: { name: string; canonical?: string },
+  override?: string,
+): string {
+  if (override) return override;
+  if (typeof def.canonical === "string" && def.canonical !== "") return def.canonical;
+  const locked = getLockedCanonical(lockKey("toolset", def.name));
+  if (locked) return locked;
+  throw new Error(
+    `toolset "${def.name}": cannot resolve the \`canonical\` URL token. ` +
+      `Set an explicit \`canonical\` in code, or run \`sidestep export --lock\` once (it ` +
+      `mints a unique canonical and freezes it in xano.lock) and seed that lock before ` +
+      `importing defs — the CLI does this automatically. As a last resort pass one ` +
+      `directly (e.g. \`getPath({ canonical: "..." })\`). (Minting here is unsafe — ` +
+      `canonicals must be unique per instance across all workspaces, so they are only ` +
+      `generated at locked export.)`,
+  );
 }
 
 /**

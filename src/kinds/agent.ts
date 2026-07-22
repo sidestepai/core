@@ -55,7 +55,7 @@
  */
 import { registerKind } from "./kind.js";
 import type { ObjectKind } from "./kind.js";
-import { encodeToolsetBase } from "./toolset.js";
+import { encodeToolsetBase, resolveToolsetCanonical } from "./toolset.js";
 import type { ToolsetBaseXdo, ToolsetToolRef } from "./toolset.js";
 
 /** The LLM provider — the `agent_settings.type` value and the `configs` key. */
@@ -297,7 +297,29 @@ export const agentKind: ObjectKind<AgentDef, AgentXdo> = {
 };
 registerKind(agentKind);
 
-/** Author an AI agent — an LLM orchestrator over a set of tools. */
-export function agent(def: AgentDef): AgentDef {
-  return def;
+/**
+ * An `agent()` handle: the def plus a `getCanonical()` accessor. Unlike
+ * {@link McpServerHandle} there is **no** `getUrl()`/`getPath()` — an agent has
+ * no public HTTP endpoint (it is invoked in-stack via `s.ai.agent.run`, never
+ * addressed by an external client). `getCanonical()` gives a pinned `canonical`
+ * a client-side payoff without fabricating a URL. The accessor is dropped by
+ * `JSON.stringify` and ignored by `encodeAgent`, so serialization is unaffected.
+ */
+export type AgentHandle = AgentDef & {
+  /**
+   * The agent's resolved `canonical` token — from the def's `canonical` (or
+   * `opts.canonical`, or the value frozen in `xano.lock` under `toolset:<name>`);
+   * throws if none resolves.
+   */
+  getCanonical(opts?: { canonical?: string }): string;
+};
+
+/**
+ * Author an AI agent — an LLM orchestrator over a set of tools. Returns an
+ * {@link AgentHandle} (the def plus `getCanonical()`).
+ */
+export function agent(def: AgentDef): AgentHandle {
+  const getCanonical = (opts?: { canonical?: string }): string =>
+    resolveToolsetCanonical(def, opts?.canonical);
+  return { ...def, getCanonical };
 }
