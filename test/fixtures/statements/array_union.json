@@ -1,0 +1,41 @@
+{
+  "as": "x2",
+  "name": "mvp:array_union",
+  "_xsid": "f:6b217aca-7eba-438d-b536-a6ee6cdf9161",
+  "addon": [],
+  "input": [],
+  "mocks": {},
+  "output": {
+    "items": [],
+    "filters": [],
+    "customize": false
+  },
+  "context": {
+    "left": {
+      "tag": "const",
+      "value": "[1,2,3]",
+      "filters": [
+        {
+          "arg": [],
+          "name": "json_decode",
+          "disabled": false
+        }
+      ]
+    },
+    "right": {
+      "tag": "const",
+      "value": "[1,2,3]",
+      "filters": [
+        {
+          "arg": [],
+          "name": "json_decode",
+          "disabled": false
+        }
+      ]
+    }
+  },
+  "runtime": null,
+  "disabled": false,
+  "description": "",
+  "settings_registry": null
+}

@@ -9,6 +9,7 @@ import { returnValue, die, debugLog, foreachBreak, foreachContinue, foreachRemov
 import { forLoop, foreachLoop, whileLoop, group } from "../../src/statements/special/loops.js";
 import { setVar } from "../../src/statements/set-var.js";
 import { expr } from "../../src/statements/conditional.js";
+import { arrayMap, arrayUnion, getRawInput, expectToThrow } from "../../src/statements/special/misc.js";
 import { c, inp, ref, filter, withFilters } from "../../src/values/value.js";
 
 /** Build a generated statement by name (for families without an ergonomic factory). */
@@ -264,6 +265,36 @@ const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
       encodeStatement(whileLoop({ when: expr(ref("x1"), "<", c.int(10)), body: [setVar("x1", c.int(1))] })),
   },
   { fixture: "group", build: () => encodeStatement(group([setVar("x2", c.int(2))])) },
+  // `!class` misc specials proven byte-exact against live captures (U5): the
+  // array map/union field remaps (collection/transform_value; left/right),
+  // get_input's default input pair, and expect.to_throw's nested run[].
+  {
+    fixture: "array_map",
+    build: () =>
+      encodeStatement(
+        arrayMap({
+          source: withFilters(c.text("[1,2,3]"), [filter("json_decode")]),
+          as: "x1",
+          transform: ref("$this"),
+        }),
+      ),
+  },
+  {
+    fixture: "array_union",
+    build: () =>
+      encodeStatement(
+        arrayUnion({
+          source: withFilters(c.text("[1,2,3]"), [filter("json_decode")]),
+          with: withFilters(c.text("[1,2,3]"), [filter("json_decode")]),
+          as: "x2",
+        }),
+      ),
+  },
+  { fixture: "get_input", build: () => encodeStatement(getRawInput({ as: "x3" })) },
+  {
+    fixture: "test_expect_to_throw",
+    build: () => encodeStatement(expectToThrow({ body: [setVar("x4", c.int(1))] })),
+  },
   { fixture: "return-null", build: () => encodeStatement(returnValue(c.null())) },
   { fixture: "die", build: () => encodeStatement(die(c.int(123))) },
   { fixture: "debug_log", build: () => encodeStatement(debugLog(c.int(123))) },
