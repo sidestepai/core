@@ -18,7 +18,8 @@ import type { ObjectKind } from "./kind.js";
 import { encodeToolsetBase } from "./toolset.js";
 import type { ToolsetBaseDef, ToolsetBaseXdo } from "./toolset.js";
 
-export interface McpServerDef extends ToolsetBaseDef {}
+/** MCP server authoring def — the shared toolset envelope (no agent/LLM fields). */
+export type McpServerDef = ToolsetBaseDef;
 
 export interface McpServerXdo extends ToolsetBaseXdo {
   type: "mcp";

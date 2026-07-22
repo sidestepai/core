@@ -6,7 +6,8 @@
  * orchestrator with a typed `llm` block that maps onto the engine's real
  * `agent_settings` wire shape.
  */
-import { mcpServer, agent } from "@sidestep/core";
+import { mcpServer, agent, query, s, inp, ref, input } from "@sidestep/core";
+import { api } from "../_shared.js";
 import { searchTool } from "./tool.js";
 
 /** Gate 1 — an MCP server exposing tools. */
@@ -31,4 +32,18 @@ export const assistant = agent({
     maxSteps: 5,
   },
   tools: [{ tool: searchTool }],
+});
+
+/**
+ * Gate 3 — a worked endpoint that invokes the agent. `s.ai.agent.run` binds the
+ * target by the agent's def handle (resolved to its `toolset` guid, remapped on
+ * import like the call family), runs it, and returns the result.
+ */
+export const askAssistant = query({
+  name: "ex_ask_assistant",
+  verb: "POST",
+  apiGroup: api,
+  input: { question: input.text({ required: true }) },
+  stack: [s.ai.agent.run({ agent: assistant, args: inp("question"), as: "answer" })],
+  response: ref("answer"),
 });
