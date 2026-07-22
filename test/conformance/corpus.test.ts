@@ -18,7 +18,8 @@ import {
   dbBulkDelete,
   dbExternalQuery,
 } from "../../src/statements/special/db.js";
-import { agent, table, f } from "../../src/index.js";
+import { apiCall } from "../../src/statements/special/calls.js";
+import { agent, table, f, query, apiGroup, input } from "../../src/index.js";
 import { obj } from "../../src/values/obj.js";
 import { c, inp, ref, col, filter, withFilters } from "../../src/values/value.js";
 
@@ -26,6 +27,14 @@ import { c, inp, ref, col, filter, withFilters } from "../../src/values/value.js
 const capUsers = table({ name: "cap_users", schema: { name: f.text({}) } });
 const capRows = () =>
   withFilters(c.text('[{"name":"a"},{"name":"b"}]'), [filter("json_decode")]);
+
+/** Query target reused by the api_call row — api.call resolves it to context.id. */
+const capApiTarget = query({
+  name: "cap_target",
+  verb: "GET",
+  apiGroup: apiGroup({ name: "cap_grp", canonical: "cap-grp" }),
+  input: { q: input.text({ required: false }) },
+});
 
 /** Agent def reused by the call_agent row — its toolset guid derives from `canonical`. */
 const capAssistant = agent({
@@ -62,23 +71,32 @@ const objArg = () =>
  *   Each needs: vendor the json into test/fixtures/statements/ + add a {fixture,build}
  *   row here with the right authoring args (read the golden for inputs).
  *
- *   DONE (wired below): bitwise_or, bitwise_xor, array_merge, object_entries,
- *     sleep, foreach_continue, foreach_remove, create_image, create_video,
- *     create_audio, create_attachment, create_file_resource, csv_stream,
- *     crypto_jwe_decode2, crypto_jws_decode2, crypto_jws_encode2, generate_pass,
- *     check_pass, vault_sign_url, algolia_request.
+ *   DONE — vendored from source (wired below): bitwise_or, bitwise_xor,
+ *     array_merge, object_entries, sleep, foreach_continue, foreach_remove,
+ *     create_image, create_video, create_audio, create_attachment,
+ *     create_file_resource, csv_stream, crypto_jwe_decode2, crypto_jws_decode2,
+ *     crypto_jws_encode2, generate_pass, check_pass, vault_sign_url, algolia_request.
+ *
+ *   DONE — live-captured via `sidestep validate --capture` (wired below): while,
+ *     group, array_map, array_union, get_input, test_expect_to_throw, call_agent,
+ *     cloud_job, cloud_job_await, cloud_job_status, db_bulk_add, db_bulk_patch,
+ *     db_bulk_update, db_bulk_delete, db_external_query, api_call. (The openai
+ *     agent_settings golden is asserted in test/kinds/agent.test.ts.)
  *
  *   REDUNDANT (golden is an already-tested stored name — skip): get_record and
  *     direct_query/direct_query-arg vendor as mvp:dbo_getby / mvp:dbo_direct_query,
  *     already covered by db_get / db_direct_query in db.test.ts.
  *
- *   DEFERRED to live capture (source golden is degenerate — empty context while
- *   the spec requires non-optional fields, so vendoring can't round-trip; needs a
- *   real `sidestep validate --capture`):
- *     zip_{add,create,delete,extract,view}_file_resource, create_var_from_file_resource,
- *     conditional (empty branches), array_every / object_values-array /
- *     return-null-text (share array_find's numeric inline-array-filter-arg
- *     value-layer gap — see generated.test.ts, which asserts only the compare slice).
+ *   STILL OPEN:
+ *   - zip_{add,create,delete,extract,view}_file_resource, create_var_from_file_resource,
+ *     conditional — the source goldens are degenerate (empty context while the spec
+ *     needs non-optional fields); capture non-trivial authorings before wiring.
+ *   - array_every / object_values-array / return-null-text — share array_find's
+ *     numeric inline-array-filter-arg value-layer gap (generated.test.ts asserts
+ *     only the compare slice).
+ *   - f.tableRef — needs a persisted TABLE-object readback (capture round-trips
+ *     functions, not table schemas). See fields/catalog.ts.
+ *   - action / action_package — EXCLUDED: need an action-identity model first.
  */
 const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
   { fixture: "math_add", build: () => encodeStatement(mathAdd("x1", c.int(1))) },
@@ -373,6 +391,19 @@ const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
           connectionString: c.text("postgres://localhost/db"),
           sql: "SELECT 1",
           responseType: "list",
+        }),
+      ),
+  },
+  // api.call proven byte-exact against a live capture (U9): context.token is a
+  // TAGGED {value,tag,filters} value (not a bare scalar), + token_ignore_expiration.
+  {
+    fixture: "api_call",
+    build: () =>
+      encodeStatement(
+        apiCall({
+          api: capApiTarget,
+          auth: { token: c.text("mytoken"), ignoreExpiration: true },
+          as: "resp",
         }),
       ),
   },
