@@ -95,12 +95,17 @@ export function resolveValidateConfig(overrides: ValidateOverrides = {}): Valida
     throw new Error(`Missing token. Set ${ENV_TOKEN} in your environment or a .env file (kept out of git).`);
   }
 
-  const rawWorkspace = overrides.workspaceId !== undefined ? String(overrides.workspaceId) : process.env[ENV_WORKSPACE];
-  let workspaceId: number | undefined;
-  if (rawWorkspace !== undefined && rawWorkspace !== "") {
-    workspaceId = Number(rawWorkspace);
-    if (!Number.isInteger(workspaceId) || workspaceId < 1) {
-      throw new Error(`${ENV_WORKSPACE} / --workspace must be a positive integer (got "${rawWorkspace}").`);
+  // A CLI override is already validated at the boundary (`parseWorkspaceId`), so
+  // trust it — the same way the `instance` override is trusted. Only the raw
+  // env-string path needs parsing + validation here.
+  let workspaceId = overrides.workspaceId;
+  if (workspaceId === undefined) {
+    const raw = process.env[ENV_WORKSPACE];
+    if (raw !== undefined && raw !== "") {
+      workspaceId = Number(raw);
+      if (!Number.isInteger(workspaceId) || workspaceId < 1) {
+        throw new Error(`${ENV_WORKSPACE} must be a positive integer (got "${raw}").`);
+      }
     }
   }
 

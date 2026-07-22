@@ -50,14 +50,12 @@ const STRIP_KEYS = new Set([
  * (`TaggedValue.value: string`); coercing here makes the comparison ignore that
  * serialization-generation artifact rather than fail on a real-equivalent value.
  */
-/** True for the two interchangeable "no customization" forms: `""` and `{}`. */
-function isEmptyCustomize(v: unknown): boolean {
-  if (v === "") return true;
-  return v !== null && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0;
-}
-
 function isEmptyObject(v: unknown): boolean {
   return v !== null && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0;
+}
+/** True for the two interchangeable "no customization" forms: `""` and `{}`. */
+function isEmptyCustomize(v: unknown): boolean {
+  return v === "" || isEmptyObject(v);
 }
 function isEmptyArray(v: unknown): boolean {
   return Array.isArray(v) && v.length === 0;

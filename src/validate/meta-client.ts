@@ -29,14 +29,7 @@ export interface ImportResult {
   raw: string;
 }
 
-/** A minimal listed API-group: its numeric id and (random) public canonical. */
-export interface ApiGroupSummary {
-  id: number;
-  name: string | undefined;
-  canonical: string | undefined;
-}
-
-/** Outcome of invoking a deployed endpoint or running a function. */
+/** Outcome of running a function: its status plus the parsed (or raw) body. */
 export interface InvokeResult {
   status: number;
   ok: boolean;
@@ -45,9 +38,9 @@ export interface InvokeResult {
 }
 
 /**
- * A client bound to one instance + token. All methods speak JSON and throw on a
- * non-2xx with the endpoint's body attached (except {@link invokeApi}/{@link runFunction},
- * which return the status so callers can assert on error responses too).
+ * A client bound to one instance + token. Read methods (`getFunction`,
+ * `listFunctions`) throw on a non-2xx with the endpoint's body attached;
+ * {@link runFunction} returns the status so callers can inspect error responses.
  */
 export class MetaClient {
   constructor(private readonly config: ValidateConfig) {}
@@ -107,62 +100,23 @@ export class MetaClient {
     });
   }
 
-  /** Read an API endpoint back as its persisted JSON object (XanoScript text omitted). */
-  getApi(workspaceId: number, apigroupId: number, apiId: number): Promise<unknown> {
-    return this.getJson(`/api:meta/workspace/${workspaceId}/apigroup/${apigroupId}/api/${apiId}`, {
-      include_xanoscript: "false",
-    });
-  }
-
   /** List the workspace's functions (name → id mapping for round-trip reads). */
   async listFunctions(workspaceId: number): Promise<Array<{ id: number; name: string | undefined }>> {
     const raw = await this.getJson(`/api:meta/workspace/${workspaceId}/function`);
     return asItems(raw).map((o) => ({ id: numberOf(o.id), name: stringOf(o.name) })).filter((f) => Number.isFinite(f.id));
   }
 
-  /** List the workspace's API groups, exposing each group's public `canonical`. */
-  async listApigroups(workspaceId: number): Promise<ApiGroupSummary[]> {
-    const raw = await this.getJson(`/api:meta/workspace/${workspaceId}/apigroup`);
-    return asItems(raw)
-      .map((o) => ({ id: numberOf(o.id), name: stringOf(o.name), canonical: stringOf(o.canonical) }))
-      .filter((g) => Number.isFinite(g.id));
-  }
-
-  /** Run a named workspace function via the meta function-run route; returns status + parsed body. */
-  runFunction(workspaceId: number, name: string, input?: unknown): Promise<InvokeResult> {
-    return this.postJson(`/api:meta/workspace/${workspaceId}/function/run`, { name, input: input ?? {} });
-  }
-
-  /** Invoke a deployed public API at `/api:{canonical}/{path}`; returns status + parsed body. */
-  invokeApi(
-    canonical: string,
-    path: string,
-    opts: { method?: string; body?: unknown; headers?: Record<string, string> } = {},
-  ): Promise<InvokeResult> {
-    const trimmed = path.replace(/^\/+/, "");
-    return this.request(`/api:${canonical}/${trimmed}`, opts);
-  }
-
-  /** POST JSON to a meta route; returns status + parsed body (does not throw on 4xx/5xx). */
-  private postJson(path: string, body: unknown): Promise<InvokeResult> {
-    return this.request(path, { method: "POST", body });
-  }
-
-  /** Shared request → { status, ok, body } helper for invoke/run paths. */
-  private async request(
-    path: string,
-    opts: { method?: string; body?: unknown; headers?: Record<string, string> },
-  ): Promise<InvokeResult> {
-    const url = new URL(path, this.config.instance);
-    const hasBody = opts.body !== undefined;
+  /**
+   * Run a named workspace function via the meta function-run route. Unlike the
+   * read methods this returns the status (rather than throwing) so a caller can
+   * report an engine error + logs as a runtime outcome.
+   */
+  async runFunction(workspaceId: number, name: string, input?: unknown): Promise<InvokeResult> {
+    const url = new URL(`/api:meta/workspace/${workspaceId}/function/run`, this.config.instance);
     const res = await fetch(url.href, {
-      method: opts.method ?? (hasBody ? "POST" : "GET"),
-      headers: {
-        ...this.authHeaders(),
-        ...(hasBody ? { "Content-Type": "application/json" } : {}),
-        ...(opts.headers ?? {}),
-      },
-      body: hasBody ? JSON.stringify(opts.body) : undefined,
+      method: "POST",
+      headers: { ...this.authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ name, input: input ?? {} }),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     const text = await res.text();

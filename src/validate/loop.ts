@@ -90,21 +90,22 @@ export async function runValidateLoop(
     return { accepted: true, workspaceId, roundTrip: [], unchecked };
   }
 
-  const roundTrip: RoundTripEntry[] = [];
+  let roundTrip: RoundTripEntry[] = [];
   if (compiledFns.length > 0) {
     const persisted = await client.listFunctions(workspaceId);
     const idByName = new Map(persisted.filter((f) => f.name !== undefined).map((f) => [f.name!, f.id]));
-    for (const fn of compiledFns) {
-      const name = typeof fn.name === "string" ? fn.name : "(unnamed)";
-      const id = idByName.get(name);
-      if (id === undefined) {
-        roundTrip.push({ name, status: "missing", diffs: [], fetched: undefined });
-        continue;
-      }
-      const fetched = await client.getFunction(workspaceId, id);
-      const diffs = deepDiff(normalize(fn), normalize(fetched));
-      roundTrip.push({ name, status: diffs.length === 0 ? "match" : "diff", diffs, fetched });
-    }
+    // Reads are independent (each keyed by an already-resolved id), so fetch +
+    // diff them concurrently; Promise.all preserves the authored order.
+    roundTrip = await Promise.all(
+      compiledFns.map(async (fn): Promise<RoundTripEntry> => {
+        const name = typeof fn.name === "string" ? fn.name : "(unnamed)";
+        const id = idByName.get(name);
+        if (id === undefined) return { name, status: "missing", diffs: [], fetched: undefined };
+        const fetched = await client.getFunction(workspaceId, id);
+        const diffs = deepDiff(normalize(fn), normalize(fetched));
+        return { name, status: diffs.length === 0 ? "match" : "diff", diffs, fetched };
+      }),
+    );
   }
 
   return { accepted: true, workspaceId, roundTrip, unchecked };
@@ -133,6 +134,7 @@ export function deepDiff(expected: unknown, actual: unknown, path = "$"): DiffLi
   const actIsArr = Array.isArray(actual);
   if (expIsArr !== actIsArr) return [{ path, expected, actual }];
 
+  // Both flags in the condition so TS narrows `expected` AND `actual` to arrays.
   if (expIsArr && actIsArr) {
     const len = Math.max(expected.length, actual.length);
     const out: DiffLine[] = [];

@@ -63,7 +63,9 @@ export async function runValidateCommand(args: ParsedArgs): Promise<void> {
   }
 
   if (args.runtime && result.workspaceId !== undefined) {
-    const names = functionNames(bundle);
+    // Run only functions that actually imported (status match/diff), not authored
+    // names that never landed — the loop already resolved this set.
+    const names = result.roundTrip.filter((e) => e.status !== "missing").map((e) => e.name);
     if (names.length > 0) {
       const { smokeRunFunctions } = await import("../validate/runtime.js");
       blank();
@@ -106,20 +108,6 @@ async function loadBundle(args: ParsedArgs): Promise<string> {
   }
   if (args.file !== undefined) return exportBundleJson(args);
   throw new Error(`Missing input. Usage: sidestep validate <file> | --bundle <path>.`);
-}
-
-/** Extract authored function names from a serialized bundle (for runtime smoke). */
-function functionNames(bundleText: string): string[] {
-  try {
-    const bundle = JSON.parse(bundleText) as { payload?: { function?: unknown } };
-    const fns = bundle.payload?.function;
-    if (!Array.isArray(fns)) return [];
-    return fns.map((f) => (f !== null && typeof f === "object" ? (f as { name?: unknown }).name : undefined)).filter(
-      (n): n is string => typeof n === "string",
-    );
-  } catch {
-    return [];
-  }
 }
 
 function fmt(v: unknown): string {
