@@ -10,8 +10,8 @@
  * Node-only and lazily imported by the command layer so the browser-safe
  * authoring bundle never pulls in the validate stack.
  */
-import { existsSync, readFileSync } from "node:fs";
-import { exportBundleJson, type ParsedArgs } from "./cli.js";
+import type { ParsedArgs } from "./cli.js";
+import { loadBundleText } from "./bundle-input.js";
 import { step, success, warn, info, detail, blank } from "./ui.js";
 
 /** Exit code when validation runs but a check fails (distinct from a usage/transport error). */
@@ -27,7 +27,7 @@ export async function runValidateCommand(args: ParsedArgs): Promise<void> {
   const host = new URL(config.instance).host;
   step(`Validating against ${host}${who.name ? ` (as ${who.name})` : ""}`);
 
-  const bundle = await loadBundle(args);
+  const { bundle } = await loadBundleText(args, `Missing input. Usage: sidestep validate <file> | --bundle <path>.`);
   const client = new MetaClient(config);
   // Always a clean import: validate resets the disposable sandbox first so the
   // round-trip reads back exactly what this bundle produced, never stale objects
@@ -98,19 +98,6 @@ export async function runValidateCommand(args: ParsedArgs): Promise<void> {
     blank();
     success("Validation passed");
   }
-}
-
-/** Produce the bundle text: compile a `<file>` entry or read a pre-exported `--bundle <path>`. */
-async function loadBundle(args: ParsedArgs): Promise<string> {
-  if (args.bundle !== undefined) {
-    if (args.file !== undefined) throw new Error(`Pass either an entry <file> or --bundle <path>, not both.`);
-    if (!existsSync(args.bundle)) {
-      throw new Error(`${args.bundle} not found. Run \`sidestep export --out ${args.bundle}\` first.`);
-    }
-    return readFileSync(args.bundle, "utf8");
-  }
-  if (args.file !== undefined) return exportBundleJson(args);
-  throw new Error(`Missing input. Usage: sidestep validate <file> | --bundle <path>.`);
 }
 
 function fmt(v: unknown): string {

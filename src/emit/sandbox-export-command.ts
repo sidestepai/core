@@ -21,9 +21,10 @@
  * Node-only (fetch/fs + the OAuth stack) and lazily imported by the command
  * layer so the browser-safe authoring bundle never pulls it in.
  */
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { exportBundleJson, type ParsedArgs } from "./cli.js";
+import type { ParsedArgs } from "./cli.js";
+import { loadBundleText } from "./bundle-input.js";
 import { getAccessToken, type ResolvedAuth } from "../auth/token.js";
 import { success, step } from "./ui.js";
 
@@ -98,21 +99,6 @@ export async function fetchSandboxMultidoc(auth: ResolvedAuth): Promise<string> 
   return text;
 }
 
-/** Produce the JSON bundle text: compile an entry `<file>` or read a pre-exported `--bundle <path>`. */
-async function loadJsonBundle(args: ParsedArgs): Promise<string> {
-  if (args.bundle !== undefined) {
-    if (args.file !== undefined) throw new Error(`Pass either an entry <file> or --bundle <path>, not both.`);
-    if (!existsSync(args.bundle)) {
-      throw new Error(`${args.bundle} not found. Run \`sidestep export --out ${args.bundle}\` first.`);
-    }
-    return readFileSync(args.bundle, "utf8");
-  }
-  if (args.file !== undefined) return exportBundleJson(args);
-  throw new Error(
-    `Missing input for \`sandbox export --format json\`. Pass an entry <file> or --bundle <path>.`,
-  );
-}
-
 /**
  * Produce the export content + its extension for the requested format.
  *   json     → local compile (no network); requires <file> or --bundle.
@@ -120,7 +106,11 @@ async function loadJsonBundle(args: ParsedArgs): Promise<string> {
  */
 async function produce(args: ParsedArgs): Promise<{ content: string; ext: "json" | "xs" }> {
   if (args.format === "json") {
-    return { content: await loadJsonBundle(args), ext: "json" };
+    const { bundle } = await loadBundleText(
+      args,
+      `Missing input for \`sandbox export --format json\`. Pass an entry <file> or --bundle <path>.`,
+    );
+    return { content: bundle, ext: "json" };
   }
   // multidoc
   if (args.file !== undefined || args.bundle !== undefined) {

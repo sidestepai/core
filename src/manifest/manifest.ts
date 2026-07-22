@@ -183,6 +183,18 @@ const CLI_COMMANDS: readonly ManifestCliCommand[] = [
       "Deploy the compiled workspace to your sandbox (replaces the removed `push`), optionally with a static frontend. Prints a projected, secret-free summary as JSON on stdout (baseUrl + workspace id/name, plus the static URL when --static is used). The sandbox is the only deploy target. Never writes SERVER identities back into xano.lock (the compile step still maintains it exactly as `export` does).",
   },
   {
+    command: "sandbox export",
+    args: "--format <json|multidoc> [--path <path>|-] [--name <name>]",
+    flags: [
+      { flag: "--format json", description: "Compile the LOCAL workspace to the JSON bundle payload (the same bytes deploy/validate send) and write a .json file. Accepts an entry <file> or --bundle <path>; no network." },
+      { flag: "--format multidoc", description: "GET the sandbox tenant's XanoScript multidoc over OAuth and write it to a .xs file. Reflects the CURRENTLY DEPLOYED sandbox — run `sandbox deploy` first. Takes no <file>/--bundle input." },
+      { flag: "--path <path>|-", description: "Output location: a directory (writes <name>.<ext> inside it), a full file path (verbatim), or `-` for stdout. Default: ./sandbox.<ext> in the cwd." },
+      { flag: "--name <name>", description: "Output basename override (default `sandbox`)." },
+    ],
+    description:
+      "Export a portable artifact for the workspace you're iterating on: the JSON bundle (local compile) or the sandbox tenant's XanoScript multidoc (.xs, over OAuth). env/records/draft are unsupported (endpoint defaults).",
+  },
+  {
     command: "sandbox details",
     args: "[--config <path>] [--global]",
     description:
@@ -508,6 +520,15 @@ export function renderLlmsTxt(m: Manifest): string {
     "  the shared compile step — identically to `sidestep export`, and only when a",
     "  lock exists or `--lock` is passed. `--bundle <path>` skips compiling, so it",
     "  never touches the lock at all.",
+    "- `sidestep sandbox export --format <json|multidoc>` — hand back a portable",
+    "  artifact for the workspace you're iterating on. `--format json` compiles the",
+    "  LOCAL workspace to the JSON bundle payload (the same bytes deploy/validate send;",
+    "  accepts an entry `<file>` or `--bundle <path>`, no network). `--format multidoc`",
+    "  GETs the sandbox tenant's XanoScript multidoc over OAuth and writes a `.xs` file —",
+    "  it reflects the CURRENTLY DEPLOYED sandbox, so run `sandbox deploy` first and pass",
+    "  no input. Output defaults to `./sandbox.<ext>`; `--name` overrides the basename,",
+    "  `--path` the location, and `--path -` streams to stdout. env/records/draft are",
+    "  unsupported (endpoint defaults).",
     "- `sidestep sandbox details` — prints the sandbox tenant as JSON, headlined by",
     "  its public `baseUrl` (GET `/api:meta/sandbox/me`). An agent reads `baseUrl` to",
     "  point the frontend at the deployed backend WITHOUT re-running a deploy just to",
