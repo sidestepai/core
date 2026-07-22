@@ -78,9 +78,10 @@ describe("run validate (end-to-end wiring via --bundle)", () => {
 
     await run(["validate", "--bundle", bundlePath]);
     expect(process.exitCode).not.toBe(2);
-    // auth/me first, then the import
+    // auth/me first, then the import — which must always be a clean reset import
+    // (regression guard: reset defaults to true, not merge).
     expect(String(m.mock.calls[0]![0])).toContain("/api:meta/auth/me");
-    expect(String(m.mock.calls[1]![0])).toContain("/api:meta/sandbox/bundle");
+    expect(String(m.mock.calls[1]![0])).toBe("https://inst.xano.io/api:meta/sandbox/bundle?reset=true");
   });
 
   it("exits non-zero on a round-trip divergence", async () => {

@@ -390,7 +390,7 @@ const USAGE =
   "sidestep sandbox deploy <file>|--bundle <path> [--reset] [--static <dir>] [--static-host <name>] [--static-env KEY=VALUE] [--config <path>] [--global] | " +
   "sidestep sandbox details [--config <path>] [--global] | " +
   "sidestep profile me [--config <path>] [--global] | " +
-  "sidestep validate <file>|--bundle <path> [--runtime] [--capture] [--out <dir>] [--instance <url>] [--workspace <id>] [--reset] [--verbose] | " +
+  "sidestep validate <file>|--bundle <path> [--runtime] [--capture] [--out <dir>] [--instance <url>] [--workspace <id>] [--verbose] | " +
   "sidestep lock <rename|prune|adopt> …";
 
 /** Quote a name for a suggested shell command when it needs it. */

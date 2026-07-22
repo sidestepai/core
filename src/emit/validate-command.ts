@@ -29,7 +29,10 @@ export async function runValidateCommand(args: ParsedArgs): Promise<void> {
 
   const bundle = await loadBundle(args);
   const client = new MetaClient(config);
-  const result = await runValidateLoop(client, bundle, { reset: args.reset ?? true });
+  // Always a clean import: validate resets the disposable sandbox first so the
+  // round-trip reads back exactly what this bundle produced, never stale objects
+  // left by a prior deploy. (Not gated on --reset — a merge would corrupt the diff.)
+  const result = await runValidateLoop(client, bundle, { reset: true });
 
   if (!result.accepted) {
     warn("Import rejected by the engine:");
