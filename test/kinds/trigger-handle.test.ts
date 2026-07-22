@@ -6,6 +6,9 @@ import {
   type WorkspaceInputs,
   type ErrorInputs,
 } from "../../src/kinds/trigger-handle.js";
+import "../../src/index.js"; // register all statements
+import { s } from "../../src/statements/s.js";
+import { encodeStatement } from "../../src/statements/statement.js";
 
 describe("trigger input handle — runtime shape (U2)", () => {
   it("realtime: exposes action/channel/client/options/payload as input values", () => {
@@ -53,6 +56,21 @@ describe("trigger input handle — runtime shape (U2)", () => {
     expect({ ...t.toolset }).toEqual({ value: "toolset", tag: "input", filters: [] });
     // callable form
     expect(t.toolset("name")).toEqual({ value: "toolset.name", tag: "input", filters: [] });
+  });
+
+  it("a bare accessor works as s.api.request params (issue #78 regression)", () => {
+    // The canonical "mirror the whole row" trigger shape: `params: t.new`. In 3.6.0
+    // this threw the misleading `c.obj` #42 error; the accessor is a *function*
+    // Value, which coerceObj's object-only check missed. It must flatten to a plain
+    // input Value and encode cleanly.
+    const t = buildTriggerHandle("database") as unknown as { new: import("../../src/values/value.js").Value };
+    const encoded = encodeStatement(
+      s.api.request({ url: "https://example.com/hook", method: "POST", params: t.new, as: "resp" }),
+    );
+    const params = (encoded.input as Array<{ name: string; value: unknown; tag: string }>).find(
+      (e) => e.name === "params",
+    );
+    expect(params).toMatchObject({ value: "new", tag: "input" });
   });
 });
 

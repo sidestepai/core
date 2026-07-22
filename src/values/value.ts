@@ -91,7 +91,11 @@ const REJECT_TAGGED_VALUE =
  */
 export function isTaggedValue(x: unknown): x is Value {
   return (
-    typeof x === "object" &&
+    // A trigger field accessor (`t.new`) is a *callable* Value — a function
+    // carrying the `{value,tag,filters}` props — so `typeof` is "function", not
+    // "object". Accept both, or a bare `t.new` slips past this check, falls
+    // through coerceObj's record path, and trips the #42 c.obj guard (issue #78).
+    (typeof x === "object" || typeof x === "function") &&
     x !== null &&
     "value" in x &&
     "filters" in x &&
