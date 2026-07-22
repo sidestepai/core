@@ -81,6 +81,17 @@ export function encodeMiddlewareEntry(entry: MiddlewareAttachEntry): StackItemXd
 }
 
 /**
+ * Read the target middleware guid off an **encoded** attachment entry — the
+ * `{ context: { middleware: { id } } }` shape {@link middlewareAttachStatement}
+ * writes. Returns `undefined` for a malformed or foreign entry. Co-located with
+ * the writer so the two stay in lockstep (used by the export-time auth guard).
+ */
+export function middlewareEntryGuid(entry: unknown): string | undefined {
+  const id = (entry as { context?: { middleware?: { id?: unknown } } })?.context?.middleware?.id;
+  return typeof id === "string" ? id : undefined;
+}
+
+/**
  * Build the object-level {@link MiddlewareBlock} from an authoring
  * {@link MiddlewareAttach}. Omitted → the empty block (both `_customize:false`,
  * both lists `[]`) byte-identical to {@link emptyMiddleware}, so a host with no
