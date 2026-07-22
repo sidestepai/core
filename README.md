@@ -456,9 +456,9 @@ query({
   name: "ask", verb: "POST", apiGroup: api,
   input: { question: input.text({ required: true }) },
   stack: [s.ai.agent.run({ agent: assistant, args: obj({ question: inp("question") }), as: "answer" })],
-  // The completion is at `.result` — see "Agent run result" below.
-  response: { text: ref("answer.result", { safe: true }) },
-  responseShape: { text: "" as string },
+  // The completion is at `.result` — a dotted ref projects it, and `InferResponse`
+  // types `text` to `string` (no `responseShape` needed). See "Agent run result".
+  response: { text: ref("answer.result") },
 });
 ```
 
@@ -477,10 +477,12 @@ the bare completion — the model's text is nested under **`.result`**:
 ```
 
 So `ref("answer.result")` returns the text; a bare `ref("answer")` returns the whole
-metadata object. `ref("answer")` is typed as `AgentRunResult`, so `InferResponse` reflects
-the real shape (it is no longer `unknown`). `result` is a `string` for a text agent; for a
+metadata object. Both are typed: `ref("answer")` is `AgentRunResult` and the dotted
+`ref("answer.result")` projects its `.result` field, so `InferResponse` reflects the real
+shape either way (neither is `unknown`). `result` is a `string` for a text agent; for a
 structured-output agent narrow it with the type-only `resultShape` witness:
-`s.ai.agent.run({ agent, as: "answer", resultShape: {} as { sentiment: string } })`.
+`s.ai.agent.run({ agent, as: "answer", resultShape: {} as { sentiment: string } })` — then
+`ref("answer.result")` types to `{ sentiment: string }`.
 
 **MCP endpoint URL.** An `mcpServer()` handle derives its endpoint from the def — no
 hardcoding, the same contract `query.getPath()` gives API endpoints:

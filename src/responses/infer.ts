@@ -20,7 +20,8 @@
  *   1. A declared `responseShape` on the def always wins (the override).
  *   2. Otherwise the shape is auto-derived from `response` + `stack`
  *      ({@link DeriveResponse}) — object-literal keys (U2) and a single variable
- *      traced to a typed `db.get`/`db.query` (U5).
+ *      traced to a typed `db.get`/`db.query` (U5). A dotted `ref("var.field")`
+ *      traces the base variable, then indexes the subpath into its shape (#93).
  *   3. Anything the walk can't resolve (filters, lambdas, control-flow vars,
  *      `set_var`, function-produced vars, streams) resolves to `unknown`, which
  *      the author narrows or overrides via `responseShape`.
@@ -55,15 +56,44 @@ type DeclaredResponse<Q> = Q extends { responseShape?: infer R }
  * where the engine falls back to `json`. A widened (non-tuple) stack matches no
  * head and yields `unknown` too.
  */
-type TraceVar<Name extends string, S> = S extends readonly [infer Head, ...infer Tail]
+type TraceBinding<Name extends string, S> = S extends readonly [infer Head, ...infer Tail]
   ? Head extends AsShapeBrand<infer As, infer Shape>
     ? As extends Name
       ? Name extends As
         ? Shape
-        : TraceVar<Name, Tail>
-      : TraceVar<Name, Tail>
-    : TraceVar<Name, Tail>
+        : TraceBinding<Name, Tail>
+      : TraceBinding<Name, Tail>
+    : TraceBinding<Name, Tail>
   : unknown;
+
+/**
+ * Walk a dotted subpath `Path` into an already-traced binding `Shape`, one
+ * segment at a time: `IndexShape<AgentRunResult<string>, "result">` → `string`.
+ * A segment that isn't a key of the current shape — including a shape that is
+ * already `unknown` (whose `keyof` is `never`) or a nullable union (whose keys
+ * narrow to the common ones) — bottoms out at `unknown`, the same honest floor
+ * as an untraceable whole ref.
+ */
+type IndexShape<Shape, Path extends string> = Path extends `${infer Head}.${infer Rest}`
+  ? Head extends keyof Shape
+    ? IndexShape<Shape[Head], Rest>
+    : unknown
+  : Path extends keyof Shape
+    ? Shape[Path]
+    : unknown;
+
+/**
+ * Resolve a `ref` name against the branded stack `S`. A **dotted** name projects
+ * a subpath (#93): the head names the bound variable (traced via
+ * {@link TraceBinding}) and the tail indexes into that variable's shape (via
+ * {@link IndexShape}), so `ref("generated.result")` types to the completion, not
+ * `unknown`. A bare name traces the whole binding. Stack-variable names are
+ * identifiers (no dots), so the first `.` always splits the variable from the
+ * subpath — matching how the engine resolves `$generated.result`.
+ */
+type TraceVar<Name extends string, S> = Name extends `${infer Base}.${infer Path}`
+  ? IndexShape<TraceBinding<Base, S>, Path>
+  : TraceBinding<Name, S>;
 
 /**
  * Resolve one response {@link Value} to its type against the branded stack `S`.
