@@ -94,7 +94,7 @@ function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
       return v === false;
     // Expression right-operand flag: the engine schema marks it `?=false` and
     // drops it at the default on save, so the persisted form (and the SDK) omit
-    // it; the older transform-temp parser fixtures still carry `ignore_empty:false`.
+    // it; older parser-generation fixtures still carry `ignore_empty:false`.
     case "ignore_empty":
       return v === false;
     case "children":

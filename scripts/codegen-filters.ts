@@ -354,8 +354,8 @@ function emit(cat: FilterCatalog): string {
  *
  * Typed authoring surface for the value \`filters[]\` pipeline. Each \`fl.<name>\`
  * returns a {@link FilterXdo} to drop into {@link withFilters}; ${typedCount} of the
- * ${cat.names.length} filters carry named, typed arguments (from cloud-client
- * \`filter.yaml\` + \`pipe.yaml\` + \`aggregate.yaml\`), the rest are variadic by
+ * ${cat.names.length} filters carry named, typed arguments (from the engine's
+ * filter/pipe/aggregate schema), the rest are variadic by
  * name. Regenerate with
  * \`npm run codegen:filters\` (\`-- --refresh\` to re-distill upstream).
  */
@@ -363,7 +363,7 @@ import ${imports} from "../value.js";
 import type { Value } from "../value.js";
 import type { FilterXdo } from "../../types/xdo.js";
 ${coerceHelper}
-/** Distilled metadata for a filter (from cloud-client \`filter.yaml\`/\`pipe.yaml\`/\`aggregate.yaml\` + LSP docs). */
+/** Distilled metadata for a filter (from the engine's filter/pipe/aggregate schema + LSP docs). */
 export interface FilterSpec {
   args?: Array<{ name: string; type: string; optional?: boolean }>;
   result?: string;

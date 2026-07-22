@@ -3,8 +3,8 @@
  *
  * Typed authoring surface for the value `filters[]` pipeline. Each `fl.<name>`
  * returns a {@link FilterXdo} to drop into {@link withFilters}; 134 of the
- * 345 filters carry named, typed arguments (from cloud-client
- * `filter.yaml` + `pipe.yaml` + `aggregate.yaml`), the rest are variadic by
+ * 345 filters carry named, typed arguments (from the engine's
+ * filter/pipe/aggregate schema), the rest are variadic by
  * name. Regenerate with
  * `npm run codegen:filters` (`-- --refresh` to re-distill upstream).
  */
@@ -15,7 +15,7 @@ import type { FilterXdo } from "../../types/xdo.js";
 /** Coerce a bare string path to a text constant; pass a {@link Value} through (issue #76). */
 const coercePath = (path: string | Value): Value => (typeof path === "string" ? c.text(path) : path);
 
-/** Distilled metadata for a filter (from cloud-client `filter.yaml`/`pipe.yaml`/`aggregate.yaml` + LSP docs). */
+/** Distilled metadata for a filter (from the engine's filter/pipe/aggregate schema + LSP docs). */
 export interface FilterSpec {
   args?: Array<{ name: string; type: string; optional?: boolean }>;
   result?: string;
