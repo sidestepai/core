@@ -28,14 +28,19 @@ const userTable = table({ name: "user", auth: true, schema: { email: f.email() }
 afterEach(() => vi.restoreAllMocks());
 
 describe("validateMiddlewareAuth (issue #81 export guard)", () => {
-  it("throws when an auth()-keyed middleware is attached to a query with no auth table", () => {
+  it("warns (never throws) when an auth()-keyed middleware is on a query with no auth table", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const q = query({ name: "public_write", verb: "POST", middleware: { pre: [authKeyedMw] } });
-    expect(() => new Xano().registerMiddleware([authKeyedMw]).registerQueries([q]).export()).toThrow(
-      /middleware "rl" references auth\(\).*query "public_write".*no auth table/s,
+    expect(() =>
+      new Xano().registerMiddleware([authKeyedMw]).registerQueries([q]).export(),
+    ).not.toThrow();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringMatching(/^sidestep: middleware "rl".*query "public_write".*no auth table/s),
     );
   });
 
-  it("passes when the same middleware is attached to an authenticated query", () => {
+  it("stays silent when the same middleware is attached to an authenticated query", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const q = query({
       name: "authed_write",
       verb: "POST",
@@ -49,16 +54,21 @@ describe("validateMiddlewareAuth (issue #81 export guard)", () => {
         .registerQueries([q])
         .export(),
     ).not.toThrow();
+    expect(warn).not.toHaveBeenCalled();
   });
 
-  it("throws when attached to a task (never a request identity), pre or post", () => {
+  it("warns for a task (never a request identity), pre or post", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const t = task({ name: "nightly", middleware: { post: [authKeyedMw] } });
-    expect(() => new Xano().registerMiddleware([authKeyedMw]).registerTasks([t]).export()).toThrow(
-      /middleware "rl" references auth\(\).*task "nightly".*scheduled\/background/s,
+    expect(() =>
+      new Xano().registerMiddleware([authKeyedMw]).registerTasks([t]).export(),
+    ).not.toThrow();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringMatching(/^sidestep: middleware "rl".*task "nightly".*scheduled\/background/s),
     );
   });
 
-  it("warns (does not throw) when attached to a function — caller-dependent auth", () => {
+  it("warns when attached to a function — caller-dependent auth", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const fn = defineFunction({
       name: "helper",
@@ -72,7 +82,7 @@ describe("validateMiddlewareAuth (issue #81 export guard)", () => {
     expect(warn).toHaveBeenCalledWith(expect.stringMatching(/^sidestep: middleware "rl".*function "helper"/s));
   });
 
-  it("warns (does not throw) when attached to a tool — caller-dependent auth", () => {
+  it("warns when attached to a tool — caller-dependent auth", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const tl = tool({ name: "search", middleware: { post: [authKeyedMw] } });
     expect(() =>
@@ -91,20 +101,20 @@ describe("validateMiddlewareAuth (issue #81 export guard)", () => {
   });
 
   it("does not fire for a disabled attachment entry (it never runs)", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const q = query({
       name: "public_write",
       verb: "POST",
       middleware: { pre: [{ middleware: authKeyedMw, active: false }] },
     });
-    expect(() =>
-      new Xano().registerMiddleware([authKeyedMw]).registerQueries([q]).export(),
-    ).not.toThrow();
+    new Xano().registerMiddleware([authKeyedMw]).registerQueries([q]).export();
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it("does not fire when the auth()-keyed middleware is only defined, not attached", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const q = query({ name: "public_write", verb: "POST" });
-    expect(() =>
-      new Xano().registerMiddleware([authKeyedMw]).registerQueries([q]).export(),
-    ).not.toThrow();
+    new Xano().registerMiddleware([authKeyedMw]).registerQueries([q]).export();
+    expect(warn).not.toHaveBeenCalled();
   });
 });

@@ -491,10 +491,12 @@ The only difference between the two is whether `post` runs.
 **Request context & the `auth()` guard.** A `pre` middleware runs *after* auth resolution, so
 `auth("id")` is the caller's id when the host is authenticated (its `auth` names an auth table) and
 `null` on a public host. That `null` is the footgun: a rate limit keyed by `auth("id")` on a public
-endpoint collapses every caller into one shared bucket, silently. `export()` **throws** when an
-`auth()`-keyed middleware is directly attached to a host with no request identity — a `query` with
-no auth table, or a `task` — and **warns** for a `function`/`tool` (auth is caller-dependent). The
-check is direct-attachment only; tier-inherited attachment is not caught.
+endpoint collapses every caller into one shared bucket, silently. `export()` **warns** (never blocks)
+when an `auth()`-keyed middleware is directly attached to a host where `auth()` may be null — a
+`query` with no auth table, a `task`, or a `function`/`tool` (caller-dependent auth). An
+authenticated query is skipped. The check is direct-attachment only; tier-inherited attachment is
+not caught. It warns rather than throws because a bare `auth()` reference isn't proof of a collapse
+(an IP-disambiguated key uses `auth()` where null is fine).
 
 **Rate-limit recipe (the canonical middleware).** Build the per-user key with the filter chain
 (`"prefix" + auth("id")` doesn't exist):

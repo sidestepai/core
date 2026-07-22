@@ -238,28 +238,27 @@ export class Xano {
   }
 
   /**
-   * Refuse (or warn about) an `auth()`-keyed middleware **directly attached** to
-   * a host that cannot resolve a request identity (issue #81).
+   * Warn about an `auth()`-keyed middleware **directly attached** to a host where
+   * `auth()` may resolve to `null` (issue #81).
    *
    * The footgun: a rate limiter keyed by `auth("id")` is the canonical middleware,
    * but attach it to a host with no authenticated caller and `auth()` silently
    * resolves to `null` — every caller collapses into one shared bucket, with no
-   * error at author, export, or runtime. This catches it at export, where the
+   * signal at author, export, or runtime. This surfaces it at export, where the
    * middleware registry is known (an attachment entry only carries the target's
    * guid; we resolve it back to the encoded `run` to inspect for `auth()`).
    *
-   * Enforcement is graded by how resolvable the host's identity is:
-   * - **Throw** where `auth()` is *provably* `null`: a `query` with no auth table,
-   *   or a `task` (scheduled/background — never a request identity).
-   * - **Warn** where identity is *caller-dependent* and may legitimately be
-   *   non-null: a `function` or `tool`, both of which inherit the auth context of
-   *   whatever invoked them. A hard throw there would fail exports of valid
-   *   authenticated-caller setups.
+   * It **warns, never throws** — a bare `auth()` reference is not proof of a
+   * collapse (an IP-disambiguated key or a personalize-if-logged-in middleware
+   * uses `auth()` where `null` is fine), so blocking the export would produce
+   * false positives on legitimate use. The warning names the host and reason so
+   * the author can confirm intent, vary the key, or move to an authenticated host.
    *
-   * Scope: **direct attachment only** — a host's own `middleware.pre`/`post`.
-   * SideStep does not resolve the engine's Query→API-Group→Workspace inheritance
-   * walk (`getMiddlewareForObject`), so a middleware reaching a public query only
-   * via a workspace/API-group tier is a documented limitation, not caught here.
+   * Scope: **direct attachment only** — a host's own `middleware.pre`/`post`. An
+   * authenticated `query` (its own `auth` table set) resolves an identity, so it
+   * is skipped. SideStep does not resolve the engine's Query→API-Group→Workspace
+   * inheritance walk (`getMiddlewareForObject`), so a middleware reaching a public
+   * query only via a workspace/API-group tier is a documented limitation.
    */
   private validateMiddlewareAuth(
     sections: Partial<Record<PayloadArrayKey, unknown[]>>,
@@ -288,20 +287,19 @@ export class Xano {
       return hit;
     };
 
-    // Leaf hosts that run middleware on their own request, paired with how their
-    // identity resolves when auth() would be null: "throw" where it is *provably*
-    // null, "warn" where it is caller-dependent. The `apiGroup` and workspace
-    // *tiers* are intentionally absent — their blocks are inherited by member
-    // queries, not run directly, and resolving that walk is out of scope (see the
-    // method doc). `query` additionally passes when it has its own auth table.
-    const hostKinds: { key: PayloadArrayKey; label: string; onNull: "throw" | "warn" }[] = [
-      { key: "query", label: "query", onNull: "throw" },
-      { key: "task", label: "task", onNull: "throw" },
-      { key: "function", label: "function", onNull: "warn" },
-      { key: "tool", label: "tool", onNull: "warn" },
+    // Leaf hosts that run middleware on their own request, each paired with why
+    // `auth()` may be null there. The `apiGroup` and workspace *tiers* are
+    // intentionally absent — their blocks are inherited by member queries, not run
+    // directly, and resolving that walk is out of scope (see the method doc). A
+    // `query` with its own auth table resolves an identity and is skipped.
+    const hostKinds: { key: PayloadArrayKey; label: string; reason: string }[] = [
+      { key: "query", label: "query", reason: "this endpoint has no auth table" },
+      { key: "task", label: "task", reason: "a task is scheduled/background and never has a request identity" },
+      { key: "function", label: "function", reason: "auth() is null unless an authenticated caller invokes it" },
+      { key: "tool", label: "tool", reason: "auth() is null unless an authenticated caller invokes it" },
     ];
 
-    for (const { key, label, onNull } of hostKinds) {
+    for (const { key, label, reason } of hostKinds) {
       const hosts = sections[key];
       if (!Array.isArray(hosts)) continue;
       for (const host of hosts) {
@@ -321,25 +319,10 @@ export class Xano {
           if (!guid || !referencesAuth(guid)) continue;
           const mwName = String(byGuid.get(guid)?.name ?? guid);
 
-          if (onNull === "warn") {
-            console.warn(
-              `sidestep: middleware "${mwName}" references auth() and is attached to ${label} ` +
-                `"${hostName}". auth() is null unless a caller establishes an identity — confirm ` +
-                `this ${label} runs under an authenticated caller, or the key collapses all callers ` +
-                `into one bucket.`,
-            );
-            continue;
-          }
-
-          const noIdentity =
-            label === "task"
-              ? "a task is scheduled/background and never has a request identity"
-              : "this endpoint has no auth table";
-          throw new Error(
-            `middleware "${mwName}" references auth() but is attached to ${label} "${hostName}", ` +
-              `where auth() resolves to null (${noIdentity}) — collapsing all callers into one ` +
-              `shared key. Attach it only to authenticated endpoints (set the query's \`auth\` ` +
-              `table), or remove auth() from the middleware.`,
+          console.warn(
+            `sidestep: middleware "${mwName}" references auth() and is attached to ${label} ` +
+              `"${hostName}", where ${reason}. A null auth() collapses all callers into one shared ` +
+              `key — attach it to an authenticated host, vary the key, or remove auth().`,
           );
         }
       }

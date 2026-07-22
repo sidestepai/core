@@ -23,7 +23,7 @@ import { api, users } from "../_shared.js";
  *    fl.concat(auth("id")))` → `"ex:rl:write:<id>"`.
  * 2. **`auth("id")` needs an authenticated host.** It resolves to the caller's id
  *    only when the host has an auth table; on a public host it is `null` and every
- *    caller shares one bucket. `export()` throws if you attach this to a host with
+ *    caller shares one bucket. `export()` warns if you attach this to a host with
  *    no auth table — so the `guardedEndpoint` query below sets `auth: users`.
  *
  * `exceptionPolicy: "rethrow"` makes a tripped limit abort the request (HTTP 429
@@ -54,7 +54,7 @@ export const auditLog = middleware({
  * An authenticated query that runs `rateLimit` before its stack and `auditLog`
  * after. The endpoint's `auth: users` is what makes `auth("id")` inside the
  * rate-limit key resolve to the caller (a public endpoint would collapse all
- * callers into one bucket — and `export()` would throw).
+ * callers into one bucket — and `export()` would warn).
  *
  * Shared-bucket note: attaching this one `rateLimit` object to several endpoints
  * means they share the *same* key and therefore *one* counter — `max: 10` becomes

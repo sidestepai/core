@@ -134,7 +134,7 @@ export function clear(): MiddlewareAttachEntry[] {
  * `auth("id")` is the idiomatic per-user rate-limit key, and when the middleware
  * lands on a host that can't resolve a request identity the key silently becomes
  * `null` — collapsing every caller into one shared bucket. This walk finds the
- * reference so export can refuse (or warn) before that ships.
+ * reference so export can warn before that ships.
  *
  * Accepts either the pre-encode authored `Statement[]` or the encoded `run[]`
  * (`StackItemXdo[]`) — the tag survives encoding, so the same deep walk finds it

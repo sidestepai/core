@@ -90,8 +90,8 @@ export interface QueryDef<
    * inside the middleware when this endpoint is authenticated (its `auth` names
    * an auth table). On a public endpoint (`auth` unset) `auth()` is `null` — so
    * keying a rate limit by `auth("id")` on a public endpoint collapses every
-   * caller into one shared bucket. `export()` throws when an `auth()`-keyed
-   * middleware is attached here and this endpoint has no auth table.
+   * caller into one shared bucket. `export()` **warns** (never blocks) when an
+   * `auth()`-keyed middleware is attached here and this endpoint has no auth table.
    */
   middleware?: MiddlewareAttach;
   /** Workspace tags (stored `tag: [{tag}]`), e.g. `["xano:quick-start"]`. */
