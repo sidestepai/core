@@ -26,6 +26,7 @@ export const TAGS = [
   "const:obj",
   "const:null",
   "const:expr",
+  "const:expr2",
   "var",
   "input",
   "auth",

@@ -14,6 +14,9 @@
 import type { Statement } from "../statement.js";
 import { registerStatement } from "../statement.js";
 import type { Value } from "../../values/value.js";
+import { isTaggedValue } from "../../values/value.js";
+import { obj } from "../../values/obj.js";
+import type { ObjInput } from "../../values/obj.js";
 import { resolveRef } from "../../refs/guid.js";
 import type { ObjectRef } from "../../refs/guid.js";
 
@@ -26,14 +29,15 @@ export interface AiAgentRunArgs {
   agent: ObjectRef;
   as?: string;
   /**
-   * Run arguments passed to the agent — typically an object. This value becomes
-   * the agent's `$args` Twig namespace: the agent's string settings (system
-   * prompt, prompt, model, provider config) reference these inputs as
-   * `{{ $args.propertyName }}`, resolved per invocation before the LLM call.
-   * (Workspace env vars are `{{ $env.NAME }}`.) See `kinds/agent.ts` for the
-   * full templating rules.
+   * Run arguments passed to the agent. Pass a single {@link Value}, or an object
+   * literal of values (`{ question: inp("question") }`) which is built into a
+   * dynamic object via {@link obj}. This becomes the agent's `$args` Twig
+   * namespace: the agent's string settings (system prompt, prompt, model,
+   * provider config) reference these as `{{ $args.propertyName }}`, resolved per
+   * invocation before the LLM call. (Env vars are `{{ $env.NAME }}`.) See
+   * `kinds/agent.ts` for the full templating rules.
    */
-  args?: Value;
+  args?: Value | ObjInput;
   /** Whether the agent may execute its tools. */
   allowToolExecution?: Value;
   /** Pinned agent version. */
@@ -50,7 +54,13 @@ export interface AiAgentRunArgs {
  */
 export function aiAgentRun(a: AiAgentRunArgs): Statement {
   const input: unknown[] = [];
-  if (a.args) input.push({ name: "args", ...vf(a.args) });
+  // `args` accepts a single Value or an object literal of values — a record is
+  // built into a dynamic object value (`obj`), so `{ q: inp("q") }` reaches the
+  // agent's `$args.q`.
+  if (a.args !== undefined) {
+    const argsValue = isTaggedValue(a.args) ? a.args : obj(a.args as ObjInput);
+    input.push({ name: "args", ...vf(argsValue) });
+  }
   if (a.allowToolExecution) input.push({ name: "allow_tool_execution", ...vf(a.allowToolExecution) });
   if (a.version) input.push({ name: "version", ...vf(a.version) });
   const stmt: Statement = {

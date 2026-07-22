@@ -349,6 +349,7 @@ response-bearing triggers) maps to the stored `result[]`:
 - `c.null() => Value` — Null constant → tag "const:null".
 - `c.obj(o: Json) => Value` — Object constant (JSON string) → tag "const:obj". Plain JSON literals only — a nested tagged value (inp/ref/auth/c.*) is rejected; for a computed object response use a record of values, not c.obj (issue #42).
 - `c.array(a: Json[]) => Value` — Array constant (JSON string) → tag "const:array". Plain JSON literals only — a nested tagged value is rejected, same as c.obj (issue #42).
+- `obj(fields: Record<string, Value | nested>) => Value` — Dynamic object value → tag "const:expr2" (a XanoScript object-literal expression). The dynamic sibling of c.obj (issue #42): members may be inp/ref/auth/col/c.* values, nested records, or arrays. A value with filters, or a less-common tag (env/setting/output/…), is rejected. Use for e.g. s.ai.agent.run args.
 - `ref(name: string, opts?: { safe?: boolean }) => Value` — Reference a stack variable → tag "var". Pass { safe: true } for null-safe nested access — a dotted ref("owner.user_id", { safe: true }) compiles through the get filter so it resolves to null instead of raising "Unable to locate var" when the base is null (issue #47).
 - `inp(name: string) => Value` — Reference a function input → tag "input".
 - `col(name: string) => Value` — Reference a table column → tag "col".
@@ -359,7 +360,7 @@ response-bearing triggers) maps to the stored `result[]`:
 - `fl.*(...args: Value[]) => FilterXdo` — Typed value-pipeline filters; see the `filters` catalog.
 - `withFilters(value: Value, ...filters: FilterXdo[]) => Value` — Attach a filter chain to a value (filters passed spread; an array is also accepted).
 
-Tags: const, const:int, const:decimal, const:bool, const:array, const:obj, const:null, const:expr, var, input, auth, env, setting, col, output, response, trycatch, toolset.
+Tags: const, const:int, const:decimal, const:bool, const:array, const:obj, const:null, const:expr, const:expr2, var, input, auth, env, setting, col, output, response, trycatch, toolset.
 
 ## Fields
 

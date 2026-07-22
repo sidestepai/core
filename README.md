@@ -471,8 +471,9 @@ settings through Twig before the LLM call. The `args` you pass to `s.ai.agent.ru
 become the `{{ $args }}` namespace (env vars are `{{ $env.NAME }}`) — this is how an
 endpoint's inputs reach the prompt. Templatable: `systemPrompt`, `prompt`/`messages`,
 `model`, `maxSteps`, and every **string** provider-config field. Numeric/boolean fields
-(e.g. `temperature`) are not templated. Example: `systemPrompt: "Greet {{ $args.name }}."`
-invoked with `s.ai.agent.run({ agent, args: obj })`.
+(e.g. `temperature`) are not templated. Pass a dynamic object arg with **`obj({...})`**
+(the dynamic sibling of `c.obj` — it allows nested `inp`/`ref`/… values):
+`s.ai.agent.run({ agent, args: obj({ name: inp("name") }) })` reaches `{{ $args.name }}`.
 
 **Middleware attachment** — a `middleware({...})` is reusable logic (`input`/`stack`/
 `response` + `resultStrategy: "merge"|"replace"` + `exceptionPolicy: "silent"|"rethrow"|

@@ -76,6 +76,8 @@ export type {
 } from "./fields/generated/field-methods.generated.js";
 export { c, ref, inp, col, auth, env, setting, out, filter, withFilters } from "./values/value.js";
 export type { Value, RefValue, FilteredValue } from "./values/value.js";
+export { obj } from "./values/obj.js";
+export type { ObjInput, ObjMember } from "./values/obj.js";
 export { fl, FILTER_NAMES } from "./values/generated/filters.generated.js";
 export { setVar, updateVar } from "./statements/set-var.js";
 export { conditional, expr } from "./statements/conditional.js";
