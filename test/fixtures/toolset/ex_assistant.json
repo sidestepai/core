@@ -1,0 +1,74 @@
+{
+  "tag": [],
+  "docs": "",
+  "guid": "f86f41fba83cdd4a7fe00d6c2728d514",
+  "name": "ex_assistant",
+  "spec": "",
+  "tool": [
+    {
+      "id": "96840a6af9659491f4291791db098260",
+      "auth": false,
+      "enabled": true
+    }
+  ],
+  "type": "agent",
+  "branch": {
+    "id": 0
+  },
+  "enabled": true,
+  "history": {
+    "inherit": true,
+    "tool_limit": 100,
+    "tool_enabled": true
+  },
+  "canonical": "assistant-agent",
+  "middleware": {
+    "pre": [],
+    "post": [],
+    "pre_customize": false,
+    "post_customize": false
+  },
+  "description": "",
+  "instructions": "",
+  "agent_settings": {
+    "type": "xano-free",
+    "model": "",
+    "prompt": "Answer this question: {{ $args.question }}",
+    "configs": {
+      "xano-free": {
+        "baseURL": "",
+        "headers": "",
+        "temperature": 1,
+        "safetySettings": "",
+        "thinkingConfig": {
+          "thinkingBudget": 0,
+          "includeThoughts": false
+        },
+        "useSearchGrounding": false,
+        "dynamicRetrievalConfig": ""
+      }
+    },
+    "max_steps": 5,
+    "telemetry": {
+      "enabled": false,
+      "langfuse": {
+        "base_url": "",
+        "public_key": "",
+        "secret_key": ""
+      },
+      "langsmith": {
+        "api_key": ""
+      },
+      "braintrust": {
+        "api_key": "",
+        "project_name": ""
+      },
+      "destination": ""
+    },
+    "prompt_type": "prompt",
+    "system_prompt": "You are a helpful assistant.",
+    "prompt_messages": "",
+    "structuredOutputs": false,
+    "structuredOutputsSchema": []
+  }
+}

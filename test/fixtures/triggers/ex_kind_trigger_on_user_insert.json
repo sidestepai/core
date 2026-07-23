@@ -1,0 +1,231 @@
+{
+  "run": [
+    {
+      "as": "",
+      "name": "mvp:debug_log",
+      "_xsid": "f:1d7bd873-2e88-4ef8-9d0f-a08f79e82096",
+      "addon": [],
+      "input": [],
+      "mocks": {},
+      "output": {
+        "items": [],
+        "filters": [],
+        "customize": false
+      },
+      "context": {
+        "tag": "input",
+        "value": "new.email",
+        "filters": []
+      },
+      "runtime": null,
+      "disabled": false,
+      "description": "",
+      "settings_registry": null
+    }
+  ],
+  "tag": [],
+  "guid": "f27c0e50deaa10ffdd0871e8be202a1e",
+  "meta": {
+    "toolset": {
+      "action": {
+        "connection": false
+      }
+    },
+    "database": {
+      "action": {
+        "delete": false,
+        "insert": true,
+        "update": false,
+        "truncate": false
+      },
+      "search": {
+        "expression": []
+      },
+      "datasource": []
+    },
+    "workspace": {
+      "action": {
+        "branch_new": false,
+        "branch_live": false,
+        "branch_merge": false
+      }
+    },
+    "workspace_realtime_channel": {
+      "action": {
+        "join": false,
+        "message": false
+      }
+    }
+  },
+  "name": "ex_kind_trigger_on_user_insert",
+  "input": [
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "new",
+      "type": "json",
+      "_xsid": "i:417c1efb-2af6-415b-a8a0-bb10c6d97c4a",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": false,
+      "customize": {},
+      "sensitive": false,
+      "description": "",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    },
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "old",
+      "type": "json",
+      "_xsid": "i:50ebe026-83e3-4356-9c75-c45550b2544a",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": false,
+      "customize": {},
+      "sensitive": false,
+      "description": "",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    },
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "action",
+      "type": "enum",
+      "_xsid": "i:8feb0945-5f16-46c4-8886-37557f9ab272",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [
+        "insert",
+        "update",
+        "delete",
+        "truncate"
+      ],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": true,
+      "customize": {},
+      "sensitive": false,
+      "description": "",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    },
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "datasource",
+      "type": "text",
+      "_xsid": "i:55ad83ce-89c9-48e5-b1b3-c93063f38ecb",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [
+        "insert",
+        "update",
+        "delete",
+        "truncate"
+      ],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": true,
+      "customize": {},
+      "sensitive": false,
+      "description": "",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    }
+  ],
+  "active": true,
+  "branch": {
+    "id": 0
+  },
+  "obj_id": "157d4a98d979cf04b9ccdb98dfc15229",
+  "output": [],
+  "result": [],
+  "history": {
+    "limit": 100,
+    "enabled": false,
+    "inherit": true
+  },
+  "obj_type": "database",
+  "description": ""
+}
