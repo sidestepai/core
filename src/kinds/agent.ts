@@ -59,6 +59,7 @@ import { registerKind } from "./kind.js";
 import type { ObjectKind } from "./kind.js";
 import { encodeToolsetBase, resolveToolsetCanonical } from "./toolset.js";
 import type { ToolsetBaseXdo, ToolsetToolRef } from "./toolset.js";
+import type { HistoryInput } from "./history.js";
 
 /** The LLM provider — the `agent_settings.type` value and the `configs` key. */
 export type LlmProvider = "xano-free" | "openai" | "anthropic" | "google-genai";
@@ -173,6 +174,13 @@ export interface AgentDef {
   enabled?: boolean;
   canonical?: string;
   tags?: string[];
+  /**
+   * Request-history default for this agent's tools (the container tier — stored
+   * `tool_enabled`/`tool_limit`). Omit to inherit from the workspace. A scalar:
+   * `false` off, `true` on at default depth, a number = capture depth, `"all"`
+   * unlimited. See {@link HistoryInput}.
+   */
+  history?: HistoryInput;
   tools?: ToolsetToolRef[];
   /** The typed LLM settings (provider + model + generation config). */
   llm: LlmSettings;

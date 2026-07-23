@@ -8,6 +8,7 @@ import type { InputDescriptor } from "../inputs/input.js";
 import type { Statement } from "../statements/statement.js";
 import type { ResponseDef } from "../responses/response.js";
 import type { MiddlewareAttach } from "../kinds/middleware-attach.js";
+import type { HistoryInput } from "../kinds/history.js";
 
 export type { ResponseDef };
 
@@ -52,6 +53,13 @@ export interface FunctionDef<
    * sets its `_customize` flag; `pre: middleware.clear()` overrides with nothing.
    */
   middleware?: MiddlewareAttach;
+  /**
+   * Request-history capture. Omit to inherit from the workspace (functions have
+   * no container tier). A scalar: `false` off, `true` on at default depth, a
+   * number = capture depth, `"all"` unlimited. Any value stops inheriting.
+   * Functions default OFF. See {@link HistoryInput}.
+   */
+  history?: HistoryInput;
   /** Workspace tags (stored `tag: [{tag}]`), e.g. `["xano:quick-start"]`. */
   tags?: string[];
 }

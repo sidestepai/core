@@ -1,6 +1,6 @@
 {
   "name": "sidestep",
-  "version": "3.9.11",
+  "version": "3.9.12",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
@@ -251,7 +251,7 @@
       "kind": "workspace",
       "payloadKey": "workspace",
       "authorFactory": "workspaceConfig",
-      "description": "Workspace-level configuration such as default middleware chains per host kind.",
+      "description": "Workspace-level configuration such as default middleware chains and request-history defaults per host kind.",
       "registerMethod": "registerWorkspace",
       "registered": true
     }

@@ -9,6 +9,7 @@ import { encodeTags } from "./common.js";
 import type { MiddlewareBlock } from "./common.js";
 import { buildMiddlewareBlock } from "./middleware-attach.js";
 import type { MiddlewareAttach } from "./middleware-attach.js";
+import { encodeContainerHistory, type ContainerHistoryBlock, type HistoryInput } from "./history.js";
 
 export interface CorsConfig {
   mode?: string; // default | custom | disabled
@@ -44,6 +45,13 @@ export interface ApiGroupDef {
    * `_customize` flag; `pre: middleware.clear()` overrides with nothing.
    */
   middleware?: MiddlewareAttach;
+  /**
+   * Group-level request-history default. This is the container tier queries in
+   * the group inherit from (stored `query_enabled`/`query_limit`). Omit to
+   * inherit from the workspace. A scalar: `false` off, `true` on at default
+   * depth, a number = capture depth, `"all"` unlimited. See {@link HistoryInput}.
+   */
+  history?: HistoryInput;
   /** Workspace tags (stored `tag: [{tag}]`), e.g. `["xano:quick-start"]`. */
   tags?: string[];
 }
@@ -57,7 +65,7 @@ export interface ApiGroupXdo {
   docs: string;
   documentation: { require_token: boolean; token: string };
   middleware: MiddlewareBlock;
-  history: { inherit: boolean; query_enabled: boolean; query_limit: number };
+  history: ContainerHistoryBlock<"query">;
   tag: unknown[];
   cors: Required<CorsConfig> & {
     allowMethods: Required<NonNullable<CorsConfig["allowMethods"]>>;
@@ -93,7 +101,7 @@ export function encodeApiGroup(def: ApiGroupDef): ApiGroupXdo {
     docs: def.docs ?? "",
     documentation: def.documentation ?? { require_token: false, token: "" },
     middleware: buildMiddlewareBlock(def.middleware),
-    history: { inherit: true, query_enabled: true, query_limit: 100 },
+    history: encodeContainerHistory("query", def.history),
     tag: encodeTags(def.tags),
     cors: encodeCors(def.cors),
   };

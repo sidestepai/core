@@ -352,6 +352,8 @@ export { middleware, middlewareKind, encodeMiddleware } from "./kinds/middleware
 export type { MiddlewareDef, MiddlewareXdo, ResultStrategy, ExceptionPolicy } from "./kinds/middleware.js";
 export { buildMiddlewareBlock, encodeMiddlewareEntry, encodeMiddlewareList } from "./kinds/middleware-attach.js";
 export type { MiddlewareAttach, MiddlewareAttachEntry } from "./kinds/middleware-attach.js";
+export { encodeHistory, encodeContainerHistory, buildWorkspaceHistory } from "./kinds/history.js";
+export type { HistoryInput, WorkspaceHistoryDef, WorkspaceHistoryXdo } from "./kinds/history.js";
 export { addon, addonKind, encodeAddon } from "./kinds/addon.js";
 export type { AddonDef, AddonXdo } from "./kinds/addon.js";
 export { workspaceConfig, workspaceKind, encodeWorkspaceConfig } from "./kinds/workspace-config.js";

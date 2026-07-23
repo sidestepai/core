@@ -8,4 +8,7 @@ export const publicApi = apiGroup({
   name: "ex_kind_public_api",
   canonical: "public",
   description: "Public, unauthenticated endpoints",
+  // Container-tier request-history default: the `query_*` setting queries in this
+  // group inherit when they don't set their own `history`.
+  history: false,
 });

@@ -1,0 +1,139 @@
+{
+  "app": {
+    "id": "7ba9dcc845174d1ba1839fcfff1b759e"
+  },
+  "run": [
+    {
+      "as": "user",
+      "name": "mvp:dbo_getby",
+      "_xsid": "f:53d4f0fd-bb69-45b5-895f-3ae4d1fe630d",
+      "addon": [],
+      "input": [
+        {
+          "tag": "const",
+          "name": "field_name",
+          "value": "id",
+          "expand": false,
+          "ignore": false,
+          "filters": [],
+          "children": []
+        },
+        {
+          "tag": "input",
+          "name": "field_value",
+          "value": "id",
+          "expand": false,
+          "ignore": false,
+          "filters": [],
+          "children": []
+        },
+        {
+          "tag": "const:bool",
+          "name": "lock",
+          "value": "false",
+          "expand": false,
+          "ignore": false,
+          "filters": [],
+          "children": []
+        }
+      ],
+      "mocks": {},
+      "output": {
+        "items": [],
+        "filters": [],
+        "customize": false
+      },
+      "context": {
+        "dbo": {
+          "id": "157d4a98d979cf04b9ccdb98dfc15229"
+        }
+      },
+      "runtime": null,
+      "disabled": false,
+      "description": "",
+      "settings_registry": null
+    }
+  ],
+  "tag": [],
+  "auth": false,
+  "docs": "",
+  "guid": "661e5637a64c28d47d8e31c85ac55a3c",
+  "name": "ex_history_query",
+  "test": [],
+  "verb": "GET",
+  "cache": {
+    "ip": false,
+    "env": [],
+    "ttl": 3600,
+    "auth": true,
+    "input": true,
+    "active": false,
+    "headers": [],
+    "datasource": true
+  },
+  "input": [
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "id",
+      "type": "int",
+      "_xsid": "i:4b363d18-9b99-45a1-974d-93f01c2d0fc9",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": true,
+      "customize": {},
+      "sensitive": false,
+      "description": "",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    }
+  ],
+  "output": [],
+  "result": [
+    {
+      "tag": "var",
+      "name": "",
+      "_xsid": "r:a08750b5-4137-440f-a953-7d5e994073eb",
+      "value": "user",
+      "filters": [],
+      "disabled": false
+    }
+  ],
+  "example": {},
+  "history": {
+    "limit": 100,
+    "enabled": true,
+    "inherit": false
+  },
+  "disabled": false,
+  "middleware": {
+    "pre": [],
+    "post": [],
+    "pre_customize": false,
+    "post_customize": false
+  },
+  "api_enabled": true,
+  "description": "",
+  "response_type": "standard"
+}

@@ -9,6 +9,8 @@ import { registerKind } from "./kind.js";
 import type { ObjectKind } from "./kind.js";
 import { encodeMiddlewareList } from "./middleware-attach.js";
 import type { MiddlewareAttach } from "./middleware-attach.js";
+import { buildWorkspaceHistory } from "./history.js";
+import type { WorkspaceHistoryDef, WorkspaceHistoryXdo } from "./history.js";
 
 export interface WorkspacePreferences {
   internal_docs?: boolean;
@@ -72,6 +74,21 @@ export interface WorkspaceConfigDef {
    * modeled; the engine falls through absent branch middleware to this tier.
    */
   middleware?: WorkspaceMiddlewareDef;
+  /**
+   * Workspace-level default request history (the terminal fallback tier). A
+   * scalar per object type; every type an object of that kind inherits when it
+   * (and, for queries/tools, its container) doesn't customize. Unlike the
+   * object/container tiers there is **no `inherit` flag** — the workspace is
+   * always terminal.
+   *
+   * WHOLESALE, not partial: once set, the full 12-key `{objType}_enabled`/
+   * `{objType}_limit` map is emitted and any type you don't list falls back to
+   * its engine default (`enabled` per the kind rule, `limit:100`) — deploying
+   * `{ query: 100 }` overwrites any UI-configured `function_*`/`task_*`/… values.
+   * Declare every workspace-level default you want to keep. Branch-tier history
+   * is not modeled; the engine falls through absent branch history to this tier.
+   */
+  history?: WorkspaceHistoryDef;
   env?: Record<string, unknown>;
   settings?: Record<string, unknown>;
 }
@@ -85,6 +102,8 @@ export interface WorkspaceConfigXdo {
   realtime: { canonical: string };
   /** Present only when the author sets `middleware` (author-provided subset). */
   middleware?: WorkspaceMiddlewareXdo;
+  /** Present only when the author sets `history` (author-provided subset). */
+  history?: WorkspaceHistoryXdo;
   env: Record<string, unknown>;
   settings: Record<string, unknown>;
 }
@@ -115,6 +134,7 @@ export function encodeWorkspaceConfig(def: WorkspaceConfigDef): WorkspaceConfigX
     ...(def.middleware !== undefined
       ? { middleware: encodeWorkspaceMiddleware(def.middleware) }
       : {}),
+    ...(def.history !== undefined ? { history: buildWorkspaceHistory(def.history) } : {}),
     env: def.env ?? {},
     settings: def.settings ?? {},
   };

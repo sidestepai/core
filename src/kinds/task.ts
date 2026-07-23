@@ -8,7 +8,8 @@ import { encodeStatement } from "../statements/statement.js";
 import type { Statement } from "../statements/statement.js";
 import { registerKind } from "./kind.js";
 import type { ObjectKind } from "./kind.js";
-import { encodeTags, defaultHistory } from "./common.js";
+import { encodeTags } from "./common.js";
+import { encodeHistory, type HistoryInput } from "./history.js";
 import type { MiddlewareBlock } from "./common.js";
 import { buildMiddlewareBlock } from "./middleware-attach.js";
 import type { MiddlewareAttach } from "./middleware-attach.js";
@@ -39,6 +40,13 @@ export interface TaskDef {
    * sets its `_customize` flag; `pre: middleware.clear()` overrides with nothing.
    */
   middleware?: MiddlewareAttach;
+  /**
+   * Request-history capture. Omit to inherit from the workspace (tasks have no
+   * container tier). A scalar: `false` off, `true` on at default depth, a number
+   * = capture depth, `"all"` unlimited. Any value stops inheriting. See
+   * {@link HistoryInput}.
+   */
+  history?: HistoryInput;
 }
 
 export interface ScheduleXdo {
@@ -80,7 +88,7 @@ export function encodeTask(def: TaskDef): TaskXdo {
     active: def.active ?? false,
     middleware: buildMiddlewareBlock(def.middleware),
     tag: encodeTags(def.tags),
-    history: defaultHistory("task"),
+    history: encodeHistory("task", def.history),
     run: (def.stack ?? []).map(encodeStatement),
     schedule: (def.schedule ?? []).map(encodeSchedule),
   };

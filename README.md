@@ -592,6 +592,45 @@ authenticated query is skipped. The check is direct-attachment only; tier-inheri
 not caught. It warns rather than throws because a bare `auth()` reference isn't proof of a collapse
 (an IP-disambiguated key uses `auth()` where null is fine).
 
+### Request history
+
+Every primitive captures **request history** — the per-object execution trace behind Xano's
+request/task/trigger debugger. Like middleware, it inherits down a tier chain; author it with a
+single scalar `history` field:
+
+```ts
+query({ name: "get_user", verb: "GET", history: 100 });   // capture, depth cap 100
+task({ name: "nightly", history: false });                // off
+tool({ name: "search", history: "all" });                 // unlimited depth
+function({ name: "helper" /* history omitted */ });        // inherit from the workspace
+```
+
+The scalar maps to Xano's stored block: `false` off, `true` on at the default depth, a **number** =
+capture depth (how many statement executions are recorded in each history record — *not* how many
+records are retained), `"all"` = unlimited depth. **Omitting `history` inherits**; any value stops
+inheriting for that object.
+
+**Inheritance** resolves at request time — **object → container → workspace**. A query inherits from
+its API group, a tool from its toolset/agent, and everything else straight from the workspace.
+Author the container defaults too:
+
+```ts
+apiGroup({ name: "blog", history: false });                     // default for its queries (query_*)
+agent({ name: "assistant", history: 100, llm });                // default for its tools (tool_*)
+
+workspaceConfig({
+  name: "my-app",
+  history: { query: 100, function: true, trigger: "all" },      // terminal {objType}_* map
+});
+```
+
+Per-kind defaults when inheriting: **query / task / tool capture ON; function / trigger / middleware
+OFF**; default depth 100. `workspaceConfig.history` is **wholesale** — once set, every object type
+is emitted (an unlisted type falls back to its engine default), so declare every default you want to
+keep; omit the field to leave the workspace's existing history untouched. SideStep emits each tier's
+stored values + the inherit flag only; the engine computes the fallback. Branch-tier history is not
+modeled — SideStep does not touch branches.
+
 **Rate-limit recipe (the canonical middleware).** Build the per-user key with the filter chain
 (`"prefix" + auth("id")` doesn't exist):
 
