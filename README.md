@@ -469,7 +469,9 @@ const assistant = agent({
   tools: [{ tool: searchTool }],
 });
 
-// Invoke it from an endpoint (bound by handle, remapped on import like the call family):
+// Agents have no public endpoint — you invoke them IN-STACK with `s.ai.agent.run`
+// from any host that has a stack: a query, function, task, tool, or trigger
+// (bound by handle, remapped on import like the call family).
 query({
   name: "ask", verb: "POST", apiGroup: api,
   input: { question: input.text({ required: true }) },

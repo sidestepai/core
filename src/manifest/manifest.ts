@@ -60,7 +60,7 @@ export interface ManifestStatement {
 /**
  * One authoring factory within a kind that fans out into several distinct
  * root factories sharing a single encoder/payload key — today only `trigger`
- * (six `obj_type`s, one `mvp_trigger` envelope). Each sub-kind is a first-class
+ * (six `obj_type`s, one shared stored envelope). Each sub-kind is a first-class
  * root factory in its own right; the manifest lists them individually so agents
  * treat them like every other primitive.
  */
@@ -281,7 +281,7 @@ const KIND_DESCRIPTORS: ReadonlyArray<Omit<ManifestKind, "registered">> = [
   },
   { kind: "tool", payloadKey: "tool", authorFactory: "tool", description: "An agent/MCP tool: a callable capability with typed inputs an AI agent can invoke.", registerMethod: "registerTools" },
   { kind: "mcp_server", payloadKey: "toolset", authorFactory: "mcpServer", description: "An MCP server exposing a set of tools to external MCP clients.", registerMethod: "registerMcpServers" },
-  { kind: "agent", payloadKey: "toolset", authorFactory: "agent", description: "An AI agent: an LLM configuration plus the tools it can call.", registerMethod: "registerAgents" },
+  { kind: "agent", payloadKey: "toolset", authorFactory: "agent", description: "An AI agent: an LLM configuration plus the tools it can call. Invoke it from any stack (query/function/task/tool/trigger) with `s.ai.agent.run` — no public endpoint; the result is a rich envelope whose completion text is at `.result`.", registerMethod: "registerAgents" },
   { kind: "task", payloadKey: "task", authorFactory: "task", description: "A scheduled background job (cron/interval) that runs a stack on a timer.", registerMethod: "registerTasks" },
   { kind: "middleware", payloadKey: "middleware", authorFactory: "middleware", description: "A reusable pre/post stack attached to a query/function/task/tool/API group to run before or after its own logic.", registerMethod: "registerMiddleware" },
   { kind: "addon", payloadKey: "addon", authorFactory: "addon", description: "A reusable read fragment that enriches a query result by joining related table data.", registerMethod: "registerAddons" },

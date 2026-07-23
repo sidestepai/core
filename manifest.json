@@ -1,6 +1,6 @@
 {
   "name": "sidestep",
-  "version": "3.9.9",
+  "version": "3.9.10",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
@@ -219,7 +219,7 @@
       "kind": "agent",
       "payloadKey": "toolset",
       "authorFactory": "agent",
-      "description": "An AI agent: an LLM configuration plus the tools it can call.",
+      "description": "An AI agent: an LLM configuration plus the tools it can call. Invoke it from any stack (query/function/task/tool/trigger) with `s.ai.agent.run` — no public endpoint; the result is a rich envelope whose completion text is at `.result`.",
       "registerMethod": "registerAgents",
       "registered": true
     },

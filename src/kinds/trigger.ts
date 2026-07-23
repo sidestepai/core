@@ -1,6 +1,6 @@
 /**
  * Trigger kinds (U4). All 6 trigger types share ONE stored envelope
- * (`mvp_trigger`) discriminated by `obj_type` + a per-type `meta` block —
+ * discriminated by `obj_type` + a per-type `meta` block —
  * confirmed against the Xano engine's stored trigger shape. The canonical `meta`
  * carries all four action groups (database / toolset / workspace /
  * workspace_realtime_channel); each trigger type populates its own group and
