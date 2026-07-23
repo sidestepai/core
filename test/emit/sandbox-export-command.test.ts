@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { writeFileSync, rmSync, mkdtempSync, mkdirSync, readFileSync, existsSync } from "node:fs";
+import { gzipSync } from "node:zlib";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { parseArgs, run, exportBundleJson } from "../../src/emit/cli.js";
+import { parseArgs, run } from "../../src/emit/cli.js";
 import {
   resolveOutputTarget,
   fetchSandboxMultidoc,
@@ -12,6 +12,35 @@ import {
 
 const INSTANCE = "https://inst.example.com";
 const MULTIDOC = "workspace {\n  name = \"app\"\n}\n"; // a tiny stand-in for the .xs body
+
+/** The sandbox tenant sandbox/me returns; no xano_domain → base = <instance>/tenant/<name>. */
+const TENANT = { name: "tc-1" };
+/** The packageExport bundle the workspace-export archive decodes to. */
+const BUNDLE_OBJ = { app: "xano", version: "1.03", type: "workspace", payload: { workspace: { name: "app" } } };
+
+/** Build a gzipped ustar archive holding a single workspace.json (mirrors decodeWorkspaceArchive's reader). */
+function makeWorkspaceArchive(obj: unknown): Uint8Array {
+  const content = Buffer.from(JSON.stringify(obj), "utf8");
+  const header = Buffer.alloc(512);
+  header.write("workspace.json", 0, "utf8"); // name @0..100
+  header.write(content.length.toString(8).padStart(11, "0") + "\0", 124, "utf8"); // octal size @124..136
+  const data = Buffer.alloc(Math.ceil(content.length / 512) * 512);
+  content.copy(data);
+  return gzipSync(Buffer.concat([header, data, Buffer.alloc(512)])); // trailing zero block ends the tar
+}
+
+/** Route the json-export call chain: sandbox/me → workspace list → workspace/{id}/export archive. */
+function mockSandboxJsonFetch(opts: { workspaces?: Array<{ id: number; name?: string }>; bundle?: unknown } = {}) {
+  const workspaces = opts.workspaces ?? [{ id: 1, name: "tc-1" }];
+  const bundle = opts.bundle ?? BUNDLE_OBJ;
+  return vi.spyOn(globalThis, "fetch").mockImplementation((input: Parameters<typeof fetch>[0]) => {
+    const url = String(input);
+    if (url.endsWith("/api:meta/sandbox/me")) return Promise.resolve(new Response(JSON.stringify(TENANT), { status: 200 }));
+    if (url.endsWith("/api:meta/workspace")) return Promise.resolve(new Response(JSON.stringify(workspaces), { status: 200 }));
+    if (/\/api:meta\/workspace\/\d+\/export$/.test(url)) return Promise.resolve(new Response(makeWorkspaceArchive(bundle), { status: 200 }));
+    throw new Error(`unexpected fetch: ${url}`);
+  });
+}
 
 /** Write an unexpired token cache so getAccessToken returns without discovery/refresh. */
 function writeTokenFile(dir: string): string {
@@ -111,7 +140,6 @@ describe("fetchSandboxMultidoc", () => {
 describe("sidestep sandbox export", () => {
   let dir: string;
   let stdout: string[];
-  const entryPath = fileURLToPath(new URL("../fixtures/workspace/index.ts", import.meta.url));
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), "sidestep-sandbox-export-"));
@@ -127,35 +155,46 @@ describe("sidestep sandbox export", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it("--format json compiles the entry to a bundle byte-identical to `sidestep export`", async () => {
-    const outPath = join(dir, "ws.json");
-    await runSandboxExportCommand(parseArgs(["sandbox", "export", "--format", "json", entryPath, "--path", outPath]));
+  it("json (the default) exports the DEPLOYED sandbox workspace as a bundle", async () => {
+    const authFile = writeTokenFile(dir);
+    const fetchMock = mockSandboxJsonFetch();
+    await runSandboxExportCommand(parseArgs(["sandbox", "export", "--config", authFile, "--path", join(dir, "ws.json")]));
 
-    const expected = await exportBundleJson(parseArgs(["sandbox", "export", "--format", "json", entryPath]));
-    expect(readFileSync(outPath, "utf8")).toBe(expected + "\n");
-    expect(stdout.join("")).toBe(""); // nothing on the data channel when writing a file
+    expect(readFileSync(join(dir, "ws.json"), "utf8")).toBe(JSON.stringify(BUNDLE_OBJ, null, 2) + "\n");
+    // The chain hit sandbox/me → workspace list → workspace/{id}/export, all bearer-authed.
+    const urls = fetchMock.mock.calls.map((c) => String(c[0]));
+    expect(urls.some((u) => u.endsWith("/api:meta/sandbox/me"))).toBe(true);
+    expect(urls.some((u) => /\/api:meta\/workspace\/1\/export$/.test(u))).toBe(true);
   });
 
-  it("--format json defaults to ./sandbox.json when --path is omitted", async () => {
+  it("json defaults to ./sandbox.json in the cwd when --path is omitted", async () => {
+    const authFile = writeTokenFile(dir);
+    mockSandboxJsonFetch();
     const cwd = vi.spyOn(process, "cwd").mockReturnValue(dir);
     try {
-      await runSandboxExportCommand(parseArgs(["sandbox", "export", "--format", "json", entryPath]));
+      await runSandboxExportCommand(parseArgs(["sandbox", "export", "--config", authFile]));
       expect(existsSync(join(dir, "sandbox.json"))).toBe(true);
     } finally {
       cwd.mockRestore();
     }
   });
 
-  it("--format json reads --bundle without recompiling", async () => {
-    const bundlePath = join(dir, "pre.json");
-    writeFileSync(bundlePath, '{"app":"xano"}');
-    await runSandboxExportCommand(
-      parseArgs(["sandbox", "export", "--format", "json", "--bundle", bundlePath, "--path", "-"]),
-    );
-    expect(stdout.join("")).toBe('{"app":"xano"}\n');
+  it("json --path - streams the bundle to stdout", async () => {
+    const authFile = writeTokenFile(dir);
+    mockSandboxJsonFetch();
+    await runSandboxExportCommand(parseArgs(["sandbox", "export", "--format", "json", "--config", authFile, "--path", "-"]));
+    expect(stdout.join("")).toBe(JSON.stringify(BUNDLE_OBJ, null, 2) + "\n");
   });
 
-  it("--format multidoc writes the fetched .xs body to --name", async () => {
+  it("json errors with guidance when the sandbox has no workspace yet", async () => {
+    const authFile = writeTokenFile(dir);
+    mockSandboxJsonFetch({ workspaces: [] });
+    await expect(
+      runSandboxExportCommand(parseArgs(["sandbox", "export", "--config", authFile, "--path", "-"])),
+    ).rejects.toThrow(/no workspace to export yet.*sandbox deploy/is);
+  });
+
+  it("multidoc writes the fetched .xs body to --name", async () => {
     const authFile = writeTokenFile(dir);
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(MULTIDOC, { status: 200 }));
     await runSandboxExportCommand(
@@ -164,7 +203,7 @@ describe("sidestep sandbox export", () => {
     expect(readFileSync(join(dir, "docs.xs"), "utf8")).toBe(MULTIDOC + "\n");
   });
 
-  it("--format multidoc --path - prints the .xs body to stdout", async () => {
+  it("multidoc --path - prints the .xs body to stdout", async () => {
     const authFile = writeTokenFile(dir);
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(MULTIDOC, { status: 200 }));
     await runSandboxExportCommand(
@@ -173,41 +212,14 @@ describe("sidestep sandbox export", () => {
     expect(stdout.join("")).toBe(MULTIDOC + "\n");
   });
 
-  it("rejects multidoc with an input file (it exports the deployed tenant, takes no input)", async () => {
+  it("rejects a local input file — export always reads the deployed sandbox", async () => {
     const authFile = writeTokenFile(dir);
     await expect(
-      runSandboxExportCommand(parseArgs(["sandbox", "export", "--format", "multidoc", entryPath, "--config", authFile])),
+      runSandboxExportCommand(parseArgs(["sandbox", "export", "some/index.ts", "--config", authFile])),
+    ).rejects.toThrow(/takes no input.*sidestep export/is);
+    await expect(
+      runSandboxExportCommand(parseArgs(["sandbox", "export", "--bundle", "pre.json", "--config", authFile])),
     ).rejects.toThrow(/takes no input/i);
-  });
-
-  it("defaults --format to json (compiles the entry) when --format is omitted", async () => {
-    await runSandboxExportCommand(parseArgs(["sandbox", "export", entryPath, "--path", "-"]));
-    const expected = await exportBundleJson(parseArgs(["sandbox", "export", entryPath]));
-    expect(stdout.join("")).toBe(expected + "\n");
-  });
-
-  it("with no args, defaults to json and auto-discovers a conventional entry under the cwd", async () => {
-    const wsDir = fileURLToPath(new URL("../fixtures/workspace", import.meta.url));
-    const cwd = vi.spyOn(process, "cwd").mockReturnValue(wsDir);
-    try {
-      // fixtures/workspace has index.ts (no xano/ dir), so discovery lands on index.ts.
-      await runSandboxExportCommand(parseArgs(["sandbox", "export", "--path", "-"]));
-      const expected = await exportBundleJson(parseArgs(["sandbox", "export", join(wsDir, "index.ts")]));
-      expect(stdout.join("")).toBe(expected + "\n");
-    } finally {
-      cwd.mockRestore();
-    }
-  });
-
-  it("gives a guided error when no entry is found and none was passed", async () => {
-    const cwd = vi.spyOn(process, "cwd").mockReturnValue(dir); // empty temp dir
-    try {
-      await expect(
-        runSandboxExportCommand(parseArgs(["sandbox", "export", "--path", "-"])),
-      ).rejects.toThrow(/No workspace entry found.*xano\/index\.ts/s);
-    } finally {
-      cwd.mockRestore();
-    }
   });
 });
 

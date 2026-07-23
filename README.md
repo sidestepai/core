@@ -879,10 +879,9 @@ sidestep sandbox deploy ./xano/index.ts --reset            # clear the sandbox f
 sidestep sandbox deploy ./xano/index.ts --static ./dist    # also deploy a static frontend
 sidestep sandbox deploy ./xano/index.ts --static ./dist --static-env PK=pk_live_1   # + extra public config
 sidestep sandbox deploy --bundle ws.json     # deploy an already-exported bundle
-sidestep sandbox export                      # zero-config: compile the discovered workspace entry → ./sandbox.json
-sidestep sandbox export ./xano/index.ts --path ws.json                 # …or point at an entry and name the output
-sidestep sandbox export --format multidoc --name backend               # deployed sandbox → backend.xs (run `sandbox deploy` first)
-sidestep sandbox export --format multidoc --path -                     # …or stream the XanoScript multidoc to stdout
+sidestep sandbox export                      # export the DEPLOYED sandbox workspace as a JSON bundle → ./sandbox.json
+sidestep sandbox export --format multidoc --name backend               # …or the deployed sandbox as XanoScript → backend.xs
+sidestep sandbox export --format multidoc --path -                     # …stream the multidoc to stdout (deploy first)
 sidestep sandbox details                     # print the sandbox base URL + tenant details (JSON)
 sidestep profile me                          # print the scoped user + instance base URL (JSON)
 sidestep logout                              # revoke the refresh token + delete the local cache
