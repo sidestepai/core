@@ -37,6 +37,8 @@ const KIND_CORPUS: Array<{ kind: string; payloadKey: string; name: string; fixtu
   // U2 — query (plain + agent-invoking).
   { kind: "query", payloadKey: "query", name: "ex_get_user", fixture: "query/ex_get_user.json" },
   { kind: "query (agent run)", payloadKey: "query", name: "ex_ask_assistant", fixture: "query/ex_ask_assistant.json" },
+  // Customized (inherit:false) request-history — the authored history byte-verify golden.
+  { kind: "query (history)", payloadKey: "query", name: "ex_history_query", fixture: "query/ex_history_query.json" },
   // U3 — trigger: table (obj_id = table guid), realtime (response), workspace (numeric obj_id dropped).
   { kind: "trigger (table)", payloadKey: "trigger", name: "ex_kind_trigger_on_user_insert", fixture: "triggers/ex_kind_trigger_on_user_insert.json" },
   { kind: "trigger (realtime)", payloadKey: "trigger", name: "ex_kind_trigger_on_message", fixture: "triggers/ex_kind_trigger_on_message.json" },

@@ -11,7 +11,7 @@
  *
  * Run:  node dist/bin.js validate examples/sandbox/_capture.ts --capture --out validate-out
  */
-import { workspace } from "@sidestep/core";
+import { workspace, query, s, inp, input, ref } from "@sidestep/core";
 import { api, users, posts } from "./_shared.js";
 import { fieldTableRef } from "./fields/tableRef.js";
 import { productTable } from "./kinds/table.js";
@@ -23,13 +23,25 @@ import { nightlyCleanup } from "./kinds/task.js";
 import { rateLimit } from "./kinds/middleware.js";
 import { authorAddon } from "./kinds/addon.js";
 
+// A query with a CUSTOMIZED (inherit:false) request-history block — the golden
+// source for byte-verifying authored history (the shipped examples all inherit).
+const historyQuery = query({
+  name: "ex_history_query",
+  verb: "GET",
+  apiGroup: api,
+  history: 100,
+  input: { id: input.int({ required: true }) },
+  stack: [s.db.get({ table: users, fieldValue: inp("id"), as: "user" })],
+  response: ref("user"),
+});
+
 // register* buckets are typed per kind; the examples span many kinds.
 const defs = (xs: unknown[]) => xs as never[];
 
 export default workspace("sidestep-capture-kinds")
   .registerApiGroups(defs([api]))
   .registerTables(defs([users, posts, productTable, fieldTableRef]))
-  .registerQueries(defs([getUserQuery, askAssistant]))
+  .registerQueries(defs([getUserQuery, askAssistant, historyQuery]))
   .registerTriggers(defs([onUserInsert, onMessage, onBranchLive]))
   .registerTools(defs([searchTool]))
   .registerMcpServers(defs([exampleMcpServer]))
