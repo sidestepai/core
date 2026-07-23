@@ -188,19 +188,21 @@ describe("InferResponse — single-variable trace (U5, type-level)", () => {
     >();
   });
 
-  it("get: db.get result returned → InferRow<typeof link>", () => {
-    expectTypeOf<InferResponse<typeof getLinkTraced>>().toEqualTypeOf<InferRow<typeof link>>();
-  });
-
-  it("column-narrowed get → Pick of the selected columns", () => {
-    expectTypeOf<InferResponse<typeof getNarrowed>>().toEqualTypeOf<
-      Pick<InferRow<typeof link>, "id" | "slug">
+  it("get: db.get result returned → InferRow<typeof link> | null (null-on-miss, #105)", () => {
+    expectTypeOf<InferResponse<typeof getLinkTraced>>().toEqualTypeOf<
+      InferRow<typeof link> | null
     >();
   });
 
-  it("object-literal response with a traceable value resolves that key's shape", () => {
+  it("column-narrowed get → Pick of the selected columns | null (#105)", () => {
+    expectTypeOf<InferResponse<typeof getNarrowed>>().toEqualTypeOf<
+      Pick<InferRow<typeof link>, "id" | "slug"> | null
+    >();
+  });
+
+  it("object-literal response with a traceable value resolves that key's shape (nullable for db.get, #105)", () => {
     expectTypeOf<InferResponse<typeof objectTraced>>().toEqualTypeOf<{
-      item: InferRow<typeof link>;
+      item: InferRow<typeof link> | null;
     }>();
   });
 
@@ -234,7 +236,7 @@ describe("InferResponse — single-variable trace (U5, type-level)", () => {
     });
     expect(mixed.name).toBe("mixed_resp");
     expectTypeOf<InferResponse<typeof mixed>>().toEqualTypeOf<{
-      raw: InferRow<typeof link>;
+      raw: InferRow<typeof link> | null;
       munged: unknown;
     }>();
   });
@@ -255,7 +257,7 @@ describe("InferResponse — single-variable trace (U5, type-level)", () => {
     });
     expect(deep.name).toBe("deep_stack");
     expectTypeOf<InferResponse<typeof deep>>().toEqualTypeOf<
-      Pick<InferRow<typeof link>, "id">
+      Pick<InferRow<typeof link>, "id"> | null
     >();
   });
 
@@ -365,7 +367,7 @@ describe("InferResponse — single-variable trace (U5, type-level)", () => {
     expectTypeOf<InferResponse<typeof bulkAddLinks>>().toEqualTypeOf<unknown>();
   });
 
-  it("a dotted ref projects a column out of a traced db row (#93)", () => {
+  it("a dotted ref projects a column out of a traced db row, carrying db.get's null (#93/#105)", () => {
     const slugOf = query({
       verb: "GET",
       apiGroup: links,
@@ -374,7 +376,8 @@ describe("InferResponse — single-variable trace (U5, type-level)", () => {
       response: ref("row.slug"),
     });
     expect(slugOf.name).toBe("slug_of");
-    expectTypeOf<InferResponse<typeof slugOf>>().toEqualTypeOf<string>();
+    // `db.get` binds `Row | null`; `$row.slug` on a missed row is itself null.
+    expectTypeOf<InferResponse<typeof slugOf>>().toEqualTypeOf<string | null>();
   });
 
   it("a dotted ref into an untraceable (set_var) base stays unknown", () => {

@@ -69,12 +69,35 @@ type TraceBinding<Name extends string, S> = S extends readonly [infer Head, ...i
 /**
  * Walk a dotted subpath `Path` into an already-traced binding `Shape`, one
  * segment at a time: `IndexShape<AgentRunResult<string>, "result">` → `string`.
- * A segment that isn't a key of the current shape — including a shape that is
- * already `unknown` (whose `keyof` is `never`) or a nullable union (whose keys
- * narrow to the common ones) — bottoms out at `unknown`, the same honest floor
- * as an untraceable whole ref.
+ *
+ * **Null-propagating** (#105): when the base is nullable (e.g. a `db.get` row,
+ * `Row | null`), the null flows *through* the projection rather than erasing it —
+ * `IndexShape<Row | null, "slug">` → `string | null`, mirroring the engine's
+ * runtime where `$row.slug` on a missed (null) row is itself null. Without this,
+ * `keyof (Row | null)` narrows to `never` and every dotted ref into a nullable
+ * base would bottom out at `unknown`, silently dropping the #93 projection.
+ *
+ * A segment that genuinely isn't a key of the (non-null) shape — including a
+ * shape that is already `unknown` (whose `keyof` is `never`) — still bottoms out
+ * at `unknown`, the same honest floor as an untraceable whole ref.
  */
-type IndexShape<Shape, Path extends string> = Path extends `${infer Head}.${infer Rest}`
+type IndexShape<Shape, Path extends string> = unknown extends Shape
+  ? IndexStep<Shape, Path>
+  : null extends Shape
+    ? IndexShape<Exclude<Shape, null>, Path> | null
+    : undefined extends Shape
+      ? IndexShape<Exclude<Shape, undefined>, Path> | undefined
+      : IndexStep<Shape, Path>;
+
+/**
+ * One non-null indexing step for {@link IndexShape}: split the head segment off
+ * `Path` and project it into `Shape`, recursing (back through the null-aware
+ * {@link IndexShape}) for the tail. A segment that isn't a key bottoms out at
+ * `unknown`. Kept separate so the `unknown extends Shape` guard in `IndexShape`
+ * (true for exactly `unknown`/`any` — the bases where null-distribution can't
+ * terminate) routes straight here without looping.
+ */
+type IndexStep<Shape, Path extends string> = Path extends `${infer Head}.${infer Rest}`
   ? Head extends keyof Shape
     ? IndexShape<Shape[Head], Rest>
     : unknown

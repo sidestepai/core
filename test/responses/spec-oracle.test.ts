@@ -106,8 +106,10 @@ describe("InferResponse spec oracle — type derivation agrees with the engine r
       response: ref("row"),
     });
     expect(keysOfXdo(q)).toEqual(["id", "name"]);
-    expectTypeOf<InferResponse<typeof q>>().toEqualTypeOf<Pick<InferRow<typeof widget>, "id" | "name">>();
-    expectTypeOf<keyof InferResponse<typeof q>>().toEqualTypeOf<"id" | "name">();
+    // `db.get` binds `Row | null` (#105); the engine's key-set walk is orthogonal
+    // to that nullability, so compare keys through `NonNullable`.
+    expectTypeOf<InferResponse<typeof q>>().toEqualTypeOf<Pick<InferRow<typeof widget>, "id" | "name"> | null>();
+    expectTypeOf<keyof NonNullable<InferResponse<typeof q>>>().toEqualTypeOf<"id" | "name">();
   });
 
   it("full-record single-var: engine full-record keys == InferResponse (InferRow) keys", () => {
@@ -119,8 +121,8 @@ describe("InferResponse spec oracle — type derivation agrees with the engine r
       response: ref("row"),
     });
     expect(keysOfXdo(q)).toEqual(widgetCols);
-    // InferRow keys == the declared table columns.
-    expectTypeOf<InferResponse<typeof q>>().toEqualTypeOf<InferRow<typeof widget>>();
+    // InferRow keys == the declared table columns; `db.get` adds `| null` (#105).
+    expectTypeOf<InferResponse<typeof q>>().toEqualTypeOf<InferRow<typeof widget> | null>();
     const sampleKeys = (["id", "created_at", "name", "size"] as const).slice().sort();
     expect(sampleKeys).toEqual(widgetCols);
   });

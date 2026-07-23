@@ -34,15 +34,15 @@ const user = table({
 });
 
 describe("db read statement brands (type-level)", () => {
-  it("db.get captures `as` and the full row shape", () => {
+  it("db.get captures `as` and the full row shape `| null` (null-on-miss, #105)", () => {
     const stmt = dbGet({ table: user, fieldValue: c.int(1), as: "u" });
     expectTypeOf(stmt.__as).toEqualTypeOf<"u">();
-    expectTypeOf(stmt.__shape).toEqualTypeOf<InferRow<typeof user>>();
+    expectTypeOf(stmt.__shape).toEqualTypeOf<InferRow<typeof user> | null>();
   });
 
-  it("db.get with an `output` selection narrows the row shape to those columns", () => {
+  it("db.get with an `output` selection narrows the row shape to those columns `| null` (#105)", () => {
     const stmt = dbGet({ table: user, fieldValue: c.int(1), output: ["id", "username"], as: "u" });
-    expectTypeOf(stmt.__shape).toEqualTypeOf<Pick<InferRow<typeof user>, "id" | "username">>();
+    expectTypeOf(stmt.__shape).toEqualTypeOf<Pick<InferRow<typeof user>, "id" | "username"> | null>();
   });
 
   it("db.query captures `as` and produces a row LIST shape", () => {
