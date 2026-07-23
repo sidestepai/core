@@ -61,6 +61,80 @@ function isEmptyArray(v: unknown): boolean {
   return Array.isArray(v) && v.length === 0;
 }
 
+/** Structural deep-equal for comparing an engine-default subtree to a frozen default. */
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return false;
+  const aArr = Array.isArray(a);
+  if (aArr !== Array.isArray(b)) return false;
+  if (aArr) {
+    const x = a as unknown[];
+    const y = b as unknown[];
+    return x.length === y.length && x.every((v, i) => deepEqual(v, y[i]));
+  }
+  const x = a as Record<string, unknown>;
+  const y = b as Record<string, unknown>;
+  const keys = Object.keys(x);
+  return keys.length === Object.keys(y).length && keys.every((k) => deepEqual(x[k], y[k]));
+}
+
+/**
+ * Canonicalize the two interchangeable persisted timestamp serializations to a
+ * single instant string. The SDK emits ISO-8601 (`2026-01-01T00:00:00Z`); the
+ * engine reads it back in Postgres form (`2026-01-01 00:00:00+0000`). They are
+ * the same moment — a serialization-generation artifact (Branch A), like the
+ * numeric `value` coercion — so collapse both to `Date.toISOString()`. Returns
+ * `undefined` for any string that is not a timestamp (left untouched).
+ */
+const TIMESTAMP_RE = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.\d+)?(Z|z|[+-]\d{2}:?\d{2})?$/;
+function canonicalizeTimestamp(s: string): string | undefined {
+  const m = TIMESTAMP_RE.exec(s);
+  if (!m) return undefined;
+  let tz = m[3] ?? "Z";
+  if (tz === "z") tz = "Z";
+  if (/^[+-]\d{4}$/.test(tz)) tz = `${tz.slice(0, 3)}:${tz.slice(3)}`; // +0000 → +00:00
+  const d = new Date(`${m[1]}T${m[2]}${tz}`);
+  return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
+}
+
+/**
+ * The engine's default list-query `context.return` envelope. An addon (and any
+ * db-query context) that customizes nothing has the engine fill this whole
+ * subtree; the SDK omits it. Drop the key on both sides only when it deep-equals
+ * this exact default (a customized paging/sort/distinct is preserved).
+ */
+const DEFAULT_CONTEXT_RETURN = {
+  list: {
+    sort: [],
+    paging: { page: 1, offset: 0, totals: false, enabled: false, metadata: true, per_page: 25 },
+    distinct: "auto",
+  },
+  type: "list",
+  single: { sort: [] },
+  stream: { sort: [], paging: { page: 1, enabled: false, per_page: 25 }, distinct: "auto" },
+  aggregate: {
+    eval: [],
+    sort: [],
+    group: [],
+    index: [],
+    paging: { page: 1, enabled: false, metadata: true, per_page: 25 },
+  },
+};
+/** The engine's default `context.external` (paged-external input) — SDK omits it. */
+const DEFAULT_CONTEXT_EXTERNAL = {
+  tag: "input",
+  value: "",
+  permissions: { page: true, sort: true, search: true, per_page: false },
+};
+/** The engine's default `context.simpleExternal` (per-facet input) — SDK omits it. */
+const DEFAULT_CONTEXT_SIMPLE_EXTERNAL = {
+  page: { tag: "input", value: "" },
+  sort: { tag: "input", value: "" },
+  offset: { tag: "input", value: "" },
+  search: { tag: "input", value: "" },
+  per_page: { tag: "input", value: "" },
+};
+
 /**
  * Envelope members whose value, when it equals the listed default, is a
  * representational artifact rather than authored data. The SDK now emits the
@@ -121,6 +195,60 @@ function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
       return isEmptyObject(v);
     case "shared_workspace":
       return v !== null && typeof v === "object" && (v as { is_shared?: unknown }).is_shared === false;
+    // A trigger's `obj_id`: a table trigger's is the referenced table's GUID
+    // *string* (authored, derived by the SDK, kept and compared). A workspace /
+    // realtime / error trigger has no table, so the engine stores a *numeric*
+    // branch/workspace reference (`1`) while the SDK emits a `0` placeholder —
+    // deploy-target state, same rationale as the stripped `branch`. Drop the
+    // numeric form on both sides; the guid-string form is preserved.
+    case "obj_id":
+      return typeof v === "number";
+    // Toolset/query/function inherit-tier `history` block: when `inherit` is true
+    // nothing is customized (the limit/enabled members are the inherited
+    // defaults, not authored). The SDK omits it on a toolset; drop the inheriting
+    // form on both sides. A customized (`inherit:false`) history is preserved.
+    case "history":
+      return v !== null && typeof v === "object" && (v as { inherit?: unknown }).inherit === true;
+    // An MCP-server toolset persists `agent_settings:null` (only agents carry a
+    // real settings block); the SDK omits it. Drop the null form.
+    case "agent_settings":
+      return v === null;
+    // An agent's default `agent_settings.telemetry` (all providers off, empty
+    // keys): the SDK omits it. Drop when telemetry is disabled.
+    case "telemetry":
+      return v !== null && typeof v === "object" && (v as { enabled?: unknown }).enabled === false;
+    // A tool/query/function `test:[]` scaffold array — the SDK omits it on a tool;
+    // an empty test list is identical to none. Drop the empty form both sides.
+    case "test":
+      return isEmptyArray(v);
+    // A default `auth:false` (public / no auth table): the engine persists it on a
+    // tool where the SDK omits it. Drop the `false` form; `auth:true` and an
+    // auth-table id are preserved and still compared.
+    case "auth":
+      return v === false;
+    // Default db-query `context` members the engine fills when an addon (or any
+    // db context) customizes nothing; the SDK omits them. Empty-collection /
+    // false members drop directly; the three structured members below match
+    // their exact engine default (a customized context is preserved).
+    case "bind":
+    case "eval":
+    case "sort":
+      return isEmptyArray(v);
+    case "future":
+      return v === false;
+    // Compare NORMALIZED against NORMALIZED default: normalize strips empty
+    // `sort`/`eval`/`index` members from the nested subtree, so the frozen
+    // default must pass through the same reduction to compare equal.
+    case "lock":
+      return deepEqual(normalize(v), normalize({ tag: "const:bool", value: "" }));
+    case "search":
+      return deepEqual(normalize(v), normalize({ expression: [] }));
+    case "return":
+      return deepEqual(normalize(v), normalize(DEFAULT_CONTEXT_RETURN));
+    case "external":
+      return deepEqual(normalize(v), normalize(DEFAULT_CONTEXT_EXTERNAL));
+    case "simpleExternal":
+      return deepEqual(normalize(v), normalize(DEFAULT_CONTEXT_SIMPLE_EXTERNAL));
     default:
       return false;
   }
@@ -187,6 +315,13 @@ export function normalize<T>(value: T): T {
         (k === "value" || k === "temperature") && typeof v === "number" ? String(v) : normalize(v);
     }
     return out as unknown as T;
+  }
+  // Collapse the two persisted timestamp serializations to one instant (Branch A
+  // serialization artifact) — see {@link canonicalizeTimestamp}. Non-timestamp
+  // strings pass through untouched.
+  if (typeof value === "string") {
+    const ts = canonicalizeTimestamp(value);
+    if (ts !== undefined) return ts as unknown as T;
   }
   return value;
 }

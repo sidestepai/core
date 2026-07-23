@@ -48,3 +48,68 @@ describe("validate normalizer — table (dbo) readback", () => {
     expect(twice).toEqual(once);
   });
 });
+
+/**
+ * Per-kind rules the whole-object kind corpus (test/conformance/kinds-corpus.test.ts)
+ * required — each is a Branch A serialization/server-default artifact. Every rule
+ * is tested on BOTH sides: it drops/coerces at the engine default, and it
+ * PRESERVES a customized value so the byte-fidelity oracle stays honest.
+ */
+describe("validate normalizer — per-kind default/serialization rules", () => {
+  it("canonicalizes the two persisted timestamp serializations to one instant", () => {
+    const iso = normalize({ starts_on: "2026-01-01T00:00:00Z" }) as { starts_on: string };
+    const pg = normalize({ starts_on: "2026-01-01 00:00:00+0000" }) as { starts_on: string };
+    expect(iso.starts_on).toBe(pg.starts_on);
+    expect(iso.starts_on).toBe("2026-01-01T00:00:00.000Z");
+    // A non-timestamp string is untouched.
+    expect(normalize({ v: "hello world" })).toEqual({ v: "hello world" });
+  });
+
+  it("drops a numeric trigger obj_id (branch ref) but keeps a guid-string obj_id", () => {
+    expect(normalize({ obj_id: 1 })).toEqual({});
+    expect(normalize({ obj_id: 0 })).toEqual({});
+    const guid = "157d4a98d979cf04b9ccdb98dfc15229";
+    expect(normalize({ obj_id: guid })).toEqual({ obj_id: guid });
+  });
+
+  it("drops an inheriting history block but keeps a customized one", () => {
+    expect(normalize({ history: { inherit: true, tool_limit: 100, tool_enabled: true } })).toEqual({});
+    const custom = { history: { inherit: false, limit: 5, enabled: true } };
+    expect(normalize(custom)).toEqual(custom);
+  });
+
+  it("drops null agent_settings and a disabled telemetry block", () => {
+    expect(normalize({ agent_settings: null })).toEqual({});
+    expect(normalize({ telemetry: { enabled: false, langfuse: { api_key: "" } } })).toEqual({});
+    const on = { telemetry: { enabled: true, destination: "langfuse" } };
+    expect(normalize(on)).toEqual(on);
+  });
+
+  it("drops an empty test list and a default auth:false, keeps auth:true", () => {
+    expect(normalize({ test: [] })).toEqual({});
+    expect(normalize({ auth: false })).toEqual({});
+    expect(normalize({ auth: true })).toEqual({ auth: true });
+  });
+
+  it("drops the engine-default db-query context members, keeps customized ones", () => {
+    const defaultContext = {
+      bind: [],
+      eval: [],
+      sort: [],
+      future: false,
+      lock: { tag: "const:bool", value: "", filters: [] },
+      search: { expression: [] },
+      external: {
+        tag: "input",
+        value: "",
+        filters: [],
+        permissions: { page: true, sort: true, search: true, per_page: false },
+      },
+    };
+    // Every listed member is an engine default → the object normalizes to empty.
+    expect(normalize(defaultContext)).toEqual({});
+    // A customized member (non-empty sort, lock set) survives.
+    const custom = { sort: [{ by: "name" }], future: true };
+    expect(normalize(custom)).toEqual(custom);
+  });
+});
