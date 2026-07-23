@@ -89,8 +89,20 @@ describe("manifest", () => {
       // A blank description would silently ship an uninformative catalog line —
       // the golden-file snapshot alone would not catch it.
       expect(k.description.trim().length).toBeGreaterThan(0);
-      // The `## Object kinds` catalog line must actually surface the descriptor.
-      expect(llms).toContain(`— ${k.description}`);
+      if (k.subKinds && k.subKinds.length > 0) {
+        // A fan-out kind (trigger) renders one root-level line per sub-kind,
+        // each with its own rich description and stored obj_type.
+        for (const sub of k.subKinds) {
+          expect(sub.authorFactory.length).toBeGreaterThan(0);
+          expect(sub.objType.length).toBeGreaterThan(0);
+          expect(sub.description.trim().length).toBeGreaterThan(0);
+          expect(llms).toContain(`\`${sub.authorFactory}\``);
+          expect(llms).toContain(`— ${sub.description}`);
+        }
+      } else {
+        // The `## Object kinds` catalog line must actually surface the descriptor.
+        expect(llms).toContain(`— ${k.description}`);
+      }
     }
   });
 

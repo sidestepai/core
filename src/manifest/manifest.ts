@@ -57,6 +57,22 @@ export interface ManifestStatement {
   fields?: ManifestField[];
 }
 
+/**
+ * One authoring factory within a kind that fans out into several distinct
+ * root factories sharing a single encoder/payload key — today only `trigger`
+ * (six `obj_type`s, one `mvp_trigger` envelope). Each sub-kind is a first-class
+ * root factory in its own right; the manifest lists them individually so agents
+ * treat them like every other primitive.
+ */
+export interface ManifestSubKind {
+  /** Root authoring factory export, e.g. `tableTrigger`. */
+  authorFactory: string;
+  /** The stored `obj_type` this factory produces, e.g. `database`. */
+  objType: string;
+  /** Rich "what this primitive does" descriptor, in the style of a top-level kind. */
+  description: string;
+}
+
 /** One top-level object kind. */
 export interface ManifestKind {
   /** Stable kind name, e.g. `function`. */
@@ -71,6 +87,13 @@ export interface ManifestKind {
   registerMethod: string;
   /** Whether the kind has a registered encoder (implemented today). */
   registered: boolean;
+  /**
+   * Distinct root factories that all persist under this kind's encoder/payload
+   * key. When present, the `## Object kinds` catalog lists each sub-kind as its
+   * own root-level entry instead of the grouped `authorFactory` line. Only
+   * `trigger` uses this today.
+   */
+  subKinds?: ManifestSubKind[];
 }
 
 /** A value constructor / helper. */
@@ -241,7 +264,21 @@ const KIND_DESCRIPTORS: ReadonlyArray<Omit<ManifestKind, "registered">> = [
   { kind: "table", payloadKey: "dbo", authorFactory: "table", description: "A database table: typed columns (`f.*`), indexes, and views; the schema other kinds read and write.", registerMethod: "registerTables" },
   { kind: "query", payloadKey: "query", authorFactory: "query", description: "An HTTP API endpoint (verb + path) bound to an API group; the main request/response surface.", registerMethod: "registerQueries" },
   { kind: "api_group", payloadKey: "app", authorFactory: "apiGroup", description: "A container that groups queries under a shared base path, CORS, and swagger config.", registerMethod: "registerApiGroups" },
-  { kind: "trigger", payloadKey: "trigger", authorFactory: "{tableTrigger,realtimeTrigger,mcpServerTrigger,agentTrigger,workspaceTrigger,errorTrigger}", description: "An event-driven handler fired by a DB write, realtime channel, MCP/agent connection, branch lifecycle, or error — inputs are implied by type and arrive on the `t` handle.", registerMethod: "registerTriggers" },
+  {
+    kind: "trigger",
+    payloadKey: "trigger",
+    authorFactory: "{tableTrigger,realtimeTrigger,mcpServerTrigger,agentTrigger,workspaceTrigger,errorTrigger}",
+    description: "An event-driven handler fired by a DB write, realtime channel, MCP/agent connection, branch lifecycle, or error — inputs are implied by type and arrive on the `t` handle.",
+    registerMethod: "registerTriggers",
+    subKinds: [
+      { authorFactory: "tableTrigger", objType: "database", description: "Fires when rows change on a bound table (insert/update/delete/truncate). The changed row is exposed as `t.new`/`t.old`, typed to the table when a `table()` handle is bound. Config-only (no response)." },
+      { authorFactory: "realtimeTrigger", objType: "workspace_realtime_channel", description: "Fires on realtime channel activity (message/join); inspect the channel, connecting client, options, and payload via `t`. Response-bearing — defaults to echoing the payload." },
+      { authorFactory: "mcpServerTrigger", objType: "toolset", description: "Fires when an MCP client connects to a bound MCP server; gate or annotate the exposed tools via `t.toolset`/`t.tools`. Response-bearing." },
+      { authorFactory: "agentTrigger", objType: "toolset", description: "Fires when a client connects to a bound agent; gate or annotate its toolset via `t.toolset`/`t.tools`. Response-bearing." },
+      { authorFactory: "workspaceTrigger", objType: "workspace", description: "Fires on branch lifecycle events (branch new/merge/live); inspect the from/to branch and action via `t`. Config-only." },
+      { authorFactory: "errorTrigger", objType: "error", description: "Fires when an error signature is first seen, regresses, or is marked fixed; inspect the error, caller, statement, and occurrence counts via `t`. Config-only." },
+    ],
+  },
   { kind: "tool", payloadKey: "tool", authorFactory: "tool", description: "An agent/MCP tool: a callable capability with typed inputs an AI agent can invoke.", registerMethod: "registerTools" },
   { kind: "mcp_server", payloadKey: "toolset", authorFactory: "mcpServer", description: "An MCP server exposing a set of tools to external MCP clients.", registerMethod: "registerMcpServers" },
   { kind: "agent", payloadKey: "toolset", authorFactory: "agent", description: "An AI agent: an LLM configuration plus the tools it can call.", registerMethod: "registerAgents" },
@@ -708,7 +745,18 @@ export function renderLlmsTxt(m: Manifest): string {
   lines.push("## Object kinds", "");
   lines.push("Author with the factory, register on the Xano instance, lands under the payload key. Each line ends with a one-liner on what the primitive is.", "");
   for (const k of m.objectKinds) {
-    lines.push(`- ${k.kind}: \`${k.authorFactory}\` → \`Xano.${k.registerMethod}\` → payload \`${k.payloadKey}\` — ${k.description}`);
+    if (k.subKinds && k.subKinds.length > 0) {
+      // Fan a multi-factory kind out into one root-level line per sub-kind so
+      // each reads as a first-class primitive (they share one payload key +
+      // register method, discriminated by `obj_type`).
+      for (const sub of k.subKinds) {
+        lines.push(
+          `- ${k.kind} (${sub.objType}): \`${sub.authorFactory}\` → \`Xano.${k.registerMethod}\` → payload \`${k.payloadKey}\` — ${sub.description}`,
+        );
+      }
+    } else {
+      lines.push(`- ${k.kind}: \`${k.authorFactory}\` → \`Xano.${k.registerMethod}\` → payload \`${k.payloadKey}\` — ${k.description}`);
+    }
   }
   lines.push("");
 
