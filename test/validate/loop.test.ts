@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runValidateLoop, deepDiff, type LoopClient } from "../../src/validate/loop.js";
+import { runValidateLoop, deepDiff, runnableFunctionNames, type LoopClient, type RoundTripEntry } from "../../src/validate/loop.js";
 import { captureFixtures } from "../../src/validate/capture.js";
 import { normalize } from "../../src/validate/normalize.js";
 
@@ -28,7 +28,9 @@ describe("runValidateLoop", () => {
     const res = await runValidateLoop(client, bundle);
     expect(res.accepted).toBe(true);
     expect(res.workspaceId).toBe(42);
-    expect(res.roundTrip).toEqual([{ name: "f", status: "match", diffs: [], fetched: expect.any(Object) }]);
+    expect(res.roundTrip).toEqual([
+      { kind: "function", name: "f", status: "match", diffs: [], fetched: expect.any(Object) },
+    ]);
   });
 
   it("reports accepted:false with the engine message when import throws", async () => {
@@ -75,6 +77,81 @@ describe("runValidateLoop", () => {
     const res = await runValidateLoop(client, bundle);
     expect(res.accepted).toBe(true);
     expect(res.roundTrip).toEqual([]);
+    // Present-but-unreadable: the function is reported unchecked, not dropped.
+    expect(res.unchecked).toContainEqual({ kind: "function", count: 1 });
+  });
+
+  it("round-trips a table (dbo) with server keys stripped → match", async () => {
+    const bundle = bundleWith({ dbo: [{ guid: "g1", name: "user", schema: [{ name: "id" }] }] });
+    const client = fakeClient({
+      exportWorkspace: async () => ({
+        payload: { dbo: [{ id: 2, guid: "g1", name: "user", schema: [{ name: "id" }], created_at: "x" }] },
+      }),
+    });
+    const res = await runValidateLoop(client, bundle);
+    expect(res.roundTrip).toEqual([
+      { kind: "dbo", name: "user", status: "match", diffs: [], fetched: expect.any(Object) },
+    ]);
+  });
+
+  it("flags a table schema divergence at the exact path", async () => {
+    const bundle = bundleWith({ dbo: [{ guid: "g1", name: "user", schema: [{ name: "id" }] }] });
+    const client = fakeClient({
+      exportWorkspace: async () => ({ payload: { dbo: [{ guid: "g1", name: "user", schema: [{ name: "uid" }] }] } }),
+    });
+    const res = await runValidateLoop(client, bundle);
+    const entry = res.roundTrip[0]!;
+    expect(entry.kind).toBe("dbo");
+    expect(entry.status).toBe("diff");
+    expect(entry.diffs).toContainEqual({ path: "$.schema[0].name", expected: "id", actual: "uid" });
+  });
+
+  it("labels each entry with its kind across a mixed bundle", async () => {
+    const bundle = bundleWith({ dbo: [{ name: "t", schema: [] }], function: [{ name: "f", run: [] }] });
+    const client = fakeClient({
+      exportWorkspace: async () => ({
+        payload: { dbo: [{ name: "t", schema: [] }], function: [{ name: "f", run: [] }] },
+      }),
+    });
+    const res = await runValidateLoop(client, bundle);
+    // Registry order: dbo before function.
+    expect(res.roundTrip.map((e) => [e.kind, e.status])).toEqual([
+      ["dbo", "match"],
+      ["function", "match"],
+    ]);
+  });
+
+  it("demotes a registered kind with an empty fetched array to unchecked (no false missing)", async () => {
+    // `tool` is registered but the engine persists it nested under toolset, so the
+    // export surfaces no top-level `tool` array. It must be unchecked, not missing.
+    const bundle = bundleWith({ function: [{ name: "f", run: [] }], tool: [{ name: "mytool" }] });
+    const client = fakeClient({
+      exportWorkspace: async () => ({ payload: { function: [{ name: "f", run: [] }] } }),
+    });
+    const res = await runValidateLoop(client, bundle);
+    expect(res.unchecked).toContainEqual({ kind: "tool", count: 1 });
+    expect(res.roundTrip.some((e) => e.kind === "tool")).toBe(false);
+  });
+
+  it("surfaces an ambiguous match when two fetched objects share an identity", async () => {
+    const bundle = bundleWith({ query: [{ name: "dup" }] });
+    const client = fakeClient({
+      exportWorkspace: async () => ({ payload: { query: [{ name: "dup", a: 1 }, { name: "dup", a: 2 }] } }),
+    });
+    const res = await runValidateLoop(client, bundle);
+    expect(res.roundTrip[0]).toMatchObject({ kind: "query", name: "dup", status: "ambiguous" });
+  });
+});
+
+describe("runnableFunctionNames", () => {
+  it("keeps only imported function-kind entries", () => {
+    const entries: RoundTripEntry[] = [
+      { kind: "function", name: "f1", status: "match", diffs: [], fetched: {} },
+      { kind: "function", name: "f2", status: "diff", diffs: [], fetched: {} },
+      { kind: "function", name: "gone", status: "missing", diffs: [], fetched: undefined },
+      { kind: "dbo", name: "user", status: "match", diffs: [], fetched: {} },
+    ];
+    expect(runnableFunctionNames(entries)).toEqual(["f1", "f2"]);
   });
 });
 
@@ -94,21 +171,38 @@ describe("deepDiff", () => {
 });
 
 describe("captureFixtures", () => {
-  it("writes fetched JSON per entry and skips entries without a body", () => {
+  it("writes fetched JSON into kind-scoped subdirs and skips entries without a body", () => {
     const dir = mkdtempSync(join(tmpdir(), "sidestep-capture-"));
     try {
       const written = captureFixtures(
         [
-          { name: "f", status: "match", diffs: [], fetched: { name: "f", run: [] } },
-          { name: "ghost", status: "missing", diffs: [], fetched: undefined },
+          { kind: "function", name: "f", status: "match", diffs: [], fetched: { name: "f", run: [] } },
+          { kind: "dbo", name: "user", status: "match", diffs: [], fetched: { name: "user", schema: [] } },
+          { kind: "function", name: "ghost", status: "missing", diffs: [], fetched: undefined },
         ],
         dir,
       );
-      expect(written).toHaveLength(1);
-      expect(written[0]!.name).toBe("f");
-      const onDisk = JSON.parse(readFileSync(written[0]!.path, "utf8"));
+      expect(written).toHaveLength(2);
+      const byName = new Map(written.map((w) => [w.name, w.path]));
+      // function goldens live under statements/, tables under tables/ (KTD-5).
+      expect(byName.get("f")!).toBe(join(dir, "statements", "f.json"));
+      expect(byName.get("user")!).toBe(join(dir, "tables", "user.json"));
+      const onDisk = JSON.parse(readFileSync(byName.get("f")!, "utf8"));
       // captured (fetched) normalizes equal to the compiled artifact
       expect(normalize(onDisk)).toEqual(normalize({ name: "f", run: [] }));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to a flat filename for an unregistered kind", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sidestep-capture-"));
+    try {
+      const written = captureFixtures(
+        [{ kind: "mystery", name: "x", status: "match", diffs: [], fetched: { name: "x" } }],
+        dir,
+      );
+      expect(written[0]!.path).toBe(join(dir, "x.json"));
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -20,7 +20,7 @@ const EXIT_VALIDATION_FAILED = 2;
 export async function runValidateCommand(args: ParsedArgs): Promise<void> {
   const { resolveValidateConfig, verifyToken } = await import("../validate/config.js");
   const { MetaClient } = await import("../validate/meta-client.js");
-  const { runValidateLoop } = await import("../validate/loop.js");
+  const { runValidateLoop, runnableFunctionNames } = await import("../validate/loop.js");
 
   const config = resolveValidateConfig({ instance: args.instance, workspaceId: args.workspace });
   const who = await verifyToken(config);
@@ -46,12 +46,15 @@ export async function runValidateCommand(args: ParsedArgs): Promise<void> {
 
   for (const entry of result.roundTrip) {
     if (entry.status === "match") {
-      success(`round-trip ✓ ${entry.name}`);
+      success(`round-trip ✓ ${entry.kind} ${entry.name}`);
     } else if (entry.status === "missing") {
-      warn(`round-trip ? ${entry.name} — not found in the imported workspace`);
+      warn(`round-trip ? ${entry.kind} ${entry.name} — not found in the imported workspace`);
+      failed = true;
+    } else if (entry.status === "ambiguous") {
+      warn(`round-trip ? ${entry.kind} ${entry.name} — multiple imported objects share its identity`);
       failed = true;
     } else {
-      warn(`round-trip ✗ ${entry.name} — ${entry.diffs.length} field diff(s)`);
+      warn(`round-trip ✗ ${entry.kind} ${entry.name} — ${entry.diffs.length} field diff(s)`);
       const shown = args.verbose ? entry.diffs : entry.diffs.slice(0, 10);
       for (const d of shown) detail(`${d.path}: expected ${fmt(d.expected)}, got ${fmt(d.actual)}`);
       if (!args.verbose && entry.diffs.length > shown.length) {
@@ -66,9 +69,10 @@ export async function runValidateCommand(args: ParsedArgs): Promise<void> {
   }
 
   if (args.runtime && result.workspaceId !== undefined) {
-    // Run only functions that actually imported (status match/diff), not authored
-    // names that never landed — the loop already resolved this set.
-    const names = result.roundTrip.filter((e) => e.status !== "missing").map((e) => e.name);
+    // Run only functions that actually imported (status match/diff). Other kinds
+    // (tables, queries, …) aren't invocable via the function/run route — the
+    // helper gates to function-kind entries so a table name is never run.
+    const names = runnableFunctionNames(result.roundTrip);
     if (names.length > 0) {
       const { smokeRunFunctions } = await import("../validate/runtime.js");
       blank();
@@ -88,7 +92,7 @@ export async function runValidateCommand(args: ParsedArgs): Promise<void> {
   if (args.capture) {
     const { captureFixtures } = await import("../validate/capture.js");
     const written = captureFixtures(result.roundTrip, args.out);
-    if (written.length === 0) warn("nothing to capture (no functions round-tripped)");
+    if (written.length === 0) warn("nothing to capture (no objects round-tripped)");
     for (const w of written) detail(`captured ${w.name} → ${w.path}`);
   }
 
