@@ -304,9 +304,14 @@ async function fetchPosts(): Promise<Post[]> {
 - **`InferResponse<typeof someQuery>`** → the endpoint's **response** type, closing the round
   trip. It auto-derives the common shapes with no codegen: an object-literal response yields
   those keys, and a query that returns a variable filled by a db op derives that op's result —
-  the full row for `db.get`/`db.add`/`db.edit`/`db.patch`/`db.add_or_edit` (→ `Row`),
-  a row list for `db.query`/`db.bulk.patch` (→ `Row[]`), a `boolean` for `db.has`, a `number`
-  count for `db.bulk.delete`, and a `get`/`query` `output: [...]` selection narrows to a `Pick`.
+  the full row for `db.add`/`db.edit`/`db.patch`/`db.add_or_edit` (→ `Row` — each binds the
+  full written row rather than null, so it stays non-nullable; a genuine miss throws instead of
+  yielding null — `NotFound`/404 for `edit`/`patch`, a unique-constraint error for `add`, while
+  `add_or_edit` upserts and never misses), `Row | null` for `db.get` (it binds
+  `null` on a miss rather than throwing — handle the not-found path), a row list for
+  `db.query`/`db.bulk.patch` (→ `Row[]`), a `boolean` for `db.has`, a `number` count for
+  `db.bulk.delete`, and a `get`/`query` `output: [...]` selection narrows to a `Pick` (still
+  `| null` for `get`).
   Where the shape isn't statically knowable — a value reshaped by a filter/lambda, built by
   control flow, or from an op the engine itself leaves untyped (`db.del`, `db.bulk.add`/`bulk.update`,
   raw `direct_query`) — it resolves to `unknown`; declare `responseShape` to close it.
@@ -315,8 +320,8 @@ async function fetchPosts(): Promise<Post[]> {
 import { listPosts, getPost } from "../xano/index.js";
 import type { InferResponse } from "@sidestep/core";
 
-type Posts = InferResponse<typeof listPosts>;   // Post[] — derived from the db.query it returns
-type Post  = InferResponse<typeof getPost>;      // Post   — derived from the db.get it returns
+type Posts = InferResponse<typeof listPosts>;   // Post[]      — derived from the db.query it returns
+type Post  = InferResponse<typeof getPost>;      // Post | null — a db.get misses to null
 ```
 
 For a **computed or multi-key object response**, author it as a *record of values* —
@@ -332,12 +337,16 @@ on the query and every caller derives from that single source of truth:
 const getPost = query({
   verb: "GET", apiGroup: blog, name: "get_post",
   input: { id: input.int({ required: true }) },
-  stack: [s.db.get({ table: post, fieldValue: inp("id"), as: "row" })],
-  response: ref("row"),
-  responseShape: null as InferRow<typeof post> | null,   // a get returns Row | null
+  stack: [s.db.query({ table: post, where: expr(col("id"), "=", inp("id")), as: "rows" })],
+  // A filtered response is opaque to the static walk, so derivation is `unknown`.
+  response: withFilters(ref("rows"), fl.first()),
+  responseShape: null as InferRow<typeof post> | null,   // declare the real shape once
 });
 type MaybePost = InferResponse<typeof getPost>;           // InferRow<typeof post> | null
 ```
+
+(A plain `response: ref("row")` off a `s.db.get` needs no `responseShape` — it already
+derives `InferRow<typeof post> | null`, since `db.get` misses to `null`.)
 
 This mirrors how the Xano engine itself derives an endpoint's response schema (a static walk of
 the stack), so what you get in the type is what the endpoint actually returns — and it degrades

@@ -298,7 +298,9 @@ describe("db.query paging envelope + addon response typing", () => {
       response: ref("row"),
     });
     expectTypeOf(q).toBeObject();
-    type Row = InferResponse<typeof q>;
+    // `db.get` binds `Row | null` (#105); the addon graft rides the non-null row.
+    type Row = NonNullable<InferResponse<typeof q>>;
+    expectTypeOf<InferResponse<typeof q>>().toEqualTypeOf<Row | null>();
     expectTypeOf<Row>().toMatchTypeOf<Book>();
     expectTypeOf<Row["_author"]>().toEqualTypeOf<unknown>();
   });
@@ -319,7 +321,7 @@ describe("db.query paging envelope + addon response typing", () => {
     ).toThrow(/shadows an existing "book" column/);
   });
 
-  it("db.get without an addon → row shape unchanged", () => {
+  it("db.get without an addon → row shape unchanged, `| null` for null-on-miss (#105)", () => {
     const q = query({
       verb: "GET",
       apiGroup: group,
@@ -328,6 +330,6 @@ describe("db.query paging envelope + addon response typing", () => {
       response: ref("row"),
     });
     expectTypeOf(q).toBeObject();
-    expectTypeOf<InferResponse<typeof q>>().toEqualTypeOf<Book>();
+    expectTypeOf<InferResponse<typeof q>>().toEqualTypeOf<Book | null>();
   });
 });

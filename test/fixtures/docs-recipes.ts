@@ -82,7 +82,8 @@ export const listLinks = query({
 });
 export type ListLinksResponse = InferResponse<typeof listLinks>; // InferRow<typeof links>[]
 
-// A `get` that selects specific columns narrows the derived row automatically.
+// A `get` that selects specific columns narrows the derived row automatically —
+// and, since `db.get` misses to `null`, the derived type carries `| null` (#105).
 export const getLinkSlug = query({
   name: "get_link_slug",
   verb: "GET",
@@ -91,11 +92,10 @@ export const getLinkSlug = query({
   stack: [s.db.get({ table: links, fieldValue: inp("id"), output: ["id", "url"], as: "row" })],
   response: ref("row"),
 });
-export type GetLinkSlugResponse = InferResponse<typeof getLinkSlug>; // Pick<…, "id" | "url">
+export type GetLinkSlugResponse = InferResponse<typeof getLinkSlug>; // Pick<…, "id" | "url"> | null
 
-// When the response is reshaped by a filter/lambda (or built by control flow),
-// derivation is `unknown` — declare `responseShape` to close the type. A get
-// returns `Row | null`, so the override also carries the nullability.
+// A `get` binds `null` on a miss, so returning it directly derives `Row | null`
+// with no override needed (#105) — the client must handle the not-found path.
 export const getLinkOrNull = query({
   name: "get_link_or_null",
   verb: "GET",
@@ -103,6 +103,5 @@ export const getLinkOrNull = query({
   input: { id: input.int({ required: true }) },
   stack: [s.db.get({ table: links, fieldValue: inp("id"), as: "row" })],
   response: ref("row"),
-  responseShape: null as InferRow<typeof links> | null,
 });
 export type GetLinkOrNullResponse = InferResponse<typeof getLinkOrNull>; // InferRow<typeof links> | null

@@ -80,10 +80,10 @@ describe("public consumer surface", () => {
     expect([listLinks.name, getLinkSlug.name, getLinkOrNull.name].every((n) => n.length > 0)).toBe(
       true,
     );
-    // list endpoint → row list; column-narrowed get → Pick; override → Row | null.
+    // list endpoint → row list; column-narrowed get → Pick | null; get → Row | null (#105).
     expectTypeOf<InferResponse<typeof listLinks>>().toEqualTypeOf<InferRow<typeof links>[]>();
     expectTypeOf<InferResponse<typeof getLinkSlug>>().toEqualTypeOf<
-      Pick<InferRow<typeof links>, "id" | "url">
+      Pick<InferRow<typeof links>, "id" | "url"> | null
     >();
     expectTypeOf<InferResponse<typeof getLinkOrNull>>().toEqualTypeOf<
       InferRow<typeof links> | null

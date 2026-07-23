@@ -3,6 +3,9 @@
  *
  * PARAM GATE: the lookup field. Omit `fieldName` to match the primary key `id`,
  * or name a column to match on it. `output` narrows the returned columns.
+ *
+ * `db.get` binds `null` on a miss (no row matched) rather than throwing, so a
+ * response that returns it derives `Row | null` (#105) — handle the null path.
  */
 import { defineFunction, s, inp, ref, input } from "@sidestep/core";
 import { users } from "../../_shared.js";
