@@ -3,21 +3,20 @@
  * for which `f.<type>` / `input.<type>` methods the engine actually honors.
  *
  * Field methods (`methods:[]`) are bind-time validators/transforms whose valid set
- * depends on the field TYPE. The SDK distills them from the column-create schema
- * (`dbo-schema-<type>.yaml`); `mvp/xs` reports a per-type list from a different
- * source (`schema_override.yaml`), and the two disagree (e.g. `email`). Neither
- * static source nor column import is authoritative: the engine stores ANY method
- * string on a column at import without validating it (verified — a bogus method
- * round-trips). Only RUNTIME input validation rejects an unknown method, with
- * `Invalid method for filter - <name>` (ERROR_CODE_INPUT_ERROR). So this deploys
- * one function per (type, method) with a typed input carrying that method, runs
- * each, and classifies by that signature — any other outcome means the method
- * resolved.
+ * depends on the field TYPE. The SDK distills them from the column-create schema;
+ * the `mvp/xs` API reports a per-type list from a different surface, and the two
+ * disagree (e.g. `email`). Neither static source nor column import is
+ * authoritative: the engine stores ANY method string on a column at import without
+ * validating it (verified — a bogus method round-trips). Only RUNTIME input
+ * validation rejects an unknown method, with an `Invalid method for filter - <name>`
+ * error. So this deploys one function per (type, method) with a typed input
+ * carrying that method, runs each, and classifies by that signature — any other
+ * outcome means the method resolved.
  *
  * Run: tsx scripts/probe-field-methods.ts   (reads XANO_VALIDATE_* from .env)
  * Output: vendor/field-methods-resolvable.json + a debug detail file.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { workspace, defineFunction, ref, input, serializeBundle } from "../src/index.js";
 import { resolveValidateConfig } from "../src/validate/config.js";
@@ -25,17 +24,22 @@ import { MetaClient } from "../src/validate/meta-client.js";
 
 const ROOT = join(import.meta.dirname, "..");
 
-// Union of every method the SDK exposes (vendor) with every method mvp/xs reports,
-// per type — so the probe catches both over-exposure (SDK has, engine strips) and
-// missing coverage (engine has, SDK lacks).
+// The methods the SDK currently exposes per type — the primary probe set (catches
+// over-exposure: SDK advertises a method the engine rejects at runtime).
 const sdk = JSON.parse(readFileSync(join(ROOT, "vendor/field-methods.json"), "utf8")).types as Record<
   string,
   Record<string, string>
 >;
-const dumpPath = "/private/tmp/claude-501/-Users-justinalbrecht-sidestep-core/0cc4fdd2-6219-47d1-9a84-b8b4a9231741/scratchpad/xs-dump.json";
-const dump = JSON.parse(readFileSync(dumpPath, "utf8")) as { schema: Array<{ name: string; methods?: Array<{ name: string }> }> };
+// Optional: an engine schema dump (the `mvp/xs` endpoint response) can be supplied
+// via XANO_XS_DUMP to ALSO probe methods the SDK lacks (missing-coverage). When
+// absent, the probe covers only the SDK's own method set — enough to catch every
+// over-exposure. Never hard-coded to a machine path.
 const dumpMethods: Record<string, Set<string>> = {};
-for (const t of dump.schema) dumpMethods[t.name] = new Set((t.methods ?? []).map((m) => m.name));
+const dumpPath = process.env.XANO_XS_DUMP;
+if (dumpPath && existsSync(dumpPath)) {
+  const dump = JSON.parse(readFileSync(dumpPath, "utf8")) as { schema: Array<{ name: string; methods?: Array<{ name: string }> }> };
+  for (const t of dump.schema) dumpMethods[t.name] = new Set((t.methods ?? []).map((m) => m.name));
+}
 
 // Scalar input types we can build with `input.<type>`. tableRef is a synthetic
 // ref type (its methods are int's; skipped — no plain input form).
