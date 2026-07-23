@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { trigger, encodeTrigger } from "../../src/kinds/trigger.js";
+import {
+  tableTrigger,
+  realtimeTrigger,
+  mcpServerTrigger,
+  agentTrigger,
+  workspaceTrigger,
+  errorTrigger,
+  encodeTrigger,
+} from "../../src/kinds/trigger.js";
 import { mcpServer } from "../../src/kinds/mcp-server.js";
 import { agent } from "../../src/kinds/agent.js";
 import { deriveGuid } from "../../src/refs/guid.js";
@@ -14,7 +22,7 @@ const metaOf = (n: string) => loadFixture<{ meta: unknown }>(`triggers/${n}-trig
 describe("trigger kind — envelope + obj_type discrimination", () => {
   it("table trigger: obj_type=database, populated database action, config-only", () => {
     const t = encodeTrigger(
-      trigger.table({
+      tableTrigger({
         name: "t",
         objId: 1,
         datasources: ["live"],
@@ -39,19 +47,19 @@ describe("trigger kind — envelope + obj_type discrimination", () => {
   });
 
   it("injects the implied inputs regardless of stack (R1/R4)", () => {
-    const t = encodeTrigger(trigger.table({ name: "t", objId: 1, actions: { insert: true } }));
+    const t = encodeTrigger(tableTrigger({ name: "t", objId: 1, actions: { insert: true } }));
     expect(t.input).toEqual(impliedInputs("database"));
   });
 
   it("stack callback references implied inputs by typed name (R2)", () => {
     const t = encodeTrigger(
-      trigger.table({ name: "t", objId: 1, actions: { insert: true }, stack: (i) => [setVar("a", i.action)] }),
+      tableTrigger({ name: "t", objId: 1, actions: { insert: true }, stack: (i) => [setVar("a", i.action)] }),
     );
     expect(t.run[0]).toMatchObject({ name: "mvp:set_var", as: "a", context: { value: "action", tag: "input" } });
   });
 
   it("realtime trigger: meta deep-equals the real fixture meta; response-bearing", () => {
-    const t = encodeTrigger(trigger.realtime({ name: "r", objId: 1, actions: { message: true } }));
+    const t = encodeTrigger(realtimeTrigger({ name: "r", objId: 1, actions: { message: true } }));
     expect(t.obj_type).toBe("workspace_realtime_channel");
     expect(t.meta).toEqual(metaOf("realtime"));
     // Xano default (updateResult): payload passthrough.
@@ -63,7 +71,7 @@ describe("trigger kind — envelope + obj_type discrimination", () => {
 
   it("realtime: custom response overrides the payload default", () => {
     const t = encodeTrigger(
-      trigger.realtime({ name: "r", objId: 1, actions: { message: true }, response: (i) => i.payload }),
+      realtimeTrigger({ name: "r", objId: 1, actions: { message: true }, response: (i) => i.payload }),
     );
     // response(i) => i.payload is the same payload passthrough
     expect(t.result).toEqual([
@@ -72,7 +80,7 @@ describe("trigger kind — envelope + obj_type discrimination", () => {
   });
 
   it("mcp_server trigger: meta deep-equals fixture; default toolset/tools var passthrough", () => {
-    const t = encodeTrigger(trigger.mcpServer({ name: "m", objId: 2 }));
+    const t = encodeTrigger(mcpServerTrigger({ name: "m", objId: 2 }));
     expect(t.obj_type).toBe("toolset");
     expect(t.meta).toEqual(metaOf("mcp-server"));
     expect((t.meta as any).toolset.action.connection).toBe(true);
@@ -85,36 +93,36 @@ describe("trigger kind — envelope + obj_type discrimination", () => {
   });
 
   it("agent trigger: meta deep-equals fixture (toolset connection)", () => {
-    const t = encodeTrigger(trigger.agent({ name: "a", objId: 2 }));
+    const t = encodeTrigger(agentTrigger({ name: "a", objId: 2 }));
     expect(t.obj_type).toBe("toolset");
     expect(t.meta).toEqual(metaOf("agent"));
   });
 
   it("mcp_server trigger binds by handle → md5('toolset:'+name) guid (guid-stable, not id)", () => {
     const server = mcpServer({ name: "books" });
-    const t = encodeTrigger(trigger.mcpServer({ name: "m", mcpServer: server }));
+    const t = encodeTrigger(mcpServerTrigger({ name: "m", mcpServer: server }));
     expect(t.obj_id).toBe(deriveGuid("toolset", "books"));
     // Binding by bare name resolves identically.
-    const byName = encodeTrigger(trigger.mcpServer({ name: "m", mcpServer: "books" }));
+    const byName = encodeTrigger(mcpServerTrigger({ name: "m", mcpServer: "books" }));
     expect(byName.obj_id).toBe(deriveGuid("toolset", "books"));
   });
 
   it("agent trigger binds by handle → the same toolset guid the agent stamps", () => {
     const a = agent({ name: "assistant", llm: { type: "xano-free" } });
-    const t = encodeTrigger(trigger.agent({ name: "a", agent: a }));
+    const t = encodeTrigger(agentTrigger({ name: "a", agent: a }));
     expect(t.obj_id).toBe(deriveGuid("toolset", "assistant"));
   });
 
   it("toolset trigger: raw objId escape hatch still works; handle wins over objId", () => {
-    expect(encodeTrigger(trigger.mcpServer({ name: "m", objId: 7 })).obj_id).toBe(7);
+    expect(encodeTrigger(mcpServerTrigger({ name: "m", objId: 7 })).obj_id).toBe(7);
     // Handle takes precedence over a raw objId (mirrors the table trigger).
-    const t = encodeTrigger(trigger.mcpServer({ name: "m", mcpServer: "books", objId: 7 }));
+    const t = encodeTrigger(mcpServerTrigger({ name: "m", mcpServer: "books", objId: 7 }));
     expect(t.obj_id).toBe(deriveGuid("toolset", "books"));
   });
 
   it("workspace trigger: obj_type=workspace, branch actions, config-only", () => {
     const t = encodeTrigger(
-      trigger.workspace({
+      workspaceTrigger({
         name: "w",
         actions: { branch_live: true, branch_merge: true, branch_new: true },
         stack: (i) => [setVar("x1", i.action)],
@@ -131,7 +139,7 @@ describe("trigger kind — envelope + obj_type discrimination", () => {
   });
 
   it("error trigger: obj_type=error, empty meta, config-only, rich implied inputs", () => {
-    const t = encodeTrigger(trigger.error({ name: "e", stack: (i) => [setVar("x1", i.error("code"))] }));
+    const t = encodeTrigger(errorTrigger({ name: "e", stack: (i) => [setVar("x1", i.error("code"))] }));
     expect(t.obj_type).toBe("error");
     expect(t.meta).toEqual({});
     expect(t.result).toEqual([]);
@@ -141,18 +149,18 @@ describe("trigger kind — envelope + obj_type discrimination", () => {
 
   it("requires a name", () => {
     // @ts-expect-error - missing name
-    expect(() => encodeTrigger(trigger.error({}))).toThrow(/name/);
+    expect(() => encodeTrigger(errorTrigger({}))).toThrow(/name/);
   });
 
   it("no longer accepts a user-supplied input map (R4)", () => {
     // @ts-expect-error - `input` is not a trigger arg
-    trigger.table({ name: "t", objId: 1, input: { foo: c.int(1) } });
+    tableTrigger({ name: "t", objId: 1, input: { foo: c.int(1) } });
     expect(true).toBe(true);
   });
 
   it("registers on Xano under payload.trigger", () => {
     const bundle = new Xano()
-      .register("trigger", trigger.error({ name: "e", stack: (i) => [setVar("x1", i.signature)] }))
+      .register("trigger", errorTrigger({ name: "e", stack: (i) => [setVar("x1", i.signature)] }))
       .export();
     expect(bundle.payload.trigger).toHaveLength(1);
     expect((bundle.payload.trigger as any)[0].obj_type).toBe("error");
@@ -162,7 +170,7 @@ describe("trigger kind — envelope + obj_type discrimination", () => {
 // --- Type-level assertions (verified by `tsc --noEmit`) ---
 describe("trigger database row typing (U4)", () => {
   it("insert-only: t.new is a typed accessor, t.old is null", () => {
-    trigger.table({
+    tableTrigger({
       name: "t",
       objId: 1,
       actions: { insert: true },
@@ -177,7 +185,7 @@ describe("trigger database row typing (U4)", () => {
   });
 
   it("delete-only: t.old is a typed accessor, t.new is null", () => {
-    trigger.table({
+    tableTrigger({
       name: "t",
       objId: 1,
       actions: { delete: true },

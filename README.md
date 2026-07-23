@@ -384,7 +384,7 @@ auto-discovery magic (deliberately):
 xano/
 ├── functions/   get-user.ts        export default defineFunction({...})
 ├── tables/      user.ts            export default table({...})
-├── triggers/    on-insert.ts       export default trigger.table({...})
+├── triggers/    on-insert.ts       export default tableTrigger({...})
 ├── ai/          assistant.ts       export default agent({...}) / mcpServer({...})
 └── index.ts     workspace("my-app").registerTables([...]).registerFunctions([...])…
 ```
@@ -409,7 +409,7 @@ method. Payload keys use the engine's singular names.
 | `table({ schema, index, ... })` | `registerTables` | `dbo` |
 | `query({ verb, apiGroup, ... })` | `registerQueries` | `query` |
 | `apiGroup({ canonical, cors, ... })` | `registerApiGroups` | `app` |
-| `trigger.{table,realtime,mcpServer,agent,workspace,error}(...)` | `registerTriggers` | `trigger` |
+| `{tableTrigger,realtimeTrigger,mcpServerTrigger,agentTrigger,workspaceTrigger,errorTrigger}(...)` | `registerTriggers` | `trigger` |
 | `tool({...})` | `registerTools` | `tool` |
 | `mcpServer({...})` | `registerMcpServers` | `toolset` |
 | `agent({ llm, ... })` | `registerAgents` | `toolset` |
@@ -418,9 +418,9 @@ method. Payload keys use the engine's singular names.
 | `addon({...})` | `registerAddons` | `addon` |
 | `workspaceConfig({...})` | `registerWorkspace` | `workspace` |
 
-**Triggers** — all six types share one envelope discriminated by `obj_type` + a per-type
-`meta`: `trigger.table` (db), `trigger.realtime`, `trigger.mcpServer`, `trigger.agent`,
-`trigger.workspace`, `trigger.error`. **A trigger's `stack` is a callback — `stack: (t) => [...]`,
+**Triggers** — six first-class root factories that share one envelope discriminated by
+`obj_type` + a per-type `meta`: `tableTrigger` (db), `realtimeTrigger`, `mcpServerTrigger`,
+`agentTrigger`, `workspaceTrigger`, `errorTrigger`. **A trigger's `stack` is a callback — `stack: (t) => [...]`,
 not the plain `stack: []` array the other kinds use.** A trigger's inputs are **implied by type**
 (fixed by Xano, not editable) and injected automatically — so triggers take no `input` field, and
 the typed stack handle `t` is the only way to reference them (`response: (t) => ...` on
@@ -428,7 +428,7 @@ response-bearing types). `t` exposes exactly that type's inputs:
 
 ```ts
 // Database trigger — t.new/t.old typed against the bound table's row.
-trigger.table({
+tableTrigger({
   name: "on-user-insert",
   table: users,
   actions: { insert: true },
@@ -439,7 +439,7 @@ trigger.table({
 });
 
 // Realtime trigger — response-bearing; response defaults to the payload passthrough.
-trigger.realtime({
+realtimeTrigger({
   name: "on-message",
   objId: channelId,
   actions: { message: true },
@@ -469,7 +469,9 @@ const assistant = agent({
   tools: [{ tool: searchTool }],
 });
 
-// Invoke it from an endpoint (bound by handle, remapped on import like the call family):
+// Agents have no public endpoint — you invoke them IN-STACK with `s.ai.agent.run`
+// from any host that has a stack: a query, function, task, tool, or trigger
+// (bound by handle, remapped on import like the call family).
 query({
   name: "ask", verb: "POST", apiGroup: api,
   input: { question: input.text({ required: true }) },
@@ -484,7 +486,7 @@ query({
 `xano-free` — each with its provider's typed fields (`apiKey`, `model`, `temperature`,
 `reasoningEffort`, `thinkingTokens`, `searchGrounding`, …), mapped to the engine's
 camelCase `configs.<provider>` keys. A connection trigger binds its target with
-`trigger.mcpServer({ mcpServer })` / `trigger.agent({ agent })`.
+`mcpServerTrigger({ mcpServer })` / `agentTrigger({ agent })`.
 
 **Agent run result.** The `as` variable of `s.ai.agent.run` is a **rich envelope**, not
 the bare completion — the model's text is nested under **`.result`**:

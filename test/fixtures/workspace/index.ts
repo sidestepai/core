@@ -3,7 +3,7 @@
  * Mirrors a real project's central Xano instance with one of each registerable
  * object (function, table, trigger) plus workspace metadata.
  */
-import { Xano, defineFunction, table, trigger, input, setVar, ref, c } from "../../../src/index.js";
+import { Xano, defineFunction, table, tableTrigger, input, setVar, ref, c } from "../../../src/index.js";
 
 const getUser = defineFunction({
   // Explicit guid: identity stays fixed even if we later rename `name`.
@@ -23,7 +23,7 @@ const users = table({
   index: [{ type: "primary", fields: [{ name: "id" }] }],
 });
 
-const onInsert = trigger.table({
+const onInsert = tableTrigger({
   name: "user_inserted",
   objId: 1,
   actions: { insert: true },

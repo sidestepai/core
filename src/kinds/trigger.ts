@@ -1,6 +1,6 @@
 /**
  * Trigger kinds (U4). All 6 trigger types share ONE stored envelope
- * (`mvp_trigger`) discriminated by `obj_type` + a per-type `meta` block —
+ * discriminated by `obj_type` + a per-type `meta` block —
  * confirmed against the Xano engine's stored trigger shape. The canonical `meta`
  * carries all four action groups (database / toolset / workspace /
  * workspace_realtime_channel); each trigger type populates its own group and
@@ -103,7 +103,7 @@ function baseMeta() {
   };
 }
 
-/** Internal trigger def produced by the `trigger.*` factories. */
+/** Internal trigger def produced by the `*Trigger` root factories. */
 export interface TriggerDef {
   name: string;
   /** Explicit Xano `guid` (this object's identity). Defaults to a guid derived from `name`; set it to keep identity across a rename or to match an existing object. */
@@ -184,156 +184,158 @@ interface CommonArgs {
   tags?: string[];
 }
 
-export const trigger = {
-  /**
-   * Database table trigger (obj_type=database). Config-only (no response). The
-   * `stack` callback receives `t` with `t.new`/`t.old` (typed against the bound
-   * `table` row) plus `t.action`/`t.datasource`.
-   */
-  table<const T extends ObjectRef | undefined = undefined, const A extends DatabaseActions = DatabaseActions>(
-    args: CommonArgs & {
-      table?: T;
-      datasources?: string[];
-      actions?: A;
-      stack?: (t: DatabaseInputs<TriggerRow<T>, A>) => Statement[];
-    },
-  ): TriggerDef {
-    const meta = baseMeta();
-    meta.database.datasource = (args.datasources ?? []).map((tag) => ({ tag }));
-    meta.database.action = {
-      delete: args.actions?.delete ?? false,
-      insert: args.actions?.insert ?? false,
-      truncate: args.actions?.truncate ?? false,
-      update: args.actions?.update ?? false,
-    };
-    // Bind to the target table by its portable guid (a `table()` handle or
-    // name); a raw numeric `objId` stays the escape hatch.
-    const objId = args.table !== undefined ? resolveRef("dbo", args.table) : args.objId;
-    const t = buildTriggerHandle("database") as unknown as DatabaseInputs<TriggerRow<T>, A>;
-    return {
-      name: args.name,
-      guid: args.guid,
-      description: args.description,
-      active: args.active,
-      tags: args.tags,
-      objId,
-      objType: "database",
-      hasResult: false,
-      meta,
-      stack: args.stack?.(t) ?? [],
-    };
+/**
+ * Database table trigger (obj_type=database; XanoScript authoring term `table`).
+ * Config-only (no response). The `stack` callback receives `t` with
+ * `t.new`/`t.old` (typed against the bound `table` row) plus
+ * `t.action`/`t.datasource`.
+ */
+export function tableTrigger<
+  const T extends ObjectRef | undefined = undefined,
+  const A extends DatabaseActions = DatabaseActions,
+>(
+  args: CommonArgs & {
+    table?: T;
+    datasources?: string[];
+    actions?: A;
+    stack?: (t: DatabaseInputs<TriggerRow<T>, A>) => Statement[];
   },
+): TriggerDef {
+  const meta = baseMeta();
+  meta.database.datasource = (args.datasources ?? []).map((tag) => ({ tag }));
+  meta.database.action = {
+    delete: args.actions?.delete ?? false,
+    insert: args.actions?.insert ?? false,
+    truncate: args.actions?.truncate ?? false,
+    update: args.actions?.update ?? false,
+  };
+  // Bind to the target table by its portable guid (a `table()` handle or
+  // name); a raw numeric `objId` stays the escape hatch.
+  const objId = args.table !== undefined ? resolveRef("dbo", args.table) : args.objId;
+  const t = buildTriggerHandle("database") as unknown as DatabaseInputs<TriggerRow<T>, A>;
+  return {
+    name: args.name,
+    guid: args.guid,
+    description: args.description,
+    active: args.active,
+    tags: args.tags,
+    objId,
+    objType: "database",
+    hasResult: false,
+    meta,
+    stack: args.stack?.(t) ?? [],
+  };
+}
 
-  /** Realtime channel trigger (obj_type=workspace_realtime_channel). Response-bearing. */
-  realtime(
-    args: CommonArgs & {
-      actions?: RealtimeActions;
-      stack?: (t: RealtimeInputs) => Statement[];
-      response?: (t: RealtimeInputs) => ResponseDef;
-    },
-  ): TriggerDef {
-    const meta = baseMeta();
-    meta.workspace_realtime_channel.action = {
-      message: args.actions?.message ?? false,
-      join: args.actions?.join ?? false,
-    };
-    const t = buildTriggerHandle("workspace_realtime_channel") as unknown as RealtimeInputs;
-    return {
-      name: args.name,
-      guid: args.guid,
-      description: args.description,
-      active: args.active,
-      tags: args.tags,
-      objId: args.objId,
-      objType: "workspace_realtime_channel",
-      hasResult: true,
-      meta,
-      stack: args.stack?.(t) ?? [],
-      // Xano default (updateResult): echo the `payload` input back.
-      response: args.response ? args.response(t) : inp("payload"),
-    };
+/** Realtime channel trigger (obj_type=workspace_realtime_channel). Response-bearing. */
+export function realtimeTrigger(
+  args: CommonArgs & {
+    actions?: RealtimeActions;
+    stack?: (t: RealtimeInputs) => Statement[];
+    response?: (t: RealtimeInputs) => ResponseDef;
   },
+): TriggerDef {
+  const meta = baseMeta();
+  meta.workspace_realtime_channel.action = {
+    message: args.actions?.message ?? false,
+    join: args.actions?.join ?? false,
+  };
+  const t = buildTriggerHandle("workspace_realtime_channel") as unknown as RealtimeInputs;
+  return {
+    name: args.name,
+    guid: args.guid,
+    description: args.description,
+    active: args.active,
+    tags: args.tags,
+    objId: args.objId,
+    objType: "workspace_realtime_channel",
+    hasResult: true,
+    meta,
+    stack: args.stack?.(t) ?? [],
+    // Xano default (updateResult): echo the `payload` input back.
+    response: args.response ? args.response(t) : inp("payload"),
+  };
+}
 
-  /**
-   * MCP server trigger (obj_type=toolset, connection action). Response-bearing.
-   * Bind the target MCP server with `mcpServer` (a `mcpServer()` def handle or
-   * its name) — it resolves to the toolset guid at export and survives a
-   * `--reset` deploy. A raw numeric `objId` stays the escape hatch.
-   */
-  mcpServer(
-    args: CommonArgs & {
-      mcpServer?: ObjectRef;
-      stack?: (t: ToolsetInputs) => Statement[];
-      response?: (t: ToolsetInputs) => ResponseDef;
-    },
-  ): TriggerDef {
-    return toolsetTrigger(args, args.mcpServer);
+/**
+ * MCP server trigger (obj_type=toolset, connection action). Response-bearing.
+ * Bind the target MCP server with `mcpServer` (a `mcpServer()` def handle or
+ * its name) — it resolves to the toolset guid at export and survives a
+ * `--reset` deploy. A raw numeric `objId` stays the escape hatch.
+ */
+export function mcpServerTrigger(
+  args: CommonArgs & {
+    mcpServer?: ObjectRef;
+    stack?: (t: ToolsetInputs) => Statement[];
+    response?: (t: ToolsetInputs) => ResponseDef;
   },
+): TriggerDef {
+  return toolsetTrigger(args, args.mcpServer);
+}
 
-  /**
-   * Agent trigger (obj_type=toolset, connection action). Response-bearing.
-   * Bind the target agent with `agent` (an `agent()` def handle or its name),
-   * resolved to the toolset guid at export; `objId` is the raw escape hatch.
-   */
-  agent(
-    args: CommonArgs & {
-      agent?: ObjectRef;
-      stack?: (t: ToolsetInputs) => Statement[];
-      response?: (t: ToolsetInputs) => ResponseDef;
-    },
-  ): TriggerDef {
-    return toolsetTrigger(args, args.agent);
+/**
+ * Agent trigger (obj_type=toolset, connection action). Response-bearing.
+ * Bind the target agent with `agent` (an `agent()` def handle or its name),
+ * resolved to the toolset guid at export; `objId` is the raw escape hatch.
+ */
+export function agentTrigger(
+  args: CommonArgs & {
+    agent?: ObjectRef;
+    stack?: (t: ToolsetInputs) => Statement[];
+    response?: (t: ToolsetInputs) => ResponseDef;
   },
+): TriggerDef {
+  return toolsetTrigger(args, args.agent);
+}
 
-  /** Workspace lifecycle trigger (obj_type=workspace). Config-only. */
-  workspace(
-    args: CommonArgs & {
-      actions?: WorkspaceActions;
-      stack?: (t: WorkspaceInputs) => Statement[];
-    },
-  ): TriggerDef {
-    const meta = baseMeta();
-    meta.workspace.action = {
-      branch_live: args.actions?.branch_live ?? false,
-      branch_merge: args.actions?.branch_merge ?? false,
-      branch_new: args.actions?.branch_new ?? false,
-    };
-    const t = buildTriggerHandle("workspace") as unknown as WorkspaceInputs;
-    return {
-      name: args.name,
-      guid: args.guid,
-      description: args.description,
-      active: args.active,
-      tags: args.tags,
-      objId: args.objId,
-      objType: "workspace",
-      hasResult: false,
-      meta,
-      stack: args.stack?.(t) ?? [],
-    };
+/** Workspace lifecycle trigger (obj_type=workspace). Config-only. */
+export function workspaceTrigger(
+  args: CommonArgs & {
+    actions?: WorkspaceActions;
+    stack?: (t: WorkspaceInputs) => Statement[];
   },
+): TriggerDef {
+  const meta = baseMeta();
+  meta.workspace.action = {
+    branch_live: args.actions?.branch_live ?? false,
+    branch_merge: args.actions?.branch_merge ?? false,
+    branch_new: args.actions?.branch_new ?? false,
+  };
+  const t = buildTriggerHandle("workspace") as unknown as WorkspaceInputs;
+  return {
+    name: args.name,
+    guid: args.guid,
+    description: args.description,
+    active: args.active,
+    tags: args.tags,
+    objId: args.objId,
+    objType: "workspace",
+    hasResult: false,
+    meta,
+    stack: args.stack?.(t) ?? [],
+  };
+}
 
-  /** Error trigger (obj_type=error, empty meta). Config-only. */
-  error(
-    args: CommonArgs & {
-      stack?: (t: ErrorInputs) => Statement[];
-    },
-  ): TriggerDef {
+/** Error trigger (obj_type=error, empty meta). Config-only. */
+export function errorTrigger(
+  args: CommonArgs & {
+    stack?: (t: ErrorInputs) => Statement[];
+  },
+): TriggerDef {
     const t = buildTriggerHandle("error") as unknown as ErrorInputs;
-    return {
-      name: args.name,
-      guid: args.guid,
-      description: args.description,
-      active: args.active,
-      tags: args.tags,
-      objId: args.objId,
-      objType: "error",
-      hasResult: false,
-      meta: {},
-      stack: args.stack?.(t) ?? [],
-    };
-  },
-};
+  return {
+    name: args.name,
+    guid: args.guid,
+    description: args.description,
+    active: args.active,
+    tags: args.tags,
+    objId: args.objId,
+    objType: "error",
+    hasResult: false,
+    meta: {},
+    stack: args.stack?.(t) ?? [],
+  };
+}
 
 /**
  * Shared MCP-server / agent trigger construction (both are `obj_type=toolset`).

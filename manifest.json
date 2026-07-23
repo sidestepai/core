@@ -1,6 +1,6 @@
 {
   "name": "sidestep",
-  "version": "3.9.9",
+  "version": "3.9.10",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
@@ -131,6 +131,7 @@
       "kind": "function",
       "payloadKey": "function",
       "authorFactory": "defineFunction",
+      "description": "Reusable server-side logic (a custom function) callable from any stack via `s.function.run`.",
       "registerMethod": "registerFunctions",
       "registered": true
     },
@@ -138,6 +139,7 @@
       "kind": "table",
       "payloadKey": "dbo",
       "authorFactory": "table",
+      "description": "A database table: typed columns (`f.*`), indexes, and views; the schema other kinds read and write.",
       "registerMethod": "registerTables",
       "registered": true
     },
@@ -145,6 +147,7 @@
       "kind": "query",
       "payloadKey": "query",
       "authorFactory": "query",
+      "description": "An HTTP API endpoint (verb + path) bound to an API group; the main request/response surface.",
       "registerMethod": "registerQueries",
       "registered": true
     },
@@ -152,20 +155,55 @@
       "kind": "api_group",
       "payloadKey": "app",
       "authorFactory": "apiGroup",
+      "description": "A container that groups queries under a shared base path, CORS, and swagger config.",
       "registerMethod": "registerApiGroups",
       "registered": true
     },
     {
       "kind": "trigger",
       "payloadKey": "trigger",
-      "authorFactory": "trigger.{table,realtime,mcpServer,agent,workspace,error}",
+      "authorFactory": "{tableTrigger,realtimeTrigger,mcpServerTrigger,agentTrigger,workspaceTrigger,errorTrigger}",
+      "description": "An event-driven handler fired by a DB write, realtime channel, MCP/agent connection, branch lifecycle, or error — inputs are implied by type and arrive on the `t` handle.",
       "registerMethod": "registerTriggers",
+      "subKinds": [
+        {
+          "authorFactory": "tableTrigger",
+          "objType": "database",
+          "description": "Fires when rows change on a bound table (insert/update/delete/truncate). The changed row is exposed as `t.new`/`t.old`, typed to the table when a `table()` handle is bound. Config-only (no response)."
+        },
+        {
+          "authorFactory": "realtimeTrigger",
+          "objType": "workspace_realtime_channel",
+          "description": "Fires on realtime channel activity (message/join); inspect the channel, connecting client, options, and payload via `t`. Response-bearing — defaults to echoing the payload."
+        },
+        {
+          "authorFactory": "mcpServerTrigger",
+          "objType": "toolset",
+          "description": "Fires when an MCP client connects to a bound MCP server; gate or annotate the exposed tools via `t.toolset`/`t.tools`. Response-bearing."
+        },
+        {
+          "authorFactory": "agentTrigger",
+          "objType": "toolset",
+          "description": "Fires when a client connects to a bound agent; gate or annotate its toolset via `t.toolset`/`t.tools`. Response-bearing."
+        },
+        {
+          "authorFactory": "workspaceTrigger",
+          "objType": "workspace",
+          "description": "Fires on branch lifecycle events (branch new/merge/live); inspect the from/to branch and action via `t`. Config-only."
+        },
+        {
+          "authorFactory": "errorTrigger",
+          "objType": "error",
+          "description": "Fires when an error signature is first seen, regresses, or is marked fixed; inspect the error, caller, statement, and occurrence counts via `t`. Config-only."
+        }
+      ],
       "registered": true
     },
     {
       "kind": "tool",
       "payloadKey": "tool",
       "authorFactory": "tool",
+      "description": "An agent/MCP tool: a callable capability with typed inputs an AI agent can invoke.",
       "registerMethod": "registerTools",
       "registered": true
     },
@@ -173,6 +211,7 @@
       "kind": "mcp_server",
       "payloadKey": "toolset",
       "authorFactory": "mcpServer",
+      "description": "An MCP server exposing a set of tools to external MCP clients.",
       "registerMethod": "registerMcpServers",
       "registered": true
     },
@@ -180,6 +219,7 @@
       "kind": "agent",
       "payloadKey": "toolset",
       "authorFactory": "agent",
+      "description": "An AI agent: an LLM configuration plus the tools it can call. Invoke it from any stack (query/function/task/tool/trigger) with `s.ai.agent.run` — no public endpoint; the result is a rich envelope whose completion text is at `.result`.",
       "registerMethod": "registerAgents",
       "registered": true
     },
@@ -187,6 +227,7 @@
       "kind": "task",
       "payloadKey": "task",
       "authorFactory": "task",
+      "description": "A scheduled background job (cron/interval) that runs a stack on a timer.",
       "registerMethod": "registerTasks",
       "registered": true
     },
@@ -194,6 +235,7 @@
       "kind": "middleware",
       "payloadKey": "middleware",
       "authorFactory": "middleware",
+      "description": "A reusable pre/post stack attached to a query/function/task/tool/API group to run before or after its own logic.",
       "registerMethod": "registerMiddleware",
       "registered": true
     },
@@ -201,6 +243,7 @@
       "kind": "addon",
       "payloadKey": "addon",
       "authorFactory": "addon",
+      "description": "A reusable read fragment that enriches a query result by joining related table data.",
       "registerMethod": "registerAddons",
       "registered": true
     },
@@ -208,6 +251,7 @@
       "kind": "workspace",
       "payloadKey": "workspace",
       "authorFactory": "workspaceConfig",
+      "description": "Workspace-level configuration such as default middleware chains per host kind.",
       "registerMethod": "registerWorkspace",
       "registered": true
     }
