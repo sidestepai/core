@@ -281,7 +281,16 @@ export {
 } from "./kinds/kind.js";
 export type { ObjectKind } from "./kinds/kind.js";
 export { functionKind, encodeFunction } from "./kinds/function.js";
-export { trigger, triggerKind, encodeTrigger } from "./kinds/trigger.js";
+export {
+  tableTrigger,
+  realtimeTrigger,
+  mcpServerTrigger,
+  agentTrigger,
+  workspaceTrigger,
+  errorTrigger,
+  triggerKind,
+  encodeTrigger,
+} from "./kinds/trigger.js";
 export type {
   TriggerDef,
   TriggerXdo,

@@ -65,6 +65,8 @@ export interface ManifestKind {
   payloadKey: string;
   /** Authoring factory export, e.g. `defineFunction`, `table`. */
   authorFactory: string;
+  /** One-line "what this primitive does" descriptor, surfaced in `llms.txt`. */
+  description: string;
   /** `Xano` registration method, e.g. `registerFunctions`. */
   registerMethod: string;
   /** Whether the kind has a registered encoder (implemented today). */
@@ -235,18 +237,18 @@ const CLI_COMMANDS: readonly ManifestCliCommand[] = [
  * `agent` are distinct kinds that both persist under the `toolset` payload key.
  */
 const KIND_DESCRIPTORS: ReadonlyArray<Omit<ManifestKind, "registered">> = [
-  { kind: "function", payloadKey: "function", authorFactory: "defineFunction", registerMethod: "registerFunctions" },
-  { kind: "table", payloadKey: "dbo", authorFactory: "table", registerMethod: "registerTables" },
-  { kind: "query", payloadKey: "query", authorFactory: "query", registerMethod: "registerQueries" },
-  { kind: "api_group", payloadKey: "app", authorFactory: "apiGroup", registerMethod: "registerApiGroups" },
-  { kind: "trigger", payloadKey: "trigger", authorFactory: "trigger.{table,realtime,mcpServer,agent,workspace,error}", registerMethod: "registerTriggers" },
-  { kind: "tool", payloadKey: "tool", authorFactory: "tool", registerMethod: "registerTools" },
-  { kind: "mcp_server", payloadKey: "toolset", authorFactory: "mcpServer", registerMethod: "registerMcpServers" },
-  { kind: "agent", payloadKey: "toolset", authorFactory: "agent", registerMethod: "registerAgents" },
-  { kind: "task", payloadKey: "task", authorFactory: "task", registerMethod: "registerTasks" },
-  { kind: "middleware", payloadKey: "middleware", authorFactory: "middleware", registerMethod: "registerMiddleware" },
-  { kind: "addon", payloadKey: "addon", authorFactory: "addon", registerMethod: "registerAddons" },
-  { kind: "workspace", payloadKey: "workspace", authorFactory: "workspaceConfig", registerMethod: "registerWorkspace" },
+  { kind: "function", payloadKey: "function", authorFactory: "defineFunction", description: "Reusable server-side logic (a custom function) callable from any stack via `s.function.run`.", registerMethod: "registerFunctions" },
+  { kind: "table", payloadKey: "dbo", authorFactory: "table", description: "A database table: typed columns (`f.*`), indexes, and views; the schema other kinds read and write.", registerMethod: "registerTables" },
+  { kind: "query", payloadKey: "query", authorFactory: "query", description: "An HTTP API endpoint (verb + path) bound to an API group; the main request/response surface.", registerMethod: "registerQueries" },
+  { kind: "api_group", payloadKey: "app", authorFactory: "apiGroup", description: "A container that groups queries under a shared base path, CORS, and swagger config.", registerMethod: "registerApiGroups" },
+  { kind: "trigger", payloadKey: "trigger", authorFactory: "{tableTrigger,realtimeTrigger,mcpServerTrigger,agentTrigger,workspaceTrigger,errorTrigger}", description: "An event-driven handler fired by a DB write, realtime channel, MCP/agent connection, branch lifecycle, or error — inputs are implied by type and arrive on the `t` handle.", registerMethod: "registerTriggers" },
+  { kind: "tool", payloadKey: "tool", authorFactory: "tool", description: "An agent/MCP tool: a callable capability with typed inputs an AI agent can invoke.", registerMethod: "registerTools" },
+  { kind: "mcp_server", payloadKey: "toolset", authorFactory: "mcpServer", description: "An MCP server exposing a set of tools to external MCP clients.", registerMethod: "registerMcpServers" },
+  { kind: "agent", payloadKey: "toolset", authorFactory: "agent", description: "An AI agent: an LLM configuration plus the tools it can call.", registerMethod: "registerAgents" },
+  { kind: "task", payloadKey: "task", authorFactory: "task", description: "A scheduled background job (cron/interval) that runs a stack on a timer.", registerMethod: "registerTasks" },
+  { kind: "middleware", payloadKey: "middleware", authorFactory: "middleware", description: "A reusable pre/post stack attached to a query/function/task/tool/API group to run before or after its own logic.", registerMethod: "registerMiddleware" },
+  { kind: "addon", payloadKey: "addon", authorFactory: "addon", description: "A reusable read fragment that enriches a query result by joining related table data.", registerMethod: "registerAddons" },
+  { kind: "workspace", payloadKey: "workspace", authorFactory: "workspaceConfig", description: "Workspace-level configuration such as default middleware chains per host kind.", registerMethod: "registerWorkspace" },
 ];
 
 /** Value constructors / helpers exported from the package root. */
@@ -704,9 +706,9 @@ export function renderLlmsTxt(m: Manifest): string {
   );
 
   lines.push("## Object kinds", "");
-  lines.push("Author with the factory, register on the Xano instance, lands under the payload key.", "");
+  lines.push("Author with the factory, register on the Xano instance, lands under the payload key. Each line ends with a one-liner on what the primitive is.", "");
   for (const k of m.objectKinds) {
-    lines.push(`- ${k.kind}: \`${k.authorFactory}\` → \`Xano.${k.registerMethod}\` → payload \`${k.payloadKey}\``);
+    lines.push(`- ${k.kind}: \`${k.authorFactory}\` → \`Xano.${k.registerMethod}\` → payload \`${k.payloadKey}\` — ${k.description}`);
   }
   lines.push("");
 
@@ -739,14 +741,16 @@ export function renderLlmsTxt(m: Manifest): string {
     "not editable) and arrive through the typed **stack handle** `t` — you can't",
     "reference them without it. (Response-bearing types take `response: (t) =>",
     "ResponseDef` too.) `t` exposes exactly that trigger type's inputs; a wrong",
-    "name is a compile error, not a runtime surprise. Each factory:",
-    "`trigger.{table,realtime,mcpServer,agent,workspace,error}({ name, guid?, description?, active?, tags?, ... })`.",
+    "name is a compile error, not a runtime surprise. The six trigger types are",
+    "distinct root factories (not a namespace): `{tableTrigger, realtimeTrigger,",
+    "mcpServerTrigger, agentTrigger, workspaceTrigger, errorTrigger}({ name, guid?,",
+    "description?, active?, tags?, ... })`.",
     "",
-    "- `trigger.table({ name, table?, datasources?, actions?: {insert?,update?,delete?,truncate?}, stack })` — database trigger. `t.new` / `t.old` are the row **after** / **before** the change; `t.action` (`insert|update|delete|truncate`), `t.datasource`. Bind `table` to a `table()` handle and `t.new(\"col\")` / `t.old(\"col\")` are typed to that row (misspelled column = compile error). Nullability follows the enabled actions: insert → `old` is null, delete → `new` is null, update → both, truncate → neither (per the `xrt_trigger` semantics). Config-only (no response).",
-    "- `trigger.realtime({ name, objId, actions?: {message?,join?}, stack?, response? })` — realtime channel. Inputs: `t.action` (`message|join`), `t.channel`, `t.client` (`t.client(\"permissions.dbo_id\")`), `t.options`, `t.payload`. Response-bearing; `response` defaults to the `payload` passthrough.",
-    "- `trigger.mcpServer(...)` / `trigger.agent({ name, objId, stack?, response? })` — toolset connection. Inputs: `t.toolset` (`t.toolset(\"name\")`), `t.tools`. Response-bearing; the default stack copies `toolset`/`tools` into vars and returns them.",
-    "- `trigger.workspace({ name, actions?: {branch_live?,branch_merge?,branch_new?}, stack? })` — branch lifecycle. Inputs: `t.to_branch`, `t.from_branch`, `t.action`. Config-only.",
-    "- `trigger.error({ name, stack? })` — error-signature trigger. Inputs: `t.event` (`new|regression|fixed`), `t.id`, `t.signature`, `t.error` (`t.error(\"code\")`/`t.error(\"message\")`), `t.caller`, `t.statement`, `t.actor`, `t.count`, `t.first_seen`, `t.last_seen`, `t.fixed_at`. Config-only.",
+    "- `tableTrigger({ name, table?, datasources?, actions?: {insert?,update?,delete?,truncate?}, stack })` — database/table trigger. `t.new` / `t.old` are the row **after** / **before** the change; `t.action` (`insert|update|delete|truncate`), `t.datasource`. Bind `table` to a `table()` handle and `t.new(\"col\")` / `t.old(\"col\")` are typed to that row (misspelled column = compile error). Nullability follows the enabled actions: insert → `old` is null, delete → `new` is null, update → both, truncate → neither (per the `xrt_trigger` semantics). Config-only (no response).",
+    "- `realtimeTrigger({ name, objId, actions?: {message?,join?}, stack?, response? })` — realtime channel. Inputs: `t.action` (`message|join`), `t.channel`, `t.client` (`t.client(\"permissions.dbo_id\")`), `t.options`, `t.payload`. Response-bearing; `response` defaults to the `payload` passthrough.",
+    "- `mcpServerTrigger(...)` / `agentTrigger({ name, objId, stack?, response? })` — toolset connection. Inputs: `t.toolset` (`t.toolset(\"name\")`), `t.tools`. Response-bearing; the default stack copies `toolset`/`tools` into vars and returns them.",
+    "- `workspaceTrigger({ name, actions?: {branch_live?,branch_merge?,branch_new?}, stack? })` — branch lifecycle. Inputs: `t.to_branch`, `t.from_branch`, `t.action`. Config-only.",
+    "- `errorTrigger({ name, stack? })` — error-signature trigger. Inputs: `t.event` (`new|regression|fixed`), `t.id`, `t.signature`, `t.error` (`t.error(\"code\")`/`t.error(\"message\")`), `t.caller`, `t.statement`, `t.actor`, `t.count`, `t.first_seen`, `t.last_seen`, `t.fixed_at`. Config-only.",
     "",
     "### Responses",
     "",

@@ -10,7 +10,7 @@ import "../../src/index.js"; // register kinds + statements
 import { Xano } from "../../src/workspace/xano.js";
 import { defineFunction } from "../../src/function/define.js";
 import { table } from "../../src/kinds/table.js";
-import { trigger } from "../../src/kinds/trigger.js";
+import { tableTrigger } from "../../src/kinds/trigger.js";
 import { apiGroup } from "../../src/kinds/api-group.js";
 import { query } from "../../src/kinds/query.js";
 import { mcpServer } from "../../src/kinds/mcp-server.js";
@@ -117,7 +117,7 @@ describe("lock-aware export", () => {
       .registerQueries([query({ name: "list_users", verb: "GET", apiGroup: group })])
       .registerMcpServers([mcpServer({ name: "assistant" })])
       .registerTriggers([
-        trigger.table({ name: "on_insert", objId: 1, actions: { insert: true }, stack: () => [] }),
+        tableTrigger({ name: "on_insert", objId: 1, actions: { insert: true }, stack: () => [] }),
       ]);
     const ctx = createLockContext(emptyLock());
     x.export({ lock: ctx });
