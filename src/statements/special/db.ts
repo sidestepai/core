@@ -430,11 +430,13 @@ export interface DbGetArgs<
  * Returns a {@link DbResult} branded with `as` + the (optionally narrowed) row
  * shape **`| null`** so `InferResponse` can type a response that returns this
  * variable. `dbo_getby` binds **`null` on a miss** (no row matched) rather than
- * throwing — confirmed live and stated in the docs' "Runtime behavior" — so the
- * honest shape is `Row | null`, matching `db.query`'s `returnType:"single"`
- * ({@link QueryResult}). Contrast the row **writes** (`db.add`/`edit`/`patch`/
- * `add_or_edit`), which throw `NotFound`/404 instead of binding null and so stay
- * non-nullable (issue #105). */
+ * throwing — confirmed live — so the honest shape is `Row | null`, matching
+ * `db.query`'s `returnType:"single"` ({@link QueryResult}). Contrast the row
+ * **writes** (`db.add`/`edit`/`patch`/`add_or_edit`), which bind the full
+ * written row rather than null and so stay non-nullable — a genuine miss throws
+ * instead of yielding null (`NotFound`/404 for `edit`/`patch`; a
+ * unique-constraint error for `add`; `add_or_edit` upserts, so it never misses)
+ * (issue #105). */
 export function dbGet<
   T extends ObjectRef,
   const As extends string = "",

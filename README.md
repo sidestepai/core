@@ -304,8 +304,10 @@ async function fetchPosts(): Promise<Post[]> {
 - **`InferResponse<typeof someQuery>`** → the endpoint's **response** type, closing the round
   trip. It auto-derives the common shapes with no codegen: an object-literal response yields
   those keys, and a query that returns a variable filled by a db op derives that op's result —
-  the full row for `db.add`/`db.edit`/`db.patch`/`db.add_or_edit` (→ `Row` — these throw
-  `NotFound`/404 on a miss, so they stay non-nullable), `Row | null` for `db.get` (it binds
+  the full row for `db.add`/`db.edit`/`db.patch`/`db.add_or_edit` (→ `Row` — each binds the
+  full written row rather than null, so it stays non-nullable; a genuine miss throws instead of
+  yielding null — `NotFound`/404 for `edit`/`patch`, a unique-constraint error for `add`, while
+  `add_or_edit` upserts and never misses), `Row | null` for `db.get` (it binds
   `null` on a miss rather than throwing — handle the not-found path), a row list for
   `db.query`/`db.bulk.patch` (→ `Row[]`), a `boolean` for `db.has`, a `number` count for
   `db.bulk.delete`, and a `get`/`query` `output: [...]` selection narrows to a `Pick` (still

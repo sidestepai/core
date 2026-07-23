@@ -31,6 +31,16 @@ const link = table({
   },
 });
 
+// A table with a nested object column — exercises a *multi-segment* dotted ref
+// (`row.meta.title`), which walks the recursive `IndexShape`/`IndexStep` branch
+// rather than the single-segment base case (#105).
+const linkWithMeta = table({
+  name: "link_with_meta",
+  schema: {
+    meta: f.object({ title: f.text({ required: true }) }, { required: true }),
+  },
+});
+
 // A declared list response — the link-shortener pattern.
 const listLinks = query({
   verb: "GET",
@@ -378,6 +388,22 @@ describe("InferResponse — single-variable trace (U5, type-level)", () => {
     expect(slugOf.name).toBe("slug_of");
     // `db.get` binds `Row | null`; `$row.slug` on a missed row is itself null.
     expectTypeOf<InferResponse<typeof slugOf>>().toEqualTypeOf<string | null>();
+  });
+
+  it("a multi-segment dotted ref re-distributes db.get's null at each level (#105)", () => {
+    // `row.meta.title` is two indexing steps: the recursive `IndexShape` branch
+    // (not the single-segment base case `row.slug` above) must carry the
+    // top-level `| null` through to the leaf — a regression that recursed into
+    // the non-null `IndexStep` instead would drop it and this alone would catch it.
+    const titleOf = query({
+      verb: "GET",
+      apiGroup: links,
+      name: "title_of",
+      stack: [s.db.get({ table: linkWithMeta, fieldValue: c.int(1), as: "row" })],
+      response: ref("row.meta.title"),
+    });
+    expect(titleOf.name).toBe("title_of");
+    expectTypeOf<InferResponse<typeof titleOf>>().toEqualTypeOf<string | null>();
   });
 
   it("a dotted ref into an untraceable (set_var) base stays unknown", () => {
