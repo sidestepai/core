@@ -6,11 +6,14 @@
  *
  * Pure orchestration: it takes an already-serialized bundle and a client, so it
  * carries no file IO or module loading and is unit-testable with a fake client.
- * Round-trip parity is checked for functions (the fixture-capture core); other
- * imported kinds are reported as present-but-unchecked rather than silently
- * treated as covered.
+ * Round-trip parity is checked for every registered kind (see `./kinds.ts`):
+ * tables (`dbo`), functions, queries, triggers, and the rest. A registered kind
+ * the export does not surface as a populated top-level array (e.g. `tool`,
+ * nested under `toolset`) is demoted to present-but-unchecked rather than
+ * emitting a false per-object `missing` (R3).
  */
 import { normalize } from "./normalize.js";
+import { ROUND_TRIP_KINDS, indexByIdentity, resolveMatch, kindIsRunnable } from "./kinds.js";
 import type { ImportResult } from "./meta-client.js";
 
 /** The client surface the loop needs (satisfied structurally by MetaClient). */
@@ -26,10 +29,12 @@ export interface DiffLine {
   actual: unknown;
 }
 
-/** Round-trip outcome for a single authored function. */
+/** Round-trip outcome for a single authored object. */
 export interface RoundTripEntry {
+  /** Payload kind the object belongs to (e.g. "dbo", "function"). */
+  kind: string;
   name: string;
-  status: "match" | "diff" | "missing";
+  status: "match" | "diff" | "missing" | "ambiguous";
   diffs: DiffLine[];
   /** The persisted JSON read back (kept for --capture); undefined when missing. */
   fetched: unknown;
@@ -48,9 +53,6 @@ export interface ValidateResult {
   /** Imported kinds present in the bundle that the loop did not round-trip. */
   unchecked: Array<{ kind: string; count: number }>;
 }
-
-/** Bundle payload keys the loop does not (yet) round-trip, for honest reporting. */
-const UNCHECKED_KINDS = ["dbo", "addon", "middleware", "trigger", "task", "query", "tool", "toolset"];
 
 export interface ValidateLoopOptions {
   reset?: boolean;
@@ -79,37 +81,68 @@ export async function runValidateLoop(
   }
 
   const workspaceId = imported.workspaceId;
-  const compiledFns = asRecords(payload.function);
-  const unchecked = UNCHECKED_KINDS.map((kind) => ({ kind, count: asRecords(payload[kind]).length })).filter(
-    (u) => u.count > 0,
+  // Registered kinds actually present on the compiled (bundle) side.
+  const present = ROUND_TRIP_KINDS.map((k) => ({ kind: k.key, compiled: asRecords(payload[k.key]) })).filter(
+    (p) => p.compiled.length > 0,
   );
 
-  // Without a workspace id we accepted the import but cannot read anything back.
-  if (workspaceId === undefined) {
-    return { accepted: true, workspaceId, roundTrip: [], unchecked };
+  // Without a workspace id (can't read anything back), or with no registered
+  // authored kinds to round-trip, we accepted the import but skip the export
+  // entirely — every present kind, if any, is reported unchecked.
+  if (workspaceId === undefined || present.length === 0) {
+    return {
+      accepted: true,
+      workspaceId,
+      roundTrip: [],
+      unchecked: present.map((p) => ({ kind: p.kind, count: p.compiled.length })),
+    };
   }
 
-  let roundTrip: RoundTripEntry[] = [];
-  if (compiledFns.length > 0) {
-    // Export the imported workspace back as a packageExport bundle (same shape we
-    // sent, full logic) and match functions by name — apples-to-apples via the
-    // shared normalizer.
-    const exported = await client.exportWorkspace(workspaceId);
-    const exportedByName = new Map(
-      asRecords(exported.payload.function)
-        .filter((f) => typeof f.name === "string")
-        .map((f) => [f.name as string, f]),
-    );
-    roundTrip = compiledFns.map((fn): RoundTripEntry => {
-      const name = typeof fn.name === "string" ? fn.name : "(unnamed)";
-      const fetched = exportedByName.get(name);
-      if (fetched === undefined) return { name, status: "missing", diffs: [], fetched: undefined };
-      const diffs = deepDiff(normalize(fn), normalize(fetched));
-      return { name, status: diffs.length === 0 ? "match" : "diff", diffs, fetched };
-    });
+  // Export the imported workspace back as a packageExport bundle (same shape we
+  // sent, full logic) and match each compiled object to its persisted twin via
+  // the shared normalizer — apples-to-apples across every registered kind.
+  const exported = await client.exportWorkspace(workspaceId);
+  const roundTrip: RoundTripEntry[] = [];
+  const unchecked: Array<{ kind: string; count: number }> = [];
+
+  for (const { kind, compiled } of present) {
+    const fetched = asRecords(exported.payload[kind]);
+    // The export doesn't surface this kind as a populated top-level array (e.g.
+    // `tool`, persisted nested under `toolset`): demote the whole kind to
+    // unchecked rather than emit a false `missing` per compiled object (R3).
+    if (fetched.length === 0) {
+      unchecked.push({ kind, count: compiled.length });
+      continue;
+    }
+    const index = indexByIdentity(fetched);
+    for (const obj of compiled) {
+      const name = typeof obj.name === "string" ? obj.name : "(unnamed)";
+      const match = resolveMatch(obj, index);
+      if (match.outcome !== "found") {
+        // "missing" or "ambiguous" — the outcome IS the status; no fetched body.
+        roundTrip.push({ kind, name, status: match.outcome, diffs: [], fetched: undefined });
+      } else {
+        const diffs = deepDiff(normalize(obj), normalize(match.fetched));
+        roundTrip.push({ kind, name, status: diffs.length === 0 ? "match" : "diff", diffs, fetched: match.fetched });
+      }
+    }
   }
 
   return { accepted: true, workspaceId, roundTrip, unchecked };
+}
+
+/**
+ * The names eligible for a `--runtime` smoke-run: entries of a runnable kind
+ * (per the registry — only `function` today) that actually imported (status
+ * match/diff). Tables and other non-runnable kinds are not invocable via the
+ * function/run route, and missing/ambiguous names never landed. Extracted as a
+ * pure helper so the gate is unit-testable (it is command behavior, not loop
+ * behavior) and reads the registry instead of hardcoding a kind string.
+ */
+export function runnableFunctionNames(entries: RoundTripEntry[]): string[] {
+  return entries
+    .filter((e) => kindIsRunnable(e.kind) && (e.status === "match" || e.status === "diff"))
+    .map((e) => e.name);
 }
 
 /** Coerce a payload array to records; tolerates a missing/non-array value. */

@@ -8,6 +8,7 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve as resolvePath, dirname } from "node:path";
+import { fixtureDirForKind } from "./kinds.js";
 import type { RoundTripEntry } from "./loop.js";
 
 /** A file written by capture. */
@@ -17,16 +18,29 @@ export interface CapturedFile {
 }
 
 /**
- * Write the fetched JSON for each entry that has one. `outDir` defaults to
- * `./validate-out`. Returns what was written (entries without a `fetched` body —
- * e.g. `missing` — are skipped).
+ * Write the fetched JSON for each entry that has one, into a kind-scoped
+ * subdirectory that maps to the corpus layout (`dbo`→`tables/`,
+ * `function`→`statements/`, …) so a captured file is a `cp` away from
+ * `test/fixtures/<dir>/`. `outDir` defaults to `./validate-out`. Entries whose
+ * kind is unregistered fall back to a flat filename; entries without a `fetched`
+ * body (e.g. `missing`) are skipped.
  */
 export function captureFixtures(entries: RoundTripEntry[], outDir = "validate-out"): CapturedFile[] {
   const written: CapturedFile[] = [];
+  const madeDirs = new Set<string>();
   for (const entry of entries) {
     if (entry.fetched === undefined) continue;
-    const path = resolvePath(outDir, `${safeName(entry.name)}.json`);
-    mkdirSync(dirname(path), { recursive: true });
+    const dir = fixtureDirForKind(entry.kind);
+    const path =
+      dir === undefined
+        ? resolvePath(outDir, `${safeName(entry.name)}.json`)
+        : resolvePath(outDir, dir, `${safeName(entry.name)}.json`);
+    const parent = dirname(path);
+    // Kind-scoped captures share a directory — create each parent once.
+    if (!madeDirs.has(parent)) {
+      mkdirSync(parent, { recursive: true });
+      madeDirs.add(parent);
+    }
     writeFileSync(path, JSON.stringify(entry.fetched, null, 2) + "\n", "utf8");
     written.push({ name: entry.name, path });
   }

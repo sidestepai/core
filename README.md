@@ -933,7 +933,7 @@ disposable sandbox, exports it back, and diffs it against what you compiled, so
 you catch three classes of problem a local build can't:
 
 1. **Import accepts** — the engine actually accepts the bundle (malformed-but-shaped output is rejected here).
-2. **Round-trip parity** — the workspace the engine stores, re-exported in the same bundle format, matches your compiled JSON after normalization (full object logic included).
+2. **Round-trip parity** — the workspace the engine stores, re-exported in the same bundle format, matches your compiled JSON after normalization (full object logic included). Every authored kind is diffed — tables, functions, queries, triggers, tasks, and more — each object matched by identity and reported per kind.
 3. **Runtime** (`--runtime`) — each deployed function actually runs on the engine, with logs surfaced on failure.
 
 It talks only to public meta API routes (the same `sandbox/bundle` import
@@ -952,7 +952,7 @@ XANO_VALIDATE_TOKEN=your-meta-bearer-token
 ```
 
 ```bash
-sidestep validate ./xano/index.ts                      # import + round-trip diff, reports per function
+sidestep validate ./xano/index.ts                      # import + round-trip diff, reports per object (every authored kind)
 sidestep validate ./xano/index.ts --runtime            # + run each deployed function
 sidestep validate ./xano/index.ts --capture            # + write fetched JSON to ./validate-out (fixture candidates)
 sidestep validate ./xano/index.ts --instance http://localhost:8080   # override the target for one run
