@@ -9,7 +9,7 @@ export const arrayMap = defineFunction({
   stack: [
     s.array.map({
       source: c.array([1, 2, 3]),
-      transform: withFilters(ref("$this"), fl.multiply(c.int(2))),
+      transform: withFilters(ref("$this"), fl.mul(c.int(2))),
       as: "doubled",
     }),
   ],

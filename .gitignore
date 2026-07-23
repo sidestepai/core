@@ -14,3 +14,5 @@ validate-out/
 # Claude Code skill eval artifacts + transient worktrees (skill sources are committed)
 .claude/skills/*-workspace/
 .claude/worktrees/
+# issue #106 probe debug output (allowlist itself is committed under vendor/)
+scripts/probe-results.json

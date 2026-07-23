@@ -1,6 +1,6 @@
 {
   "name": "sidestep",
-  "version": "3.9.13",
+  "version": "3.9.14",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
@@ -12,8 +12,8 @@
       "total": 214
     },
     "filters": {
-      "typed": 134,
-      "total": 345
+      "typed": 129,
+      "total": 225
     }
   },
   "values": {
@@ -5259,29 +5259,12 @@
       "description": "Add 2 values together and return the answer"
     },
     {
-      "name": "add_ms_to_timestamp",
-      "fl": "fl.add_ms_to_timestamp",
-      "typed": false,
-      "description": "Add milliseconds to a timestamp. (negative values are ok)"
-    },
-    {
-      "name": "add_secs_to_timestamp",
-      "fl": "fl.add_secs_to_timestamp",
-      "typed": false,
-      "description": "Add seconds to a timestamp. (negative values are ok)"
-    },
-    {
       "name": "addslashes",
       "fl": "fl.addslashes",
       "typed": false,
       "result": "text",
       "group": "text",
       "description": "Adds a backslash to the following characters: single quote, double quote, backslash, and null character."
-    },
-    {
-      "name": "alphaOk",
-      "fl": "fl.alphaOk",
-      "typed": false
     },
     {
       "name": "append",
@@ -5408,12 +5391,6 @@
       "description": "Get the property keys of an object/array as a numerically indexed array."
     },
     {
-      "name": "array_max",
-      "fl": "fl.array_max",
-      "typed": false,
-      "description": "Returns the max of the values of the array"
-    },
-    {
       "name": "array_merge",
       "fl": "fl.array_merge",
       "typed": true,
@@ -5440,12 +5417,6 @@
       "result": "<T>[]",
       "group": "array",
       "description": "Merge the elements from all levels of both arrays together and"
-    },
-    {
-      "name": "array_min",
-      "fl": "fl.array_min",
-      "typed": false,
-      "description": "Returns the min of the values of the array"
     },
     {
       "name": "array_pop",
@@ -5641,11 +5612,6 @@
       "description": "Converts a value between two bases"
     },
     {
-      "name": "between",
-      "fl": "fl.between",
-      "typed": false
-    },
-    {
       "name": "bin2hex",
       "fl": "fl.bin2hex",
       "typed": false,
@@ -5728,20 +5694,6 @@
       "description": "Round a decimal up to its integer equivalent"
     },
     {
-      "name": "coalesce",
-      "fl": "fl.coalesce",
-      "typed": true,
-      "args": [
-        {
-          "name": "value",
-          "type": "<T>"
-        }
-      ],
-      "result": "<T>",
-      "group": "manipulation",
-      "description": "Provides an alternative value for null values"
-    },
-    {
       "name": "concat",
       "fl": "fl.concat",
       "typed": true,
@@ -5796,44 +5748,12 @@
       "description": "Calculates the cosine of the supplied value in radians"
     },
     {
-      "name": "cosine_distance",
-      "fl": "fl.cosine_distance",
-      "typed": false
-    },
-    {
-      "name": "cosine_similarity",
-      "fl": "fl.cosine_similarity",
-      "typed": false
-    },
-    {
       "name": "count",
       "fl": "fl.count",
       "typed": false,
       "result": "int",
       "group": "array",
       "description": "Return the number of items in an object/array"
-    },
-    {
-      "name": "count_distinct",
-      "fl": "fl.count_distinct",
-      "typed": false,
-      "result": "int",
-      "group": "aggregate functions",
-      "description": "count distinct"
-    },
-    {
-      "name": "covers",
-      "fl": "fl.covers",
-      "typed": true,
-      "args": [
-        {
-          "name": "geometry",
-          "type": "geo_point"
-        }
-      ],
-      "result": "bool",
-      "group": "geo",
-      "description": "Determines if one geometry covers another"
     },
     {
       "name": "create_object",
@@ -5857,12 +5777,6 @@
       "result": "any",
       "group": "transform",
       "description": "Creates an object based on an array of key/value pairs. (i.e. same result as the entries filter)"
-    },
-    {
-      "name": "create_uid",
-      "fl": "fl.create_uid",
-      "typed": false,
-      "description": "Returns a unique 64bit unsigned int value seeded off the value"
     },
     {
       "name": "crypto_jwe_decode",
@@ -6165,37 +6079,6 @@
       "description": "Detect the character encoding of the supplied text"
     },
     {
-      "name": "diff",
-      "fl": "fl.diff",
-      "typed": false,
-      "description": "Return the entries from the first array that are not in the second array. Only values are used for matching."
-    },
-    {
-      "name": "diff_assoc",
-      "fl": "fl.diff_assoc",
-      "typed": false,
-      "description": "Return the entries from the first array that are not in the second array. Values and keys are used for matching."
-    },
-    {
-      "name": "digitOk",
-      "fl": "fl.digitOk",
-      "typed": false
-    },
-    {
-      "name": "distance",
-      "fl": "fl.distance",
-      "typed": true,
-      "args": [
-        {
-          "name": "geometry",
-          "type": "geo_point"
-        }
-      ],
-      "result": "decimal",
-      "group": "geo",
-      "description": "Provides the distance in meters between two geometries"
-    },
-    {
       "name": "div",
       "fl": "fl.div",
       "typed": true,
@@ -6208,12 +6091,6 @@
       "result": "decimal",
       "group": "math",
       "description": "Divides 2 values together and returns the answer"
-    },
-    {
-      "name": "divide",
-      "fl": "fl.divide",
-      "typed": false,
-      "description": "Divide 2 values together and return the answer"
     },
     {
       "name": "empty",
@@ -6259,12 +6136,6 @@
       "result": "bool",
       "group": "text",
       "description": "Returns whether or not the expression is present at the end Direction: the piped value is the subject text; the argument is the substring searched for."
-    },
-    {
-      "name": "entries",
-      "fl": "fl.entries",
-      "typed": false,
-      "description": "Get the property entries of an object/array as a numerically indexed array of key/value pairs."
     },
     {
       "name": "epochms_add_ms",
@@ -6366,11 +6237,6 @@
       "description": "Returns a boolean if both values are equal"
     },
     {
-      "name": "equals",
-      "fl": "fl.equals",
-      "typed": false
-    },
-    {
       "name": "escape",
       "fl": "fl.escape",
       "typed": false,
@@ -6412,18 +6278,6 @@
       "result": "decimal",
       "group": "math",
       "description": "Returns the exponent of mathematical expression \"e\""
-    },
-    {
-      "name": "fill",
-      "fl": "fl.fill",
-      "typed": false,
-      "description": "Create an array of a certain size with a default value."
-    },
-    {
-      "name": "fill_keys",
-      "fl": "fl.fill_keys",
-      "typed": false,
-      "description": "Create an array of keys with a default value."
     },
     {
       "name": "filter",
@@ -6633,12 +6487,6 @@
       "description": "Round a decimal down to its integer equivalent"
     },
     {
-      "name": "format_timestamp",
-      "fl": "fl.format_timestamp",
-      "typed": false,
-      "description": "Converts a timestamp into a human readable formatted date based on the supplied format"
-    },
-    {
       "name": "from_utf8",
       "fl": "fl.from_utf8",
       "typed": false,
@@ -6688,18 +6536,6 @@
       "result": "any",
       "group": "manipulation",
       "description": "Returns the value of an object at the specified path"
-    },
-    {
-      "name": "greater_than",
-      "fl": "fl.greater_than",
-      "typed": false,
-      "description": "Returns a boolean if the left value is greater than the right value"
-    },
-    {
-      "name": "greater_than_or_equal",
-      "fl": "fl.greater_than_or_equal",
-      "typed": false,
-      "description": "Returns a boolean if the left value is greater than or equal to the right value"
     },
     {
       "name": "gt",
@@ -6883,12 +6719,6 @@
       "description": "Returns whether or not the case-insensitive expression is present at the end Direction: the piped value is the subject text; the argument is the substring searched for."
     },
     {
-      "name": "iindex",
-      "fl": "fl.iindex",
-      "typed": false,
-      "description": "Returns the index of the case-insensitive expression or false if it can't be found"
-    },
-    {
       "name": "in",
       "fl": "fl.in",
       "typed": true,
@@ -6903,12 +6733,6 @@
       "description": "Returns whether or not the value is in the array"
     },
     {
-      "name": "index",
-      "fl": "fl.index",
-      "typed": false,
-      "description": "Returns the index of the case-sensitive expression or false if it can't be found"
-    },
-    {
       "name": "index_by",
       "fl": "fl.index_by",
       "typed": true,
@@ -6921,23 +6745,6 @@
       "result": "<T>[]",
       "group": "array",
       "description": "Create a new array indexed off of the value of each item's path"
-    },
-    {
-      "name": "inner_product",
-      "fl": "fl.inner_product",
-      "typed": false
-    },
-    {
-      "name": "intersect",
-      "fl": "fl.intersect",
-      "typed": false,
-      "description": "Return the entries from the first array that are also present in the second array. Only values are used for matching."
-    },
-    {
-      "name": "intersect_assoc",
-      "fl": "fl.intersect_assoc",
-      "typed": false,
-      "description": "Return the entries from the first array that are also present in the second array. Values and keys are used for matching."
     },
     {
       "name": "is_array",
@@ -6964,24 +6771,12 @@
       "description": "Returns whether or not the value is a decimal value."
     },
     {
-      "name": "is_empty",
-      "fl": "fl.is_empty",
-      "typed": false,
-      "description": "Returns whether or not the value is empty (\"\", null, 0, \"0\", false, [], {})"
-    },
-    {
       "name": "is_int",
       "fl": "fl.is_int",
       "typed": false,
       "result": "bool",
       "group": "comparison",
       "description": "Returns whether or not the value is an integer."
-    },
-    {
-      "name": "is_null",
-      "fl": "fl.is_null",
-      "typed": false,
-      "description": "Returns whether or not the value is null"
     },
     {
       "name": "is_object",
@@ -7064,34 +6859,6 @@
       "description": "Encodes the value and return the result as a JWE token"
     },
     {
-      "name": "jws_decode",
-      "fl": "fl.jws_decode",
-      "typed": false,
-      "description": "Decodes the JWS token and return the result"
-    },
-    {
-      "name": "jws_encode",
-      "fl": "fl.jws_encode",
-      "typed": false,
-      "description": "Encodes the value and return the result as a JWS token"
-    },
-    {
-      "name": "keys",
-      "fl": "fl.keys",
-      "typed": false,
-      "description": "Get the property keys of an object/array as a numerically indexed array."
-    },
-    {
-      "name": "l1_distance_manhattan",
-      "fl": "fl.l1_distance_manhattan",
-      "typed": false
-    },
-    {
-      "name": "l2_distance_euclidean",
-      "fl": "fl.l2_distance_euclidean",
-      "typed": false
-    },
-    {
       "name": "lambda",
       "fl": "fl.lambda",
       "typed": true,
@@ -7111,71 +6878,12 @@
       "description": "Business logic using JavaScript."
     },
     {
-      "name": "lambda_every",
-      "fl": "fl.lambda_every",
-      "typed": false,
-      "description": "Like `every`, but the predicate is written as a string of JS/TS code. An optional final argument sets a timeout (in seconds)."
-    },
-    {
-      "name": "lambda_filter",
-      "fl": "fl.lambda_filter",
-      "typed": false,
-      "description": "Like `filter`, but the predicate is written as a string of JS/TS code. Return a truthy value to keep the element. An optional final argument sets a timeout (in seconds)."
-    },
-    {
-      "name": "lambda_find",
-      "fl": "fl.lambda_find",
-      "typed": false,
-      "description": "Like `find`, but the predicate is written as a string of JS/TS code. An optional final argument sets a timeout (in seconds)."
-    },
-    {
-      "name": "lambda_findIndex",
-      "fl": "fl.lambda_findIndex",
-      "typed": false,
-      "description": "Like `findIndex`, but the predicate is written as a string of JS/TS code. An optional final argument sets a timeout (in seconds)."
-    },
-    {
-      "name": "lambda_map",
-      "fl": "fl.lambda_map",
-      "typed": false,
-      "description": "Like `map`, but the transform is written as a string of JS/TS code instead of an inline XanoScript expression. An optional final argument sets a timeout (in seconds)."
-    },
-    {
-      "name": "lambda_reduce",
-      "fl": "fl.lambda_reduce",
-      "typed": false,
-      "description": "Like `reduce`, but the reducer is written as a string of JS/TS code. Takes an initial value before the code block, and an optional final argument that sets a timeout (in seconds)."
-    },
-    {
-      "name": "lambda_some",
-      "fl": "fl.lambda_some",
-      "typed": false,
-      "description": "Like `some`, but the predicate is written as a string of JS/TS code. An optional final argument sets a timeout (in seconds)."
-    },
-    {
       "name": "last",
       "fl": "fl.last",
       "typed": false,
       "result": "<T>",
       "group": "array",
       "description": "Get the last entry of an array"
-    },
-    {
-      "name": "length",
-      "fl": "fl.length",
-      "typed": false
-    },
-    {
-      "name": "less_than",
-      "fl": "fl.less_than",
-      "typed": false,
-      "description": "Returns a boolean if the left value is less than the right value"
-    },
-    {
-      "name": "less_than_or_equal",
-      "fl": "fl.less_than_or_equal",
-      "typed": false,
-      "description": "Returns a boolean if the left value is less than or equal to the right value"
     },
     {
       "name": "list_encodings",
@@ -7309,57 +7017,12 @@
       "description": "Returns a MD5 signature representation of the value"
     },
     {
-      "name": "median",
-      "fl": "fl.median",
-      "typed": false,
-      "result": "decimal",
-      "group": "aggregate functions",
-      "description": "Median"
-    },
-    {
-      "name": "merge",
-      "fl": "fl.merge",
-      "typed": false,
-      "description": "Merge the first level of elements of both arrays together and return the new array"
-    },
-    {
-      "name": "merge_recursive",
-      "fl": "fl.merge_recursive",
-      "typed": false,
-      "description": "Merge the elements from all levels of both arrays together and return the new array"
-    },
-    {
       "name": "min",
       "fl": "fl.min",
       "typed": false,
       "result": "decimal",
       "group": "math",
       "description": "Returns the min of the values of the array"
-    },
-    {
-      "name": "minAlpha",
-      "fl": "fl.minAlpha",
-      "typed": false
-    },
-    {
-      "name": "minDigit",
-      "fl": "fl.minDigit",
-      "typed": false
-    },
-    {
-      "name": "minLowerAlpha",
-      "fl": "fl.minLowerAlpha",
-      "typed": false
-    },
-    {
-      "name": "minSymbol",
-      "fl": "fl.minSymbol",
-      "typed": false
-    },
-    {
-      "name": "minUpperAlpha",
-      "fl": "fl.minUpperAlpha",
-      "typed": false
     },
     {
       "name": "mod",
@@ -7373,12 +7036,6 @@
       ],
       "result": "int",
       "group": "math",
-      "description": "Modulus 2 values together and return the answer"
-    },
-    {
-      "name": "modulus",
-      "fl": "fl.modulus",
-      "typed": false,
       "description": "Modulus 2 values together and return the answer"
     },
     {
@@ -7396,12 +7053,6 @@
       "description": "Multiplies 2 values together and returns the answer"
     },
     {
-      "name": "multiply",
-      "fl": "fl.multiply",
-      "typed": false,
-      "description": "Multiply 2 values together and return the answer"
-    },
-    {
       "name": "ne",
       "fl": "fl.ne",
       "typed": true,
@@ -7416,23 +7067,12 @@
       "description": "Returns a boolean if both values are not equal"
     },
     {
-      "name": "negative_inner_product",
-      "fl": "fl.negative_inner_product",
-      "typed": false
-    },
-    {
       "name": "not",
       "fl": "fl.not",
       "typed": false,
       "result": "bool",
       "group": "comparison",
       "description": "Returns the opposite of the existing value evaluated as a boolean"
-    },
-    {
-      "name": "not_equals",
-      "fl": "fl.not_equals",
-      "typed": false,
-      "description": "Returns a boolean if both values are not equal"
     },
     {
       "name": "num_max",
@@ -7504,22 +7144,6 @@
       "description": "Returns whether or not the value is odd"
     },
     {
-      "name": "ok",
-      "fl": "fl.ok",
-      "typed": false
-    },
-    {
-      "name": "parse_timestamp",
-      "fl": "fl.parse_timestamp",
-      "typed": false,
-      "description": "Parse a timestamp from a flexible format."
-    },
-    {
-      "name": "pattern",
-      "fl": "fl.pattern",
-      "typed": false
-    },
-    {
       "name": "pick",
       "fl": "fl.pick",
       "typed": true,
@@ -7532,12 +7156,6 @@
       "result": "<T>",
       "group": "array",
       "description": "Pick keys from the object to create a new object of just those keys."
-    },
-    {
-      "name": "pop",
-      "fl": "fl.pop",
-      "typed": false,
-      "description": "Pops the last element of the array off and returns it"
     },
     {
       "name": "pow",
@@ -7572,23 +7190,12 @@
       "description": "Push an element on to the beginning of an array within an object and return the updated object"
     },
     {
-      "name": "prevent",
-      "fl": "fl.prevent",
-      "typed": false
-    },
-    {
       "name": "product",
       "fl": "fl.product",
       "typed": false,
       "result": "decimal",
       "group": "math",
       "description": "Returns the product of the values of the array"
-    },
-    {
-      "name": "push",
-      "fl": "fl.push",
-      "typed": false,
-      "description": "Push an element on to the end of an array and return the new array"
     },
     {
       "name": "querystring_parse",
@@ -7649,18 +7256,6 @@
       "description": "Reduces the array to a single value using the code block to combine each element of the array."
     },
     {
-      "name": "regex_get_all_matches",
-      "fl": "fl.regex_get_all_matches",
-      "typed": false,
-      "description": "Return all matches performed by a regular expression on the supplied subject text. Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains."
-    },
-    {
-      "name": "regex_get_first_match",
-      "fl": "fl.regex_get_first_match",
-      "typed": false,
-      "description": "Return the first set of matches performed by a regular expression on the supplied subject text. Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains."
-    },
-    {
       "name": "regex_match",
       "fl": "fl.regex_match",
       "typed": true,
@@ -7687,12 +7282,6 @@
       "result": "text[]",
       "group": "text",
       "description": "Return all matches performed by a regular expression on the Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains."
-    },
-    {
-      "name": "regex_matches",
-      "fl": "fl.regex_matches",
-      "typed": false,
-      "description": "Tests if a regular expression matches the supplied subject text. Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains."
     },
     {
       "name": "regex_quote",
@@ -7742,18 +7331,6 @@
       "description": "Tests if a regular expression matches the supplied subject text. Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains."
     },
     {
-      "name": "remove",
-      "fl": "fl.remove",
-      "typed": false,
-      "description": "Remove any elements from the array that match the supplied value and then return the new array"
-    },
-    {
-      "name": "replace",
-      "fl": "fl.replace",
-      "typed": false,
-      "description": "Replace all occurrences of a text phrase with another"
-    },
-    {
       "name": "reverse",
       "fl": "fl.reverse",
       "typed": false,
@@ -7798,20 +7375,6 @@
       "result": "<T>[]",
       "group": "array",
       "description": "Always returns an array. Uses the existing value if it is an array or creates an array of one element."
-    },
-    {
-      "name": "search_rank",
-      "fl": "fl.search_rank",
-      "typed": true,
-      "args": [
-        {
-          "name": "text",
-          "type": "text"
-        }
-      ],
-      "result": "decimal",
-      "group": "search",
-      "description": "Calculate a ranking value for the search match"
     },
     {
       "name": "secureid_decode",
@@ -7978,30 +7541,12 @@
       "description": "Returns a SHA512 signature representation of the value"
     },
     {
-      "name": "shift",
-      "fl": "fl.shift",
-      "typed": false,
-      "description": "Shifts the first element of the array off and returns it"
-    },
-    {
-      "name": "shuffle",
-      "fl": "fl.shuffle",
-      "typed": false,
-      "description": "Shuffles the order of the entries in the array."
-    },
-    {
       "name": "sin",
       "fl": "fl.sin",
       "typed": false,
       "result": "decimal",
       "group": "math",
       "description": "Calculates the sine of the supplied value in radians"
-    },
-    {
-      "name": "slice",
-      "fl": "fl.slice",
-      "typed": false,
-      "description": "Extract a section from an array."
     },
     {
       "name": "some",
@@ -8075,11 +7620,6 @@
       "description": "Returns the square root of the value"
     },
     {
-      "name": "startsWith",
-      "fl": "fl.startsWith",
-      "typed": false
-    },
-    {
       "name": "starts_with",
       "fl": "fl.starts_with",
       "typed": true,
@@ -8118,12 +7658,6 @@
       "result": "text",
       "group": "text",
       "description": "Removes accents from characters"
-    },
-    {
-      "name": "strip_html",
-      "fl": "fl.strip_html",
-      "typed": false,
-      "description": "Removes HTML tags from a string"
     },
     {
       "name": "strip_tags",
@@ -8209,12 +7743,6 @@
       "description": "Extracts a section of text"
     },
     {
-      "name": "subtract",
-      "fl": "fl.subtract",
-      "typed": false,
-      "description": "Subtract 2 values together and return the answer"
-    },
-    {
       "name": "sum",
       "fl": "fl.sum",
       "typed": false,
@@ -8247,126 +7775,6 @@
       "description": "Convert escaped sequences into their raw form. Ex: \\n becomes a newline, \\t becomes a tab."
     },
     {
-      "name": "timestamp_add_days",
-      "fl": "fl.timestamp_add_days",
-      "typed": false
-    },
-    {
-      "name": "timestamp_add_hours",
-      "fl": "fl.timestamp_add_hours",
-      "typed": false
-    },
-    {
-      "name": "timestamp_add_minutes",
-      "fl": "fl.timestamp_add_minutes",
-      "typed": false
-    },
-    {
-      "name": "timestamp_add_months",
-      "fl": "fl.timestamp_add_months",
-      "typed": false
-    },
-    {
-      "name": "timestamp_add_seconds",
-      "fl": "fl.timestamp_add_seconds",
-      "typed": false
-    },
-    {
-      "name": "timestamp_add_years",
-      "fl": "fl.timestamp_add_years",
-      "typed": false
-    },
-    {
-      "name": "timestamp_day_of_month",
-      "fl": "fl.timestamp_day_of_month",
-      "typed": false
-    },
-    {
-      "name": "timestamp_day_of_week",
-      "fl": "fl.timestamp_day_of_week",
-      "typed": false
-    },
-    {
-      "name": "timestamp_day_of_year",
-      "fl": "fl.timestamp_day_of_year",
-      "typed": false
-    },
-    {
-      "name": "timestamp_epoch_day",
-      "fl": "fl.timestamp_epoch_day",
-      "typed": false
-    },
-    {
-      "name": "timestamp_epoch_hour",
-      "fl": "fl.timestamp_epoch_hour",
-      "typed": false
-    },
-    {
-      "name": "timestamp_epoch_minute",
-      "fl": "fl.timestamp_epoch_minute",
-      "typed": false
-    },
-    {
-      "name": "timestamp_epoch_sec",
-      "fl": "fl.timestamp_epoch_sec",
-      "typed": false
-    },
-    {
-      "name": "timestamp_hour",
-      "fl": "fl.timestamp_hour",
-      "typed": false
-    },
-    {
-      "name": "timestamp_minute",
-      "fl": "fl.timestamp_minute",
-      "typed": false
-    },
-    {
-      "name": "timestamp_month",
-      "fl": "fl.timestamp_month",
-      "typed": false
-    },
-    {
-      "name": "timestamp_subtract_days",
-      "fl": "fl.timestamp_subtract_days",
-      "typed": false
-    },
-    {
-      "name": "timestamp_subtract_hours",
-      "fl": "fl.timestamp_subtract_hours",
-      "typed": false
-    },
-    {
-      "name": "timestamp_subtract_minutes",
-      "fl": "fl.timestamp_subtract_minutes",
-      "typed": false
-    },
-    {
-      "name": "timestamp_subtract_months",
-      "fl": "fl.timestamp_subtract_months",
-      "typed": false
-    },
-    {
-      "name": "timestamp_subtract_seconds",
-      "fl": "fl.timestamp_subtract_seconds",
-      "typed": false
-    },
-    {
-      "name": "timestamp_subtract_years",
-      "fl": "fl.timestamp_subtract_years",
-      "typed": false
-    },
-    {
-      "name": "timestamp_week",
-      "fl": "fl.timestamp_week",
-      "typed": false
-    },
-    {
-      "name": "timestamp_year",
-      "fl": "fl.timestamp_year",
-      "typed": false
-    },
-    {
       "name": "to_bool",
       "fl": "fl.to_bool",
       "typed": false,
@@ -8375,42 +7783,12 @@
       "description": "Converts text, integer, or decimal types to a bool and returns the result"
     },
     {
-      "name": "to_days",
-      "fl": "fl.to_days",
-      "typed": false,
-      "description": "Converts a text expression (now, next friday, Jan 1 2000) to the number of days since the unix epoch."
-    },
-    {
       "name": "to_decimal",
       "fl": "fl.to_decimal",
       "typed": false,
       "result": "decimal",
       "group": "transform",
       "description": "Converts text, integer, or bool types to a decimal and returns the result"
-    },
-    {
-      "name": "to_distinct_list",
-      "fl": "fl.to_distinct_list",
-      "typed": false,
-      "result": "json[]",
-      "group": "aggregate functions",
-      "description": "aggregate to a distinct array"
-    },
-    {
-      "name": "to_distinct_list_asc",
-      "fl": "fl.to_distinct_list_asc",
-      "typed": false,
-      "result": "json[]",
-      "group": "aggregate functions",
-      "description": "aggregate to a distinct array sorted in ascending order"
-    },
-    {
-      "name": "to_distinct_list_desc",
-      "fl": "fl.to_distinct_list_desc",
-      "typed": false,
-      "result": "json[]",
-      "group": "aggregate functions",
-      "description": "aggregate to a distinct array sorted in descending order"
     },
     {
       "name": "to_epoch_day",
@@ -8511,12 +7889,6 @@
       "description": "Converts text into an expression, processes it, and returns the result"
     },
     {
-      "name": "to_hours",
-      "fl": "fl.to_hours",
-      "typed": false,
-      "description": "Converts a text expression (now, next friday, Jan 1 2000) to the number of hours since the unix epoch."
-    },
-    {
       "name": "to_int",
       "fl": "fl.to_int",
       "typed": false,
@@ -8525,72 +7897,12 @@
       "description": "Converts text, decimal, or bool types to an integer and returns the result"
     },
     {
-      "name": "to_list",
-      "fl": "fl.to_list",
-      "typed": false,
-      "result": "json[]",
-      "group": "aggregate functions",
-      "description": "aggregate to an array"
-    },
-    {
-      "name": "to_list_asc",
-      "fl": "fl.to_list_asc",
-      "typed": false,
-      "result": "json[]",
-      "group": "aggregate functions",
-      "description": "aggregate to an array sorted in ascending order"
-    },
-    {
-      "name": "to_list_desc",
-      "fl": "fl.to_list_desc",
-      "typed": false,
-      "result": "json[]",
-      "group": "aggregate functions",
-      "description": "aggregate to an array sorted in descending order"
-    },
-    {
-      "name": "to_lower",
-      "fl": "fl.to_lower",
-      "typed": false,
-      "description": "Converts all characters to lower case and returns the result"
-    },
-    {
-      "name": "to_minutes",
-      "fl": "fl.to_minutes",
-      "typed": false,
-      "description": "Converts a text expression (now, next friday, Jan 1 2000) to the number of minutes since the unix epoch."
-    },
-    {
-      "name": "to_ms",
-      "fl": "fl.to_ms",
-      "typed": false,
-      "description": "Converts a text expression (now, next friday, Jan 1 2000) to the number of milliseconds since the unix epoch."
-    },
-    {
-      "name": "to_seconds",
-      "fl": "fl.to_seconds",
-      "typed": false,
-      "description": "Converts a text expression (now, next friday, Jan 1 2000) to the number of seconds since the unix epoch."
-    },
-    {
       "name": "to_text",
       "fl": "fl.to_text",
       "typed": false,
       "result": "text",
       "group": "transform",
       "description": "Converts integer, decimal, or bool types to text and returns the result"
-    },
-    {
-      "name": "to_timestamp",
-      "fl": "fl.to_timestamp",
-      "typed": false,
-      "description": "Converts a text expression (now, next friday, Jan 1 2000) to timestamp compatible format."
-    },
-    {
-      "name": "to_upper",
-      "fl": "fl.to_upper",
-      "typed": false,
-      "description": "Converts all characters to upper case and returns the result"
     },
     {
       "name": "to_utf8",
@@ -8615,12 +7927,6 @@
       "description": "Processes an expression with local data bound to the $this variable"
     },
     {
-      "name": "transform_timestamp",
-      "fl": "fl.transform_timestamp",
-      "typed": false,
-      "description": "Takes a timestamp and applies a relative transformation to it. Ex. -7 days, last Monday, first day of this month"
-    },
-    {
       "name": "trim",
       "fl": "fl.trim",
       "typed": true,
@@ -8642,14 +7948,6 @@
       "result": "int",
       "group": "security",
       "description": "Returns a unique 64bit unsigned int value seeded off the value"
-    },
-    {
-      "name": "unaccent",
-      "fl": "fl.unaccent",
-      "typed": false,
-      "result": "text",
-      "group": "text",
-      "description": "Removes accents from characters"
     },
     {
       "name": "unique",
@@ -8692,12 +7990,6 @@
       "result": "any",
       "group": "manipulation",
       "description": "Removes a value at the path within the object and returns the updated object"
-    },
-    {
-      "name": "unshift",
-      "fl": "fl.unshift",
-      "typed": false,
-      "description": "Push an element to the beginning of an array and return the new array"
     },
     {
       "name": "upper",
@@ -8818,42 +8110,12 @@
       "description": "Parses a URL into its individual components."
     },
     {
-      "name": "uuid",
-      "fl": "fl.uuid",
-      "typed": false,
-      "description": "Returns a universally unique identifier"
-    },
-    {
       "name": "uuid4",
       "fl": "fl.uuid4",
       "typed": false,
       "result": "text",
       "group": "security",
       "description": "Returns a universally unique identifier"
-    },
-    {
-      "name": "values",
-      "fl": "fl.values",
-      "typed": false,
-      "description": "Get the property values of an object/array as a numerically indexed array"
-    },
-    {
-      "name": "within",
-      "fl": "fl.within",
-      "typed": true,
-      "args": [
-        {
-          "name": "geometry",
-          "type": "geo_point"
-        },
-        {
-          "name": "distance",
-          "type": "decimal"
-        }
-      ],
-      "result": "bool",
-      "group": "geo",
-      "description": "Determines if one geometry is within the supplied radius of another geometry"
     },
     {
       "name": "xml_decode",

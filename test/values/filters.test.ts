@@ -16,13 +16,13 @@ const ROOT = join(import.meta.dirname, "../..");
 
 describe("fl.* filter catalog", () => {
   it("a typed filter builds a FilterXdo with named arg + variadic tail", () => {
-    // `covers` (geo) is richly specified: one named arg `geometry`.
-    const fx = fl.covers(c.text("POINT(0 0)"));
-    expect(fx).toEqual({ name: "covers", disabled: false, arg: [c.text("POINT(0 0)")] });
+    // `add` (math) is richly specified: one named arg `value`.
+    const fx = fl.add(c.int(2));
+    expect(fx).toEqual({ name: "add", disabled: false, arg: [c.int(2)] });
   });
 
   it("typed filters still accept extra args via the variadic tail", () => {
-    const fx = fl.covers(c.text("a"), c.text("b"));
+    const fx = fl.add(c.int(1), c.int(2));
     expect(fx.arg).toHaveLength(2);
   });
 
@@ -36,19 +36,36 @@ describe("fl.* filter catalog", () => {
   });
 
   it("a name-only filter is reachable and variadic", () => {
-    const fx = fl.to_upper();
-    expect(fx).toEqual({ name: "to_upper", disabled: false, arg: [] });
+    const fx = fl.upper();
+    expect(fx).toEqual({ name: "upper", disabled: false, arg: [] });
     const cc = fl.concat(c.text("x"), c.text("y"));
     expect(cc.name).toBe("concat");
     expect(cc.arg).toHaveLength(2);
   });
 
   it("FILTER_NAMES is the authoritative membership and matches the fl keys", () => {
-    expect(FILTER_NAMES.length).toBeGreaterThan(300);
-    for (const n of ["to_upper", "concat", "count", "first", "covers", "add"]) {
+    // The catalog is the empirically runtime-resolvable set (issue #106): only
+    // names a deployed value pipeline actually resolves. ~225 after dropping the
+    // LSP's non-pipe pollution (operators, aggregates, type-methods, db.query).
+    expect(FILTER_NAMES.length).toBeGreaterThan(200);
+    for (const n of ["upper", "lower", "concat", "count", "first", "add"]) {
       expect(FILTER_NAMES).toContain(n);
     }
+    // Confirmed phantoms — names that type-checked/exported but 500 at runtime —
+    // must be gone from the surface (and from manifest.json/llms.txt with it).
+    for (const n of ["coalesce", "is_empty", "to_upper", "to_lower", "covers", "between", "to_list"]) {
+      expect(FILTER_NAMES).not.toContain(n);
+      expect(fl).not.toHaveProperty(n);
+    }
     expect(Object.keys(fl).sort()).toEqual([...FILTER_NAMES].sort());
+  });
+
+  it("every catalog name is in the empirical runtime-resolvable allowlist (issue #106)", () => {
+    const { resolvable } = JSON.parse(
+      readFileSync(join(ROOT, "vendor/filters-resolvable.json"), "utf8"),
+    ) as { resolvable: string[] };
+    const allow = new Set(resolvable);
+    for (const n of FILTER_NAMES) expect(allow.has(n)).toBe(true);
   });
 
   it("direction-sensitive text filters document what the piped value means (#22)", () => {
@@ -62,7 +79,7 @@ describe("fl.* filter catalog", () => {
       expect(FILTER_SPECS[n]?.description).toMatch(/piped value is the regex PATTERN/);
     }
     // A direction-neutral filter carries no such note.
-    expect(FILTER_SPECS["to_upper"]?.description ?? "").not.toMatch(/Direction:/);
+    expect(FILTER_SPECS["upper"]?.description ?? "").not.toMatch(/Direction:/);
   });
 
   it("path-taking filters accept a bare string path, coercing it to c.text (#76)", () => {

@@ -26,6 +26,14 @@ import { homedir } from "node:os";
 
 const ROOT = join(import.meta.dirname, "..");
 const VENDOR = join(ROOT, "vendor/filters.json");
+// The empirically-probed runtime allowlist (issue #106). The distilled catalog
+// (filterNames.js ∪ pipe.yaml ∪ aggregate.yaml) is the LSP's "names applicable to
+// a variable" — it lumps in operators, aggregates, type-methods, and db.query
+// filters that 500 (`Unable to locate func entry`) in a value `filters[]` pipeline
+// on a deployed endpoint. This file lists only the names a real engine actually
+// resolves at runtime; membership is intersected against it. Regenerate via
+// `tsx scripts/probe-filters.ts` against a sandbox.
+const RESOLVABLE = join(ROOT, "vendor/filters-resolvable.json");
 const OUT = join(ROOT, "src/values/generated/filters.generated.ts");
 
 const XS_LS = join(homedir(), "git/xs-language-server");
@@ -386,6 +394,29 @@ ${factories}
 
 // --- main ---------------------------------------------------------------------
 
+/**
+ * Intersect the distilled catalog against the empirical runtime allowlist
+ * (issue #106): drop every name the engine can't resolve in a value pipeline, so
+ * the generated `fl.*`, manifest, and llms.txt only ever advertise names a
+ * deployed endpoint actually resolves. The two vendored sources stay independent
+ * — `filters.json` records what upstream advertises, `filters-resolvable.json`
+ * what runtime resolves — and the generated surface is their intersection.
+ */
+function reconcile(catalog: FilterCatalog): FilterCatalog {
+  const { resolvable } = JSON.parse(readFileSync(RESOLVABLE, "utf8")) as { resolvable: string[] };
+  const allow = new Set(resolvable);
+  const names = catalog.names.filter((n) => allow.has(n));
+  const dropped = catalog.names.filter((n) => !allow.has(n));
+  const specs: Record<string, FilterSpec> = {};
+  for (const [n, s] of Object.entries(catalog.specs)) if (allow.has(n)) specs[n] = s;
+  // A resolvable name the catalog never distilled is a coverage gap worth seeing
+  // (the allowlist knows a filter the upstream sources don't) — surface, don't drop.
+  const missing = resolvable.filter((n) => !catalog.names.includes(n));
+  if (dropped.length) console.log(`Dropped ${dropped.length} non-resolvable filters: ${dropped.join(", ")}`);
+  if (missing.length) console.log(`NOTE: ${missing.length} resolvable name(s) absent from the distilled catalog: ${missing.join(", ")}`);
+  return { names, specs };
+}
+
 const doRefresh = process.argv.includes("--refresh");
 let catalog: FilterCatalog;
 if (doRefresh) {
@@ -395,6 +426,7 @@ if (doRefresh) {
 } else {
   catalog = JSON.parse(readFileSync(VENDOR, "utf8")) as FilterCatalog;
 }
+catalog = reconcile(catalog);
 writeFileSync(OUT, emit(catalog));
 const typed = catalog.names.filter((n) => catalog.specs[n]?.args?.length).length;
 console.log(`Wrote ${OUT}: ${catalog.names.length} filters (${typed} typed).`);
