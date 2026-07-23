@@ -1,0 +1,34 @@
+{
+  "tag": [],
+  "docs": "",
+  "guid": "56d1028e753628463a209ba32289efae",
+  "name": "ex_kind_mcp_server",
+  "spec": "",
+  "tool": [
+    {
+      "id": "96840a6af9659491f4291791db098260",
+      "auth": false,
+      "enabled": true
+    }
+  ],
+  "type": "mcp",
+  "branch": {
+    "id": 0
+  },
+  "enabled": true,
+  "history": {
+    "inherit": true,
+    "tool_limit": 100,
+    "tool_enabled": true
+  },
+  "canonical": "assistant-mcp",
+  "middleware": {
+    "pre": [],
+    "post": [],
+    "pre_customize": false,
+    "post_customize": false
+  },
+  "description": "",
+  "instructions": "Expose the search tool over MCP.",
+  "agent_settings": null
+}

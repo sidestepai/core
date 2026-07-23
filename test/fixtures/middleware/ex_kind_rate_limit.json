@@ -1,0 +1,92 @@
+{
+  "run": [
+    {
+      "as": "",
+      "name": "mvp:redis_ratelimit",
+      "_xsid": "f:d5b2fd70-0e11-4213-bd0c-15214cfea1df",
+      "addon": [],
+      "input": [
+        {
+          "tag": "const",
+          "name": "key",
+          "value": "ex:rl:write:",
+          "expand": false,
+          "ignore": false,
+          "filters": [
+            {
+              "arg": [
+                {
+                  "tag": "auth",
+                  "value": "id",
+                  "filters": []
+                }
+              ],
+              "name": "concat",
+              "disabled": false
+            }
+          ],
+          "children": []
+        },
+        {
+          "tag": "const:int",
+          "name": "max",
+          "value": "10",
+          "expand": false,
+          "ignore": false,
+          "filters": [],
+          "children": []
+        },
+        {
+          "tag": "const:int",
+          "name": "ttl",
+          "value": "30",
+          "expand": false,
+          "ignore": false,
+          "filters": [],
+          "children": []
+        },
+        {
+          "tag": "const",
+          "name": "error",
+          "value": "Too fast — slow down.",
+          "expand": false,
+          "ignore": false,
+          "filters": [],
+          "children": []
+        }
+      ],
+      "mocks": {},
+      "output": {
+        "items": [],
+        "filters": [],
+        "customize": false
+      },
+      "context": {},
+      "runtime": null,
+      "disabled": false,
+      "description": "",
+      "settings_registry": null
+    }
+  ],
+  "tag": [],
+  "docs": "",
+  "guid": "a6e3fbebcd256aa0533d0a39601e4c48",
+  "name": "ex_kind_rate_limit",
+  "test": [],
+  "input": [],
+  "branch": {
+    "id": 0
+  },
+  "result": [],
+  "history": {
+    "limit": 100,
+    "enabled": false,
+    "inherit": true
+  },
+  "exception": "rethrow",
+  "description": "",
+  "result_type": "merge",
+  "shared_workspace": {
+    "is_shared": false
+  }
+}

@@ -1,0 +1,115 @@
+{
+  "run": [
+    {
+      "as": "rows",
+      "name": "mvp:dbo_view",
+      "_xsid": "f:26c42f54-03a7-44bf-986d-1481ac4fc4d1",
+      "addon": [],
+      "input": [],
+      "mocks": {},
+      "output": {
+        "items": [],
+        "filters": [],
+        "customize": false
+      },
+      "context": {
+        "dbo": {
+          "id": "9ab739e80990643f17d26ae07bb76835"
+        },
+        "return": {
+          "list": {
+            "sort": [],
+            "paging": {
+              "page": 1,
+              "offset": 0,
+              "totals": false,
+              "enabled": false,
+              "metadata": true,
+              "per_page": 25
+            },
+            "distinct": "auto"
+          },
+          "type": "list"
+        }
+      },
+      "runtime": null,
+      "disabled": false,
+      "description": "",
+      "settings_registry": null
+    }
+  ],
+  "tag": [],
+  "auth": false,
+  "docs": "",
+  "guid": "96840a6af9659491f4291791db098260",
+  "name": "ex_kind_search_tool",
+  "input": [
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "query",
+      "type": "text",
+      "_xsid": "i:a3356ab9-e1ec-4289-9e78-d8707d646c7d",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": true,
+      "customize": {},
+      "sensitive": false,
+      "description": "",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    }
+  ],
+  "branch": {
+    "id": 0
+  },
+  "output": [],
+  "result": [
+    {
+      "tag": "var",
+      "name": "",
+      "_xsid": "r:13e5e1bc-3717-48f3-831b-4244b551e716",
+      "value": "rows",
+      "filters": [],
+      "disabled": false
+    }
+  ],
+  "enabled": true,
+  "history": {
+    "limit": 100,
+    "enabled": true,
+    "inherit": true
+  },
+  "toolset": {
+    "id": 0
+  },
+  "middleware": {
+    "pre": [],
+    "post": [],
+    "pre_customize": false,
+    "post_customize": false
+  },
+  "description": "Search posts by title",
+  "instructions": ""
+}

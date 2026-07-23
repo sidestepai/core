@@ -1,0 +1,122 @@
+{
+  "tag": [],
+  "guid": "a4c8d886842542f722b79dc943905b50",
+  "name": "ex_kind_author_addon",
+  "input": [],
+  "branch": {
+    "id": 0
+  },
+  "output": {
+    "items": [
+      {
+        "name": "id",
+        "children": []
+      },
+      {
+        "name": "name",
+        "children": []
+      },
+      {
+        "name": "email",
+        "children": []
+      }
+    ],
+    "customize": true
+  },
+  "context": {
+    "dbo": {
+      "as": "",
+      "id": "157d4a98d979cf04b9ccdb98dfc15229"
+    },
+    "bind": [],
+    "eval": [],
+    "lock": {
+      "tag": "const:bool",
+      "value": "",
+      "filters": []
+    },
+    "sort": [],
+    "future": false,
+    "return": {
+      "list": {
+        "sort": [],
+        "paging": {
+          "page": 1,
+          "offset": 0,
+          "totals": false,
+          "enabled": false,
+          "metadata": true,
+          "per_page": 25
+        },
+        "distinct": "auto"
+      },
+      "type": "list",
+      "single": {
+        "sort": []
+      },
+      "stream": {
+        "sort": [],
+        "paging": {
+          "page": 1,
+          "enabled": false,
+          "per_page": 25
+        },
+        "distinct": "auto"
+      },
+      "aggregate": {
+        "eval": [],
+        "sort": [],
+        "group": [],
+        "index": [],
+        "paging": {
+          "page": 1,
+          "enabled": false,
+          "metadata": true,
+          "per_page": 25
+        }
+      }
+    },
+    "search": {
+      "expression": []
+    },
+    "external": {
+      "tag": "input",
+      "value": "",
+      "filters": [],
+      "permissions": {
+        "page": true,
+        "sort": true,
+        "search": true,
+        "per_page": false
+      }
+    },
+    "simpleExternal": {
+      "page": {
+        "tag": "input",
+        "value": "",
+        "filters": []
+      },
+      "sort": {
+        "tag": "input",
+        "value": "",
+        "filters": []
+      },
+      "offset": {
+        "tag": "input",
+        "value": "",
+        "filters": []
+      },
+      "search": {
+        "tag": "input",
+        "value": "",
+        "filters": []
+      },
+      "per_page": {
+        "tag": "input",
+        "value": "",
+        "filters": []
+      }
+    }
+  },
+  "description": ""
+}

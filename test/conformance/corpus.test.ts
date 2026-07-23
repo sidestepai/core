@@ -98,11 +98,11 @@ const emptyObj = () => ({ value: "", tag: "const:obj", filters: [] });
  *   - array_every / object_values-array / return-null-text — share array_find's
  *     numeric inline-array-filter-arg value-layer gap (generated.test.ts asserts
  *     only the compare slice).
- *   - f.tableRef — a persisted TABLE-object readback is now available. The
- *     `sidestep validate` round-trip covers every registered kind (dbo included)
- *     and `--capture` writes tables to `validate-out/tables/`, promotable into
- *     test/fixtures/tables/. Capturing a non-trivial table-ref golden and wiring
- *     it here is the remaining step. See fields/catalog.ts and src/validate/kinds.ts.
+ *   - f.tableRef — DONE. The persisted TABLE-object readback is captured and
+ *     byte-verified whole-object in test/conformance/kinds-corpus.test.ts
+ *     (fixture tables/ex_field_table_ref.json), alongside every other authored
+ *     kind (query/trigger/task/toolset/tool/middleware/addon). See that file
+ *     and src/validate/kinds.ts.
  *   - action / action_package — EXCLUDED: need an action-identity model first.
  */
 const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [

@@ -1,0 +1,172 @@
+{
+  "tag": [],
+  "auth": false,
+  "docs": "",
+  "guid": "3cc71f471fd8642f930546152a4c970a",
+  "name": "ex_field_table_ref",
+  "index": [
+    {
+      "lang": "",
+      "name": "",
+      "type": "primary",
+      "fields": [
+        {
+          "op": "",
+          "name": "id"
+        }
+      ],
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      }
+    },
+    {
+      "lang": "",
+      "name": "",
+      "type": "btree",
+      "fields": [
+        {
+          "op": "desc",
+          "name": "created_at"
+        }
+      ],
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      }
+    }
+  ],
+  "views": [],
+  "schema": [
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "id",
+      "type": "int",
+      "_xsid": "",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": true,
+      "customize": {},
+      "sensitive": false,
+      "description": "",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    },
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "created_at",
+      "type": "epochms",
+      "_xsid": "",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "private",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "now",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": false,
+      "customize": {},
+      "sensitive": false,
+      "description": "",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    },
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "owner_id",
+      "type": "int",
+      "_xsid": "",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [
+        {
+          "arg": [
+            "dbo=157d4a98d979cf04b9ccdb98dfc15229"
+          ],
+          "name": "@",
+          "disabled": false
+        }
+      ],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": true,
+      "customize": {},
+      "sensitive": false,
+      "description": "",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    }
+  ],
+  "install": false,
+  "use_xdo": false,
+  "external": {
+    "id": "",
+    "source": ""
+  },
+  "sql_name": "",
+  "description": "",
+  "autocomplete": [],
+  "import": {
+    "mode": "standard"
+  }
+}

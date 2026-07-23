@@ -1,0 +1,121 @@
+{
+  "app": {
+    "id": "7ba9dcc845174d1ba1839fcfff1b759e"
+  },
+  "run": [
+    {
+      "as": "answer",
+      "name": "mvp:call_agent",
+      "_xsid": "f:412b20c6-b237-4ac0-99ef-c58de3622288",
+      "addon": [],
+      "input": [
+        {
+          "tag": "const:expr2",
+          "name": "args",
+          "value": "{ question: $input.question }",
+          "expand": false,
+          "ignore": false,
+          "filters": [],
+          "children": []
+        }
+      ],
+      "mocks": {},
+      "output": {
+        "items": [],
+        "filters": [],
+        "customize": false
+      },
+      "context": {
+        "toolset": {
+          "id": "f86f41fba83cdd4a7fe00d6c2728d514"
+        }
+      },
+      "runtime": null,
+      "disabled": false,
+      "description": "",
+      "settings_registry": null
+    }
+  ],
+  "tag": [],
+  "auth": false,
+  "docs": "",
+  "guid": "603d6b3c8300fa135f1e2332666c12c6",
+  "name": "ex_ask_assistant",
+  "test": [],
+  "verb": "POST",
+  "cache": {
+    "ip": false,
+    "env": [],
+    "ttl": 3600,
+    "auth": true,
+    "input": true,
+    "active": false,
+    "headers": [],
+    "datasource": true
+  },
+  "input": [
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "question",
+      "type": "text",
+      "_xsid": "i:d1e71565-ddfb-4e3e-836d-a544d193584c",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": true,
+      "customize": {},
+      "sensitive": false,
+      "description": "",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    }
+  ],
+  "output": [],
+  "result": [
+    {
+      "tag": "var",
+      "name": "text",
+      "_xsid": "r:c2f90d26-fb4f-4f06-b72b-91f2b6ce0665",
+      "value": "answer.result",
+      "filters": [],
+      "disabled": false
+    }
+  ],
+  "example": {},
+  "history": {
+    "limit": 100,
+    "enabled": true,
+    "inherit": true
+  },
+  "disabled": false,
+  "middleware": {
+    "pre": [],
+    "post": [],
+    "pre_customize": false,
+    "post_customize": false
+  },
+  "api_enabled": true,
+  "description": "",
+  "response_type": "standard"
+}

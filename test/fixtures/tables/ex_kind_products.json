@@ -1,0 +1,340 @@
+{
+  "tag": [],
+  "auth": false,
+  "docs": "",
+  "guid": "0ed252e905e6fb9f789e63f39175efd6",
+  "name": "ex_kind_products",
+  "index": [
+    {
+      "lang": "",
+      "name": "",
+      "type": "primary",
+      "fields": [
+        {
+          "op": "",
+          "name": "id"
+        }
+      ],
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      }
+    },
+    {
+      "lang": "",
+      "name": "",
+      "type": "btree",
+      "fields": [
+        {
+          "op": "desc",
+          "name": "created_at"
+        }
+      ],
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      }
+    },
+    {
+      "lang": "",
+      "name": "",
+      "type": "btree|unique",
+      "fields": [
+        {
+          "op": "",
+          "name": "sku"
+        }
+      ],
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      }
+    },
+    {
+      "lang": "",
+      "name": "",
+      "type": "btree",
+      "fields": [
+        {
+          "op": "desc",
+          "name": "price"
+        }
+      ],
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      }
+    }
+  ],
+  "views": [],
+  "schema": [
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "id",
+      "type": "int",
+      "_xsid": "",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": true,
+      "customize": {},
+      "sensitive": false,
+      "description": "",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    },
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "created_at",
+      "type": "epochms",
+      "_xsid": "",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "private",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "now",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": false,
+      "customize": {},
+      "sensitive": false,
+      "description": "",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    },
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "sku",
+      "type": "text",
+      "_xsid": "",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": true,
+      "customize": {},
+      "sensitive": false,
+      "description": "",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    },
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "name",
+      "type": "text",
+      "_xsid": "",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": true,
+      "customize": {},
+      "sensitive": false,
+      "description": "",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    },
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "price",
+      "type": "decimal",
+      "_xsid": "",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "0",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": false,
+      "customize": {},
+      "sensitive": false,
+      "description": "",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    },
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "in_stock",
+      "type": "bool",
+      "_xsid": "",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "true",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": false,
+      "customize": {},
+      "sensitive": false,
+      "description": "",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    },
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "tags",
+      "type": "text",
+      "_xsid": "",
+      "merge": false,
+      "style": {
+        "type": "list"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": false,
+      "customize": {},
+      "sensitive": false,
+      "description": "",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    }
+  ],
+  "install": false,
+  "use_xdo": false,
+  "external": {
+    "id": "",
+    "source": ""
+  },
+  "sql_name": "",
+  "description": "",
+  "autocomplete": [],
+  "import": {
+    "mode": "standard"
+  }
+}
