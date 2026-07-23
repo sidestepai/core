@@ -28,7 +28,8 @@ import { encodeResponse } from "../responses/response.js";
 import type { ResponseDef } from "../responses/response.js";
 import { registerKind } from "./kind.js";
 import type { ObjectKind } from "./kind.js";
-import { defaultHistory, encodeTags } from "./common.js";
+import { encodeTags } from "./common.js";
+import { encodeHistory, type HistoryInput } from "./history.js";
 import { resolveRef } from "../refs/guid.js";
 import type { ObjectRef } from "../refs/guid.js";
 import type { InferRow } from "./table.js";
@@ -126,6 +127,13 @@ export interface TriggerDef {
   hasResult: boolean;
   /** The per-type meta block (already populated for this type). */
   meta: Record<string, unknown>;
+  /**
+   * Request-history capture. Omit to inherit from the workspace (triggers have
+   * no container tier). A scalar: `false` off, `true` on at default depth, a
+   * number = capture depth, `"all"` unlimited. Any value stops inheriting.
+   * Triggers default OFF. See {@link HistoryInput}.
+   */
+  history?: HistoryInput;
   /** Workspace tags (stored `tag: [{tag}]`), e.g. `["xano:quick-start"]`. */
   tags?: string[];
 }
@@ -154,7 +162,7 @@ export function encodeTrigger(def: TriggerDef): TriggerXdo {
     description: def.description ?? "",
     obj_id: def.objId ?? 0,
     obj_type: def.objType,
-    history: defaultHistory("trigger"),
+    history: encodeHistory("trigger", def.history),
     output: [],
     meta: def.meta,
     tag: encodeTags(def.tags),

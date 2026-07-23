@@ -12,7 +12,8 @@ import { encodeInput } from "../inputs/input.js";
 import type { InputDescriptor } from "../inputs/input.js";
 import { registerKind } from "./kind.js";
 import type { ObjectKind } from "./kind.js";
-import { encodeTags, defaultHistory } from "./common.js";
+import { encodeTags } from "./common.js";
+import { encodeHistory, type HistoryInput } from "./history.js";
 import { clear } from "./middleware-attach.js";
 
 export type ResultStrategy = "merge" | "replace";
@@ -52,6 +53,13 @@ export interface MiddlewareDef {
    */
   exceptionPolicy?: ExceptionPolicy;
   tags?: string[];
+  /**
+   * Request-history capture. Omit to inherit from the workspace. A scalar:
+   * `false` off, `true` on at default depth, a number = capture depth, `"all"`
+   * unlimited. Any value stops inheriting. Middleware defaults OFF. See
+   * {@link HistoryInput}.
+   */
+  history?: HistoryInput;
   input?: Record<string, InputDescriptor>;
   stack?: Statement[];
   response?: ResponseDef;
@@ -80,7 +88,7 @@ export function encodeMiddleware(def: MiddlewareDef): MiddlewareXdo {
     docs: def.docs ?? "",
     result_type: def.resultStrategy ?? "merge",
     exception: def.exceptionPolicy ?? "silent",
-    history: defaultHistory("middleware"),
+    history: encodeHistory("middleware", def.history),
     tag: encodeTags(def.tags),
     shared_workspace: { is_shared: false },
     input: Object.entries(def.input ?? {}).map(([name, d]) => encodeInput(name, d)),

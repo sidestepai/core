@@ -25,8 +25,14 @@ import { encodeInput } from "../inputs/input.js";
 import type { InputDescriptor } from "../inputs/input.js";
 import { registerKind } from "./kind.js";
 import type { ObjectKind } from "./kind.js";
-import { emptyMiddleware, encodeTags, defaultHistory } from "./common.js";
+import { emptyMiddleware, encodeTags } from "./common.js";
 import type { MiddlewareBlock } from "./common.js";
+import {
+  encodeHistory,
+  encodeContainerHistory,
+  type ContainerHistoryBlock,
+  type HistoryInput,
+} from "./history.js";
 import { buildMiddlewareBlock } from "./middleware-attach.js";
 import type { MiddlewareAttach } from "./middleware-attach.js";
 import { resolveRef } from "../refs/guid.js";
@@ -48,7 +54,12 @@ export interface ToolDef {
   enabled?: boolean;
   toolsetId?: number;
   tags?: string[];
-  history?: { inherit?: boolean; enabled?: boolean; limit?: number };
+  /**
+   * Request-history capture. Omit to inherit (toolset → workspace). A scalar:
+   * `false` off, `true` on at default depth, a number = capture depth, `"all"`
+   * unlimited. Any value stops inheriting. See {@link HistoryInput}.
+   */
+  history?: HistoryInput;
   input?: Record<string, InputDescriptor>;
   stack?: Statement[];
   response?: ResponseDef;
@@ -89,7 +100,7 @@ export function encodeTool(def: ToolDef): ToolXdo {
     output: [],
     middleware: buildMiddlewareBlock(def.middleware),
     tag: encodeTags(def.tags),
-    history: defaultHistory("toolset", def.history),
+    history: encodeHistory("tool", def.history),
     toolset: { id: def.toolsetId ?? 0 },
     input: Object.entries(def.input ?? {}).map(([name, d]) => encodeInput(name, d)),
     result: encodeResponse(def.response),
@@ -174,6 +185,13 @@ export interface ToolsetBaseDef {
   canonical?: string;
   spec?: string;
   tags?: string[];
+  /**
+   * Toolset-level request-history default — the container tier its tools inherit
+   * from (stored `tool_enabled`/`tool_limit`). Omit to inherit from the
+   * workspace. A scalar: `false` off, `true` on at default depth, a number =
+   * capture depth, `"all"` unlimited. See {@link HistoryInput}.
+   */
+  history?: HistoryInput;
   tools?: ToolsetToolRef[];
 }
 
@@ -187,6 +205,7 @@ export interface ToolsetBaseXdo {
   canonical: string;
   spec: string;
   middleware: MiddlewareBlock;
+  history: ContainerHistoryBlock<"tool">;
   tag: Array<{ tag: string }>;
   tool: ToolsetToolXdo[];
 }
@@ -243,6 +262,7 @@ export function encodeToolsetBase(def: ToolsetBaseDef): ToolsetBaseXdo {
     canonical: def.canonical ?? "",
     spec: def.spec ?? "",
     middleware: emptyMiddleware(),
+    history: encodeContainerHistory("tool", def.history),
     tag: encodeTags(def.tags),
     tool: encodeToolRefs(def.tools),
   };

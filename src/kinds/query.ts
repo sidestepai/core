@@ -13,7 +13,8 @@ import { encodeInput } from "../inputs/input.js";
 import type { InputDescriptor } from "../inputs/input.js";
 import { registerKind } from "./kind.js";
 import type { ObjectKind } from "./kind.js";
-import { defaultHistory, encodeTags } from "./common.js";
+import { encodeTags } from "./common.js";
+import { encodeHistory, type HistoryInput } from "./history.js";
 import type { MiddlewareBlock } from "./common.js";
 import { buildMiddlewareBlock } from "./middleware-attach.js";
 import type { MiddlewareAttach } from "./middleware-attach.js";
@@ -95,6 +96,12 @@ export interface QueryDef<
    * `auth()`-keyed middleware is attached here and this endpoint has no auth table.
    */
   middleware?: MiddlewareAttach;
+  /**
+   * Request-history capture. Omit to inherit (API group → workspace). A scalar:
+   * `false` off, `true` on at default depth, a number = capture depth, `"all"`
+   * unlimited. Any value stops inheriting. See {@link HistoryInput}.
+   */
+  history?: HistoryInput;
   /** Workspace tags (stored `tag: [{tag}]`), e.g. `["xano:quick-start"]`. */
   tags?: string[];
   input?: I;
@@ -228,7 +235,7 @@ export function encodeQuery(def: QueryDef<Record<string, InputDescriptor>, unkno
     output: [],
     middleware: buildMiddlewareBlock(def.middleware),
     tag: encodeTags(def.tags),
-    history: defaultHistory("query"),
+    history: encodeHistory("query", def.history),
     input: Object.entries(def.input ?? {}).map(([name, d]) => encodeInput(name, d)),
     result: encodeResponse(def.response),
     run: (def.stack ?? []).map(encodeStatement),
