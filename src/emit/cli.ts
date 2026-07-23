@@ -27,6 +27,7 @@
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { createRequire } from "node:module";
 import { emit, serializeBundle } from "./emit.js";
 import { writeArtifact } from "./write.js";
 import type { FunctionDef } from "../function/define.js";
@@ -315,6 +316,27 @@ function parseFormat(raw: string | undefined): "json" | "multidoc" {
 }
 
 /**
+ * Import tsx's ESM API, resolving it from the USER's project (the directory of
+ * the `.ts` entry) rather than the CLI's own install tree.
+ *
+ * A bare `import("tsx/esm/api")` resolves against wherever THIS module lives: fine
+ * for an `npx`/local-devDependency CLI (it sits in the project's `node_modules`),
+ * but a GLOBALLY-installed CLI resolves against the global `node_modules`, which
+ * has no tsx — even when the user's project has it. So resolve from the entry file
+ * first (matching the tsup "tsx is the consumer's install" design), and fall back
+ * to a bare import for the co-located case.
+ */
+async function importTsxApi(file: string): Promise<{ register: () => () => void }> {
+  try {
+    const requireFromEntry = createRequire(pathToFileURL(resolve(file)));
+    const apiPath = requireFromEntry.resolve("tsx/esm/api");
+    return (await import(pathToFileURL(apiPath).href)) as { register: () => () => void };
+  } catch {
+    return (await import("tsx/esm/api")) as { register: () => () => void };
+  }
+}
+
+/**
  * Load a `.ts` entry through `tsx` (when installed) for plain-Node invocations.
  *
  * Uses the global `register()` hook rather than the scoped `tsImport()`: the
@@ -328,14 +350,14 @@ function parseFormat(raw: string | undefined): "json" | "multidoc" {
 async function loadViaTsx(url: string, file: string, cause?: unknown): Promise<unknown> {
   let register: () => () => void;
   try {
-    ({ register } = (await import("tsx/esm/api")) as { register: typeof register });
+    ({ register } = await importTsxApi(file));
   } catch {
-    // tsx isn't installed, so we can't recover a TS entry bare Node rejected.
-    // Chain the original loader failure so a genuine (non-loader) error in the
-    // user's module isn't masked by the "install tsx" message.
+    // tsx isn't installed (in the project OR beside the CLI), so we can't recover
+    // a TS entry bare Node rejected. Chain the original loader failure so a genuine
+    // (non-loader) error in the user's module isn't masked by the "install tsx" message.
     throw new Error(
       `Loading a TypeScript entry ("${file}") requires \`tsx\`. ` +
-        `Install it (\`npm i -D tsx\`) or precompile the file to .js first.`,
+        `Install it in your project (\`npm i -D tsx\`) or precompile the file to .js first.`,
       cause !== undefined ? { cause } : undefined,
     );
   }
@@ -418,7 +440,7 @@ const USAGE =
   "sidestep login [--origin <origin>] [--config <path>] [--global] [--port <n>] | " +
   "sidestep logout [--config <path>] [--global] | " +
   "sidestep sandbox deploy <file>|--bundle <path> [--reset] [--static <dir>] [--static-host <name>] [--static-env KEY=VALUE] [--config <path>] [--global] | " +
-  "sidestep sandbox export [<file>|--bundle <path>] [--format <json|multidoc>] [--path <path>|-] [--name <name>] | " +
+  "sidestep sandbox export [--format <json|multidoc>] [--path <path>|-] [--name <name>] | " +
   "sidestep sandbox details [--config <path>] [--global] | " +
   "sidestep profile me [--config <path>] [--global] | " +
   "sidestep validate <file>|--bundle <path> [--runtime] [--capture] [--out <dir>] [--instance <url>] [--workspace <id>] [--verbose] | " +

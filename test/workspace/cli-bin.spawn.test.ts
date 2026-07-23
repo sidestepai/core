@@ -84,6 +84,36 @@ describe("sidestep bin (spawned subprocess against built dist)", () => {
     }
   });
 
+  it("exports a .ts entry that imports a sibling via a `.js` specifier (needs the tsx remap)", () => {
+    // The bare-import .ts test above loads under native type-stripping alone. A
+    // relative `.js`→`.ts` specifier does NOT — native stripping won't remap it,
+    // so this drives the tsx loader path (`importTsxApi`), which the bare-import
+    // case never reaches. (The loader resolves tsx from the project first, then
+    // the CLI's own tree — here the co-located repo tsx satisfies it.)
+    const dir = scaffold("module", "index.ts");
+    try {
+      writeFileSync(
+        join(dir, "thing.ts"),
+        `import { table, f } from "@sidestep/core";\n` +
+          `export const thing = table({ name: "thing", schema: { label: f.text() } });\n`,
+      );
+      writeFileSync(
+        join(dir, "index.ts"),
+        `import { workspace } from "@sidestep/core";\n` +
+          `import { thing } from "./thing.js";\n` + // .js specifier → .ts file: the remap tsx provides
+          `export default workspace("spawned").registerTables([thing]);\n`,
+      );
+      const out = join(dir, "bundle.json");
+      const { status, stderr } = runBin(["export", join(dir, "index.ts"), "--out", out], dir);
+      expect(stderr).not.toMatch(/requires `tsx`|Cannot find module/);
+      expect(status).toBe(0);
+      const bundle = JSON.parse(readFileSync(out, "utf8"));
+      expect(bundle.payload.workspace).toMatchObject({ name: "spawned" });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("gives an actionable error for a .ts entry in a CommonJS consumer", () => {
     const dir = scaffold("commonjs", "index.ts");
     try {

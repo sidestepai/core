@@ -1,6 +1,6 @@
 {
   "name": "sidestep",
-  "version": "3.9.6",
+  "version": "3.9.7",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
@@ -8890,15 +8890,15 @@
     },
     {
       "command": "sandbox export",
-      "args": "[<file> | --bundle <path>] [--format <json|multidoc>] [--path <path>|-] [--name <name>]",
+      "args": "[--format <json|multidoc>] [--path <path>|-] [--name <name>]",
       "flags": [
         {
           "flag": "--format json",
-          "description": "(default) Compile the LOCAL workspace to the JSON bundle payload (the same bytes deploy/validate send) and write a .json file; no network. Uses an explicit entry <file>/--bundle, or — with neither — a conventional entry auto-discovered under the cwd (xano/index.ts, index.ts, …), so a bare `sandbox export` works from a project root."
+          "description": "(default) Export the workspace CURRENTLY DEPLOYED to your sandbox as the JSON bundle — the same packageExport shape `deploy` sends — and write a .json file. Reads the deployed tenant over the meta API (sandbox/me → the tenant's workspace export → decode), NOT the local package."
         },
         {
           "flag": "--format multidoc",
-          "description": "GET the sandbox tenant's XanoScript multidoc over OAuth and write it to a .xs file. Reflects the CURRENTLY DEPLOYED sandbox — run `sandbox deploy` first. Takes no <file>/--bundle input."
+          "description": "GET the sandbox tenant's XanoScript multidoc over OAuth and write it to a .xs file."
         },
         {
           "flag": "--path <path>|-",
@@ -8909,7 +8909,7 @@
           "description": "Output basename override (default `sandbox`)."
         }
       ],
-      "description": "Export a portable artifact for the workspace you're iterating on: the JSON bundle (local compile, the default) or the sandbox tenant's XanoScript multidoc (.xs, over OAuth). `--format` defaults to json; with no entry file it auto-discovers a conventional one, so a bare `sandbox export` just works. env/records/draft are unsupported (endpoint defaults)."
+      "description": "Export the workspace CURRENTLY DEPLOYED to your sandbox — as the JSON bundle (default) or the XanoScript multidoc (.xs). Both are pure OAuth meta calls against the sandbox: no local file, no compile step, so a bare `sandbox export` just works (run `sandbox deploy` first). To compile a LOCAL workspace to JSON instead, use `sidestep export <file>`. env/records/draft are unsupported (endpoint defaults)."
     },
     {
       "command": "sandbox details",
