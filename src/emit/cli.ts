@@ -116,8 +116,18 @@ export interface ParsedArgs {
   format: "json" | "multidoc" | undefined;
   /** `sandbox export --path <p>`: output location (`-` for stdout; a dir or a full file path). */
   path: string | undefined;
-  /** `sandbox export --name <n>`: output basename override (default `sandbox`). */
+  /** `sandbox export --name <n>`: output basename override (default `sandbox`). Also the `init` app name (default: target dir basename). */
   name: string | undefined;
+  /**
+   * `init --ai <preset>` (repeatable, comma-separated): AI-assistant instruction
+   * files to scaffold (`claude`/`codex`/`cursor`/`none`). Empty = prompt in a TTY,
+   * else write none. Validated in the init command, not at parse time.
+   */
+  ai: string[];
+  /** `init --force`: scaffold into a non-empty target directory (overwrite our own files). */
+  force: boolean;
+  /** `init --no-install`: skip the post-scaffold `npm install`. */
+  noInstall: boolean;
 }
 
 /** Parse a `--port` value, rejecting NaN/out-of-range so `server.listen` never gets `NaN`. */
@@ -165,6 +175,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let format: "json" | "multidoc" | undefined;
   let path: string | undefined;
   let name: string | undefined;
+  const ai: string[] = [];
+  let force = false;
+  let noInstall = false;
   const positionals: string[] = [];
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i]!;
@@ -244,6 +257,17 @@ export function parseArgs(argv: string[]): ParsedArgs {
       name = rest[++i];
     } else if (arg.startsWith("--name=")) {
       name = arg.slice("--name=".length);
+    } else if (arg === "--ai" || arg.startsWith("--ai=")) {
+      // Accumulate; accept a comma-separated list too (`--ai claude,codex`).
+      const raw = arg === "--ai" ? rest[++i] : arg.slice("--ai=".length);
+      for (const p of (raw ?? "").split(",")) {
+        const preset = p.trim();
+        if (preset !== "") ai.push(preset);
+      }
+    } else if (arg === "--force") {
+      force = true;
+    } else if (arg === "--no-install") {
+      noInstall = true;
     } else if (arg === "--profile" || arg.startsWith("--profile=")) {
       // Removed in the OAuth migration — fail loudly instead of letting the flag
       // (and its value) fall through into positionals and misparse as an entry file.
@@ -297,6 +321,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
     format,
     path,
     name,
+    ai,
+    force,
+    noInstall,
   };
 }
 
@@ -415,7 +442,7 @@ export async function loadDefault(file: string): Promise<unknown> {
  * ancestor `package.json` can't shadow it. Best-effort: returns `"unknown"` rather
  * than throwing when it can't be located, since a version print must never fail.
  */
-function readVersion(): string {
+export function readVersion(): string {
   let dir = dirname(fileURLToPath(import.meta.url));
   for (let i = 0; i < 6; i++) {
     const p = join(dir, "package.json");
@@ -436,6 +463,7 @@ function readVersion(): string {
 
 const USAGE =
   "Usage: sidestep <compile|export> <file> [--out <path>] [--lock[=<path>]] [--frozen-lock] | " +
+  "sidestep init [<dir>] [--name <name>] [--ai <claude|codex|cursor|none>] [--force] [--no-install] | " +
   "sidestep version | " +
   "sidestep login [--origin <origin>] [--config <path>] [--global] [--port <n>] | " +
   "sidestep logout [--config <path>] [--global] | " +
@@ -506,6 +534,13 @@ export async function run(argv: string[]): Promise<void> {
   if (command === "version" || command === "--version" || command === "-v") {
     process.stdout.write(`${readVersion()}\n`);
     return;
+  }
+  if (command === "init") {
+    // Node-only (node:fs + child_process for install + a readline prompt);
+    // lazily imported like the other Node-only commands so the browser-safe
+    // authoring bundle never pulls it in.
+    const { runInitCommand } = await import("./init-command.js");
+    return runInitCommand(args);
   }
   if (command === "lock") {
     const { runLockCommand } = await import("./lock-commands.js");

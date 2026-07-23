@@ -214,6 +214,24 @@ golden fixtures.
 
 ## 60-second quickstart
 
+The fastest start is `sidestep init`, which scaffolds the whole project — a Vite
++ React frontend under `frontend/`, a sidestep backend under `xano/`, and the
+`xano:export`/`xano:deploy` scripts already wired:
+
+```bash
+npx sidestep init my-app           # scaffold; prompts to set up AI instructions
+cd my-app
+npm run dev                        # run the frontend right away
+```
+
+`init` flags: `--name <name>` (default: the folder name), `--ai <claude|codex|cursor|none>`
+(repeatable; writes `CLAUDE.md`/`AGENTS.md`/Cursor rules — none by default),
+`--force` (scaffold into a non-empty folder), `--no-install` (skip `npm install`).
+The starter backend is empty but already compiles and deploys — grow it from the
+walkthrough in `xano/EXAMPLE.md`.
+
+Prefer to wire it by hand? The same loop, from scratch:
+
 ```bash
 # 1. Install
 npm install @sidestep/core
@@ -863,6 +881,9 @@ s.precondition({
 <summary><b>CLI</b></summary>
 
 ```bash
+sidestep init my-app                         # scaffold a full project (frontend/ + xano/)
+sidestep init my-app --ai claude --no-install  # add CLAUDE.md; skip npm install
+
 sidestep export ./xano/index.ts              # bundle to stdout
 sidestep export ./xano/index.ts --out ws.json
 sidestep compile ./xano/functions/get-user.ts  # a single function's JSON
