@@ -251,7 +251,7 @@
       "kind": "workspace",
       "payloadKey": "workspace",
       "authorFactory": "workspaceConfig",
-      "description": "Workspace-level configuration such as default middleware chains per host kind.",
+      "description": "Workspace-level configuration such as default middleware chains and request-history defaults per host kind.",
       "registerMethod": "registerWorkspace",
       "registered": true
     }

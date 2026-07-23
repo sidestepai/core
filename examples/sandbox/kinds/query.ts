@@ -9,6 +9,8 @@ export const getUserQuery = query({
   name: "ex_get_user",
   verb: "GET",
   apiGroup: api,
+  // `history` omitted → inherits the API group's default (which inherits the
+  // workspace). Set a scalar (`100`, `false`, `"all"`) to override per-endpoint.
   input: { id: input.int({ required: true }) },
   stack: [s.db.get({ table: users, fieldValue: inp("id"), as: "user" })],
   response: ref("user"),

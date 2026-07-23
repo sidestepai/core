@@ -1,9 +1,9 @@
 /**
  * `workspaceConfig({...})` — workspace-level settings (payload key `workspace`),
  * e.g. the canonical domain and realtime config. Also carries `use_xdo` and the
- * workspace-tier `middleware` map — the terminal fallback of the
- * Query → API Group → Workspace chain. Its keys are per host type (no
- * `_customize` flags); a query with no closer override inherits `query.pre`.
+ * workspace-tier `middleware` and `history` maps — the terminal fallback of the
+ * Query → API Group → Workspace chain. Their keys are per object type (no
+ * `_customize`/inherit flags); a query with no closer override inherits these.
  */
 import { workspaceConfig } from "@sidestep/core";
 import { rateLimit } from "./middleware.js";
@@ -14,5 +14,12 @@ export const wsConfig = workspaceConfig({
   realtime: { canonical: "my-app-realtime" },
   middleware: {
     query: { pre: [rateLimit] },
+  },
+  // Workspace-tier request-history defaults (terminal, wholesale — unlisted types
+  // fall back to their engine default). A scalar per object type.
+  history: {
+    query: 100,
+    function: true,
+    trigger: "all",
   },
 });
