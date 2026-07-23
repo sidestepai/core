@@ -201,30 +201,30 @@ export function tableTrigger<
     stack?: (t: DatabaseInputs<TriggerRow<T>, A>) => Statement[];
   },
 ): TriggerDef {
-    const meta = baseMeta();
-    meta.database.datasource = (args.datasources ?? []).map((tag) => ({ tag }));
-    meta.database.action = {
-      delete: args.actions?.delete ?? false,
-      insert: args.actions?.insert ?? false,
-      truncate: args.actions?.truncate ?? false,
-      update: args.actions?.update ?? false,
-    };
-    // Bind to the target table by its portable guid (a `table()` handle or
-    // name); a raw numeric `objId` stays the escape hatch.
-    const objId = args.table !== undefined ? resolveRef("dbo", args.table) : args.objId;
-    const t = buildTriggerHandle("database") as unknown as DatabaseInputs<TriggerRow<T>, A>;
-    return {
-      name: args.name,
-      guid: args.guid,
-      description: args.description,
-      active: args.active,
-      tags: args.tags,
-      objId,
-      objType: "database",
-      hasResult: false,
-      meta,
-      stack: args.stack?.(t) ?? [],
-    };
+  const meta = baseMeta();
+  meta.database.datasource = (args.datasources ?? []).map((tag) => ({ tag }));
+  meta.database.action = {
+    delete: args.actions?.delete ?? false,
+    insert: args.actions?.insert ?? false,
+    truncate: args.actions?.truncate ?? false,
+    update: args.actions?.update ?? false,
+  };
+  // Bind to the target table by its portable guid (a `table()` handle or
+  // name); a raw numeric `objId` stays the escape hatch.
+  const objId = args.table !== undefined ? resolveRef("dbo", args.table) : args.objId;
+  const t = buildTriggerHandle("database") as unknown as DatabaseInputs<TriggerRow<T>, A>;
+  return {
+    name: args.name,
+    guid: args.guid,
+    description: args.description,
+    active: args.active,
+    tags: args.tags,
+    objId,
+    objType: "database",
+    hasResult: false,
+    meta,
+    stack: args.stack?.(t) ?? [],
+  };
 }
 
 /** Realtime channel trigger (obj_type=workspace_realtime_channel). Response-bearing. */
@@ -235,26 +235,26 @@ export function realtimeTrigger(
     response?: (t: RealtimeInputs) => ResponseDef;
   },
 ): TriggerDef {
-    const meta = baseMeta();
-    meta.workspace_realtime_channel.action = {
-      message: args.actions?.message ?? false,
-      join: args.actions?.join ?? false,
-    };
-    const t = buildTriggerHandle("workspace_realtime_channel") as unknown as RealtimeInputs;
-    return {
-      name: args.name,
-      guid: args.guid,
-      description: args.description,
-      active: args.active,
-      tags: args.tags,
-      objId: args.objId,
-      objType: "workspace_realtime_channel",
-      hasResult: true,
-      meta,
-      stack: args.stack?.(t) ?? [],
-      // Xano default (updateResult): echo the `payload` input back.
-      response: args.response ? args.response(t) : inp("payload"),
-    };
+  const meta = baseMeta();
+  meta.workspace_realtime_channel.action = {
+    message: args.actions?.message ?? false,
+    join: args.actions?.join ?? false,
+  };
+  const t = buildTriggerHandle("workspace_realtime_channel") as unknown as RealtimeInputs;
+  return {
+    name: args.name,
+    guid: args.guid,
+    description: args.description,
+    active: args.active,
+    tags: args.tags,
+    objId: args.objId,
+    objType: "workspace_realtime_channel",
+    hasResult: true,
+    meta,
+    stack: args.stack?.(t) ?? [],
+    // Xano default (updateResult): echo the `payload` input back.
+    response: args.response ? args.response(t) : inp("payload"),
+  };
 }
 
 /**
@@ -295,25 +295,25 @@ export function workspaceTrigger(
     stack?: (t: WorkspaceInputs) => Statement[];
   },
 ): TriggerDef {
-    const meta = baseMeta();
-    meta.workspace.action = {
-      branch_live: args.actions?.branch_live ?? false,
-      branch_merge: args.actions?.branch_merge ?? false,
-      branch_new: args.actions?.branch_new ?? false,
-    };
-    const t = buildTriggerHandle("workspace") as unknown as WorkspaceInputs;
-    return {
-      name: args.name,
-      guid: args.guid,
-      description: args.description,
-      active: args.active,
-      tags: args.tags,
-      objId: args.objId,
-      objType: "workspace",
-      hasResult: false,
-      meta,
-      stack: args.stack?.(t) ?? [],
-    };
+  const meta = baseMeta();
+  meta.workspace.action = {
+    branch_live: args.actions?.branch_live ?? false,
+    branch_merge: args.actions?.branch_merge ?? false,
+    branch_new: args.actions?.branch_new ?? false,
+  };
+  const t = buildTriggerHandle("workspace") as unknown as WorkspaceInputs;
+  return {
+    name: args.name,
+    guid: args.guid,
+    description: args.description,
+    active: args.active,
+    tags: args.tags,
+    objId: args.objId,
+    objType: "workspace",
+    hasResult: false,
+    meta,
+    stack: args.stack?.(t) ?? [],
+  };
 }
 
 /** Error trigger (obj_type=error, empty meta). Config-only. */
@@ -323,18 +323,18 @@ export function errorTrigger(
   },
 ): TriggerDef {
     const t = buildTriggerHandle("error") as unknown as ErrorInputs;
-    return {
-      name: args.name,
-      guid: args.guid,
-      description: args.description,
-      active: args.active,
-      tags: args.tags,
-      objId: args.objId,
-      objType: "error",
-      hasResult: false,
-      meta: {},
-      stack: args.stack?.(t) ?? [],
-    };
+  return {
+    name: args.name,
+    guid: args.guid,
+    description: args.description,
+    active: args.active,
+    tags: args.tags,
+    objId: args.objId,
+    objType: "error",
+    hasResult: false,
+    meta: {},
+    stack: args.stack?.(t) ?? [],
+  };
 }
 
 /**

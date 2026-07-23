@@ -83,6 +83,17 @@ describe("manifest", () => {
     expect(m.objectKinds).toHaveLength(registered.size);
   });
 
+  it("every object kind carries a non-empty description, rendered into the llms.txt catalog", () => {
+    const llms = renderLlmsTxt(m);
+    for (const k of m.objectKinds) {
+      // A blank description would silently ship an uninformative catalog line —
+      // the golden-file snapshot alone would not catch it.
+      expect(k.description.trim().length).toBeGreaterThan(0);
+      // The `## Object kinds` catalog line must actually surface the descriptor.
+      expect(llms).toContain(`— ${k.description}`);
+    }
+  });
+
   it("exposes the full tag catalog", () => {
     expect(m.values.tags).toEqual(TAGS);
   });
