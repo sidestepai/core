@@ -11,8 +11,9 @@ sandbox with a single deploy.**
 </div>
 
 ```bash
-# One command. Backend + frontend. Live in your sandbox.
-sidestep sandbox deploy ./xano/index.ts --static ./dist
+npx sidestep login                 # 1. sign in once (OAuth — opens your browser)
+npx sidestep init my-app && cd my-app   # 2. scaffold a full-stack project
+npx sidestep sandbox deploy ./xano/index.ts --static ./dist   # 3. ship it, live
 ```
 
 ```
@@ -26,13 +27,12 @@ sidestep sandbox deploy ./xano/index.ts --static ./dist
 
 <div align="center">
 
-No export/import dance. No upload script. No CI glue between your API and your app.
-Your TypeScript is the source of truth, and one command puts it on real Xano
-infrastructure you can hit immediately.
-
-```bash
-npm install @sidestep/core
-```
+**Three commands from empty folder to a live full-stack app.** `init` scaffolds a
+typed backend and a Vite + React frontend; `deploy` ships the database, APIs, functions,
+triggers — **and** the compiled web app — in a single authenticated call. No export/import
+dance, no upload script, no CI glue between your API and your app. Your TypeScript is the
+source of truth, and one command puts it on real Xano infrastructure you can hit
+immediately.
 
 [Deploy it](#deploy-it-backend--frontend-one-command) ·
 [The model](#the-model-typescript-in-real-infrastructure-out) ·
