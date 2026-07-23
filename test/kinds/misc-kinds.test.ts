@@ -130,3 +130,51 @@ describe("workspace-tier middleware", () => {
     expect((m.query_pre[0] as { name: string }).name).toBe("mvp:middleware");
   });
 });
+
+describe("workspace-tier history", () => {
+  it("omits the history key when the author sets none (byte-parity)", () => {
+    const w = encodeWorkspaceConfig({ name: "b12" });
+    expect("history" in w).toBe(false);
+  });
+
+  it("emits the 12-key map at engine defaults, no inherit (matches golden)", () => {
+    const w = encodeWorkspaceConfig({ name: "b12", history: {} });
+    expect(w.history).toEqual({
+      query_enabled: true,
+      query_limit: 100,
+      function_enabled: false,
+      function_limit: 100,
+      task_enabled: true,
+      task_limit: 100,
+      tool_enabled: true,
+      tool_limit: 100,
+      trigger_enabled: false,
+      trigger_limit: 100,
+      middleware_enabled: false,
+      middleware_limit: 100,
+    });
+    expect("inherit" in w.history!).toBe(false);
+  });
+
+  it("wholesale: listed types override, omitted types stay at defaults", () => {
+    const w = encodeWorkspaceConfig({
+      name: "b12",
+      history: { query: 100, function: true, trigger: "all" },
+    });
+    const h = w.history!;
+    expect(h).toMatchObject({
+      query_enabled: true,
+      query_limit: 100,
+      function_enabled: true,
+      function_limit: 100,
+      trigger_enabled: true,
+      trigger_limit: -1,
+      // untouched types keep engine defaults
+      task_enabled: true,
+      middleware_enabled: false,
+    });
+    // No `test_*` keys and no branch block at this tier.
+    expect("test_enabled" in h).toBe(false);
+    expect("branch" in w).toBe(false);
+  });
+});

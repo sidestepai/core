@@ -78,6 +78,16 @@ describe("validate normalizer — per-kind default/serialization rules", () => {
     expect(normalize(custom)).toEqual(custom);
   });
 
+  it("applies the same inherit drop/preserve to container-tier history shapes", () => {
+    // API group (query_*) and toolset (tool_*) carry `inherit`, so the same rule
+    // drops the inheriting default and preserves an authored override.
+    expect(normalize({ history: { inherit: true, query_enabled: true, query_limit: 100 } })).toEqual({});
+    const app = { history: { inherit: false, query_enabled: false, query_limit: 100 } };
+    expect(normalize(app)).toEqual(app);
+    const toolset = { history: { inherit: false, tool_enabled: true, tool_limit: -1 } };
+    expect(normalize(toolset)).toEqual(toolset);
+  });
+
   it("drops null agent_settings and a disabled telemetry block", () => {
     expect(normalize({ agent_settings: null })).toEqual({});
     expect(normalize({ telemetry: { enabled: false, langfuse: { api_key: "" } } })).toEqual({});
