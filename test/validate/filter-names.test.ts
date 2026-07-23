@@ -9,7 +9,7 @@ import { serializeBundle } from "../../src/emit/emit.js";
 
 /** Compile a registry to the parsed bundle object the walker consumes. */
 function bundleOf(ws: unknown): unknown {
-  return JSON.parse(serializeBundle((ws as { export(): unknown }).export()));
+  return JSON.parse(serializeBundle((ws as { export(): Parameters<typeof serializeBundle>[0] }).export()));
 }
 
 describe("offline filter-name validation (#106)", () => {
@@ -21,9 +21,9 @@ describe("offline filter-name validation (#106)", () => {
     });
     const findings = findUnresolvableFilters(bundleOf(workspace("w").registerFunctions([fn])));
     expect(findings).toHaveLength(1);
-    expect(findings[0].name).toBe("coalesce");
+    expect(findings[0]!.name).toBe("coalesce");
     // Location is the owning object, not the `mvp:set_var` kind marker.
-    expect(findings[0].location).toBe("coalesce_repro");
+    expect(findings[0]!.location).toBe("coalesce_repro");
   });
 
   it("passes a bundle that uses only resolvable filters", () => {

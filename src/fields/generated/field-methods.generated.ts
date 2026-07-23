@@ -17,16 +17,8 @@ export const FIELD_METHODS: Readonly<Record<string, Readonly<Record<string, stri
     "min": "int"
   },
   "email": {
-    "alphaOk": "bool",
-    "digitOk": "bool",
     "lower": "bool",
-    "max": "int",
-    "min": "int",
-    "ok": "text",
-    "pattern": "text",
-    "startsWith": "text",
-    "trim": "bool",
-    "upper": "bool"
+    "trim": "bool"
   },
   "int": {
     "max": "int",
@@ -68,7 +60,7 @@ export const FIELD_METHODS: Readonly<Record<string, Readonly<Record<string, stri
 export type DecimalMethod = "max" | "min";
 
 /** Field methods valid on `email` fields. */
-export type EmailMethod = "alphaOk" | "digitOk" | "lower" | "max" | "min" | "ok" | "pattern" | "startsWith" | "trim" | "upper";
+export type EmailMethod = "lower" | "trim";
 
 /** Field methods valid on `int` fields. */
 export type IntMethod = "max" | "min";

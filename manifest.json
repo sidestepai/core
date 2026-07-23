@@ -308,16 +308,8 @@
       "name": "email",
       "stored": "email",
       "methods": [
-        "alphaOk",
-        "digitOk",
         "lower",
-        "max",
-        "min",
-        "ok",
-        "pattern",
-        "startsWith",
-        "trim",
-        "upper"
+        "trim"
       ]
     },
     {

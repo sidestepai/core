@@ -36,14 +36,33 @@ describe("field-method catalog", () => {
     }
   });
 
-  it("email inherits text's method set (family alias)", () => {
-    expect(methodsOf("email")).toEqual(methodsOf("text"));
+  it("email exposes only its runtime-resolvable methods, NOT text's full set (#106)", () => {
+    // The catalog distills email from text (family alias), but an empirical runtime
+    // probe found only `lower`/`trim` resolve on an email field — the rest 500 with
+    // `Invalid method for filter`. The reconcile against the empirical allowlist
+    // trims email to the real set. See scripts/probe-field-methods.ts.
+    expect(methodsOf("email")).toEqual({ lower: "bool", trim: "bool" });
+    expect(methodsOf("email")).not.toEqual(methodsOf("text"));
   });
 
   it("password has its own richer set", () => {
     const password = methodsOf("password");
     expect(Object.keys(password)).toContain("minSymbol");
+    // `salt` and vector `min`/`max` were absent from the mvp/xs schema dump but
+    // DO resolve at runtime — proof the empirical probe (not the static schema) is
+    // authoritative. They are kept.
     expect(password.salt).toBe("text");
+  });
+
+  it("every exposed field method is in the empirical runtime allowlist (#106)", () => {
+    const { resolvable } = JSON.parse(
+      readFileSync(join(ROOT, "vendor/field-methods-resolvable.json"), "utf8"),
+    ) as { resolvable: Record<string, string[]> };
+    for (const [type, set] of Object.entries(FIELD_METHODS)) {
+      const allow = resolvable[type];
+      if (!allow) continue; // no probe data for this type → not asserted
+      for (const method of Object.keys(set)) expect(allow, `${type}.${method}`).toContain(method);
+    }
   });
 
   it("the committed generated file is fresh vs the vendor snapshot", () => {

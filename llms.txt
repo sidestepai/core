@@ -410,7 +410,7 @@ typed forms over `input.json()` when the shape is known.
 - `f.bool`
 - `f.uuid`
 - `f.date`
-- `f.email` — methods: alphaOk, digitOk, lower, max, min, ok, pattern, startsWith, trim, upper
+- `f.email` — methods: lower, trim
 - `f.password` — methods: max, min, minAlpha, minDigit, minLowerAlpha, minSymbol, minUpperAlpha, salt
 - `f.json`
 - `f.timestamp` (stored `epochms`)
