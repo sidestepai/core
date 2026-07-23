@@ -26,6 +26,12 @@ import { homedir } from "node:os";
 
 const ROOT = join(import.meta.dirname, "..");
 const VENDOR = join(ROOT, "vendor/field-methods.json");
+// Empirically runtime-resolvable field methods per type (issue #106). The
+// column-create schema the catalog is distilled from over-declares (e.g. `email`
+// inherits text's set via ALIAS below, but at runtime only `lower`/`trim` resolve
+// — the rest 500 with `Invalid method for filter`). Membership is intersected
+// against this. Regenerate via `tsx scripts/probe-field-methods.ts` on a sandbox.
+const RESOLVABLE = join(ROOT, "vendor/field-methods-resolvable.json");
 const OUT = join(ROOT, "src/fields/generated/field-methods.generated.ts");
 
 const META_DIR =
@@ -138,6 +144,34 @@ ${unions}
 `;
 }
 
+/**
+ * Intersect each type's distilled methods against the empirical runtime allowlist
+ * (issue #106): drop any method the engine rejects at runtime, so `f.<type>` /
+ * `input.<type>` only type-accept names a deployed field actually honors. A type
+ * absent from the allowlist is left untouched (no probe data ≠ evidence to drop).
+ */
+function reconcile(cat: MethodCatalog): MethodCatalog {
+  const { resolvable } = JSON.parse(readFileSync(RESOLVABLE, "utf8")) as { resolvable: Record<string, string[]> };
+  const out: Record<string, MethodSet> = {};
+  for (const [key, set] of Object.entries(cat.types)) {
+    const allow = resolvable[key];
+    if (!allow) {
+      out[key] = set;
+      continue;
+    }
+    const ok = new Set(allow);
+    const kept: MethodSet = {};
+    const dropped: string[] = [];
+    for (const [name, argType] of Object.entries(set)) {
+      if (ok.has(name)) kept[name] = argType;
+      else dropped.push(name);
+    }
+    out[key] = kept;
+    if (dropped.length) console.log(`Dropped ${dropped.length} non-resolvable ${key} methods: ${dropped.join(", ")}`);
+  }
+  return { types: out };
+}
+
 // --- main ---------------------------------------------------------------------
 
 const doRefresh = process.argv.includes("--refresh");
@@ -149,6 +183,7 @@ if (doRefresh) {
 } else {
   catalog = JSON.parse(readFileSync(VENDOR, "utf8")) as MethodCatalog;
 }
+catalog = reconcile(catalog);
 writeFileSync(OUT, emit(catalog));
 const total = Object.values(catalog.types).reduce((n, s) => n + Object.keys(s).length, 0);
 console.log(`Wrote ${OUT}: ${Object.keys(catalog.types).length} types, ${total} methods.`);

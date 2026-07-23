@@ -30,6 +30,7 @@ import { dirname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
 import { emit, serializeBundle } from "./emit.js";
 import { writeArtifact } from "./write.js";
+import { findUnresolvableFilters } from "../validate/filter-names.js";
 import type { FunctionDef } from "../function/define.js";
 import { Xano } from "../workspace/xano.js";
 import {
@@ -65,6 +66,8 @@ export interface ParsedArgs {
   lockPath: string | undefined;
   /** `--frozen-lock`: hard-fail if the export would change the lock (CI). */
   frozenLock: boolean;
+  /** `--strict`: promote export/deploy warnings (e.g. unresolvable filter names, issue #106) to a hard failure. */
+  strict: boolean;
   /** `--yes`/`-y`: confirm destructive lock maintenance non-interactively. */
   yes: boolean;
   /** `push --bundle <path>`: upload an already-exported bundle instead of a file entry. */
@@ -156,6 +159,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let lock = false;
   let lockPath: string | undefined;
   let frozenLock = false;
+  let strict = false;
   let yes = false;
   let bundle: string | undefined;
   let reset = false;
@@ -190,6 +194,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
       lockPath = arg.slice("--lock=".length);
     } else if (arg === "--frozen-lock") {
       frozenLock = true;
+    } else if (arg === "--strict") {
+      strict = true;
     } else if (arg === "--yes" || arg === "-y") {
       yes = true;
     } else if (arg === "--bundle") {
@@ -302,6 +308,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     lock,
     lockPath,
     frozenLock,
+    strict,
     yes,
     bundle,
     reset,
@@ -462,7 +469,7 @@ export function readVersion(): string {
 }
 
 const USAGE =
-  "Usage: sidestep <compile|export> <file> [--out <path>] [--lock[=<path>]] [--frozen-lock] | " +
+  "Usage: sidestep <compile|export> <file> [--out <path>] [--lock[=<path>]] [--frozen-lock] [--strict] | " +
   "sidestep init [<dir>] [--name <name>] [--ai <claude|codex|cursor|none>] [--force] [--no-install] | " +
   "sidestep version | " +
   "sidestep login [--origin <origin>] [--config <path>] [--global] [--port <n>] | " +
@@ -725,7 +732,30 @@ export async function exportBundleJson(args: ParsedArgs): Promise<string> {
     warnOrphans(orphans, dropped, cededCanonicals, lockCtx.lock, lockCtx.observed);
   }
 
+  checkFilterNames(bundle, args.strict);
+
   return serializeBundle(bundle);
+}
+
+/**
+ * Filter-name preflight (issue #106): a `filter(name, …)` the engine can't
+ * resolve exports clean, then 500s (`Unable to locate func entry`) on the first
+ * live request. Warn per occurrence (STDERR — stdout may be a piped bundle),
+ * pointing at the likely intended name; `--strict` promotes it to a hard failure.
+ */
+function checkFilterNames(bundle: unknown, strict: boolean): void {
+  const findings = findUnresolvableFilters(bundle);
+  if (findings.length === 0) return;
+  for (const f of findings) {
+    const hint = f.suggestions.length ? ` — did you mean ${f.suggestions.map((s) => `\`${s}\``).join(" or ")}?` : "";
+    warn(`Filter "${f.name}" (in ${f.location}) is not engine-resolvable and will 500 at runtime${hint}`);
+  }
+  if (strict) {
+    throw new Error(
+      `--strict: ${findings.length} unresolvable filter name(s). Replace them with resolvable names ` +
+        `(see \`fl.*\` / llms.txt) or drop the raw \`filter()\` call.`,
+    );
+  }
 }
 
 // NOTE: this module is the CLI *library* (it exports `run`/`parseArgs`/

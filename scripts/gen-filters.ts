@@ -4,8 +4,8 @@
  * group-appropriate seed value through the filter inside a function. Existing
  * files are never overwritten. Run: `tsx scripts/gen-filters.ts`.
  */
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, mkdirSync, writeFileSync, readdirSync, rmSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { FILTER_NAMES, FILTER_SPECS } from "../src/values/generated/filters.generated.js";
 
@@ -93,4 +93,21 @@ export const ${constId} = defineFunction({
   created++;
 }
 
-console.log(`filters: ${created} created, ${skipped} skipped.`);
+// Prune orphans: an example whose filter was dropped from the catalog (issue #106)
+// would import a nonexistent `fl.<name>` and break the examples typecheck. Delete
+// any `<name>.ts` under the group dirs whose name is no longer a catalog filter.
+const valid = new Set(FILTER_NAMES);
+let pruned = 0;
+for (const group of existsSync(ROOT) ? readdirSync(ROOT, { withFileTypes: true }) : []) {
+  if (!group.isDirectory()) continue;
+  const groupPath = join(ROOT, group.name);
+  for (const entry of readdirSync(groupPath)) {
+    if (!entry.endsWith(".ts")) continue;
+    if (!valid.has(basename(entry, ".ts"))) {
+      rmSync(join(groupPath, entry));
+      pruned++;
+    }
+  }
+}
+
+console.log(`filters: ${created} created, ${skipped} skipped, ${pruned} pruned.`);

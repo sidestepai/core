@@ -32,8 +32,9 @@ describe("examples/sandbox", () => {
   });
 
   it("registers a broad set of function/statement/filter/value examples", () => {
-    // 214 statements (+ gates) + 345 filters + value primitives + shared.
-    expect(count("function")).toBeGreaterThan(500);
+    // 214 statements (+ gates) + 225 runtime-resolvable filters (issue #106) +
+    // value primitives + shared.
+    expect(count("function")).toBeGreaterThan(400);
   });
 
   it("registers a field-type table example per type", () => {
