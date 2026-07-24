@@ -36,6 +36,22 @@ describe("c.* constant constructors", () => {
     expect(v.tag).toBe("const:array");
     expect(JSON.parse(v.value)).toEqual([1, "two", true]);
   });
+
+  it("c.now emits the runtime-verified text('now') |to_epoch_ms chain (issue #120)", () => {
+    expect(c.now()).toEqual({
+      value: "now",
+      tag: "const",
+      filters: [{ name: "to_epoch_ms", disabled: false, arg: [] }],
+    });
+  });
+
+  it("c.now is a filtered value (must be hoisted before a where/cmp; issue #118)", () => {
+    const v = c.now();
+    expect(v.filters).toHaveLength(1);
+    // Not col-branded — its footgun is the filter chain, not row-write misuse.
+    expect("__col" in v).toBe(false);
+    expectTypeOf(c.now()).toMatchTypeOf<Value>();
+  });
 });
 
 describe("c.obj/c.array reject nested tagged Values (issue #42)", () => {
