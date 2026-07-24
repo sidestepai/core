@@ -37,7 +37,7 @@ describe("llms.txt filter notes", () => {
   it("covers every load-bearing filter with a note or a self-evident acknowledgement", () => {
     const uncovered = loadBearing
       .map((f) => f.name)
-      .filter((name) => FILTER_NOTES[name] === undefined && !SELF_EVIDENT_FILTERS.has(name));
+      .filter((name) => !Object.hasOwn(FILTER_NOTES, name) && !SELF_EVIDENT_FILTERS.has(name));
     // If this fails, a filter whose name underspecifies its behavior would ship as a
     // bare signature. Add a FILTER_NOTES entry, or (only if the name is genuinely
     // clear) add it to SELF_EVIDENT_FILTERS.

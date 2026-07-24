@@ -1001,8 +1001,9 @@ export function renderLlmsTxt(m: Manifest): string {
     const ret = fl.result ? `: ${fl.result}` : "";
     // Signature-first: render only a curated note (complete, non-truncated) where the
     // signature underspecifies; the raw source description is dropped from the primary
-    // but retained in manifest.json.
-    const note = FILTER_NOTES[fl.name];
+    // but retained in manifest.json. `hasOwn` guards against a filter name colliding with
+    // an inherited Object member (e.g. "constructor").
+    const note = Object.hasOwn(FILTER_NOTES, fl.name) ? FILTER_NOTES[fl.name] : undefined;
     lines.push(`- \`${fl.fl}(${sig})${ret}\`${note ? ` — ${note}` : ""}`);
   }
   const byName = m.filters.filter((fl) => !fl.typed).map((fl) => fl.name);
