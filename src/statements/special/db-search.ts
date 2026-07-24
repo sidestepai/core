@@ -11,11 +11,9 @@
  * filter-rejecting operand encoder (#118) to the shared walk.
  */
 import type { Value } from "../../values/value.js";
-import type { ExprOperand } from "../../types/xdo.js";
 import type { Prettify } from "../../fields/value-types.js";
 import {
   type SearchNode,
-  type OperandEncoder,
   isValue,
   isGroup,
   isCmpNode,
@@ -55,30 +53,7 @@ export interface SortDirective<C extends string = string> {
 export type DbWhere = Value | SearchNode | SearchNode[];
 
 /**
- * Encode a tagged value to the `{operand, tag, filters}` search operand shape.
- *
- * A value carrying a **filter chain** (`withFilters(...)`) is rejected here, at
- * author/export time. The engine's search-operand evaluator resolves a filtered
- * operand through a different, `name`-keyed shape than the inline
- * `{operand,tag,filters}` one this encoder emits, so an inline filtered operand
- * compiles and `export`s clean but 500s at runtime with an
- * `Undefined array key "name"` (#118). Mirrors `obj()` (#42), which likewise
- * rejects inline filtered values: compute the filtered value in a prior stack
- * step (`setVar`) and reference the var in the operand instead.
- */
-const rejectFilteredOperand: OperandEncoder = (v: Value, side: "left" | "right"): ExprOperand => {
-  if (v.filters.length > 0) {
-    throw new Error(
-      `db search: the ${side} operand carries a filter chain (withFilters), which the engine ` +
-        `can't resolve inline in a where/cmp comparison — it 500s at runtime with ` +
-        `'Undefined array key "name"'. Compute the filtered value in a prior step ` +
-        `(e.g. \`s.set_var("v", withFilters(...))\`) and reference the var in the operand (\`ref("v")\`).`,
-    );
-  }
-  return { operand: v.value, tag: v.tag, filters: v.filters };
-};
-
-/**
+ * Encode `where` (+ an optional `additionalWhere`) into the single
  * Encode `where` (+ an optional `additionalWhere`) into the single
  * `context.search` the engine reads (`mvp_search` = `{ expression: [...] }`).
  * Comparison clauses from both args concatenate into one `expression[]`, ANDed
@@ -113,7 +88,7 @@ export function encodeSearch(where?: DbWhere, additionalWhere?: DbWhere): unknow
   }
   // Top-level siblings are ANDed (the engine has exactly one `search`, so
   // `where` + `additionalWhere` concatenate into one ANDed `expression[]`).
-  if (nodes.length) return { expression: encodeContainer(nodes, false, rejectFilteredOperand) };
+  if (nodes.length) return { expression: encodeContainer(nodes, false) };
   if (raw !== undefined) return raw;
   return undefined;
 }

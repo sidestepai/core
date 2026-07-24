@@ -409,9 +409,8 @@ surface — `s.conditional`/`s.while` `when` (incl. each `elif` branch), and
 - A condition/`where` accepts a single `expr(...)`/`cmp(...)`, an `and()`/`or()` group, an array of
   those (ANDed), or (for `where`) a raw `Value`. `s.conditional`/`s.while`/`s.switch`, `db.query`,
   `precondition`, and the `array.*` predicates all take the same shape.
-- A **filtered** operand (`withFilters(...)`) works inline in a `s.conditional`/`s.while` condition,
-  but NOT in a `db.query`/addon `where` (rejected at export — the engine 500s; hoist it into a
-  prior `s.set_var` and reference the var).
+- A **filtered** operand (`withFilters(...)`) works inline in any condition/`where` (conditional,
+  while, `db.query`/addon, …) — e.g. `cmp(withFilters(col("title"), fl.trim()), "=", inp("q"))`.
 - e.g. `db.query({ table: posts, where: expr(col("author"), "=", auth("id")), as: "rows" })`.
 
 ## Values

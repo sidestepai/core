@@ -273,27 +273,34 @@ describe("db.query (mvp:dbo_view) emit shape", () => {
     expect(() => cmp(col("title"), "like?", inp("q"))).toThrow(/unsupported operator/);
   });
 
-  it("rejects a filtered value in the right operand at export time (#118)", () => {
-    // Inline `withFilters(...)` in the operand 500s at runtime with
-    // `Undefined array key "name"`; catch it at export like obj() (#42).
+  // #118 re-verified fixed: an inline filtered search operand imports, round-trips,
+  // AND runs on a live engine (left/right/no-arg/with-arg all pass — see
+  // examples/sandbox/_capture-search.ts). The blanket rejection is gone; the
+  // separate filter-NAME resolvability check still catches genuinely-bad filters
+  // at export. Filtered operands now pass through inline, like conditionals.
+  it("a filtered value in the right operand passes through inline (#118 fixed)", () => {
     const filtered = withFilters(inp("status"), fl.first_notempty(c.text("%")));
-    expect(() => encodeStatement(dbQuery({ table: note, where: cmp(col("status"), "ilike", filtered) }))).toThrow(
-      /right operand carries a filter chain.*set_var/s,
-    );
+    const enc = encodeStatement(dbQuery({ table: note, where: cmp(col("status"), "ilike", filtered) }));
+    const right = ((enc.context as any).search.expression[0]).statement.right;
+    expect(right.operand).toBe("status");
+    expect(right.tag).toBe("input");
+    expect(right.filters).toHaveLength(1);
+    expect(right.filters[0].name).toBe("first_notempty");
   });
 
-  it("rejects a filtered value in the left operand at export time (#118)", () => {
+  it("a filtered value in the left operand passes through inline (#118 fixed)", () => {
     const filtered = withFilters(col("title"), fl.trim());
-    expect(() => encodeStatement(dbQuery({ table: note, where: cmp(filtered, "=", c.text("x")) }))).toThrow(
-      /left operand carries a filter chain/,
-    );
+    const enc = encodeStatement(dbQuery({ table: note, where: cmp(filtered, "=", c.text("x")) }));
+    const left = ((enc.context as any).search.expression[0]).statement.left;
+    expect(left.operand).toBe("title");
+    expect(left.filters[0].name).toBe("trim");
   });
 
-  it("also rejects a filtered operand in a narrow expr() clause (#118)", () => {
+  it("a filtered operand in a narrow expr() clause passes through inline (#118 fixed)", () => {
     const filtered = withFilters(inp("status"), fl.first_notempty(c.text("%")));
-    expect(() => encodeStatement(dbQuery({ table: note, where: expr(col("status"), "=", filtered) }))).toThrow(
-      /filter chain/,
-    );
+    const enc = encodeStatement(dbQuery({ table: note, where: expr(col("status"), "=", filtered) }));
+    const right = ((enc.context as any).search.expression[0]).statement.right;
+    expect(right.filters[0].name).toBe("first_notempty");
   });
 
   it("the documented workaround — a filtered value in a set_var, ref() in the operand — encodes fine (#118)", () => {
