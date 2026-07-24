@@ -1,7 +1,7 @@
 /**
  * `conditional` statement (U7) — control flow that proves the registry/base
- * seam generalizes beyond `set_var`: nested `run[]` stacks plus a minimal
- * binary-comparison expression.
+ * seam generalizes beyond `set_var`: nested `run[]` stacks plus a boolean
+ * comparison expression.
  *
  * Stored shape (from the Xano engine's persisted conditional shape):
  *   context: {
@@ -13,96 +13,68 @@
  * Operands use the `operand` key (not `value`). The persisted form does NOT
  * carry `ignore_empty` (optional/`?=false` in the engine schema, dropped at its
  * default on save).
+ *
+ * The expression algebra (`expr`/`Comparison`/`encodeComparison` + the full
+ * `cmp`/`and`/`or` tree) now lives in {@link ./expression.js}; re-exported here
+ * so existing `./conditional.js` importers keep resolving.
  */
-import type { ConditionalContext, ExprOperand, ExprStatement } from "../types/xdo.js";
+import type { ConditionalContext, ConditionalElifContext } from "../types/xdo.js";
 import type { Statement } from "./statement.js";
 import { encodeStatement, registerStatement } from "./statement.js";
-import type { Value } from "../values/value.js";
+import { encodeComparison, type Condition } from "./expression.js";
+
+export {
+  expr,
+  cmp,
+  and,
+  or,
+  encodeComparison,
+  encodeSearchExpression,
+  type Comparison,
+  type ComparisonOp,
+  type Condition,
+} from "./expression.js";
 
 export const CONDITIONAL = "mvp:conditional";
+export const CONDITIONAL_ELIF = "mvp:conditional_elif";
 
-const SUPPORTED_OPS = ["=", "!=", ">", "<", ">=", "<="] as const;
-type EngineOp = (typeof SUPPORTED_OPS)[number];
-/** JS-style operators accepted for ergonomics; normalized to the engine form. */
-const OP_ALIASES = { "==": "=", "===": "=", "!==": "!=" } as const;
-export type ComparisonOp = EngineOp | keyof typeof OP_ALIASES;
-
-/** A minimal single binary comparison: `left op right`. */
-export interface Comparison {
-  left: Value;
-  op: EngineOp;
-  right: Value;
+/** One `else if (when) { then }` branch of a {@link conditional}'s elif stack. */
+export interface ConditionalElifArgs {
+  when: Condition;
+  then: Statement[];
 }
 
-/** Build a single binary comparison for a conditional's `when`. */
-export function expr(left: Value, op: ComparisonOp, right: Value): Comparison {
-  const normalized = (OP_ALIASES as Record<string, EngineOp>)[op] ?? (op as EngineOp);
-  if (!SUPPORTED_OPS.includes(normalized)) {
-    throw new Error(
-      `Unsupported conditional operator "${op}". Supported: ${SUPPORTED_OPS.join(", ")} (also == === !==)`,
-    );
-  }
-  return { left, op: normalized, right };
-}
-
-function toOperand(value: Value): ExprOperand {
-  return { operand: value.value, tag: value.tag, filters: value.filters };
-}
-
-/** Encode one comparison into an `expression[]` `statement` entry. */
-function toExprStatement(when: Comparison): ExprStatement {
-  return {
-    type: "statement",
-    or: false,
-    group: { expression: [] },
-    statement: {
-      op: when.op,
-      left: toOperand(when.left),
-      // The persisted form omits `ignore_empty` on the right operand: the engine
-      // schema marks it `?=false` (optional, default false) and drops it at the
-      // default on save (verified: 0 occurrences across the live xdo corpus). An
-      // older generation of persisted fixtures still carries it — a cross-generation
-      // artifact the conformance normalizer drops on both sides.
-      right: toOperand(when.right),
-    },
+/**
+ * A single elif branch (`mvp:conditional_elif`). Carries its own condition +
+ * body but no `else`/nested-`elif` — it's a leaf in the parent conditional's
+ * `elif.run` stack, the direct analogue of a `switch_case` under `mvp:switch`.
+ */
+export function conditionalElif(args: ConditionalElifArgs): Statement {
+  const context: ConditionalElifContext = {
+    expr: encodeComparison(args.when),
+    if: { run: args.then.map(encodeStatement) },
   };
-}
-
-/**
- * Encode a single binary comparison into the engine's `{expression:[…]}` shape.
- * Shared with the schema-DSL `!compare` directive (U9) so the conditional and
- * every `!compare`-bearing statement (array.find/every, …) emit one identical
- * expression form.
- */
-export function encodeComparison(when: Comparison): { expression: ExprStatement[] } {
-  return { expression: [toExprStatement(when)] };
-}
-
-/**
- * Encode one or more comparisons into the engine's `{expression:[…]}` search
- * shape, ANDed together (`or:false`). This is the same operand-based expression
- * algebra as {@link encodeComparison} (the conditional `when`) — reused by the
- * query/trigger search surfaces so a filter can be authored with `expr(...)`
- * instead of a hand-built tagged value.
- */
-export function encodeSearchExpression(clauses: Comparison[]): { expression: ExprStatement[] } {
-  return { expression: clauses.map(toExprStatement) };
+  return { name: CONDITIONAL_ELIF, context, input: [] };
 }
 
 export interface ConditionalArgs {
-  when: Comparison;
+  when: Condition;
   then: Statement[];
+  /** Ordered `else if` branches, each `{ when, then }`. */
+  elif?: ConditionalElifArgs[];
   else?: Statement[];
 }
 
-/** A branching statement: `if (when) { then } else { else }`. */
+/** A branching statement: `if (when) { then } [else if …] else { else }`. */
 export function conditional(args: ConditionalArgs): Statement {
   const context: ConditionalContext = {
     expr: encodeComparison(args.when),
     if: { run: args.then.map(encodeStatement) },
+    elif: { run: (args.elif ?? []).map((e) => encodeStatement(conditionalElif(e))) },
     else: { run: (args.else ?? []).map(encodeStatement) },
   };
   return { name: CONDITIONAL, context, input: [] };
 }
 
 registerStatement(CONDITIONAL, conditional);
+registerStatement(CONDITIONAL_ELIF, conditionalElif);

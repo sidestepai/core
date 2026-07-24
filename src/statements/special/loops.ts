@@ -20,7 +20,7 @@ import type { Statement } from "../statement.js";
 import { encodeStatement, registerStatement } from "../statement.js";
 import type { Value } from "../../values/value.js";
 import { encodeComparison } from "../conditional.js";
-import type { Comparison } from "../conditional.js";
+import type { Condition } from "../conditional.js";
 
 function valueFields(v: Value): { value: string; tag: string; filters: unknown[] } {
   return { value: v.value, tag: v.tag, filters: v.filters };
@@ -65,7 +65,7 @@ export function foreachLoop(args: ForeachArgs): Statement {
 }
 
 export interface WhileArgs {
-  when: Comparison;
+  when: Condition;
   body: Statement[];
 }
 

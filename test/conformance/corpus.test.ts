@@ -8,7 +8,7 @@ import { mathAdd, bitwiseAnd, bitwiseOr, bitwiseXor, objectKeys, objectValues, o
 import { returnValue, die, debugLog, foreachBreak, foreachContinue, foreachRemove } from "../../src/statements/special/control-flow.js";
 import { forLoop, foreachLoop, whileLoop, group } from "../../src/statements/special/loops.js";
 import { setVar } from "../../src/statements/set-var.js";
-import { expr } from "../../src/statements/conditional.js";
+import { expr, cmp, and, or, conditional } from "../../src/statements/conditional.js";
 import { arrayMap, arrayUnion, getRawInput, expectToThrow } from "../../src/statements/special/misc.js";
 import { aiAgentRun, cloudJob, cloudJobAwait, cloudJobStatus } from "../../src/statements/special/ai-cloud.js";
 import {
@@ -82,19 +82,19 @@ const emptyObj = () => ({ value: "", tag: "const:obj", filters: [] });
  *     crypto_jws_encode2, generate_pass, check_pass, vault_sign_url, algolia_request.
  *
  *   DONE — live-captured via `sidestep validate --capture` (wired below): while,
- *     group, array_map, array_union, get_input, test_expect_to_throw, call_agent,
- *     cloud_job, cloud_job_await, cloud_job_status, db_bulk_add, db_bulk_patch,
- *     db_bulk_update, db_bulk_delete, db_external_query, api_call. (The openai
- *     agent_settings golden is asserted in test/kinds/agent.test.ts.)
+ *     group, conditional, array_map, array_union, get_input, test_expect_to_throw,
+ *     call_agent, cloud_job, cloud_job_await, cloud_job_status, db_bulk_add,
+ *     db_bulk_patch, db_bulk_update, db_bulk_delete, db_external_query, api_call.
+ *     (The openai agent_settings golden is asserted in test/kinds/agent.test.ts.)
  *
  *   REDUNDANT (golden is an already-tested stored name — skip): get_record and
  *     direct_query/direct_query-arg vendor as mvp:dbo_getby / mvp:dbo_direct_query,
  *     already covered by db_get / db_direct_query in db.test.ts.
  *
  *   STILL OPEN:
- *   - zip_{add,create,delete,extract,view}_file_resource, create_var_from_file_resource,
- *     conditional — the source goldens are degenerate (empty context while the spec
- *     needs non-optional fields); capture non-trivial authorings before wiring.
+ *   - zip_{add,create,delete,extract,view}_file_resource, create_var_from_file_resource
+ *     — the source goldens are degenerate (empty context while the spec needs
+ *     non-optional fields); capture non-trivial authorings before wiring.
  *   - array_every / object_values-array / return-null-text — share array_find's
  *     numeric inline-array-filter-arg value-layer gap (generated.test.ts asserts
  *     only the compare slice).
@@ -317,6 +317,41 @@ const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
       encodeStatement(whileLoop({ when: expr(ref("x1"), "<", c.int(10)), body: [setVar("x1", c.int(1))] })),
   },
   { fixture: "group", build: () => encodeStatement(group([setVar("x2", c.int(2))])) },
+  // conditional with an elif chain + else, proven byte-exact against a live
+  // capture (unified-expression-parity plan): the engine always persists
+  // `context.elif:{run:[…conditional_elif…]}`, each elif a `{expr, if:{run}}` leaf.
+  {
+    fixture: "conditional",
+    build: () =>
+      encodeStatement(
+        conditional({
+          when: expr(ref("n"), ">", c.int(10)),
+          then: [setVar("bucket", c.text("high"))],
+          elif: [
+            { when: expr(ref("n"), ">", c.int(3)), then: [setVar("bucket", c.text("mid"))] },
+            { when: expr(ref("n"), ">", c.int(0)), then: [setVar("bucket", c.text("low"))] },
+          ],
+          else: [setVar("bucket", c.text("none"))],
+        }),
+      ),
+  },
+  // conditional with a nested AND/OR group over the full operator set (cmp +
+  // and/or), proven byte-exact against a live capture: verifies the `{type:"group"}`
+  // node shape and per-node `or` flags on the conditional surface (Gap A).
+  {
+    fixture: "conditional_group",
+    build: () =>
+      encodeStatement(
+        conditional({
+          when: and(
+            cmp(ref("status"), "like", c.text("%active%")),
+            or(expr(ref("n"), ">", c.int(0)), expr(ref("n"), "<", c.int(-10))),
+          ),
+          then: [setVar("hit", c.text("yes"))],
+          else: [setVar("hit", c.text("no"))],
+        }),
+      ),
+  },
   // `!class` misc specials proven byte-exact against live captures (U5): the
   // array map/union field remaps (collection/transform_value; left/right),
   // get_input's default input pair, and expect.to_throw's nested run[].

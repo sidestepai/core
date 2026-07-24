@@ -4,13 +4,13 @@
  * autocomplete have their own small shapes. Validated against the Xano engine's
  * persisted table shape (the full rich field-type corpus).
  */
-import type { FieldXdo, ExprStatement } from "../types/xdo.js";
+import type { FieldXdo, ExprNode } from "../types/xdo.js";
 import { encodeField, COLUMN_CONTEXT } from "../fields/field.js";
 import type { FieldOptions } from "../fields/field.js";
 import type { FieldMap } from "../fields/catalog.js";
 import type { RowFromFieldMap, Prettify } from "../fields/value-types.js";
 import { encodeComparison } from "../statements/conditional.js";
-import type { Comparison } from "../statements/conditional.js";
+import type { Condition } from "../statements/conditional.js";
 import { registerKind } from "./kind.js";
 import type { ObjectKind } from "./kind.js";
 import { encodeTags } from "./common.js";
@@ -120,7 +120,7 @@ export interface ViewDef {
   /** Free-text search query → stored `q`. */
   q?: string;
   /** Filter expression (reuses the conditional comparison shape). */
-  where?: Comparison;
+  where?: Condition;
   /** Sort order, applied in array order. */
   sort?: Array<{ name: string; order: "asc" | "desc" }>;
 }
@@ -265,7 +265,7 @@ export interface ViewXdo {
   id: string;
   name: string;
   q: string;
-  expression: ExprStatement[];
+  expression: ExprNode[];
   sort: Array<{ name: string; order: string }>;
 }
 
