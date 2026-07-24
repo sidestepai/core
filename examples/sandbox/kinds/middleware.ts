@@ -11,7 +11,7 @@
  * from the parent tier (Query → API Group → Workspace). `middleware.clear()`
  * overrides a phase with nothing (stop inheriting).
  */
-import { middleware, query, s, c, ref, inp, input, auth, withFilters, fl } from "@sidestep/core";
+import { middleware, query, s, c, ref, inp, input, auth, sys, withFilters, fl } from "@sidestep/core";
 import { api, users } from "../_shared.js";
 
 /**
@@ -38,6 +38,30 @@ export const rateLimit = middleware({
       max: c.int(10),
       ttl: c.int(30),
       error: c.text("Too fast — slow down."),
+    }),
+  ],
+});
+
+/**
+ * The **public-endpoint** rate limiter. On a host with no auth table `auth("id")`
+ * is null, so an `auth("id")`-keyed limit collapses every anonymous caller into
+ * one shared bucket. Key off the client IP instead — `sys.remoteIp()` (Xano's
+ * `$env.$remote_ip`). Same composite-key pattern; just a different key source.
+ *
+ * To key off a request *field* instead (e.g. an email being submitted), a `pre`
+ * middleware can read the host body: `s.util.get_all_input({ as: "payload" })`
+ * exposes it — but wrapped as `{ type, vars }`, so the field is at
+ * `ref("payload.vars.<field>")`, not `ref("payload.<field>")`.
+ */
+export const publicRateLimit = middleware({
+  name: "ex_kind_public_rate_limit",
+  exceptionPolicy: "rethrow",
+  stack: [
+    s.redis.ratelimit({
+      key: withFilters(c.text("ex:rl:public:"), fl.concat(sys.remoteIp())),
+      max: c.int(20),
+      ttl: c.int(60),
+      error: c.text("Too many requests — try again shortly."),
     }),
   ],
 });

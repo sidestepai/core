@@ -74,7 +74,7 @@ export type {
   VectorMethod,
   TableRefMethod,
 } from "./fields/generated/field-methods.generated.js";
-export { c, ref, inp, col, auth, env, setting, out, filter, withFilters } from "./values/value.js";
+export { c, ref, inp, col, auth, env, setting, sys, out, filter, withFilters } from "./values/value.js";
 export type { Value, RefValue, FilteredValue } from "./values/value.js";
 export { obj } from "./values/obj.js";
 export type { ObjInput, ObjMember } from "./values/obj.js";

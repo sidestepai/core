@@ -663,6 +663,33 @@ query({ name: "create_post", verb: "POST", apiGroup: blog, auth: users, // authe
 key ⇒ *one* counter — `max: 10` is a global per-user budget across them, not 10-per-host. Vary the
 key (fold the host/action name into the prefix) for an independent limit per host.
 
+**Public-endpoint variant.** On a host with no auth table `auth("id")` is `null`, so an
+`auth("id")`-keyed limit silently collapses every anonymous caller into one bucket. Key off the
+client IP instead — `sys.remoteIp()` (Xano's `$env.$remote_ip`):
+
+```ts
+const publicRl = middleware({
+  name: "public_rl",
+  exceptionPolicy: "rethrow",
+  stack: [
+    s.redis.ratelimit({
+      key: withFilters(c.text("rl:public:"), fl.concat(sys.remoteIp())), // per-IP, not per-user
+      max: c.int(20), ttl: c.int(60), error: c.text("Too many requests."),
+    }),
+  ],
+});
+
+query({ name: "signup", verb: "POST", apiGroup: blog, // public (no auth) ⇒ key by IP
+  middleware: { pre: [publicRl] }, stack: [/* ... */] });
+```
+
+**Reading the request body in a `pre` middleware.** A `pre` middleware *does* receive the host's
+request inputs. Read them with `s.util.get_all_input({ as: "payload" })` — but the result is
+**wrapped as `{ type, vars }`**, so a body field lives at `ref("payload.vars.<field>")`, not
+`ref("payload.<field>")` (the un-nested path is the usual cause of a `Unable to locate var` 500).
+To key a public limit off a submitted field: `get_all_input({ as: "payload" })`, then
+`withFilters(c.text("rl:apply:"), fl.concat(ref("payload.vars.candidate_email")))`.
+
 </details>
 
 <details>
@@ -862,7 +889,8 @@ enrich / lean envelope).
   `unknown`. Unlike `get`, `edit`/`del` **throw** `NotFound` (404) when nothing matches.
 
 **Values** — `c.int/text/bool/decimal/null/obj/array`, `ref(var)`, `inp(input)`,
-`col(name)`, plus context refs `auth(path?)`, `env(name)`, `setting(name)`, `out(name)`
+`col(name)`, plus context refs `auth(path?)`, `env(name)`, `setting(name)`, `sys.*()`
+(built-in request/system vars — see below), `out(name)`
 (a parent-row column, for addon inputs). `c.obj`/`c.array`
 take **plain JSON literals only** — a nested tagged value (`inp`/`ref`/`auth`/`c.*`) is a
 compile error; for a computed object — a response, or an `api.request` `params` — use a record
@@ -898,6 +926,27 @@ atomic path — either a dedicated increment statement or a table-reference toke
 substitutes into `direct_query` SQL — requires an **engine change** (tracked in
 [issue #35](https://github.com/sidestepai/core/issues/35)).
 
+**System / request variables (`sys.*`).** Xano exposes built-in request context — client IP,
+HTTP method, data source, and so on. In XanoScript these read as `$env.$remote_ip` — note the
+**second `$`**: they are *settings*, a different tag from the user-defined env vars `env()`
+reaches. That distinction is a silent footgun: `env("remote_ip")` does **not** read the caller's
+IP — it reads a user env var literally named `remote_ip` (almost always unset → null). `sys.*`
+spells the names and emits the correct form so you never type the `$`:
+
+| accessor | var | type | | accessor | var | type |
+|---|---|---|---|---|---|---|
+| `sys.remoteIp()` | `$remote_ip` | text | | `sys.datasource()` | `$datasource` | text |
+| `sys.requestMethod()` | `$request_method` | text | | `sys.branch()` | `$branch` | text |
+| `sys.requestUri()` | `$request_uri` | text | | `sys.tenant()` | `$tenant` | text |
+| `sys.requestQueryString()` | `$request_querystring` | text | | `sys.release()` | `$release` | int |
+| `sys.httpHeaders()` | `$http_headers` | object | | `sys.platform()` | `$platform` | int |
+| `sys.requestAuthToken()` | `$request_auth_token` | text | | `sys.isDebugger()` | `$debugger` | bool |
+| `sys.apiBaseUrl()` | `$api_baseurl` | text | | | | |
+
+`setting("$<name>")` remains the escape hatch for anything `sys` doesn't cover. The one that
+matters most in practice is `sys.remoteIp()` — the rate-limit key for **public** endpoints,
+where `auth("id")` is null (see the rate-limit recipe above).
+
 **Inputs** — `input.*` mirrors `f.*` exactly: every engine-legal field type is a valid
 function/query input. Use `input.object(children)` and `input.list(element)` for structured
 shapes. `input.url()` names a URL-typed text field. **Comparisons** use `= != > < >= <=`
@@ -924,6 +973,49 @@ s.precondition({
   error: c.text("url must be an http(s) URL"),
 })
 ```
+
+**Email/password auth (signup + login).** The trap: `input.password()` **hashes on bind**, so a
+password typed that way is already a hash before your stack runs — `check_password` then compares
+hash-vs-hash and login *always* fails. The fix is to take the password as **plain text** and let
+the `f.password` *column* do the hashing on write; `check_password` compares the plaintext
+submission against the stored hash.
+
+```ts
+const usersTbl = table({ name: "users", schema: {
+  email: f.email({ required: true }), name: f.text(), password: f.password(),
+} });
+
+// Signup — plaintext in; the f.password COLUMN hashes on write.
+query({ name: "signup", verb: "POST", apiGroup: authApi,
+  input: { email: input.email({ required: true }), name: input.text(),
+           password: input.text({ required: true, methods: ["min:6"] }) }, // NOT input.password()
+  stack: [
+    s.db.add({ table: usersTbl,
+      row: { email: inp("email"), name: inp("name"), password: inp("password") }, as: "user" }),
+    s.security.create_auth_token({ table: usersTbl, id: ref("user.id"), as: "token" }),
+  ],
+  response: ref("token") });
+
+// Login — plaintext compared against the stored hash.
+query({ name: "login", verb: "POST", apiGroup: authApi,
+  input: { email: input.email({ required: true }),
+           password: input.text({ required: true }) },                     // NOT input.password()
+  stack: [
+    s.db.get({ table: usersTbl, fieldName: "email", fieldValue: inp("email"),
+               output: ["id", "email", "password"], as: "user" }),
+    s.precondition({ expr: expr(ref("user"), "!=", c.null()),
+      error_type: "accessdenied", error: c.text("Invalid email or password.") }),
+    s.security.check_password({ text_password: inp("password"),            // plaintext
+      hash_password: ref("user.password"), as: "ok" }),
+    s.precondition({ expr: expr(ref("ok"), "=", c.bool(true)),
+      error_type: "accessdenied", error: c.text("Invalid email or password.") }),
+    s.security.create_auth_token({ table: usersTbl, id: ref("user.id"), as: "token" }),
+  ],
+  response: ref("token") });
+```
+
+Reach for `input.password()` only when you specifically want its bind-time hash **and** are not
+also feeding it to `check_password` (issue #109).
 
 </details>
 

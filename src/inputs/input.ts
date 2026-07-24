@@ -60,6 +60,23 @@ export const input = {
   decimal: makeInput<number, DecimalMethod>("decimal"),
   bool: makeInput<boolean>("bool"),
   email: makeInput<string, EmailMethod>("email"),
+  /**
+   * Password input — hashes its value **when the input binds**, before your stack
+   * runs. This breaks the natural signup/login shape and is the single most common
+   * way to ship silently-broken auth:
+   * - **Login:** `s.security.check_password` receives the *already-hashed* submission
+   *   (a fresh random salt each request), compares it against the stored hash, and
+   *   never matches — so login always fails with a false "invalid password".
+   * - **Signup:** the value is hashed here at bind, so the `f.password` column then sees
+   *   an already-hashed `salt.hash` value and stores it as-is (the column's hash-on-write
+   *   skips a value already in that shape) — the plaintext never lands in the column.
+   *
+   * Recipe: use {@link input.text} (e.g. `input.text({ methods: ["min:6"] })`) for the
+   * password on **both** signup and login, let the `f.password` *column* hash on write,
+   * and pass the plaintext straight to `check_password`. See the auth recipe in the
+   * README. Reach for `input.password` only when you specifically want bind-time hashing
+   * and are not also comparing it with `check_password` (issue #109).
+   */
   password: makeInput<string, PasswordMethod>("password"),
   /**
    * URL input — a `text` field that names the intent "this holds a URL". There

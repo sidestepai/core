@@ -20,7 +20,7 @@ import { onUserInsert, onMessage, onBranchLive } from "./kinds/trigger.js";
 import { searchTool } from "./kinds/tool.js";
 import { exampleMcpServer, assistant, askAssistant } from "./kinds/ai.js";
 import { nightlyCleanup } from "./kinds/task.js";
-import { rateLimit } from "./kinds/middleware.js";
+import { rateLimit, publicRateLimit } from "./kinds/middleware.js";
 import { authorAddon } from "./kinds/addon.js";
 import { wsConfig } from "./kinds/workspaceConfig.js";
 
@@ -38,5 +38,5 @@ export default workspace("sidestep-examples")
   .registerMcpServers(defs([exampleMcpServer]))
   .registerAgents(defs([assistant]))
   .registerTasks(defs([nightlyCleanup]))
-  .registerMiddleware(defs([rateLimit]))
+  .registerMiddleware(defs([rateLimit, publicRateLimit]))
   .registerAddons(defs([authorAddon]));
