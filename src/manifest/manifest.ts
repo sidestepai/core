@@ -443,8 +443,76 @@ export function buildManifest(opts: { version?: string } = {}): Manifest {
   };
 }
 
-const fieldLine = (f: ManifestField): string =>
-  `${f.name}${f.optional ? "?" : ""}: ${f.type}${f.default !== undefined ? ` = ${JSON.stringify(f.default)}` : ""}`;
+/**
+ * Statement fields whose default is security- or behavior-relevant and must stay
+ * visible in the lean `llms.txt` — an agent that can't see the default would make a
+ * wrong call. Keyed `"<sPath>:<field>"`. Every other field default is dropped from
+ * `llms.txt` (it survives in `manifest.json`). Audit new statements for additions.
+ *
+ * `storage.create_*` default `access` to `"public"` (world-readable uploads) — the
+ * worked example that motivated this carve-out: an agent shipping user uploads must
+ * see the default is public, and it is not derivable from `access?: string`.
+ */
+const DEFAULT_KEEP = new Set<string>([
+  "storage.create_image:access",
+  "storage.create_attachment:access",
+  "storage.create_audio:access",
+  "storage.create_video:access",
+]);
+
+const fieldLine = (f: ManifestField, sPath: string): string => {
+  const keepDefault = f.default !== undefined && DEFAULT_KEEP.has(`${sPath}:${f.name}`);
+  return `${f.name}${f.optional ? "?" : ""}: ${f.type}${keepDefault ? ` = ${JSON.stringify(f.default)}` : ""}`;
+};
+
+/**
+ * Curated, COMPLETE one-line notes for the typed filters whose signature alone
+ * underspecifies behavior. The lean `llms.txt` filter catalog renders these in
+ * place of the raw source descriptions — which are dropped from the primary (they
+ * are 40% name-restating and 70% truncated mid-sentence) but retained in full in
+ * `manifest.json`. Keyed by bare filter name. Mirrors the OVERRIDDEN_SURFACES /
+ * DEFAULT_KEEP curated-override pattern; the completeness test (llms-filters) proves
+ * every load-bearing filter has a note here or an entry in SELF_EVIDENT_FILTERS.
+ */
+export const FILTER_NOTES: Record<string, string> = {
+  // "Direction" family — which operand is the subject is genuinely confusing.
+  contains: "piped value is the subject text; the arg is the substring searched for",
+  ends_with: "piped value is the subject text; the arg is the substring searched for",
+  starts_with: "piped value is the subject text; the arg is the substring searched for",
+  icontains: "case-insensitive; piped value is the subject, the arg is the substring",
+  iends_with: "case-insensitive; piped value is the subject, the arg is the substring",
+  istarts_with: "case-insensitive; piped value is the subject, the arg is the substring",
+  // "empty" is a specific set of values, not just null.
+  filter_empty: 'keeps entries that are not empty ("", null, 0, "0", false, [], {})',
+  first_notempty: 'first value that is not empty ("", null, 0, "0", false, [], {})',
+  // The `code`/lambda arg is a JS expression body, not a column path.
+  map: "`code` is a JS expression body run per element",
+  every: "`code` is a JS boolean expression run per element (true for all?)",
+  some: "`code` is a JS boolean expression run per element (true for any?)",
+  findIndex: "`code` is a JS boolean expression; returns the first matching index",
+  lambda: "runs a JavaScript expression body",
+  // Non-obvious names.
+  epochms_transform: 'applies a relative shift (e.g. "+1 day") to the timestamp',
+  unpick: "returns the object without the named keys (inverse of a pick)",
+};
+
+/**
+ * Typed filters that ARE load-bearing (non-name-restating, complete source
+ * description) but whose name + signature is self-evident, so they intentionally
+ * carry no note. Recorded explicitly so the completeness test can prove every
+ * load-bearing filter is a conscious keep-or-drop decision, not a silent gap.
+ */
+export const SELF_EVIDENT_FILTERS: ReadonlySet<string> = new Set([
+  "array_fill",
+  "array_fill_keys",
+  "array_slice",
+  "epochms_add_ms",
+  "epochms_add_secs",
+  "epochms_from_format",
+  "range",
+  "regex_quote",
+  "filter_empty_text",
+]);
 
 /**
  * Render the manifest as `llms.txt` — a concise, link-free plaintext grounding
@@ -462,6 +530,12 @@ export function renderLlmsTxt(m: Manifest): string {
     `Coverage: object kinds ${m.coverage.objectKinds.implemented}/${m.coverage.objectKinds.total}, ` +
       `statement surfaces ${m.coverage.statements.implemented}/${m.coverage.statements.total}, ` +
       `filters ${m.coverage.filters.total} (${m.coverage.filters.typed} typed).`,
+    "",
+    "Full reference: this doc shows the authoring signature for every kind, statement, and",
+    "filter. For exhaustive per-entry detail NOT shown here — a statement's full field schema",
+    "with engine defaults, a filter's complete argument list, the engine `storedName` mapping —",
+    "do a TARGETED lookup in the shipped `manifest.json` (grep or `jq` the one entry you need;",
+    "it is ~2x this file, so never read it whole).",
     "",
   );
 
@@ -612,17 +686,12 @@ export function renderLlmsTxt(m: Manifest): string {
     "`window.XANO_HOST` is the sandbox tenant URL the APIs answer at — the same value `sandbox details`",
     "prints as `baseUrl`, NOT `profile me` (the account instance origin). Prefer runtime injection; use",
     "`sandbox details` out of band only when you'd rather bake the URL in at build time instead.",
-    "CACHING — the static host serves index.html with `Cache-Control: public, max-age=3600`, so after a",
-    "deploy a browser or CDN can return the OLD html (a pre-injection copy with no XANO_HOST) for up to an",
-    "hour. When an agent verifies the deploy, do NOT re-fetch the bare URL in a retry loop — it may keep",
-    "reading the cached copy and appear to hang. Fetch once with a cache-busting query param and grep for",
-    "the injected line: `curl -s \"$URL/?nocache=$EPOCH\" | grep XANO_HOST` (or hard-reload / disable cache",
-    "in the browser). Absence of XANO_HOST on a plain reload is almost always this cache, not a failed",
-    "injection — confirm against a cache-busted fetch before re-deploying.",
-    "NOTE — the emitted line uses BRACKET notation: `window[\"XANO_HOST\"]=\"…\";` (that is how each",
-    "`window.<KEY>` global is written). Grep for the bare token `XANO_HOST`, not the exact string",
-    "`window.XANO_HOST` (dot form) — the dot form is valid to READ the global in your app, but it is",
-    "not what the served index.html contains, so an exact-string grep for it wrongly reads as \"not injected\".",
+    "VERIFY with a CACHE-BUSTING fetch, not a retry loop: the host caches index.html, so",
+    "re-fetching the bare URL can keep returning the OLD (pre-injection) copy and appear to",
+    "hang. Fetch once cache-busted and grep the BARE token — the injected line is bracket form",
+    "`window[\"XANO_HOST\"]=…`, so grep `XANO_HOST`, NOT the dot form `window.XANO_HOST` (a dot-form",
+    "exact match wrongly reads as \"not injected\"): `curl -s \"$URL/?nocache=$EPOCH\" | grep XANO_HOST`.",
+    "(README covers the exact cache TTL and why the dot form still works in app code.)",
     "",
     "Auth is OAuth: run `sidestep login` once (browser consent; you pick the",
     "instance at consent; tokens cached in project-local `.xano/auth.json`,",
@@ -930,7 +999,12 @@ export function renderLlmsTxt(m: Manifest): string {
   for (const fl of typedFilters) {
     const sig = (fl.args ?? []).map((a) => `${a.name}${a.optional ? "?" : ""}: ${a.type}`).join(", ");
     const ret = fl.result ? `: ${fl.result}` : "";
-    lines.push(`- \`${fl.fl}(${sig})${ret}\`${fl.description ? ` — ${fl.description}` : ""}`);
+    // Signature-first: render only a curated note (complete, non-truncated) where the
+    // signature underspecifies; the raw source description is dropped from the primary
+    // but retained in manifest.json. `hasOwn` guards against a filter name colliding with
+    // an inherited Object member (e.g. "constructor").
+    const note = Object.hasOwn(FILTER_NOTES, fl.name) ? FILTER_NOTES[fl.name] : undefined;
+    lines.push(`- \`${fl.fl}(${sig})${ret}\`${note ? ` — ${note}` : ""}`);
   }
   const byName = m.filters.filter((fl) => !fl.typed).map((fl) => fl.name);
   lines.push("", `Other filters (reachable as \`fl.<name>\`, variadic): ${byName.join(", ")}.`, "");
@@ -1025,11 +1099,21 @@ export function renderLlmsTxt(m: Manifest): string {
     lines.push(`### ${ns}`, "");
     for (const s of groups.get(ns)!) {
       const call = `s.${s.sPath}`;
-      const args = s.fields ? `{ ${s.fields.map(fieldLine).join("; ")} }` : "…";
       const flags = [s.declarative ? null : "special", s.registered ? null : "unregistered", s.output ? "output" : null]
         .filter(Boolean)
         .join(", ");
-      lines.push(`- \`${call}(${args})\` → \`${s.storedName}\`${flags ? ` [${flags}]` : ""}`);
+      const flagSuffix = flags ? ` [${flags}]` : "";
+      // Signature-first: the engine `storedName` is dropped (agents author `s.path`,
+      // never `mvp:*`; it survives in manifest.json). Declarative statements keep the
+      // field signature inline (defaults dropped except DEFAULT_KEEP); specials carry
+      // no field schema in the listing — their real signature lives in the Specials
+      // block / def-shapes / `.d.ts` — so they render as a terse discovery pointer.
+      if (s.fields) {
+        const args = s.fields.map((f) => fieldLine(f, s.sPath)).join("; ");
+        lines.push(`- \`${call}({ ${args} })\`${flagSuffix}`);
+      } else {
+        lines.push(`- \`${call}\`${flagSuffix}`);
+      }
     }
     lines.push("");
   }

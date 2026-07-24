@@ -72,9 +72,11 @@ gives you that backend **as code you own**:
   Dockerfile.
 
 - **🤖 AI-first by design.** A deterministic, fully-typed authoring surface — an agent (or
-  you) emits well-typed TS that always compiles to a valid, importable workspace. Ships
-  with machine-readable grounding (`manifest.json`, `llms.txt`) so agents learn the whole
-  SDK without reading source.
+  you) emits well-typed TS that always compiles to a valid, importable workspace. Ships with
+  machine-readable grounding: **`llms.txt`** is the lean, canonical tour an agent reads to
+  author the SDK, with the exhaustive per-entry catalog — full field schemas, filter argument
+  lists, engine mappings — a targeted lookup away in **`manifest.json`**. Agents learn the
+  whole SDK without reading source.
 
 ---
 

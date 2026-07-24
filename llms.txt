@@ -1,4 +1,4 @@
-# sidestep v3.9.20
+# sidestep v3.9.21
 
 > TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.
 
@@ -7,6 +7,12 @@ Author a Xano workspace in TypeScript: build typed objects, register them on a
 with `sidestep export ./xano/index.js`.
 
 Coverage: object kinds 12/24, statement surfaces 214/214, filters 225 (129 typed).
+
+Full reference: this doc shows the authoring signature for every kind, statement, and
+filter. For exhaustive per-entry detail NOT shown here — a statement's full field schema
+with engine defaults, a filter's complete argument list, the engine `storedName` mapping —
+do a TARGETED lookup in the shipped `manifest.json` (grep or `jq` the one entry you need;
+it is ~2x this file, so never read it whole).
 
 ## Quickstart
 
@@ -154,17 +160,12 @@ not a failure) when the archive has no root index.html with a `<head>` to anchor
 `window.XANO_HOST` is the sandbox tenant URL the APIs answer at — the same value `sandbox details`
 prints as `baseUrl`, NOT `profile me` (the account instance origin). Prefer runtime injection; use
 `sandbox details` out of band only when you'd rather bake the URL in at build time instead.
-CACHING — the static host serves index.html with `Cache-Control: public, max-age=3600`, so after a
-deploy a browser or CDN can return the OLD html (a pre-injection copy with no XANO_HOST) for up to an
-hour. When an agent verifies the deploy, do NOT re-fetch the bare URL in a retry loop — it may keep
-reading the cached copy and appear to hang. Fetch once with a cache-busting query param and grep for
-the injected line: `curl -s "$URL/?nocache=$EPOCH" | grep XANO_HOST` (or hard-reload / disable cache
-in the browser). Absence of XANO_HOST on a plain reload is almost always this cache, not a failed
-injection — confirm against a cache-busted fetch before re-deploying.
-NOTE — the emitted line uses BRACKET notation: `window["XANO_HOST"]="…";` (that is how each
-`window.<KEY>` global is written). Grep for the bare token `XANO_HOST`, not the exact string
-`window.XANO_HOST` (dot form) — the dot form is valid to READ the global in your app, but it is
-not what the served index.html contains, so an exact-string grep for it wrongly reads as "not injected".
+VERIFY with a CACHE-BUSTING fetch, not a retry loop: the host caches index.html, so
+re-fetching the bare URL can keep returning the OLD (pre-injection) copy and appear to
+hang. Fetch once cache-busted and grep the BARE token — the injected line is bracket form
+`window["XANO_HOST"]=…`, so grep `XANO_HOST`, NOT the dot form `window.XANO_HOST` (a dot-form
+exact match wrongly reads as "not injected"): `curl -s "$URL/?nocache=$EPOCH" | grep XANO_HOST`.
+(README covers the exact cache TTL and why the dot form still works in app code.)
 
 Auth is OAuth: run `sidestep login` once (browser consent; you pick the
 instance at consent; tokens cached in project-local `.xano/auth.json`,
@@ -496,135 +497,135 @@ persists empty. So the safe counter drops out of the typed surface: hardcode
 the physical name after inspecting the deployed table. A typed atomic path needs an
 engine change (issue #35).
 
-- `fl.add(value: decimal): decimal` — Add 2 values together and return the answer
-- `fl.append(value: <T>, path: text): <T>[]` — Push an element on to the end of an array within an object and return the updated object
-- `fl.array_diff(value: <T>[]): <T>[]` — Return the entries from the first array that are not in the second
-- `fl.array_diff_assoc(value: <T>[]): <T>[]` — Return the entries from the first array that are not in the second
-- `fl.array_fill(start?: int, count: int): any[]` — Create an array of a certain size with a default value.
-- `fl.array_fill_keys(keys?: any[]): any[]` — Create an array of keys with a default value.
-- `fl.array_intersect(value: <T>[]): <T>[]` — Return the entries from the first array that are also present in
-- `fl.array_intersect_assoc(value: <T>[]): <T>[]` — Return the entries from the first array that are also present in
-- `fl.array_merge(value: <T>[]): <T>[]` — Merge the first level of elements of both arrays together and
-- `fl.array_merge_recursive(value: <T>[]): <T>[]` — Merge the elements from all levels of both arrays together and
-- `fl.array_push(value: <T>): <T>[]` — Push an element on to the end of an array and return the new array
-- `fl.array_remove(value: <T>, path: text, strict?: bool): <T>[]` — Remove any elements from the array that match the supplied value
-- `fl.array_slice(offset?: int, length?: int): <T>[]` — Extract a section from an array.
-- `fl.array_unshift(value: <T>): <T>[]` — Push an element to the beginning of an array and return the new array
-- `fl.base_convert(from_base: any, to_base: any): text` — Converts a value between two bases
-- `fl.bitwise_and(value: int): int` — Bitwise AND 2 values together and return the answer
-- `fl.bitwise_or(value: int): int` — Bitwise OR 2 values together and return the answer
-- `fl.bitwise_xor(value: int): int` — Bitwise XOR 2 values together and return the answer
-- `fl.concat(value: any): text` — Concatenates two values together
-- `fl.contains(search: text): bool` — Returns whether or not the expression is found Direction: the piped value is the subject text; the argument is the substring searched for.
-- `fl.convert_encoding(to: text, from: text): text` — Convert the character encoding of the supplied text
-- `fl.create_object(values?: <T>[]): any` — Creates an object based on a list of keys and a list of values
-- `fl.crypto_jwe_decode(check_claims?: json, key: json, key_algorithm?: enum, content_algorithm?: enum, timeDrift?: int): json` — Decodes the JWE token and return the result
-- `fl.crypto_jwe_encode(headers?: json, key: json, key_algorithm?: enum, content_algorithm?: enum, ttl?: int): text` — Encodes the value and return the result as a JWE token
-- `fl.crypto_jws_decode(check_claims?: json, key: json, algorithm?: enum, timeDrift?: int): json` — Decodes the JWS token and return the result
-- `fl.crypto_jws_encode(headers?: json, key: json, algorithm?: enum, ttl?: int): text` — Encodes the value and return the result as a JWS token
-- `fl.csv_create(rows: text[], separator?: text, enclosure?: text, escape?: text): text` — Creates a CSV format data stream from a list of column names and their corresponding data rows.
-- `fl.csv_decode(separator?: text, enclosure?: text, escape?: text): any` — Decodes the value represented in the CSV format and returns the result
-- `fl.csv_encode(separator?: text, enclosure?: text, escape?: text): text` — Encodes the value and returns the result in CSV format
-- `fl.csv_parse(separator?: text, enclosure?: text, escape?: text): any` — Parse the contents of a CSV file and convert it into an array of objects.
-- `fl.decrypt(algorithm?: enum, key: text, iv: text): text` — Decrypts the value and returns the result.
-- `fl.detect_encoding(encodings?: text): text` — Detect the character encoding of the supplied text
-- `fl.div(value: decimal): decimal` — Divides 2 values together and returns the answer
-- `fl.encrypt(algorithm?: enum, key: text, iv: text): text` — Encrypts the value and returns the result in raw binary form.
-- `fl.ends_with(search: text): bool` — Returns whether or not the expression is present at the end Direction: the piped value is the subject text; the argument is the substring searched for.
-- `fl.epochms_add_ms(milliseconds: int): epochms` — Add milliseconds to a timestamp. (negative values are ok)
-- `fl.epochms_add_secs(seconds: int): epochms` — Add seconds to a timestamp. (negative values are ok)
-- `fl.epochms_date(format: text, timezone?: text): text` — Converts a timestamp into a human readable formatted date based on
-- `fl.epochms_from_format(format: text, timezone?: text): text` — Parse a timestamp from a flexible format.
-- `fl.epochms_transform(format: text, timezone?: text): text` — Takes a timestamp and applies a relative transformation to it. Ex.
-- `fl.eq(value: <T>): bool` — Returns a boolean if both values are equal
-- `fl.every(code: text, timeout?: int): any[]` — Checks if all elements in the array pass the test implemented by the provided function.
-- `fl.filter(code: text, timeout?: int): any[]` — Filters the elements of an array based on the code block returning true to keep the element or false to skip it.
-- `fl.filter_empty(path: text): <T>[]` — Returns a new array with only entries that are not empty ("", null, 0, "0", false, [], {})
-- `fl.filter_empty_array(path: text): <T>[]` — Returns a new array with only entries that are not an empty array `[]`
-- `fl.filter_empty_object(path: text): <T>[]` — Returns a new array with only entries that are not an empty object `{}`
-- `fl.filter_empty_text(path: text): <T>[]` — Returns a new array with only entries that are not empty ("", null, 0, "0", false, [], {})
-- `fl.filter_false(path: text): <T>[]` — Returns a new array with only entries that are not false
-- `fl.filter_null(path: text): <T>[]` — Returns a new array with only entries that are not null
-- `fl.filter_zero(path: text): <T>[]` — Returns a new array with only entries that are not zero
-- `fl.find(code: text, timeout?: int): any[]` — Finds if all elements in the array pass the test implemented by the provided function.
-- `fl.findIndex(code: text, timeout?: int): any[]` — Finds the index of the first element in the array that passes the test implemented by the provided function.
-- `fl.first_notempty(value: any): any` — Returns the first value that is not empty - i.e. not ("", null, 0, "0", false, [], {})
-- `fl.first_notnull(value: any): any` — Returns the first value that is not null
-- `fl.fsort(path: text, type?: enum, asc?: bool): <T>[]` — Sort an array of elements with an optional path inside the element
-- `fl.get(path: text, default?: json): any` — Returns the value of an object at the specified path
-- `fl.gt(value: <T>): bool` — Returns a boolean if the left value is greater than the right value
-- `fl.gte(value: <T>): bool` — Returns a boolean if the left value is greater than or equal to the
-- `fl.has(path: text): bool` — Returns the existence of whether or not something is present in the object at the specified path
-- `fl.hmac_md5(key: text, raw?: bool): text` — Returns a MD5 signature representation of the value using a shared secret via the HMAC method
-- `fl.hmac_sha1(key: text, raw?: bool): text` — Returns a SHA1 signature representation of the value using a shared secret via the HMAC method
-- `fl.hmac_sha256(key: text, raw?: bool): text` — Returns a SHA256 signature representation of the value using a shared secret via the HMAC method
-- `fl.hmac_sha384(key: text, raw?: bool): text` — Returns a SHA384 signature representation of the value using a shared secret via the HMAC method
-- `fl.hmac_sha512(key: text, raw?: bool): text` — Returns a SHA512 signature representation of the value using a shared secret via the HMAC method
-- `fl.icontains(search: text): bool` — Returns whether or not the case-insensitive expression is found Direction: the piped value is the subject text; the argument is the substring searched for.
-- `fl.iends_with(search: text): bool` — Returns whether or not the case-insensitive expression is present at the end Direction: the piped value is the subject text; the argument is the substring searched for.
-- `fl.in(search: <T>): bool` — Returns whether or not the value is in the array
-- `fl.index_by(path: text): <T>[]` — Create a new array indexed off of the value of each item's path
-- `fl.istarts_with(search: text): bool` — Returns whether or not the case-insensitive expression is present at the beginning Direction: the piped value is the subject text; the argument is the substring searched for.
-- `fl.join(separator: text): text` — Joins an array into a text string via the separator and returns the result
-- `fl.lambda(code: text, timeout?: int): any` — Business logic using JavaScript.
-- `fl.log(base: <T>): decimal` — Returns the logarithm with a custom base
-- `fl.lt(value: <T>): bool` — Returns a boolean if the left value is less than the right value
-- `fl.lte(value: <T>): bool` — Returns a boolean if the left value is less than or equal to the right value
-- `fl.ltrim(mask?: text): text` — Trim whitespace or other characters from the left side and return the result
-- `fl.map(code: text, timeout?: int): any[]` — Creates a new array with the results of calling a provided function on every element in the calling array.
-- `fl.md5(raw?: bool): text` — Returns a MD5 signature representation of the value
-- `fl.mod(value: int): int` — Modulus 2 values together and return the answer
-- `fl.mul(value: decimal): decimal` — Multiplies 2 values together and returns the answer
-- `fl.ne(value: <T>): bool` — Returns a boolean if both values are not equal
-- `fl.num_max(value: any): decimal` — Returns the max both values
-- `fl.num_min(value: any): decimal` — Returns the min both values
-- `fl.number_format(decimals?: int, decimal_separator?: text, thousands_separator?: text): string` — Format a number with flexible support over decimal places, thousands separator, and decimal separator.
-- `fl.pick(keys: text): <T>` — Pick keys from the object to create a new object of just those keys.
-- `fl.pow(exp: <T>): decimal` — Returns the value raised to the power of exp.
-- `fl.prepend(value: <T>, path: text): <T>[]` — Push an element on to the beginning of an array within an object and return the updated object
-- `fl.range(start: int, stop: int): int[]` — Returns array of values between the specified start/stop.
-- `fl.reduce(initial_value?: int, code: text, timeout?: int): any[]` — Reduces the array to a single value using the code block to combine each element of the array.
-- `fl.regex_match(subject: text): text[]` — Return the first set of matches performed by a regular expression Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains.
-- `fl.regex_match_all(subject: text): text[]` — Return all matches performed by a regular expression on the Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains.
-- `fl.regex_quote(delimiter?: text): text` — Update the supplied text value to be properly escaped for regular expressions.
-- `fl.regex_replace(replacement: text, subject: text): text` — Perform a regular expression search and replace on the supplied subject text. Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains.
-- `fl.regex_test(subject: text): bool` — Tests if a regular expression matches the supplied subject text. Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains.
-- `fl.round(precision?: int): decimal` — Round a decimal with optional precision
-- `fl.rtrim(mask?: text): text` — Trim whitespace or other characters from the right return the result
-- `fl.secureid_decode(salt: text): int` — Returns the id of the original encode
-- `fl.secureid_encode(salt: text): text` — Returns an encrypted version of the id
-- `fl.set(path: text, value: any): any` — Sets a value at the path within the object and returns the updated object
-- `fl.set_conditional(path: text, value: any, conditional: any): any` — Sets a value at the path within the object and returns the updated object, if the conditional expression is true
-- `fl.set_ifnotempty(path: text, value: any): any` — Sets a value (if it is not empty: "", null, 0, "0", false, [], {}) at the path within the object and returns the updated object
-- `fl.set_ifnotnull(path: text, value: any): any` — Sets a value (if it is not null) at the path within the object and returns the updated object
-- `fl.sha1(raw?: bool): text` — Returns a SHA1 signature representation of the value
-- `fl.sha256(raw?: bool): text` — Returns a SHA256 signature representation of the value
-- `fl.sha384(raw?: bool): text` — Returns a SHA384 signature representation of the value
-- `fl.sha512(raw?: bool): text` — Returns a SHA512 signature representation of the value
-- `fl.some(code: text, timeout?: int): any[]` — Checks if at least one element in the array passes the test implemented by the provided function.
-- `fl.split(separator: text): text[]` — Splits text into an array of text and returns the result
-- `fl.starts_with(search: text): bool` — Returns whether or not the expression is present at the beginning Direction: the piped value is the subject text; the argument is the substring searched for.
-- `fl.string_replace(search: text, replacement: text): text` — Replace a text phrase with another
-- `fl.strip_tags(exclude?: text): text` — Removes HTML tags from a string
-- `fl.stripos(search: text): int` — Returns the index of the case-insensitive expression or false if it
-- `fl.strpos(search: text): int` — Returns the index of the case-sensitive expression or false if it
-- `fl.sub(value: decimal): decimal` — Subtracts 2 values together and returns the answer
-- `fl.substr(start: int, length: int): text` — Extracts a section of text
-- `fl.to_epoch_day(timezone?: text): int` — Converts a text expression (now, next friday, Jan 1 2000) to the
-- `fl.to_epoch_hour(timezone?: text): int` — Converts a text expression (now, next friday, Jan 1 2000) to the
-- `fl.to_epoch_minute(timezone?: text): int` — Converts a text expression (now, next friday, Jan 1 2000) to the
-- `fl.to_epoch_ms(timezone?: text): int` — Converts a text expression (now, next friday, Jan 1 2000) to the
-- `fl.to_epoch_sec(timezone?: text): int` — Converts a text expression (now, next friday, Jan 1 2000) to the
-- `fl.to_epochms(timezone?: text): epochms` — Converts a text expression (now, next friday, Jan 1 2000) to
-- `fl.transform(expression: text): any` — Processes an expression with local data bound to the $this variable
-- `fl.trim(mask?: text): text` — Trim whitespace or other characters from both sides and return the result
-- `fl.unique(path: text): <T>[]` — Returns unique values of an array
-- `fl.unpick(keys: text): <T>` — Remove keys from the object to create a new object of the remaining keys.
-- `fl.unset(path: text): any` — Removes a value at the path within the object and returns the updated object
-- `fl.url_addarg(key: text, value: text, encoding_rfc3986?: bool): text` — Parses a URL and returns an updated version with an encoded version of the supplied argument
-- `fl.url_delarg(key: text): text` — Parses a URL and returns an updated version with the supplied argument removed
-- `fl.url_getarg(key: text, default?: text): text` — Gets the argument's value from a URL
-- `fl.url_hasarg(key: text): text` — Returns the existence of a argument in the URL
+- `fl.add(value: decimal): decimal`
+- `fl.append(value: <T>, path: text): <T>[]`
+- `fl.array_diff(value: <T>[]): <T>[]`
+- `fl.array_diff_assoc(value: <T>[]): <T>[]`
+- `fl.array_fill(start?: int, count: int): any[]`
+- `fl.array_fill_keys(keys?: any[]): any[]`
+- `fl.array_intersect(value: <T>[]): <T>[]`
+- `fl.array_intersect_assoc(value: <T>[]): <T>[]`
+- `fl.array_merge(value: <T>[]): <T>[]`
+- `fl.array_merge_recursive(value: <T>[]): <T>[]`
+- `fl.array_push(value: <T>): <T>[]`
+- `fl.array_remove(value: <T>, path: text, strict?: bool): <T>[]`
+- `fl.array_slice(offset?: int, length?: int): <T>[]`
+- `fl.array_unshift(value: <T>): <T>[]`
+- `fl.base_convert(from_base: any, to_base: any): text`
+- `fl.bitwise_and(value: int): int`
+- `fl.bitwise_or(value: int): int`
+- `fl.bitwise_xor(value: int): int`
+- `fl.concat(value: any): text`
+- `fl.contains(search: text): bool` — piped value is the subject text; the arg is the substring searched for
+- `fl.convert_encoding(to: text, from: text): text`
+- `fl.create_object(values?: <T>[]): any`
+- `fl.crypto_jwe_decode(check_claims?: json, key: json, key_algorithm?: enum, content_algorithm?: enum, timeDrift?: int): json`
+- `fl.crypto_jwe_encode(headers?: json, key: json, key_algorithm?: enum, content_algorithm?: enum, ttl?: int): text`
+- `fl.crypto_jws_decode(check_claims?: json, key: json, algorithm?: enum, timeDrift?: int): json`
+- `fl.crypto_jws_encode(headers?: json, key: json, algorithm?: enum, ttl?: int): text`
+- `fl.csv_create(rows: text[], separator?: text, enclosure?: text, escape?: text): text`
+- `fl.csv_decode(separator?: text, enclosure?: text, escape?: text): any`
+- `fl.csv_encode(separator?: text, enclosure?: text, escape?: text): text`
+- `fl.csv_parse(separator?: text, enclosure?: text, escape?: text): any`
+- `fl.decrypt(algorithm?: enum, key: text, iv: text): text`
+- `fl.detect_encoding(encodings?: text): text`
+- `fl.div(value: decimal): decimal`
+- `fl.encrypt(algorithm?: enum, key: text, iv: text): text`
+- `fl.ends_with(search: text): bool` — piped value is the subject text; the arg is the substring searched for
+- `fl.epochms_add_ms(milliseconds: int): epochms`
+- `fl.epochms_add_secs(seconds: int): epochms`
+- `fl.epochms_date(format: text, timezone?: text): text`
+- `fl.epochms_from_format(format: text, timezone?: text): text`
+- `fl.epochms_transform(format: text, timezone?: text): text` — applies a relative shift (e.g. "+1 day") to the timestamp
+- `fl.eq(value: <T>): bool`
+- `fl.every(code: text, timeout?: int): any[]` — `code` is a JS boolean expression run per element (true for all?)
+- `fl.filter(code: text, timeout?: int): any[]`
+- `fl.filter_empty(path: text): <T>[]` — keeps entries that are not empty ("", null, 0, "0", false, [], {})
+- `fl.filter_empty_array(path: text): <T>[]`
+- `fl.filter_empty_object(path: text): <T>[]`
+- `fl.filter_empty_text(path: text): <T>[]`
+- `fl.filter_false(path: text): <T>[]`
+- `fl.filter_null(path: text): <T>[]`
+- `fl.filter_zero(path: text): <T>[]`
+- `fl.find(code: text, timeout?: int): any[]`
+- `fl.findIndex(code: text, timeout?: int): any[]` — `code` is a JS boolean expression; returns the first matching index
+- `fl.first_notempty(value: any): any` — first value that is not empty ("", null, 0, "0", false, [], {})
+- `fl.first_notnull(value: any): any`
+- `fl.fsort(path: text, type?: enum, asc?: bool): <T>[]`
+- `fl.get(path: text, default?: json): any`
+- `fl.gt(value: <T>): bool`
+- `fl.gte(value: <T>): bool`
+- `fl.has(path: text): bool`
+- `fl.hmac_md5(key: text, raw?: bool): text`
+- `fl.hmac_sha1(key: text, raw?: bool): text`
+- `fl.hmac_sha256(key: text, raw?: bool): text`
+- `fl.hmac_sha384(key: text, raw?: bool): text`
+- `fl.hmac_sha512(key: text, raw?: bool): text`
+- `fl.icontains(search: text): bool` — case-insensitive; piped value is the subject, the arg is the substring
+- `fl.iends_with(search: text): bool` — case-insensitive; piped value is the subject, the arg is the substring
+- `fl.in(search: <T>): bool`
+- `fl.index_by(path: text): <T>[]`
+- `fl.istarts_with(search: text): bool` — case-insensitive; piped value is the subject, the arg is the substring
+- `fl.join(separator: text): text`
+- `fl.lambda(code: text, timeout?: int): any` — runs a JavaScript expression body
+- `fl.log(base: <T>): decimal`
+- `fl.lt(value: <T>): bool`
+- `fl.lte(value: <T>): bool`
+- `fl.ltrim(mask?: text): text`
+- `fl.map(code: text, timeout?: int): any[]` — `code` is a JS expression body run per element
+- `fl.md5(raw?: bool): text`
+- `fl.mod(value: int): int`
+- `fl.mul(value: decimal): decimal`
+- `fl.ne(value: <T>): bool`
+- `fl.num_max(value: any): decimal`
+- `fl.num_min(value: any): decimal`
+- `fl.number_format(decimals?: int, decimal_separator?: text, thousands_separator?: text): string`
+- `fl.pick(keys: text): <T>`
+- `fl.pow(exp: <T>): decimal`
+- `fl.prepend(value: <T>, path: text): <T>[]`
+- `fl.range(start: int, stop: int): int[]`
+- `fl.reduce(initial_value?: int, code: text, timeout?: int): any[]`
+- `fl.regex_match(subject: text): text[]`
+- `fl.regex_match_all(subject: text): text[]`
+- `fl.regex_quote(delimiter?: text): text`
+- `fl.regex_replace(replacement: text, subject: text): text`
+- `fl.regex_test(subject: text): bool`
+- `fl.round(precision?: int): decimal`
+- `fl.rtrim(mask?: text): text`
+- `fl.secureid_decode(salt: text): int`
+- `fl.secureid_encode(salt: text): text`
+- `fl.set(path: text, value: any): any`
+- `fl.set_conditional(path: text, value: any, conditional: any): any`
+- `fl.set_ifnotempty(path: text, value: any): any`
+- `fl.set_ifnotnull(path: text, value: any): any`
+- `fl.sha1(raw?: bool): text`
+- `fl.sha256(raw?: bool): text`
+- `fl.sha384(raw?: bool): text`
+- `fl.sha512(raw?: bool): text`
+- `fl.some(code: text, timeout?: int): any[]` — `code` is a JS boolean expression run per element (true for any?)
+- `fl.split(separator: text): text[]`
+- `fl.starts_with(search: text): bool` — piped value is the subject text; the arg is the substring searched for
+- `fl.string_replace(search: text, replacement: text): text`
+- `fl.strip_tags(exclude?: text): text`
+- `fl.stripos(search: text): int`
+- `fl.strpos(search: text): int`
+- `fl.sub(value: decimal): decimal`
+- `fl.substr(start: int, length: int): text`
+- `fl.to_epoch_day(timezone?: text): int`
+- `fl.to_epoch_hour(timezone?: text): int`
+- `fl.to_epoch_minute(timezone?: text): int`
+- `fl.to_epoch_ms(timezone?: text): int`
+- `fl.to_epoch_sec(timezone?: text): int`
+- `fl.to_epochms(timezone?: text): epochms`
+- `fl.transform(expression: text): any`
+- `fl.trim(mask?: text): text`
+- `fl.unique(path: text): <T>[]`
+- `fl.unpick(keys: text): <T>` — returns the object without the named keys (inverse of a pick)
+- `fl.unset(path: text): any`
+- `fl.url_addarg(key: text, value: text, encoding_rfc3986?: bool): text`
+- `fl.url_delarg(key: text): text`
+- `fl.url_getarg(key: text, default?: text): text`
+- `fl.url_hasarg(key: text): text`
 
 Other filters (reachable as `fl.<name>`, variadic): abs, acos, acosh, addslashes, array_entries, array_keys, array_pop, array_shift, array_shuffle, array_values, asin, asinh, atan, atanh, avg, base64_decode, base64_decode_urlsafe, base64_encode, base64_encode_urlsafe, bin2hex, bindec, bitwise_not, capitalize, ceil, cos, count, create_object_from_entries, decbin, dechex, decoct, deg2rad, empty, escape, even, exp, first, flatten, floor, from_utf8, hex2bin, hexdec, is_array, is_bool, is_decimal, is_int, is_object, is_text, is_uuid, json_decode, json_encode, jwe_decode, jwe_encode, last, list_encodings, ln, log10, lower, max, min, not, octdec, odd, product, querystring_parse, rad2deg, reverse, safe_array, sin, sort, sprintf, sql_alias, sql_esc, sqrt, strip_accents, strlen, sum, tan, text_escape, text_unescape, to_bool, to_decimal, to_expr, to_int, to_text, to_utf8, uid, upper, url_decode, url_decode_rfc3986, url_encode, url_encode_rfc3986, url_parse, uuid4, xml_decode, yaml_decode, yaml_encode.
 
@@ -701,298 +702,298 @@ Auth & calls:
 
 ### (top-level)
 
-- `s.await({ as?: string = ""; ids?: value = "[]"; timeout?: value = "10" })` → `mvp:async_function_await`
-- `s.foreach_break(…)` → `mvp:foreach_break` [special]
-- `s.comment(…)` → `mvp:comment` [special]
-- `s.conditional(…)` → `mvp:conditional` [special]
-- `s.foreach_continue(…)` → `mvp:foreach_continue` [special]
-- `s.for(…)` → `mvp:for` [special]
-- `s.foreach_remove(…)` → `mvp:foreach_remove` [special]
-- `s.foreach(…)` → `mvp:foreach` [special]
-- `s.group(…)` → `mvp:group` [special]
-- `s.placeholder(…)` → `mvp:placeholder` [special]
-- `s.precondition({ expr?: comparison = "null"; error_type?: string = "standard"; error?: value = ""; payload?: value })` → `mvp:precondition`
-- `s.return(…)` → `mvp:return` [special]
-- `s.switch(…)` → `mvp:switch` [special]
-- `s.throw({ name?: string = ""; value: value })` → `mvp:throw_error`
-- `s.try_catch(…)` → `mvp:try_catch` [special]
-- `s.update_var(…)` → `mvp:update_var` [special]
-- `s.set_var(…)` → `mvp:set_var` [special]
-- `s.while(…)` → `mvp:while` [special]
+- `s.await({ as?: string; ids?: value; timeout?: value })`
+- `s.foreach_break` [special]
+- `s.comment` [special]
+- `s.conditional` [special]
+- `s.foreach_continue` [special]
+- `s.for` [special]
+- `s.foreach_remove` [special]
+- `s.foreach` [special]
+- `s.group` [special]
+- `s.placeholder` [special]
+- `s.precondition({ expr?: comparison; error_type?: string; error?: value; payload?: value })`
+- `s.return` [special]
+- `s.switch` [special]
+- `s.throw({ name?: string; value: value })`
+- `s.try_catch` [special]
+- `s.update_var` [special]
+- `s.set_var` [special]
+- `s.while` [special]
 
 ### action
 
-- `s.action.call(…)` → `mvp:action` [special]
-- `s.action.package.call(…)` → `mvp:action_package` [special]
+- `s.action.call` [special]
+- `s.action.package.call` [special]
 
 ### addon
 
-- `s.addon.call(…)` → `mvp:workspace_run_addon` [special]
+- `s.addon.call` [special]
 
 ### ai
 
-- `s.ai.agent.run(…)` → `mvp:call_agent` [special]
-- `s.ai.external.mcp.server_details({ as?: string; url?: value; bearer_token?: value = ""; connection_type?: value = "sse" })` → `mvp:mcp_server_details`
-- `s.ai.external.mcp.tool.list({ as?: string; url?: value; bearer_token?: value = ""; connection_type?: value = "sse" })` → `mvp:mcp_list_tools`
-- `s.ai.external.mcp.tool.run({ as?: string; url?: value; bearer_token?: value = ""; connection_type?: value = "sse"; tool?: value = ""; args?: value })` → `mvp:mcp_call_tool`
+- `s.ai.agent.run` [special]
+- `s.ai.external.mcp.server_details({ as?: string; url?: value; bearer_token?: value; connection_type?: value })`
+- `s.ai.external.mcp.tool.list({ as?: string; url?: value; bearer_token?: value; connection_type?: value })`
+- `s.ai.external.mcp.tool.run({ as?: string; url?: value; bearer_token?: value; connection_type?: value; tool?: value; args?: value })`
 
 ### api
 
-- `s.api.call(…)` → `mvp:workspace_run_endpoint` [special]
-- `s.api.lambda({ as?: string; code?: value; timeout?: value })` → `mvp:lambda`
-- `s.api.microservice(…)` → `mvp:microservice_request` [special]
-- `s.api.realtime_event(…)` → `mvp:realtime_event` [special]
-- `s.api.request(…)` → `mvp:api_request` [special, output]
-- `s.api.stream({ value: value })` → `mvp:streaming_api_response`
+- `s.api.call` [special]
+- `s.api.lambda({ as?: string; code?: value; timeout?: value })`
+- `s.api.microservice` [special]
+- `s.api.realtime_event` [special]
+- `s.api.request` [special, output]
+- `s.api.stream({ value: value })`
 
 ### array
 
-- `s.array.difference({ as?: string = ""; expr?: value = "null"; value?: value = "[]"; by?: value = "null" })` → `mvp:array_difference`
-- `s.array.every({ expr?: value = "null"; as?: string = ""; if?: comparison = "null" })` → `mvp:array_every` [output]
-- `s.array.filter_count({ expr?: value = "null"; as?: string = ""; if?: comparison = "null" })` → `mvp:array_filter_count`
-- `s.array.filter({ expr?: value = "null"; as?: string = ""; if?: comparison = "null" })` → `mvp:array_filter`
-- `s.array.find_index({ expr?: value = "null"; as?: string = ""; if?: comparison = "null" })` → `mvp:array_find_index`
-- `s.array.find({ expr?: value = "null"; as?: string = ""; if?: comparison = "null" })` → `mvp:array_find` [output]
-- `s.array.group_by({ as?: string = ""; expr?: value = "null"; by?: value = "null" })` → `mvp:array_group_by`
-- `s.array.has({ expr?: value = "null"; as?: string = ""; if?: comparison = "null" })` → `mvp:array_has`
-- `s.array.intersection({ as?: string = ""; expr?: value = "null"; value?: value = "[]"; by?: value })` → `mvp:array_intersection`
-- `s.array.map(…)` → `mvp:array_map` [special]
-- `s.array.merge({ name?: string = ""; value?: value })` → `mvp:array_merge` [output]
-- `s.array.partition({ expr?: value = "null"; as?: string = ""; if?: comparison = "null" })` → `mvp:array_partition`
-- `s.array.pop({ name?: string = ""; as?: string = "" })` → `mvp:array_pop` [output]
-- `s.array.push({ name?: string = ""; value: value })` → `mvp:array_push` [output]
-- `s.array.shift({ name?: string = ""; as?: string = "" })` → `mvp:array_shift`
-- `s.array.union(…)` → `mvp:array_union` [special]
-- `s.array.unshift({ name?: string = ""; value: value })` → `mvp:array_unshift`
+- `s.array.difference({ as?: string; expr?: value; value?: value; by?: value })`
+- `s.array.every({ expr?: value; as?: string; if?: comparison })` [output]
+- `s.array.filter_count({ expr?: value; as?: string; if?: comparison })`
+- `s.array.filter({ expr?: value; as?: string; if?: comparison })`
+- `s.array.find_index({ expr?: value; as?: string; if?: comparison })`
+- `s.array.find({ expr?: value; as?: string; if?: comparison })` [output]
+- `s.array.group_by({ as?: string; expr?: value; by?: value })`
+- `s.array.has({ expr?: value; as?: string; if?: comparison })`
+- `s.array.intersection({ as?: string; expr?: value; value?: value; by?: value })`
+- `s.array.map` [special]
+- `s.array.merge({ name?: string; value?: value })` [output]
+- `s.array.partition({ expr?: value; as?: string; if?: comparison })`
+- `s.array.pop({ name?: string; as?: string })` [output]
+- `s.array.push({ name?: string; value: value })` [output]
+- `s.array.shift({ name?: string; as?: string })`
+- `s.array.union` [special]
+- `s.array.unshift({ name?: string; value: value })`
 
 ### cloud
 
-- `s.cloud.algolia.request({ as?: string; application_id: value; api_key: value; url: value; method: value; payload: value })` → `mvp:algolia_request` [output]
-- `s.cloud.aws.opensearch.document({ as?: string; auth_type?: value = "IAM"; key_id?: value = ""; access_key?: value = ""; region?: value = ""; method?: value = "GET"; index?: value = ""; base_url: value; doc_id?: value = ""; doc?: value = "" })` → `mvp:amazon_opensearch_document`
-- `s.cloud.aws.opensearch.query({ as?: string; auth_type?: value = "IAM"; key_id?: value = ""; access_key?: value = ""; region?: value = ""; index?: value = ""; payload?: value = "{}"; size?: value = "null"; from?: value = ""; sort?: value = "[]"; included_fields?: value = "[]"; return_type?: value = "search" })` → `mvp:amazon_opensearch_query`
-- `s.cloud.aws.opensearch.request({ as?: string; auth_type?: value = "IAM"; key_id?: value = ""; access_key?: value = ""; region?: value = ""; method?: value = "GET"; url?: value = ""; query?: value = "{}" })` → `mvp:amazon_opensearch_request`
-- `s.cloud.aws.s3.delete_file({ as?: string; bucket: value; region: value; key: value; secret: value; file_key: value })` → `mvp:amazon_s3_delete_file`
-- `s.cloud.aws.s3.get_file_info({ as?: string; bucket: value; region: value; key: value; secret: value; file_key: value })` → `mvp:amazon_s3_get_file_metadata`
-- `s.cloud.aws.s3.list_directory({ as?: string; bucket: value; region: value; key: value; secret: value; prefix: value; next_page_token: value })` → `mvp:amazon_s3_list_directory`
-- `s.cloud.aws.s3.read_file({ as?: string; bucket: value; region: value; key: value; secret: value; file_key: value })` → `mvp:amazon_s3_create_var_from_file_resource`
-- `s.cloud.aws.s3.sign_url({ as?: string; bucket: value; region: value; key: value; secret: value; file_key: value; ttl?: value = "300" })` → `mvp:amazon_s3_signed_url`
-- `s.cloud.aws.s3.upload_file({ as?: string; bucket: value; region: value; key: value; secret: value; file_key?: value; file: value; metadata: value; object_lock_mode?: value; object_lock_retain_until?: value })` → `mvp:amazon_s3_upload_file`
-- `s.cloud.azure.storage.delete_file({ as?: string; account_name: value; account_key: value; container_name: value; filePath: value })` → `mvp:azure_blob_storage_delete_file`
-- `s.cloud.azure.storage.get_file_info({ as?: string; account_name: value; account_key: value; container_name: value; filePath: value })` → `mvp:azure_blob_storage_get_file_metadata`
-- `s.cloud.azure.storage.list_directory({ as?: string; account_name: value; account_key: value; container_name: value; path: value })` → `mvp:azure_blob_storage_list_directory`
-- `s.cloud.azure.storage.read_file({ as?: string; account_name: value; account_key: value; container_name: value; filePath: value })` → `mvp:azure_blob_storage_create_var_from_file_resource`
-- `s.cloud.azure.storage.sign_url({ as?: string; account_name: value; account_key: value; container_name: value; path: value; ttl: value })` → `mvp:azure_blob_storage_signed_url`
-- `s.cloud.azure.storage.upload_file({ as?: string; account_name: value; account_key: value; container_name: value; filePath: value; file: value; metadata: value })` → `mvp:azure_blob_storage_upload_file`
-- `s.cloud.elasticsearch.document({ as?: string; auth_type?: value = "API Key"; key_id: value; access_key: value; region: value; method?: value = "GET"; index: value; base_url: value; doc_id: value; doc: value })` → `mvp:elasticsearch_document`
-- `s.cloud.elasticsearch.query({ as?: string; auth_type?: value = "API Key"; key_id?: value = ""; access_key?: value = ""; region?: value = ""; index?: value = ""; payload?: value = "{}"; size?: value = "null"; from?: value = ""; sort?: value = "[]"; included_fields?: value = "[]"; return_type?: value = "search" })` → `mvp:elasticsearch_query`
-- `s.cloud.elasticsearch.request({ as?: string; auth_type?: value = "API Key"; key_id?: value = ""; access_key?: value = ""; region?: value = ""; method?: value = "POST"; url?: value = ""; query?: value = "{}" })` → `mvp:elasticsearch_request`
-- `s.cloud.google.storage.delete_file({ as?: string; service_account: value; bucket: value; filePath: value })` → `mvp:google_cloud_storage_delete_file`
-- `s.cloud.google.storage.get_file_info({ as?: string; service_account: value; bucket: value; filePath: value })` → `mvp:google_cloud_storage_get_file_metadata`
-- `s.cloud.google.storage.list_directory({ as?: string; service_account: value; bucket: value; path: value })` → `mvp:google_cloud_storage_list_directory`
-- `s.cloud.google.storage.read_file({ as?: string; service_account: value; bucket: value; filePath: value })` → `mvp:google_cloud_storage_create_var_from_file_resource`
-- `s.cloud.google.storage.sign_url({ as?: string; service_account: value; bucket: value; filePath: value; method: value; ttl: value })` → `mvp:google_cloud_storage_signed_url`
-- `s.cloud.google.storage.upload_file({ as?: string; service_account: value; bucket: value; filePath: value; file: value; metadata: value })` → `mvp:google_cloud_storage_upload_file`
-- `s.cloud.job.await(…)` → `mvp:cloud_job_await` [special]
-- `s.cloud.job.status(…)` → `mvp:cloud_job_status` [special]
-- `s.cloud.job(…)` → `mvp:cloud_job` [special]
+- `s.cloud.algolia.request({ as?: string; application_id: value; api_key: value; url: value; method: value; payload: value })` [output]
+- `s.cloud.aws.opensearch.document({ as?: string; auth_type?: value; key_id?: value; access_key?: value; region?: value; method?: value; index?: value; base_url: value; doc_id?: value; doc?: value })`
+- `s.cloud.aws.opensearch.query({ as?: string; auth_type?: value; key_id?: value; access_key?: value; region?: value; index?: value; payload?: value; size?: value; from?: value; sort?: value; included_fields?: value; return_type?: value })`
+- `s.cloud.aws.opensearch.request({ as?: string; auth_type?: value; key_id?: value; access_key?: value; region?: value; method?: value; url?: value; query?: value })`
+- `s.cloud.aws.s3.delete_file({ as?: string; bucket: value; region: value; key: value; secret: value; file_key: value })`
+- `s.cloud.aws.s3.get_file_info({ as?: string; bucket: value; region: value; key: value; secret: value; file_key: value })`
+- `s.cloud.aws.s3.list_directory({ as?: string; bucket: value; region: value; key: value; secret: value; prefix: value; next_page_token: value })`
+- `s.cloud.aws.s3.read_file({ as?: string; bucket: value; region: value; key: value; secret: value; file_key: value })`
+- `s.cloud.aws.s3.sign_url({ as?: string; bucket: value; region: value; key: value; secret: value; file_key: value; ttl?: value })`
+- `s.cloud.aws.s3.upload_file({ as?: string; bucket: value; region: value; key: value; secret: value; file_key?: value; file: value; metadata: value; object_lock_mode?: value; object_lock_retain_until?: value })`
+- `s.cloud.azure.storage.delete_file({ as?: string; account_name: value; account_key: value; container_name: value; filePath: value })`
+- `s.cloud.azure.storage.get_file_info({ as?: string; account_name: value; account_key: value; container_name: value; filePath: value })`
+- `s.cloud.azure.storage.list_directory({ as?: string; account_name: value; account_key: value; container_name: value; path: value })`
+- `s.cloud.azure.storage.read_file({ as?: string; account_name: value; account_key: value; container_name: value; filePath: value })`
+- `s.cloud.azure.storage.sign_url({ as?: string; account_name: value; account_key: value; container_name: value; path: value; ttl: value })`
+- `s.cloud.azure.storage.upload_file({ as?: string; account_name: value; account_key: value; container_name: value; filePath: value; file: value; metadata: value })`
+- `s.cloud.elasticsearch.document({ as?: string; auth_type?: value; key_id: value; access_key: value; region: value; method?: value; index: value; base_url: value; doc_id: value; doc: value })`
+- `s.cloud.elasticsearch.query({ as?: string; auth_type?: value; key_id?: value; access_key?: value; region?: value; index?: value; payload?: value; size?: value; from?: value; sort?: value; included_fields?: value; return_type?: value })`
+- `s.cloud.elasticsearch.request({ as?: string; auth_type?: value; key_id?: value; access_key?: value; region?: value; method?: value; url?: value; query?: value })`
+- `s.cloud.google.storage.delete_file({ as?: string; service_account: value; bucket: value; filePath: value })`
+- `s.cloud.google.storage.get_file_info({ as?: string; service_account: value; bucket: value; filePath: value })`
+- `s.cloud.google.storage.list_directory({ as?: string; service_account: value; bucket: value; path: value })`
+- `s.cloud.google.storage.read_file({ as?: string; service_account: value; bucket: value; filePath: value })`
+- `s.cloud.google.storage.sign_url({ as?: string; service_account: value; bucket: value; filePath: value; method: value; ttl: value })`
+- `s.cloud.google.storage.upload_file({ as?: string; service_account: value; bucket: value; filePath: value; file: value; metadata: value })`
+- `s.cloud.job.await` [special]
+- `s.cloud.job.status` [special]
+- `s.cloud.job` [special]
 
 ### datadog
 
-- `s.datadog.log_bulk({ entries: value; connection?: value })` → `mvp:datadog_log_bulk`
-- `s.datadog.log({ message?: value; status?: value; attributes?: value; service?: value; source?: value; env?: value; hostname?: value; tags?: value; timestamp?: value; connection?: value })` → `mvp:datadog_log`
-- `s.datadog.metric_bulk({ entries: value; connection?: value })` → `mvp:datadog_metric_bulk`
-- `s.datadog.metric({ metric?: value; value: value; type?: value; tags?: value; service?: value; source?: value; env?: value; hostname?: value; timestamp?: value; connection?: value })` → `mvp:datadog_metric`
+- `s.datadog.log_bulk({ entries: value; connection?: value })`
+- `s.datadog.log({ message?: value; status?: value; attributes?: value; service?: value; source?: value; env?: value; hostname?: value; tags?: value; timestamp?: value; connection?: value })`
+- `s.datadog.metric_bulk({ entries: value; connection?: value })`
+- `s.datadog.metric({ metric?: value; value: value; type?: value; tags?: value; service?: value; source?: value; env?: value; hostname?: value; timestamp?: value; connection?: value })`
 
 ### db
 
-- `s.db.add_or_edit(…)` → `mvp:dbo_addoreditby` [special]
-- `s.db.add(…)` → `mvp:dbo_add` [special]
-- `s.db.bulk.add(…)` → `mvp:dbo_bulkadd` [special]
-- `s.db.bulk.delete(…)` → `mvp:dbo_bulkdelete` [special]
-- `s.db.bulk.patch(…)` → `mvp:dbo_bulkpatch` [special]
-- `s.db.bulk.update(…)` → `mvp:dbo_bulkupdate` [special]
-- `s.db.del(…)` → `mvp:dbo_delby` [special]
-- `s.db.direct_query(…)` → `mvp:dbo_direct_query` [special]
-- `s.db.edit(…)` → `mvp:dbo_editby` [special]
-- `s.db.external.mssql.direct_query(…)` → `mvp:dbo_external_mssql_query` [special]
-- `s.db.external.mysql.direct_query(…)` → `mvp:dbo_external_mysql_query` [special]
-- `s.db.external.oracle.direct_query(…)` → `mvp:dbo_external_oracle_query` [special]
-- `s.db.external.postgres.direct_query(…)` → `mvp:dbo_external_postgres_query` [special]
-- `s.db.external.snowflake.direct_query(…)` → `mvp:dbo_external_snowflake_query` [special]
-- `s.db.get(…)` → `mvp:dbo_getby` [special]
-- `s.db.has(…)` → `mvp:dbo_hasby` [special]
-- `s.db.patch(…)` → `mvp:dbo_patch` [special]
-- `s.db.query(…)` → `mvp:dbo_view` [special]
-- `s.db.schema(…)` → `mvp:dbo_get_schema` [special]
-- `s.db.set_datasource({ value: value })` → `mvp:set_data_source`
-- `s.db.transaction(…)` → `mvp:db_transaction` [special]
-- `s.db.truncate(…)` → `mvp:dbo_truncate` [special]
+- `s.db.add_or_edit` [special]
+- `s.db.add` [special]
+- `s.db.bulk.add` [special]
+- `s.db.bulk.delete` [special]
+- `s.db.bulk.patch` [special]
+- `s.db.bulk.update` [special]
+- `s.db.del` [special]
+- `s.db.direct_query` [special]
+- `s.db.edit` [special]
+- `s.db.external.mssql.direct_query` [special]
+- `s.db.external.mysql.direct_query` [special]
+- `s.db.external.oracle.direct_query` [special]
+- `s.db.external.postgres.direct_query` [special]
+- `s.db.external.snowflake.direct_query` [special]
+- `s.db.get` [special]
+- `s.db.has` [special]
+- `s.db.patch` [special]
+- `s.db.query` [special]
+- `s.db.schema` [special]
+- `s.db.set_datasource({ value: value })`
+- `s.db.transaction` [special]
+- `s.db.truncate` [special]
 
 ### debug
 
-- `s.debug.log({ value: value })` → `mvp:debug_log`
-- `s.debug.stop({ value: value })` → `mvp:die`
+- `s.debug.log({ value: value })`
+- `s.debug.stop({ value: value })`
 
 ### expect
 
-- `s.expect.to_be_defined({ expr?: value = "" })` → `mvp:test_expect_to_be_defined`
-- `s.expect.to_be_empty({ expr?: value = "" })` → `mvp:test_expect_to_be_empty`
-- `s.expect.to_be_false({ expr?: value = "" })` → `mvp:test_expect_to_be_false`
-- `s.expect.to_be_greater_than({ expr?: value = ""; value?: value = "" })` → `mvp:test_expect_to_be_greater_than`
-- `s.expect.to_be_in_the_future({ expr?: value = "" })` → `mvp:test_expect_to_be_in_the_future`
-- `s.expect.to_be_in_the_past({ expr?: value = "" })` → `mvp:test_expect_to_be_in_the_past`
-- `s.expect.to_be_less_than({ expr?: value = ""; value?: value = "" })` → `mvp:test_expect_to_be_less_than`
-- `s.expect.to_be_null({ expr?: value = "" })` → `mvp:test_expect_to_be_null`
-- `s.expect.to_be_true({ expr?: value = "" })` → `mvp:test_expect_to_be_true`
-- `s.expect.to_be_within({ expr?: value = ""; min?: value = ""; max?: value = "" })` → `mvp:test_expect_to_be_within`
-- `s.expect.to_contain({ expr?: value = ""; value?: value = "" })` → `mvp:test_expect_to_contain`
-- `s.expect.to_end_with({ expr?: value = ""; value?: value = "" })` → `mvp:test_expect_to_end_with`
-- `s.expect.to_equal({ expr?: value = ""; value?: value = "" })` → `mvp:test_expect_to_equal`
-- `s.expect.to_match({ expr?: value = ""; value?: value = "" })` → `mvp:test_expect_to_match`
-- `s.expect.to_not_be_defined({ expr?: value = "" })` → `mvp:test_expect_to_not_be_defined`
-- `s.expect.to_not_be_null({ expr?: value = "" })` → `mvp:test_expect_to_not_be_null`
-- `s.expect.to_not_equal({ expr?: value = ""; value?: value = "" })` → `mvp:test_expect_to_not_equal`
-- `s.expect.to_start_with({ expr?: value = ""; value?: value = "" })` → `mvp:test_expect_to_start_with`
-- `s.expect.to_throw(…)` → `mvp:test_expect_to_throw` [special]
+- `s.expect.to_be_defined({ expr?: value })`
+- `s.expect.to_be_empty({ expr?: value })`
+- `s.expect.to_be_false({ expr?: value })`
+- `s.expect.to_be_greater_than({ expr?: value; value?: value })`
+- `s.expect.to_be_in_the_future({ expr?: value })`
+- `s.expect.to_be_in_the_past({ expr?: value })`
+- `s.expect.to_be_less_than({ expr?: value; value?: value })`
+- `s.expect.to_be_null({ expr?: value })`
+- `s.expect.to_be_true({ expr?: value })`
+- `s.expect.to_be_within({ expr?: value; min?: value; max?: value })`
+- `s.expect.to_contain({ expr?: value; value?: value })`
+- `s.expect.to_end_with({ expr?: value; value?: value })`
+- `s.expect.to_equal({ expr?: value; value?: value })`
+- `s.expect.to_match({ expr?: value; value?: value })`
+- `s.expect.to_not_be_defined({ expr?: value })`
+- `s.expect.to_not_be_null({ expr?: value })`
+- `s.expect.to_not_equal({ expr?: value; value?: value })`
+- `s.expect.to_start_with({ expr?: value; value?: value })`
+- `s.expect.to_throw` [special]
 
 ### function
 
-- `s.function.call(…)` → `mvp:workspace_run_function` [special]
-- `s.function.run(…)` → `mvp:function` [special]
+- `s.function.call` [special]
+- `s.function.run` [special]
 
 ### math
 
-- `s.math.add({ name?: string = ""; value: value })` → `mvp:math_add` [output]
-- `s.math.bitwise.and({ name?: string = ""; value: value })` → `mvp:bitwise_and` [output]
-- `s.math.bitwise.or({ name?: string = ""; value: value })` → `mvp:bitwise_or` [output]
-- `s.math.bitwise.xor({ name?: string = ""; value: value })` → `mvp:bitwise_xor` [output]
-- `s.math.div({ name?: string = ""; value: value })` → `mvp:math_div`
-- `s.math.mod({ name?: string = ""; value: value })` → `mvp:math_mod`
-- `s.math.mul({ name?: string = ""; value: value })` → `mvp:math_mul`
-- `s.math.sub({ name?: string = ""; value: value })` → `mvp:math_sub`
+- `s.math.add({ name?: string; value: value })` [output]
+- `s.math.bitwise.and({ name?: string; value: value })` [output]
+- `s.math.bitwise.or({ name?: string; value: value })` [output]
+- `s.math.bitwise.xor({ name?: string; value: value })` [output]
+- `s.math.div({ name?: string; value: value })`
+- `s.math.mod({ name?: string; value: value })`
+- `s.math.mul({ name?: string; value: value })`
+- `s.math.sub({ name?: string; value: value })`
 
 ### middleware
 
-- `s.middleware.call(…)` → `mvp:workspace_run_middleware` [special]
+- `s.middleware.call` [special]
 
 ### object
 
-- `s.object.entries({ as?: string; value?: value = "" })` → `mvp:object_entries` [output]
-- `s.object.keys({ as?: string; value?: value = "" })` → `mvp:object_keys` [output]
-- `s.object.values({ as?: string; value?: value = "" })` → `mvp:object_values` [output]
+- `s.object.entries({ as?: string; value?: value })` [output]
+- `s.object.keys({ as?: string; value?: value })` [output]
+- `s.object.values({ as?: string; value?: value })` [output]
 
 ### redis
 
-- `s.redis.count({ as?: string; key: value })` → `mvp:redis_countlist`
-- `s.redis.decr({ as?: string; key: value; by?: value })` → `mvp:redis_decr`
-- `s.redis.del({ key: value })` → `mvp:redis_del`
-- `s.redis.get({ as?: string; key: value })` → `mvp:redis_get`
-- `s.redis.has({ as?: string; key: value })` → `mvp:redis_has`
-- `s.redis.incr({ as?: string; key: value; by?: value })` → `mvp:redis_incr`
-- `s.redis.keys({ as?: string; search: value })` → `mvp:redis_keys`
-- `s.redis.pop({ as?: string; key: value; count?: value })` → `mvp:redis_poplist`
-- `s.redis.push({ as?: string; key: value; value: value })` → `mvp:redis_pushlist`
-- `s.redis.range({ as?: string; key: value; start?: value; stop?: value })` → `mvp:redis_rangelist`
-- `s.redis.ratelimit({ as?: string; key: value; max?: value; ttl?: value; error?: value })` → `mvp:redis_ratelimit`
-- `s.redis.remove({ key: value; value: value; count?: value })` → `mvp:redis_remove_list`
-- `s.redis.set({ key: value; data: value; ttl?: value })` → `mvp:redis_set`
-- `s.redis.shift({ as?: string; key: value; count?: value })` → `mvp:redis_shiftlist`
-- `s.redis.unshift({ as?: string; key: value; value: value })` → `mvp:redis_unshiftlist`
+- `s.redis.count({ as?: string; key: value })`
+- `s.redis.decr({ as?: string; key: value; by?: value })`
+- `s.redis.del({ key: value })`
+- `s.redis.get({ as?: string; key: value })`
+- `s.redis.has({ as?: string; key: value })`
+- `s.redis.incr({ as?: string; key: value; by?: value })`
+- `s.redis.keys({ as?: string; search: value })`
+- `s.redis.pop({ as?: string; key: value; count?: value })`
+- `s.redis.push({ as?: string; key: value; value: value })`
+- `s.redis.range({ as?: string; key: value; start?: value; stop?: value })`
+- `s.redis.ratelimit({ as?: string; key: value; max?: value; ttl?: value; error?: value })`
+- `s.redis.remove({ key: value; value: value; count?: value })`
+- `s.redis.set({ key: value; data: value; ttl?: value })`
+- `s.redis.shift({ as?: string; key: value; count?: value })`
+- `s.redis.unshift({ as?: string; key: value; value: value })`
 
 ### security
 
-- `s.security.check_password({ as?: string; text_password?: value; hash_password?: value })` → `mvp:check_pass` [output]
-- `s.security.create_auth_token(…)` → `mvp:create_auth` [special]
-- `s.security.create_curve_key({ as?: string; curve?: value; format?: value })` → `mvp:crypto_create_ec_key`
-- `s.security.create_password({ as?: string; character_count?: value; require_lowercase?: value; require_uppercase?: value; require_digit?: value; require_symbol?: value; symbol_whitelist?: value })` → `mvp:generate_pass`
-- `s.security.create_rsa_key({ as?: string; bits?: value; format?: value })` → `mvp:crypto_create_rsa_key`
-- `s.security.create_secret_key({ as?: string; bits?: value; format?: value })` → `mvp:crypto_create_octet_key`
-- `s.security.create_uuid({ as?: string })` → `mvp:uuid4`
-- `s.security.decrypt({ as?: string; data?: value; algorithm?: value; key?: value; iv?: value })` → `mvp:crypto_decrypt`
-- `s.security.encrypt({ as?: string; data?: value; algorithm?: value; key?: value; iv?: value })` → `mvp:crypto_encrypt`
-- `s.security.jwe_decode_legacy({ as?: string; token?: value; key?: value; audience?: value; key_algorithm?: value; content_algorithm?: value; timeDrift?: value })` → `mvp:crypto_jwe_decode`
-- `s.security.jwe_decode({ as?: string; token?: value; key?: value; check_claims?: value; key_algorithm?: value; content_algorithm?: value; timeDrift?: value })` → `mvp:crypto_jwe_decode2`
-- `s.security.jwe_encode_legacy({ as?: string; payload?: value; audience?: value; key?: value; key_algorithm?: value; content_algorithm?: value; ttl?: value })` → `mvp:crypto_jwe_encode`
-- `s.security.jwe_encode({ as?: string; headers?: value; claims?: value; key?: value; key_algorithm?: value; content_algorithm?: value; ttl?: value })` → `mvp:crypto_jwe_encode3`
-- `s.security.jws_decode({ as?: string; token?: value; key?: value; check_claims?: value; signature_algorithm?: value; timeDrift?: value })` → `mvp:crypto_jws_decode2`
-- `s.security.jws_encode({ as?: string; headers?: value; claims?: value; key?: value; signature_algorithm?: value; ttl?: value })` → `mvp:crypto_jws_encode2`
-- `s.security.random_bytes({ as?: string; length?: value })` → `mvp:random_bytes`
-- `s.security.random_number({ as?: string; min?: value; max?: value })` → `mvp:rand`
+- `s.security.check_password({ as?: string; text_password?: value; hash_password?: value })` [output]
+- `s.security.create_auth_token` [special]
+- `s.security.create_curve_key({ as?: string; curve?: value; format?: value })`
+- `s.security.create_password({ as?: string; character_count?: value; require_lowercase?: value; require_uppercase?: value; require_digit?: value; require_symbol?: value; symbol_whitelist?: value })`
+- `s.security.create_rsa_key({ as?: string; bits?: value; format?: value })`
+- `s.security.create_secret_key({ as?: string; bits?: value; format?: value })`
+- `s.security.create_uuid({ as?: string })`
+- `s.security.decrypt({ as?: string; data?: value; algorithm?: value; key?: value; iv?: value })`
+- `s.security.encrypt({ as?: string; data?: value; algorithm?: value; key?: value; iv?: value })`
+- `s.security.jwe_decode_legacy({ as?: string; token?: value; key?: value; audience?: value; key_algorithm?: value; content_algorithm?: value; timeDrift?: value })`
+- `s.security.jwe_decode({ as?: string; token?: value; key?: value; check_claims?: value; key_algorithm?: value; content_algorithm?: value; timeDrift?: value })`
+- `s.security.jwe_encode_legacy({ as?: string; payload?: value; audience?: value; key?: value; key_algorithm?: value; content_algorithm?: value; ttl?: value })`
+- `s.security.jwe_encode({ as?: string; headers?: value; claims?: value; key?: value; key_algorithm?: value; content_algorithm?: value; ttl?: value })`
+- `s.security.jws_decode({ as?: string; token?: value; key?: value; check_claims?: value; signature_algorithm?: value; timeDrift?: value })`
+- `s.security.jws_encode({ as?: string; headers?: value; claims?: value; key?: value; signature_algorithm?: value; ttl?: value })`
+- `s.security.random_bytes({ as?: string; length?: value })`
+- `s.security.random_number({ as?: string; min?: value; max?: value })`
 
 ### service
 
-- `s.service.function.run(…)` → `mvp:function` [special]
+- `s.service.function.run` [special]
 
 ### storage
 
-- `s.storage.create_attachment({ as?: string; value: value; access?: string = "public"; filename?: value })` → `mvp:create_attachment`
-- `s.storage.create_audio({ as?: string; value: value; access?: string = "public"; filename?: value })` → `mvp:create_audio` [output]
-- `s.storage.create_file_resource({ as?: string; filename: value; filedata: value })` → `mvp:create_file_resource` [output]
-- `s.storage.create_image({ as?: string; value: value; access?: string = "public"; filename?: value })` → `mvp:create_image` [output]
-- `s.storage.create_video({ as?: string; value: value; access?: string = "public"; filename?: value })` → `mvp:create_video` [output]
-- `s.storage.delete_file({ pathname: value })` → `mvp:delete_file` [output]
-- `s.storage.read_file_resource({ as?: string; value: value })` → `mvp:create_var_from_file_resource`
-- `s.storage.sign_private_url({ as?: string; pathname: value; ttl?: value })` → `mvp:vault_sign_url`
+- `s.storage.create_attachment({ as?: string; value: value; access?: string = "public"; filename?: value })`
+- `s.storage.create_audio({ as?: string; value: value; access?: string = "public"; filename?: value })` [output]
+- `s.storage.create_file_resource({ as?: string; filename: value; filedata: value })` [output]
+- `s.storage.create_image({ as?: string; value: value; access?: string = "public"; filename?: value })` [output]
+- `s.storage.create_video({ as?: string; value: value; access?: string = "public"; filename?: value })` [output]
+- `s.storage.delete_file({ pathname: value })` [output]
+- `s.storage.read_file_resource({ as?: string; value: value })`
+- `s.storage.sign_private_url({ as?: string; pathname: value; ttl?: value })`
 
 ### stream
 
-- `s.stream.from_csv({ as?: string; value: value; separator?: value = ","; enclosure?: value = "\\\""; escape_char?: value = "\\\"" })` → `mvp:csv_stream` [output]
-- `s.stream.from_jsonl({ as?: string; value: value })` → `mvp:jsonl_stream`
-- `s.stream.from_request(…)` → `mvp:streaming_api_request` [special]
+- `s.stream.from_csv({ as?: string; value: value; separator?: value; enclosure?: value; escape_char?: value })` [output]
+- `s.stream.from_jsonl({ as?: string; value: value })`
+- `s.stream.from_request` [special]
 
 ### task
 
-- `s.task.call(…)` → `mvp:workspace_run_task` [special]
+- `s.task.call` [special]
 
 ### text
 
-- `s.text.append({ name?: string = ""; value: value })` → `mvp:text_append`
-- `s.text.contains({ name?: string = ""; as?: string; value: value })` → `mvp:text_contains`
-- `s.text.ends_with({ name?: string = ""; as?: string; value: value })` → `mvp:text_ends_with`
-- `s.text.icontains({ name?: string = ""; as?: string; value: value })` → `mvp:text_icontains`
-- `s.text.iends_with({ name?: string = ""; as?: string; value: value })` → `mvp:text_iends_with`
-- `s.text.istarts_with({ name?: string = ""; as?: string; value: value })` → `mvp:text_istarts_with`
-- `s.text.ltrim({ name?: string = ""; value: value })` → `mvp:text_ltrim`
-- `s.text.prepend({ name?: string = ""; value: value })` → `mvp:text_prepend`
-- `s.text.rtrim({ name?: string = ""; value: value })` → `mvp:text_rtrim`
-- `s.text.starts_with({ name?: string = ""; as?: string; value: value })` → `mvp:text_starts_with`
-- `s.text.trim({ name?: string = ""; value: value })` → `mvp:text_trim`
+- `s.text.append({ name?: string; value: value })`
+- `s.text.contains({ name?: string; as?: string; value: value })`
+- `s.text.ends_with({ name?: string; as?: string; value: value })`
+- `s.text.icontains({ name?: string; as?: string; value: value })`
+- `s.text.iends_with({ name?: string; as?: string; value: value })`
+- `s.text.istarts_with({ name?: string; as?: string; value: value })`
+- `s.text.ltrim({ name?: string; value: value })`
+- `s.text.prepend({ name?: string; value: value })`
+- `s.text.rtrim({ name?: string; value: value })`
+- `s.text.starts_with({ name?: string; as?: string; value: value })`
+- `s.text.trim({ name?: string; value: value })`
 
 ### tool
 
-- `s.tool.call(…)` → `mvp:workspace_run_tool` [special]
+- `s.tool.call` [special]
 
 ### trigger
 
-- `s.trigger.call(…)` → `mvp:workspace_run_trigger` [special]
+- `s.trigger.call` [special]
 
 ### util
 
-- `s.util.geo_distance({ as?: string = ""; latitude_1?: value; longitude_1?: value; latitude_2?: value; longitude_2?: value })` → `mvp:calculate_geo_distance`
-- `s.util.get_all_input({ as?: string = "" })` → `mvp:get_all_input`
-- `s.util.get_env({ as?: string = "" })` → `mvp:get_env`
-- `s.util.get_input(…)` → `mvp:get_input` [special]
-- `s.util.get_raw_input(…)` → `mvp:get_input` [special]
-- `s.util.get_vars({ as?: string = "" })` → `mvp:get_vars`
-- `s.util.ip_lookup({ as?: string = ""; value: value })` → `mvp:ipaddress_lookup`
-- `s.util.post_process(…)` → `mvp:post_process` [special]
-- `s.util.send_email({ as?: string = ""; api_key?: value; service_provider?: value; subject?: value; message?: value; to?: value; bcc?: value; cc?: value; from?: value; reply_to?: value; scheduled_at?: value })` → `mvp:send_email`
-- `s.util.set_header({ value: value; duplicates?: string = "replace" })` → `mvp:setheader`
-- `s.util.sleep({ value: value })` → `mvp:sleep`
-- `s.util.template_engine({ as?: string = ""; value: value })` → `mvp:template_string`
+- `s.util.geo_distance({ as?: string; latitude_1?: value; longitude_1?: value; latitude_2?: value; longitude_2?: value })`
+- `s.util.get_all_input({ as?: string })`
+- `s.util.get_env({ as?: string })`
+- `s.util.get_input` [special]
+- `s.util.get_raw_input` [special]
+- `s.util.get_vars({ as?: string })`
+- `s.util.ip_lookup({ as?: string; value: value })`
+- `s.util.post_process` [special]
+- `s.util.send_email({ as?: string; api_key?: value; service_provider?: value; subject?: value; message?: value; to?: value; bcc?: value; cc?: value; from?: value; reply_to?: value; scheduled_at?: value })`
+- `s.util.set_header({ value: value; duplicates?: string })`
+- `s.util.sleep({ value: value })`
+- `s.util.template_engine({ as?: string; value: value })`
 
 ### webflow
 
-- `s.webflow.request(…)` → `mvp:connect_webflow_api_request` [special]
+- `s.webflow.request` [special]
 
 ### workflow_test
 
-- `s.workflow_test.call(…)` → `mvp:workspace_run_workflow_test` [special]
+- `s.workflow_test.call` [special]
 
 ### zip
 
-- `s.zip.add_to_archive({ file: value; filename: value; zip: value; password?: value; password_encryption?: value })` → `mvp:zip_add_file_resource`
-- `s.zip.create_archive({ as?: string; filename: value; password?: value; password_encryption?: value })` → `mvp:zip_create_file_resource`
-- `s.zip.delete_from_archive({ filename: value; zip: value; password?: value })` → `mvp:zip_delete_file_resource`
-- `s.zip.extract({ as?: string; zip: value; password?: value })` → `mvp:zip_extract_file_resource`
-- `s.zip.view_contents({ as?: string; zip: value; password?: value })` → `mvp:zip_view_contents`
+- `s.zip.add_to_archive({ file: value; filename: value; zip: value; password?: value; password_encryption?: value })`
+- `s.zip.create_archive({ as?: string; filename: value; password?: value; password_encryption?: value })`
+- `s.zip.delete_from_archive({ filename: value; zip: value; password?: value })`
+- `s.zip.extract({ as?: string; zip: value; password?: value })`
+- `s.zip.view_contents({ as?: string; zip: value; password?: value })`
