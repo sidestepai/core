@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { agent, encodeAgent } from "../../src/kinds/agent.js";
+import { input } from "../../src/inputs/input.js";
 import { mcpServer } from "../../src/kinds/mcp-server.js";
 import { Xano } from "../../src/workspace/xano.js";
 import { deriveGuid } from "../../src/refs/guid.js";
@@ -82,15 +83,52 @@ describe("agent kind — real agent_settings wire shape", () => {
     expect(a.agent_settings.prompt).toBe("");
   });
 
-  it("structured output emits camelCase structuredOutputs/structuredOutputsSchema", () => {
-    const schema = [{ name: "answer", type: "text" }];
-    const a = encodeAgent({ name: "a", llm: { type: "xano-free" }, output: { schema } });
+  it("structured output emits camelCase structuredOutputs + input.*-encoded schema", () => {
+    const a = encodeAgent({
+      name: "a",
+      llm: { type: "xano-free" },
+      output: { schema: { answer: input.text() } },
+    });
     const s = a.agent_settings as unknown as Record<string, unknown>;
     expect(s.structuredOutputs).toBe(true);
-    expect(s.structuredOutputsSchema).toEqual(schema);
+    // Schema is encoded through the shared input encoder — one item per record key.
+    const items = s.structuredOutputsSchema as Array<Record<string, unknown>>;
+    expect(items).toHaveLength(1);
+    expect(items[0]?.name).toBe("answer");
+    expect(items[0]?.type).toBe("text");
     // #85.3 guard: the snake_case forms never reach the wire.
     expect("structured_outputs" in s).toBe(false);
     expect("structured_outputs_schema" in s).toBe(false);
+  });
+
+  it("nested object + list schema encodes children and list style", () => {
+    const a = encodeAgent({
+      name: "a",
+      llm: { type: "xano-free" },
+      output: {
+        schema: {
+          priority: input.enum(["low", "high"]),
+          tags: input.list(input.text()),
+          meta: input.object({ score: input.int() }),
+        },
+      },
+    });
+    const items = a.agent_settings.structuredOutputsSchema as unknown as Array<Record<string, unknown>>;
+    expect(items).toHaveLength(3);
+    const tags = items.find((i) => i.name === "tags")!;
+    expect((tags.style as Record<string, unknown>).type).toBe("list");
+    const meta = items.find((i) => i.name === "meta")!;
+    expect(Array.isArray(meta.children)).toBe(true);
+  });
+
+  it("output present with enabled:false → structuredOutputs false, schema still encoded", () => {
+    const a = encodeAgent({
+      name: "a",
+      llm: { type: "xano-free" },
+      output: { enabled: false, schema: { answer: input.text() } },
+    });
+    expect(a.agent_settings.structuredOutputs).toBe(false);
+    expect(a.agent_settings.structuredOutputsSchema).toHaveLength(1);
   });
 
   it("no output → structuredOutputs false, empty schema", () => {
@@ -156,5 +194,38 @@ describe("agent kind — real agent_settings wire shape", () => {
     });
     const golden = loadFixture<{ agent_settings: unknown }>("toolset/agent.json");
     expect(normalize(a.agent_settings)).toEqual(normalize(golden.agent_settings));
+  });
+
+  // Locks the structured-output schema wire shape against a captured live-engine
+  // golden (issue #122). `structuredOutputsSchema` is `IProcessInput[]` — the same
+  // shape as function inputs — so the `input.*`-authored record, encoded through
+  // the shared `encodeInput`, must deep-equal what the engine persists. The agent
+  // authored here is byte-identical to the capture entry that sourced the golden.
+  it("structured-output schema deep-equals the engine golden (#122)", () => {
+    const a = encodeAgent({
+      name: "ex_agent_structured",
+      canonical: "agent-structured",
+      llm: {
+        type: "xano-free",
+        systemPrompt: "Classify the ticket.",
+        prompt: "Ticket: {{ $args.body }}",
+        maxSteps: 5,
+      },
+      output: {
+        schema: {
+          priority: input.enum(["low", "medium", "high"]),
+          category: input.text(),
+          summary: input.text(),
+          tags: input.list(input.text()),
+          meta: input.object({ score: input.int(), flagged: input.bool() }),
+        },
+      },
+    });
+    const golden = loadFixture<{ agent_settings: { structuredOutputsSchema: unknown } }>(
+      "toolset/agent-structured.json",
+    );
+    expect(normalize(a.agent_settings.structuredOutputsSchema)).toEqual(
+      normalize(golden.agent_settings.structuredOutputsSchema),
+    );
   });
 });
