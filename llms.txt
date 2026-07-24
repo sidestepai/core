@@ -1,4 +1,4 @@
-# sidestep v3.9.21
+# sidestep v3.9.22
 
 > TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.
 
@@ -294,6 +294,13 @@ Where a cold reader's intuition usually diverges from this API:
 - **`get_input`/`get_raw_input` read the whole payload**, not one named input
   (args are `{ as?, encoding?, excludeMiddleware? }` — no `name`). For a single
   input use `inp("name")`.
+- **Regex filters (`regex_matches`/`regex_match`/`regex_replace`) need `/…/` delimiters.**
+  They are PHP `preg_match` under the hood, so a bare JS-style body (`^[^@\s]+@...$`)
+  is an invalid pattern — `regex_matches` then returns `false` for *every* input, so a
+  precondition on it silently rejects all values (valid ones included). Delimit it:
+  `"/^[^@\s]+@[^@\s]+\.[^@\s]+$/"|regex_matches:$email` (flags go after the close
+  slash, e.g. `/foo/i`). Better still, prefer a native typed input (`input.email({...})`)
+  over hand-rolled validation. Third-party engine behavior.
 - **Declare inputs with `input.<type>()`, read them with `inp("name")`.** In an
   `input: {}` block the columns are `input.text({...})` etc.; `inp` is the *value
   ref* that reads an input inside the stack (`inp("name")`). Writing `inp.text({...})`
@@ -444,6 +451,12 @@ a legal input (scalars, files `input.image/video/audio/attachment`, `input.geo.*
 `input.list(element)` for arrays — wrap any element constructor, e.g.
 `input.list(input.text())` or `input.list(input.object({ id: f.int() }))`. Prefer the
 typed forms over `input.json()` when the shape is known.
+**Typed inputs validate/coerce on bind, before your stack runs** — so reach for the
+specific type instead of hand-rolling checks. `input.email({ required: true })` rejects a
+malformed address with a 400 (and trims; add `methods: ["lower"]` to downcase) — no
+`regex_matches` needed; `input.int`/`input.decimal`/`input.uuid`/`input.enum([...])`/`input.date`
+likewise reject or coerce bad input at the boundary. Drop to `input.text` + `s.precondition`
+only for rules no type expresses (see the boundary-validation recipe in the README).
 
 - `f.text` — methods: alphaOk, digitOk, lower, max, min, ok, pattern, startsWith, trim, upper
 - `f.int` — methods: max, min
