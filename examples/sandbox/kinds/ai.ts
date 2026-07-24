@@ -40,9 +40,9 @@ export const assistant = agent({
  * Structured outputs — `output.schema` is a named-field record authored with the
  * `input.*` catalog (same surface as a function `input:` map). The engine stores
  * it as `structuredOutputsSchema` and constrains the model to return that shape.
- * Note: to also *type* the `.result` at the call site, pass `resultShape` to
- * `s.ai.agent.run` — the authored schema shapes the model output, the hint shapes
- * the inferred TS type.
+ * Declaring the schema here is enough: `s.ai.agent.run({ agent: classifier })`
+ * reads `.result`'s type straight off this handle, so the call site needs no
+ * `resultShape` witness (the shape is declared once — see `classifyTicket`).
  */
 export const classifier = agent({
   name: "ex_agent_classifier",
@@ -84,6 +84,23 @@ export const askAssistant = query({
   input: { question: input.text({ required: true }) },
   stack: [s.ai.agent.run({ agent: assistant, args: obj({ question: inp("question") }), as: "answer" })],
   response: { text: ref("answer.result") },
+});
+
+/**
+ * Structured-output call site — invoking `classifier` and returning its typed
+ * completion. Because `classifier` declares `output.schema`, `ref("verdict.result")`
+ * is typed as `{ priority: "low"|"medium"|"high"; category: string; summary: string }`
+ * with NO `resultShape` on the run: the shape is authored once on the agent and
+ * flows to the call site automatically (issue #124.1). Reach for `resultShape`
+ * only to override that, or to type an agent referenced by bare name.
+ */
+export const classifyTicket = query({
+  name: "ex_classify_ticket",
+  verb: "POST",
+  apiGroup: api,
+  input: { body: input.text({ required: true }) },
+  stack: [s.ai.agent.run({ agent: classifier, args: obj({ body: inp("body") }), as: "verdict" })],
+  response: ref("verdict.result"),
 });
 
 /**

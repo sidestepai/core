@@ -63,6 +63,7 @@ import type { HistoryInput } from "./history.js";
 import { encodeInput } from "../inputs/input.js";
 import type { InputDescriptor } from "../inputs/input.js";
 import type { InputXdo } from "../types/xdo.js";
+import type { RowFromFieldMap } from "../fields/value-types.js";
 
 /** The LLM provider — the `agent_settings.type` value and the `configs` key. */
 export type LlmProvider = "xano-free" | "openai" | "anthropic" | "google-genai";
@@ -166,6 +167,32 @@ export interface AgentOutput {
   /** Whether structured output is enabled (`structuredOutputs`). Defaults to true. */
   enabled?: boolean;
 }
+
+/**
+ * The `.result` completion type for a run of agent `A` — derived from its
+ * declared `output.schema` when structured outputs are on, else `string`.
+ *
+ * `A` is whatever `s.ai.agent.run({ agent })` was handed: an {@link AgentHandle}
+ * (or {@link AgentDef}) carries a precise, branded `output.schema`, so this reads
+ * the shape the agent already declares once — no second `resultShape` witness at
+ * the call site (issue #124.1). A bare name/ref carries no schema → `string`.
+ *
+ * The schema is a *response* shape (the object the model returns), so every
+ * declared field is treated as present — {@link RowFromFieldMap}, not the
+ * request-payload `FromFieldMap` — with `nullable`/`array` still applied. An
+ * explicit `enabled: false` disables structured outputs, so the result is
+ * `string` again.
+ */
+export type AgentResultOf<A> = A extends { output?: infer O }
+  ? O extends { schema: infer S; enabled?: infer E }
+    ? [E] extends [false]
+      ? string
+      : // `agent()` captures the def under a `const` type param, so the schema
+        // record is deeply `readonly`; strip it so `.result` reads as a plain
+        // mutable object (matching `InferInput`'s `FromFieldMap`).
+        { -readonly [K in keyof RowFromFieldMap<S>]: RowFromFieldMap<S>[K] }
+    : string
+  : string;
 
 /**
  * Agent authoring def. Note: no `instructions`/`spec` — Xano's `Agent`
@@ -323,7 +350,7 @@ registerKind(agentKind);
  * a client-side payoff without fabricating a URL. The accessor is dropped by
  * `JSON.stringify` and ignored by `encodeAgent`, so serialization is unaffected.
  */
-export type AgentHandle = AgentDef & {
+export type AgentHandle<D extends AgentDef = AgentDef> = D & {
   /**
    * The agent's resolved `canonical` token — from the def's `canonical` (or
    * `opts.canonical`, or the value frozen in `xano.lock` under `toolset:<name>`);
@@ -335,9 +362,15 @@ export type AgentHandle = AgentDef & {
 /**
  * Author an AI agent — an LLM orchestrator over a set of tools. Returns an
  * {@link AgentHandle} (the def plus `getCanonical()`).
+ *
+ * Generic over the concrete def `D` so the handle preserves the exact,
+ * branded `output.schema`. That lets `s.ai.agent.run({ agent })` read the
+ * completion shape straight off the handle via {@link AgentResultOf} — the
+ * structured-output type is declared once here, not re-stated as a `resultShape`
+ * witness at every call site (issue #124.1).
  */
-export function agent(def: AgentDef): AgentHandle {
+export function agent<const D extends AgentDef>(def: D): AgentHandle<D> {
   const getCanonical = (opts?: { canonical?: string }): string =>
     resolveToolsetCanonical(def, opts?.canonical);
-  return { ...def, getCanonical };
+  return { ...def, getCanonical } as AgentHandle<D>;
 }

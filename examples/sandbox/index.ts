@@ -18,7 +18,7 @@ import { publicApi } from "./kinds/apiGroup.js";
 import { getUserQuery } from "./kinds/query.js";
 import { onUserInsert, onMessage, onBranchLive } from "./kinds/trigger.js";
 import { searchTool } from "./kinds/tool.js";
-import { exampleMcpServer, assistant, classifier, askAssistant } from "./kinds/ai.js";
+import { exampleMcpServer, assistant, classifier, askAssistant, classifyTicket } from "./kinds/ai.js";
 import { nightlyCleanup } from "./kinds/task.js";
 import { rateLimit, publicRateLimit } from "./kinds/middleware.js";
 import { authorAddon } from "./kinds/addon.js";
@@ -32,7 +32,7 @@ export default workspace("sidestep-examples")
   .registerApiGroups(defs([api, publicApi]))
   .registerTables(defs([users, posts, productTable, ...autoTables]))
   .registerFunctions(defs([doubleFn, addFunction, ...autoFunctions]))
-  .registerQueries(defs([getUserQuery, askAssistant, ...autoQueries]))
+  .registerQueries(defs([getUserQuery, askAssistant, classifyTicket, ...autoQueries]))
   .registerTriggers(defs([onUserInsert, onMessage, onBranchLive]))
   .registerTools(defs([searchTool]))
   .registerMcpServers(defs([exampleMcpServer]))

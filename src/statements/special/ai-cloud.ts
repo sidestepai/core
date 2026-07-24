@@ -19,6 +19,7 @@ import { obj } from "../../values/obj.js";
 import type { ObjInput } from "../../values/obj.js";
 import { resolveRef } from "../../refs/guid.js";
 import type { ObjectRef } from "../../refs/guid.js";
+import type { AgentResultOf } from "../../kinds/agent.js";
 
 function vf(v: Value): { value: string; tag: string; filters: unknown[] } {
   return { value: v.value, tag: v.tag, filters: v.filters };
@@ -30,15 +31,16 @@ function vf(v: Value): { value: string; tag: string; filters: unknown[] } {
  * `.result`**, not the top level; the surrounding fields are run metadata.
  *
  * `R` is the completion type: `string` for a text agent (the default — including
- * `xano-free`), or an object when structured outputs (a schema) are enabled.
- * Narrow it with the `resultShape` witness on {@link AiAgentRunArgs}.
+ * `xano-free`), or an object when structured outputs (a schema) are enabled. When
+ * the run targets an agent *handle* it is inferred from that agent's `output.schema`
+ * automatically; the `resultShape` witness on {@link AiAgentRunArgs} overrides it.
  *
  * `finishReasonCandidate`/`toolCalls`/`usage`/`totalUsage` are optional: they are
  * absent or empty depending on the run (no tools, single provider, engine
  * version), so a returned envelope may carry only a subset.
  */
 export interface AgentRunResult<R = string> {
-  /** The model's completion — the field almost every caller wants. `string` unless structured outputs are enabled (then an object; narrow via `resultShape`). */
+  /** The model's completion — the field almost every caller wants. `string` unless structured outputs are enabled (then an object, inferred from the agent's `output.schema`). */
   result: R;
   /** Why generation stopped: `'stop' | 'length' | 'content-filter' | 'tool-calls' | 'error' | 'other' | 'unknown'`. */
   finishReason: string;
@@ -58,9 +60,9 @@ export interface AgentRunResult<R = string> {
   totalUsage?: Record<string, unknown>;
 }
 
-export interface AiAgentRunArgs<As extends string = "", R = string> {
+export interface AiAgentRunArgs<As extends string = "", A extends ObjectRef = ObjectRef, R = AgentResultOf<A>> {
   /** The target agent (toolset of type agent — def handle or name). */
-  agent: ObjectRef;
+  agent: A;
   /** The stack variable this run binds. Captured literally so `InferResponse` can trace a `ref` back to the typed {@link AgentRunResult}. */
   as?: As;
   /**
@@ -80,10 +82,13 @@ export interface AiAgentRunArgs<As extends string = "", R = string> {
   /** Execution mode (`"shared"` default). */
   runtimeMode?: string;
   /**
-   * Type-only witness narrowing the `.result` completion type (default `string`).
-   * Pass a witness value for a structured-output agent so `ref(as).result` is
-   * checkable — e.g. `resultShape: {} as { sentiment: string }`. Never emitted
-   * into the statement (phantom, like the response brand).
+   * Type-only override for the `.result` completion type. Usually unnecessary:
+   * when `agent` is a def handle from `agent({ output: { schema } })`, `.result`
+   * is inferred straight from that schema via {@link AgentResultOf} (issue
+   * #124.1). Pass a witness only to override that inference or to type the
+   * `.result` of an agent referenced by bare name (which carries no schema) —
+   * e.g. `resultShape: {} as { sentiment: string }`. Never emitted into the
+   * statement (phantom, like the response brand).
    */
   resultShape?: R;
 }
@@ -101,9 +106,11 @@ export interface AiAgentRunArgs<As extends string = "", R = string> {
  * the common "return just the answer" endpoint no longer needs a `responseShape`.
  * The brand is phantom; the emitted statement bytes are unchanged.
  */
-export function aiAgentRun<const As extends string = "", R = string>(
-  a: AiAgentRunArgs<As, R>,
-): Statement & AsShapeBrand<As, AgentRunResult<R>> {
+export function aiAgentRun<
+  const As extends string = "",
+  const A extends ObjectRef = ObjectRef,
+  R = AgentResultOf<A>,
+>(a: AiAgentRunArgs<As, A, R>): Statement & AsShapeBrand<As, AgentRunResult<R>> {
   const input: unknown[] = [];
   // `args` accepts a single Value or an object literal of values — a record is
   // built into a dynamic object value (`obj`), so `{ q: inp("q") }` reaches the

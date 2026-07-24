@@ -1,6 +1,8 @@
 import { describe, it, expect, expectTypeOf } from "vitest";
 import { query } from "../../src/kinds/query.js";
 import { apiGroup } from "../../src/kinds/api-group.js";
+import { agent } from "../../src/kinds/agent.js";
+import { input } from "../../src/inputs/input.js";
 import { s } from "../../src/statements/s.js";
 import { ref, inp, obj } from "../../src/index.js";
 import type { InferResponse } from "../../src/responses/infer.js";
@@ -74,6 +76,51 @@ const askDottedWrapped = query({
   response: { text: ref("answer.result") },
 });
 
+// Auto-narrowing (#124.1): a structured-output agent handle declares its shape
+// once as `output.schema`, and `s.ai.agent.run({ agent })` reads `.result` off
+// it with NO `resultShape` witness at the call site.
+const triage = agent({
+  name: "triage",
+  canonical: "triage-agent",
+  llm: { type: "xano-free", prompt: "Score: {{ $args.body }}" },
+  output: {
+    schema: {
+      priority: input.enum(["low", "medium", "high"]),
+      summary: input.text(),
+    },
+  },
+});
+
+const askAutoInferred = query({
+  verb: "POST",
+  apiGroup: api,
+  name: "ask_auto_inferred",
+  stack: [s.ai.agent.run({ agent: triage, as: "answer" })],
+  response: ref("answer"),
+});
+
+const askAutoInferredDotted = query({
+  verb: "POST",
+  apiGroup: api,
+  name: "ask_auto_inferred_dotted",
+  stack: [s.ai.agent.run({ agent: triage, as: "answer" })],
+  response: ref("answer.result"),
+});
+
+// A plain (text) agent handle carries no schema → `.result` stays `string`.
+const plainAgent = agent({
+  name: "plain",
+  canonical: "plain-agent",
+  llm: { type: "xano-free", prompt: "Hi" },
+});
+const askPlainHandle = query({
+  verb: "POST",
+  apiGroup: api,
+  name: "ask_plain_handle",
+  stack: [s.ai.agent.run({ agent: plainAgent, as: "answer" })],
+  response: ref("answer.result"),
+});
+
 // A dotted ref whose head names no bound variable stays `unknown` (honest floor).
 const askDottedUntraceable = query({
   verb: "POST",
@@ -93,6 +140,9 @@ describe("InferResponse — s.ai.agent.run brand (#89, type-level)", () => {
       askDottedStructured.name,
       askDottedWrapped.name,
       askDottedUntraceable.name,
+      askAutoInferred.name,
+      askAutoInferredDotted.name,
+      askPlainHandle.name,
     ];
     expect(names.every((n) => n.length > 0)).toBe(true);
   });
@@ -128,5 +178,26 @@ describe("InferResponse — s.ai.agent.run brand (#89, type-level)", () => {
 
   it("a dotted ref whose head names no binding stays unknown (honest floor)", () => {
     expectTypeOf<InferResponse<typeof askDottedUntraceable>>().toEqualTypeOf<unknown>();
+  });
+
+  it("auto-narrows .result from the agent handle's output.schema — no resultShape (#124.1)", () => {
+    expectTypeOf<InferResponse<typeof askAutoInferred>>().toEqualTypeOf<
+      AgentRunResult<{ priority: "low" | "medium" | "high"; summary: string }>
+    >();
+    expectTypeOf<InferResponse<typeof askAutoInferred>["result"]>().toEqualTypeOf<{
+      priority: "low" | "medium" | "high";
+      summary: string;
+    }>();
+  });
+
+  it("a dotted ref against a structured agent handle projects the inferred object", () => {
+    expectTypeOf<InferResponse<typeof askAutoInferredDotted>>().toEqualTypeOf<{
+      priority: "low" | "medium" | "high";
+      summary: string;
+    }>();
+  });
+
+  it("a plain (schema-less) agent handle keeps .result as string", () => {
+    expectTypeOf<InferResponse<typeof askPlainHandle>>().toEqualTypeOf<string>();
   });
 });
