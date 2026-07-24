@@ -35,6 +35,17 @@ describe("s.ai.agent.run — encode parity (brand is phantom)", () => {
     expect(encodeStatement(withShape)).toEqual(encodeStatement(withoutShape));
   });
 
+  it("accepts a raw-literal args object (coerced via obj) (#133)", () => {
+    // `args: { max_age_days: 3 }` just works — no c.int(3) wrapping needed.
+    const stmt = s.ai.agent.run({ agent: "assistant", args: { max_age_days: 3, tone: "curt" }, as: "a" });
+    const encoded = encodeStatement(stmt) as unknown as Record<string, unknown>;
+    const argsEntry = (encoded.input as Array<{ name: string; value: string; tag: string }>).find(
+      (e) => e.name === "args",
+    )!;
+    expect(argsEntry.tag).toBe("const:expr2");
+    expect(argsEntry.value).toBe('{ max_age_days: 3, tone: "curt" }');
+  });
+
   it("still encodes with no `as` and with allowToolExecution/version", () => {
     const stmt = s.ai.agent.run({
       agent: "assistant",

@@ -115,6 +115,29 @@ export const coerceObj = (v: object | Value | undefined): Value | undefined => {
 export const coerceArray = (v: readonly string[] | Value | undefined): Value | undefined =>
   v === undefined ? undefined : isValue(v) ? plain(v) : c.array(v as string[]);
 
+/**
+ * A value acceptable in a call/agent `input` map — a raw scalar literal, a nested
+ * object/array, or a tagged {@link Value}. Widening the maps to this lets
+ * `input: { max_age_days: 3 }` compile without wrapping every literal in `c.int`.
+ */
+export type InputValue = string | number | boolean | object | Value;
+
+/**
+ * Coerce one {@link InputValue} to a {@link Value} for a call/agent input map.
+ * - a tagged {@link Value} → passed through (flattened if a callable accessor).
+ * - `number` → `c.int` when integral, else `c.decimal` (the unambiguous split;
+ *   ambiguous nested cases fail loud inside {@link coerceObj}).
+ * - `string` → `c.text`; `boolean` → `c.bool`.
+ * - an object/array → {@link coerceObj} (record-of-values or JSON constant).
+ */
+export const coerceScalar = (v: InputValue): Value => {
+  if (isValue(v)) return plain(v);
+  if (typeof v === "number") return (Number.isInteger(v) ? c.int(v) : c.decimal(v)) as Value;
+  if (typeof v === "string") return c.text(v);
+  if (typeof v === "boolean") return c.bool(v);
+  return coerceObj(v) as Value;
+};
+
 /** The shared TLS/HTTP fields carried by `api.request` / `stream.from_request` / `webflow.request`. */
 export interface HttpRequestFields {
   method?: HttpMethod | (string & {}) | Value;
