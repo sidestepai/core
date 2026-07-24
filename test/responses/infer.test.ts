@@ -78,6 +78,16 @@ const objectResponse = query({
   response: { id: ref("row"), label: ref("row") },
 });
 
+// A record response mixing a traced ref with a nested plain object member
+// (#133) — keys stay statically known; the nested object resolves to `unknown`
+// (same as wrapping it in obj(...) by hand did before).
+const nestedObjectResponse = query({
+  verb: "GET",
+  apiGroup: links,
+  name: "nested_object_response",
+  response: { user: { id: ref("row"), age: 3 }, label: ref("row") },
+});
+
 // A single-variable response with no override and no trace yet → unknown (U5
 // turns this into the traced row shape).
 const singleVar = query({
@@ -113,6 +123,13 @@ describe("InferResponse (type-level)", () => {
   it("object-literal response → keys known, values unknown (U2)", () => {
     expectTypeOf<InferResponse<typeof objectResponse>>().toEqualTypeOf<{
       id: unknown;
+      label: unknown;
+    }>();
+  });
+
+  it("nested-object response member → keys known, nested value unknown (#133)", () => {
+    expectTypeOf<InferResponse<typeof nestedObjectResponse>>().toEqualTypeOf<{
+      user: unknown;
       label: unknown;
     }>();
   });

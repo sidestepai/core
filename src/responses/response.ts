@@ -5,10 +5,19 @@
  */
 import type { ResultItemXdo } from "../types/xdo.js";
 import type { Value } from "../values/value.js";
+import { obj } from "../values/obj.js";
+import type { ObjInput } from "../values/obj.js";
 import type { Statement } from "../statements/statement.js";
 
+/**
+ * A member of a record response — a {@link Value}, or a nested plain object
+ * literal which is auto-wrapped via {@link obj} (so `response: { user: { id:
+ * ref(x) } }` just works instead of failing tsc against `TaggedValue`; #133).
+ */
+export type ResponseMember = Value | ObjInput;
+
 /** A single `Value` response, or a record of named result items. */
-export type ResponseDef = Value | Record<string, Value>;
+export type ResponseDef = Value | Record<string, ResponseMember>;
 
 /**
  * Warn when a response-bearing def (query/function) has a top-level
@@ -38,7 +47,7 @@ export function warnUnboundReturn(
   );
 }
 
-function isValue(x: ResponseDef): x is Value {
+function isValue(x: ResponseDef | ResponseMember): x is Value {
   return (
     typeof (x as Value).tag === "string" &&
     "value" in (x as object) &&
@@ -47,7 +56,8 @@ function isValue(x: ResponseDef): x is Value {
 }
 
 /** Map a response into `result[]`: one unnamed item for a single value, or
- * one named item per key for a record. */
+ * one named item per key for a record. A record member that is a nested plain
+ * object is auto-wrapped via {@link obj} (a dynamic `const:expr2` value). */
 export function encodeResponse(response: ResponseDef | undefined): ResultItemXdo[] {
   if (response === undefined) {
     return [];
@@ -57,12 +67,8 @@ export function encodeResponse(response: ResponseDef | undefined): ResultItemXdo
       { filters: response.filters, name: "", tag: response.tag, value: response.value, _xsid: "", disabled: false },
     ];
   }
-  return Object.entries(response).map(([name, value]) => ({
-    filters: value.filters,
-    name,
-    tag: value.tag,
-    value: value.value,
-    _xsid: "",
-    disabled: false,
-  }));
+  return Object.entries(response).map(([name, member]) => {
+    const value = isValue(member) ? member : obj(member);
+    return { filters: value.filters, name, tag: value.tag, value: value.value, _xsid: "", disabled: false };
+  });
 }
