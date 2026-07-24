@@ -888,7 +888,9 @@ enrich / lean envelope).
   (issue #48). `s.db.del` **binds `null`** (the engine deletes and returns no value), so it stays
   `unknown`. Unlike `get`, `edit`/`del` **throw** `NotFound` (404) when nothing matches.
 
-**Values** — `c.int/text/bool/decimal/null/obj/array`, `ref(var)`, `inp(input)`,
+**Values** — `c.int/text/bool/decimal/null/obj/array`, `c.now()` (current time as
+epoch-ms; a filtered value — hoist it into an `s.set_var` before a `where`/`cmp`),
+`ref(var)`, `inp(input)`,
 `col(name)`, plus context refs `auth(path?)`, `env(name)`, `setting(name)`, `sys.*()`
 (built-in request/system vars — see below), `out(name)`
 (a parent-row column, for addon inputs). `c.obj`/`c.array`
