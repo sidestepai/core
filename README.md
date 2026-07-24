@@ -1090,6 +1090,13 @@ sidestep validate ./xano/index.ts --runtime  # also run each deployed function o
 sidestep validate ./xano/index.ts --capture  # write the fetched JSON as fixture candidates
 ```
 
+After a command succeeds the CLI checks npm (at most once a day, cached in
+`~/.sidestep/update-check.json`) and prints a one-line nudge to **stderr** when a newer
+`@sidestep/core` is published — never to stdout, so piped bundles stay clean. The check is
+best-effort and bounded (a slow or offline registry never delays a command), and stays
+silent under CI or when stderr isn't a terminal. Opt out with `SIDESTEP_NO_UPDATE_CHECK=1`
+(or the conventional `NO_UPDATE_NOTIFIER=1`).
+
 Emitters that write to disk (and the programmatic CLI) are Node-only — import them from
 `@sidestep/core/node`. The string emitters (`emit`, `emitBundle`, `serializeBundle`) stay
 on the browser-safe `@sidestep/core` entry.

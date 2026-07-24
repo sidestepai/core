@@ -10,8 +10,13 @@
  * CLI exits silently. An always-run bin can't regress that way.
  */
 import { run } from "./cli.js";
+import { maybeNotifyUpdate } from "./update-check.js";
 
-run(process.argv.slice(2)).catch((err) => {
-  process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-  process.exit(1);
-});
+run(process.argv.slice(2))
+  // After a successful command, nudge if a newer @sidestep/core is on npm.
+  // Best-effort and swallowed internally — it can never fail the run.
+  .then(() => maybeNotifyUpdate())
+  .catch((err) => {
+    process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+    process.exit(1);
+  });
