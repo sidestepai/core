@@ -249,8 +249,9 @@ The backend lives in [\`index.ts\`](index.ts) and is a single default-exported
 
 Everything you need is in the package itself:
 
-- \`node_modules/@sidestep/core/llms.txt\` — a compact tour of every builder.
+- \`node_modules/@sidestep/core/llms.txt\` — the lean, canonical tour of every builder; read this first.
 - The published TypeScript types and JSDoc (\`node_modules/@sidestep/core/**/*.d.ts\`).
+- \`node_modules/@sidestep/core/manifest.json\` — the exhaustive reference; grep or \`jq\` the one entry you need rather than reading it whole.
 
 Author against those signatures — don't invent an API that isn't there.
 

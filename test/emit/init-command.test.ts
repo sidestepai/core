@@ -121,6 +121,7 @@ describe("AI presets (U4)", () => {
     for (const body of [renderClaudeMd("app"), renderAgentsMd("app"), renderCursorRules("app")]) {
       expect(body).toContain("llms.txt");
       expect(body).toMatch(/\.d\.ts/);
+      expect(body).toContain("manifest.json");
     }
   });
   it("cursor output is valid MDC frontmatter", () => {
