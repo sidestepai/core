@@ -90,6 +90,47 @@ const probeWhileGroup = defineFunction({
   response: ref("i"),
 });
 
+/**
+ * Probe #5 — `precondition` with a grouped condition. Byte-verifies Gap A on the
+ * `!compare` route (precondition + array.* share it via interpret.ts).
+ */
+const probePreconditionGroup = defineFunction({
+  name: "ex_probe_precondition_group",
+  stack: [
+    s.set_var("n", c.int(5)),
+    s.precondition({
+      expr: or(expr(ref("n"), ">", c.int(0)), cmp(ref("n"), "in", withFilters(c.text("[1,2,3]"), filter("json_decode")))),
+      error_type: "badrequest",
+      error: c.text("n must be positive or in the set"),
+    }),
+  ],
+  response: ref("n"),
+});
+
+/**
+ * Probe #6 — `array.find` with a grouped predicate. Byte-verifies Gap A on the
+ * array.* `!compare` predicate.
+ */
+const probeArrayFindGroup = defineFunction({
+  name: "ex_probe_array_find_group",
+  stack: [
+    s.set_var("items", withFilters(c.text("[1,2,3,4]"), filter("json_decode"))),
+    s.array.find({
+      expr: ref("items"),
+      as: "found",
+      if: and(expr(ref("$this"), ">", c.int(1)), expr(ref("$this"), "<", c.int(4))),
+    }),
+  ],
+  response: ref("found"),
+});
+
 export default workspace("sidestep-capture-expr").registerFunctions(
-  defs([probeCondFiltered, probeCondElif, probeCondGroup, probeWhileGroup]),
+  defs([
+    probeCondFiltered,
+    probeCondElif,
+    probeCondGroup,
+    probeWhileGroup,
+    probePreconditionGroup,
+    probeArrayFindGroup,
+  ]),
 );

@@ -14,7 +14,7 @@
  */
 import type { Statement } from "../statement.js";
 import type { Value } from "../../values/value.js";
-import type { Comparison } from "../conditional.js";
+import type { Condition } from "../conditional.js";
 import { generated } from "../generated/factories.generated.js";
 
 /**
@@ -42,7 +42,7 @@ export type PreconditionErrorType =
 
 export interface PreconditionArgs {
   /** The condition that must hold. When it evaluates falsy, the error is raised. */
-  expr?: Comparison;
+  expr?: Condition;
   /**
    * Which status-bearing exception to raise on failure (default `standard`). Use
    * e.g. `badrequest` / `inputerror` to reject invalid input with a **400** a

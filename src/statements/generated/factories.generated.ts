@@ -12,7 +12,7 @@ import type { Statement } from "../statement.js";
 import type { Authored, OutputAuthored } from "../schema-dsl/interpret.js";
 import { encodeFromSpec } from "../schema-dsl/interpret.js";
 import type { Value } from "../../values/value.js";
-import type { Comparison } from "../conditional.js";
+import type { Condition } from "../conditional.js";
 import { GENERATED_SPECS } from "./specs.generated.js";
 
 const SPECS = new Map(GENERATED_SPECS.map((s) => [s.name, s]));
@@ -47,25 +47,25 @@ export const generated = {
     difference: /** `mvp:array_difference` — fields: as, expr, value, by */
 (a: { as?: string; expr?: Value; value?: Value; by?: Value } = {}): Statement => fromSpec("mvp:array_difference", a),
     every: /** `mvp:array_every` — fields: expr, as, if */
-(a: { expr?: Value; as?: string; if?: Comparison; output?: OutputAuthored } = {}): Statement => fromSpec("mvp:array_every", a),
+(a: { expr?: Value; as?: string; if?: Condition; output?: OutputAuthored } = {}): Statement => fromSpec("mvp:array_every", a),
     filter: /** `mvp:array_filter` — fields: expr, as, if */
-(a: { expr?: Value; as?: string; if?: Comparison } = {}): Statement => fromSpec("mvp:array_filter", a),
+(a: { expr?: Value; as?: string; if?: Condition } = {}): Statement => fromSpec("mvp:array_filter", a),
     filter_count: /** `mvp:array_filter_count` — fields: expr, as, if */
-(a: { expr?: Value; as?: string; if?: Comparison } = {}): Statement => fromSpec("mvp:array_filter_count", a),
+(a: { expr?: Value; as?: string; if?: Condition } = {}): Statement => fromSpec("mvp:array_filter_count", a),
     find: /** `mvp:array_find` — fields: expr, as, if */
-(a: { expr?: Value; as?: string; if?: Comparison; output?: OutputAuthored } = {}): Statement => fromSpec("mvp:array_find", a),
+(a: { expr?: Value; as?: string; if?: Condition; output?: OutputAuthored } = {}): Statement => fromSpec("mvp:array_find", a),
     find_index: /** `mvp:array_find_index` — fields: expr, as, if */
-(a: { expr?: Value; as?: string; if?: Comparison } = {}): Statement => fromSpec("mvp:array_find_index", a),
+(a: { expr?: Value; as?: string; if?: Condition } = {}): Statement => fromSpec("mvp:array_find_index", a),
     group_by: /** `mvp:array_group_by` — fields: as, expr, by */
 (a: { as?: string; expr?: Value; by?: Value } = {}): Statement => fromSpec("mvp:array_group_by", a),
     has: /** `mvp:array_has` — fields: expr, as, if */
-(a: { expr?: Value; as?: string; if?: Comparison } = {}): Statement => fromSpec("mvp:array_has", a),
+(a: { expr?: Value; as?: string; if?: Condition } = {}): Statement => fromSpec("mvp:array_has", a),
     intersection: /** `mvp:array_intersection` — fields: as, expr, value, by */
 (a: { as?: string; expr?: Value; value?: Value; by?: Value } = {}): Statement => fromSpec("mvp:array_intersection", a),
     merge: /** `mvp:array_merge` — fields: name, value */
 (a: { name?: string; value?: Value; output?: OutputAuthored } = {}): Statement => fromSpec("mvp:array_merge", a),
     partition: /** `mvp:array_partition` — fields: expr, as, if */
-(a: { expr?: Value; as?: string; if?: Comparison } = {}): Statement => fromSpec("mvp:array_partition", a),
+(a: { expr?: Value; as?: string; if?: Condition } = {}): Statement => fromSpec("mvp:array_partition", a),
     pop: /** `mvp:array_pop` — fields: name, as */
 (a: { name?: string; as?: string; output?: OutputAuthored } = {}): Statement => fromSpec("mvp:array_pop", a),
     push: /** `mvp:array_push` — fields: name, value */
@@ -234,7 +234,7 @@ export const generated = {
 (a: { as?: string; value?: Value; output?: OutputAuthored } = {}): Statement => fromSpec("mvp:object_values", a),
   },
   precondition: /** `mvp:precondition` — fields: expr, error_type, error, payload */
-(a: { expr?: Comparison; error_type?: string; error?: Value; payload?: Value } = {}): Statement => fromSpec("mvp:precondition", a),
+(a: { expr?: Condition; error_type?: string; error?: Value; payload?: Value } = {}): Statement => fromSpec("mvp:precondition", a),
   redis: {
     count: /** `mvp:redis_countlist` — fields: as, key */
 (a: { as?: string; key: Value }): Statement => fromSpec("mvp:redis_countlist", a),

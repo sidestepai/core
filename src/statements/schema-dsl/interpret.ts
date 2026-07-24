@@ -30,13 +30,13 @@ import { registerStatement } from "../statement.js";
 import type { Value } from "../../values/value.js";
 import { leanInput } from "../lean-input.js";
 import { encodeComparison } from "../conditional.js";
-import type { Comparison } from "../conditional.js";
+import type { Condition } from "../conditional.js";
 
 /**
  * What kind of authored value a field consumes:
  *  - `string`     — a plain `static:text`/`bool` arg.
  *  - `value`      — a `!kinds assign` tagged Value.
- *  - `comparison` — a binary `Comparison` (the `!compare` directive).
+ *  - `comparison` — a `Condition` expression tree (the `!compare` directive).
  */
 export type FieldType = "string" | "value" | "comparison";
 
@@ -119,7 +119,7 @@ export interface OutputAuthored {
  */
 export type Authored = Record<
   string,
-  string | Value | Comparison | OutputAuthored | undefined
+  string | Value | Condition | OutputAuthored | undefined
 >;
 
 function valueFields(v: Value): { value: string; tag: string; filters: unknown[] } {
@@ -201,7 +201,7 @@ export function encodeFromSpec(spec: StatementSpec, authored: Authored): Stateme
         setPath(context, rule.route.path, nestedValueFields(provided as Value));
         break;
       case "context-compare":
-        setPath(context, rule.route.path, encodeComparison(provided as Comparison));
+        setPath(context, rule.route.path, encodeComparison(provided as Condition));
         break;
       case "input":
         input.push(inputEntry(rule.route.name, provided as Value, env?.inputFull ?? false));

@@ -10,7 +10,7 @@ import type { FieldOptions } from "../fields/field.js";
 import type { FieldMap } from "../fields/catalog.js";
 import type { RowFromFieldMap, Prettify } from "../fields/value-types.js";
 import { encodeComparison } from "../statements/conditional.js";
-import type { Comparison } from "../statements/conditional.js";
+import type { Condition } from "../statements/conditional.js";
 import { registerKind } from "./kind.js";
 import type { ObjectKind } from "./kind.js";
 import { encodeTags } from "./common.js";
@@ -120,7 +120,7 @@ export interface ViewDef {
   /** Free-text search query → stored `q`. */
   q?: string;
   /** Filter expression (reuses the conditional comparison shape). */
-  where?: Comparison;
+  where?: Condition;
   /** Sort order, applied in array order. */
   sort?: Array<{ name: string; order: "asc" | "desc" }>;
 }

@@ -141,7 +141,7 @@ function namespaceOf(base: string): { path: string[]; method: string } {
   return { path: segs, method };
 }
 
-const TS_TYPE: Record<string, string> = { string: "string", value: "Value", comparison: "Comparison" };
+const TS_TYPE: Record<string, string> = { string: "string", value: "Value", comparison: "Condition" };
 
 /** TS arg-object type + whether the whole object can default to `{}`. */
 function argSignature(spec: StatementSpec): { type: string; allOptional: boolean } {
@@ -229,7 +229,7 @@ import type { Statement } from "../statement.js";
 import type { Authored, OutputAuthored } from "../schema-dsl/interpret.js";
 import { encodeFromSpec } from "../schema-dsl/interpret.js";
 import type { Value } from "../../values/value.js";
-import type { Comparison } from "../conditional.js";
+import type { Condition } from "../conditional.js";
 import { GENERATED_SPECS } from "./specs.generated.js";
 
 const SPECS = new Map(GENERATED_SPECS.map((s) => [s.name, s]));
