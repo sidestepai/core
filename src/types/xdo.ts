@@ -196,9 +196,19 @@ export interface ExprStatement {
   };
 }
 
+/** A `{type:"group"}` entry — a nested AND/OR subtree of expression nodes. */
+export interface ExprGroup {
+  type: "group";
+  or: boolean;
+  group: { expression: ExprNode[] };
+}
+
+/** One node in an expression tree: a comparison statement or a nested group. */
+export type ExprNode = ExprStatement | ExprGroup;
+
 /** `context` for a `mvp:conditional` statement. */
 export interface ConditionalContext {
-  expr: { expression: ExprStatement[] };
+  expr: { expression: ExprNode[] };
   if: { run: StackItemXdo[] };
   /**
    * The elif stack — a `run[]` of `mvp:conditional_elif` statements, each its own
@@ -212,7 +222,7 @@ export interface ConditionalContext {
 
 /** `context` for a `mvp:conditional_elif` statement — one leaf branch of a conditional's elif stack. */
 export interface ConditionalElifContext {
-  expr: { expression: ExprStatement[] };
+  expr: { expression: ExprNode[] };
   if: { run: StackItemXdo[] };
 }
 

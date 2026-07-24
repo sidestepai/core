@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { conditional, conditionalElif, expr } from "../src/statements/conditional.js";
+import { conditional, conditionalElif, expr, cmp, and, or } from "../src/statements/conditional.js";
 import { encodeStatement } from "../src/statements/statement.js";
 import { setVar } from "../src/statements/set-var.js";
 import { defineFunction } from "../src/function/define.js";
 import { compile } from "../src/function/compile.js";
 import { input } from "../src/inputs/input.js";
-import { c, inp, ref } from "../src/values/value.js";
+import { c, inp, ref, withFilters, filter } from "../src/values/value.js";
 import { normalize } from "./conformance/harness.js";
 
 describe("conditional", () => {
@@ -64,6 +64,63 @@ describe("conditional", () => {
     expect(expr(ref("a"), "==", c.int(1)).op).toBe("=");
     expect(expr(ref("a"), "===", c.int(1)).op).toBe("=");
     expect(expr(ref("a"), "!==", c.int(1)).op).toBe("!=");
+  });
+
+  it("a bare single expr() emits byte-identical output after the tree widening (regression)", () => {
+    // R2 guard: the common single-comparison case must not change bytes.
+    const ctx = encodeStatement(
+      conditional({ when: expr(inp("score"), ">", c.int(10)), then: [setVar("x1", c.int(1))] }),
+    ).context as any;
+    expect(ctx.expr).toEqual({
+      expression: [
+        {
+          type: "statement",
+          or: false,
+          group: { expression: [] },
+          statement: {
+            op: ">",
+            left: { operand: "score", tag: "input", filters: [] },
+            right: { operand: "10", tag: "const:int", filters: [] },
+          },
+        },
+      ],
+    });
+  });
+
+  it("a grouped AND/OR condition (cmp + and/or) encodes nested {type:'group'} nodes", () => {
+    const ctx = encodeStatement(
+      conditional({
+        when: and(
+          cmp(ref("status"), "like", c.text("%active%")),
+          or(expr(ref("n"), ">", c.int(0)), expr(ref("n"), "<", c.int(-10))),
+        ),
+        then: [setVar("hit", c.text("yes"))],
+      }),
+    ).context as any;
+    const top = ctx.expr.expression;
+    // `when: and(...)` → a single top-level group node.
+    expect(top).toHaveLength(1);
+    expect(top[0].type).toBe("group");
+    const inner = top[0].group.expression;
+    expect(inner[0].statement.op).toBe("like"); // full operator set via cmp()
+    expect(inner[1].type).toBe("group"); // the nested or(...)
+    // OR semantics: first child or:false, second or:true.
+    expect(inner[1].group.expression[0].or).toBe(false);
+    expect(inner[1].group.expression[1].or).toBe(true);
+  });
+
+  it("a filtered operand passes through inline in a condition (conditionals accept it; no #118)", () => {
+    const ctx = encodeStatement(
+      conditional({
+        when: expr(withFilters(ref("nums"), filter("count")), ">", c.int(0)),
+        then: [setVar("ok", c.text("yes"))],
+      }),
+    ).context as any;
+    expect(ctx.expr.expression[0].statement.left).toEqual({
+      operand: "nums",
+      tag: "var",
+      filters: [{ name: "count", disabled: false, arg: [] }],
+    });
   });
 
   it("a plain conditional emits an empty elif stack (engine always persists elif.run)", () => {

@@ -4,7 +4,7 @@
  * autocomplete have their own small shapes. Validated against the Xano engine's
  * persisted table shape (the full rich field-type corpus).
  */
-import type { FieldXdo, ExprStatement } from "../types/xdo.js";
+import type { FieldXdo, ExprNode } from "../types/xdo.js";
 import { encodeField, COLUMN_CONTEXT } from "../fields/field.js";
 import type { FieldOptions } from "../fields/field.js";
 import type { FieldMap } from "../fields/catalog.js";
@@ -265,7 +265,7 @@ export interface ViewXdo {
   id: string;
   name: string;
   q: string;
-  expression: ExprStatement[];
+  expression: ExprNode[];
   sort: Array<{ name: string; order: string }>;
 }
 

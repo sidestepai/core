@@ -8,7 +8,7 @@ import { mathAdd, bitwiseAnd, bitwiseOr, bitwiseXor, objectKeys, objectValues, o
 import { returnValue, die, debugLog, foreachBreak, foreachContinue, foreachRemove } from "../../src/statements/special/control-flow.js";
 import { forLoop, foreachLoop, whileLoop, group } from "../../src/statements/special/loops.js";
 import { setVar } from "../../src/statements/set-var.js";
-import { expr, conditional } from "../../src/statements/conditional.js";
+import { expr, cmp, and, or, conditional } from "../../src/statements/conditional.js";
 import { arrayMap, arrayUnion, getRawInput, expectToThrow } from "../../src/statements/special/misc.js";
 import { aiAgentRun, cloudJob, cloudJobAwait, cloudJobStatus } from "../../src/statements/special/ai-cloud.js";
 import {
@@ -332,6 +332,23 @@ const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
             { when: expr(ref("n"), ">", c.int(0)), then: [setVar("bucket", c.text("low"))] },
           ],
           else: [setVar("bucket", c.text("none"))],
+        }),
+      ),
+  },
+  // conditional with a nested AND/OR group over the full operator set (cmp +
+  // and/or), proven byte-exact against a live capture: verifies the `{type:"group"}`
+  // node shape and per-node `or` flags on the conditional surface (Gap A).
+  {
+    fixture: "conditional_group",
+    build: () =>
+      encodeStatement(
+        conditional({
+          when: and(
+            cmp(ref("status"), "like", c.text("%active%")),
+            or(expr(ref("n"), ">", c.int(0)), expr(ref("n"), "<", c.int(-10))),
+          ),
+          then: [setVar("hit", c.text("yes"))],
+          else: [setVar("hit", c.text("no"))],
         }),
       ),
   },

@@ -21,14 +21,18 @@
 import type { ConditionalContext, ConditionalElifContext } from "../types/xdo.js";
 import type { Statement } from "./statement.js";
 import { encodeStatement, registerStatement } from "./statement.js";
-import { encodeComparison, type Comparison } from "./expression.js";
+import { encodeComparison, type Condition } from "./expression.js";
 
 export {
   expr,
+  cmp,
+  and,
+  or,
   encodeComparison,
   encodeSearchExpression,
   type Comparison,
   type ComparisonOp,
+  type Condition,
 } from "./expression.js";
 
 export const CONDITIONAL = "mvp:conditional";
@@ -36,7 +40,7 @@ export const CONDITIONAL_ELIF = "mvp:conditional_elif";
 
 /** One `else if (when) { then }` branch of a {@link conditional}'s elif stack. */
 export interface ConditionalElifArgs {
-  when: Comparison;
+  when: Condition;
   then: Statement[];
 }
 
@@ -54,7 +58,7 @@ export function conditionalElif(args: ConditionalElifArgs): Statement {
 }
 
 export interface ConditionalArgs {
-  when: Comparison;
+  when: Condition;
   then: Statement[];
   /** Ordered `else if` branches, each `{ when, then }`. */
   elif?: ConditionalElifArgs[];

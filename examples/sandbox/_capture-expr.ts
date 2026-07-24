@@ -10,7 +10,7 @@
  *
  * Run:  node dist/bin.js validate examples/sandbox/_capture-expr.ts --capture --runtime --out validate-out
  */
-import { workspace, defineFunction, s, c, ref, expr, withFilters, filter } from "@sidestep/core";
+import { workspace, defineFunction, s, c, ref, expr, cmp, and, or, withFilters, filter } from "@sidestep/core";
 
 const defs = (xs: unknown[]) => xs as never[];
 
@@ -52,6 +52,44 @@ const probeCondElif = defineFunction({
   response: ref("bucket"),
 });
 
+/**
+ * Probe #3 — a conditional whose `when` is a nested AND/OR group over the full
+ * operator set (`cmp` + `and`/`or`). Byte-verifies Gap A (grouping + full ops) on
+ * the conditional surface.
+ */
+const probeCondGroup = defineFunction({
+  name: "ex_probe_cond_group",
+  stack: [
+    s.set_var("status", c.text("active")),
+    s.set_var("n", c.int(5)),
+    s.conditional({
+      when: and(
+        cmp(ref("status"), "like", c.text("%active%")),
+        or(expr(ref("n"), ">", c.int(0)), expr(ref("n"), "<", c.int(-10))),
+      ),
+      then: [s.set_var("hit", c.text("yes"))],
+      else: [s.set_var("hit", c.text("no"))],
+    }),
+  ],
+  response: ref("hit"),
+});
+
+/**
+ * Probe #4 — a `while` with a grouped condition (never enters the body: the
+ * group is false immediately). Byte-verifies Gap A on the while surface.
+ */
+const probeWhileGroup = defineFunction({
+  name: "ex_probe_while_group",
+  stack: [
+    s.set_var("i", c.int(0)),
+    s.while({
+      when: and(expr(ref("i"), "<", c.int(0)), expr(ref("i"), ">", c.int(100))),
+      body: [s.set_var("i", withFilters(ref("i"), filter("add", c.int(1))))],
+    }),
+  ],
+  response: ref("i"),
+});
+
 export default workspace("sidestep-capture-expr").registerFunctions(
-  defs([probeCondFiltered, probeCondElif]),
+  defs([probeCondFiltered, probeCondElif, probeCondGroup, probeWhileGroup]),
 );

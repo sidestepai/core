@@ -17,7 +17,7 @@
  * surface controls operand handling (e.g. db search rejects inline filtered
  * operands per #118) without duplicating the tree walk.
  */
-import type { ExprOperand, ExprStatement } from "../types/xdo.js";
+import type { ExprGroup, ExprNode, ExprOperand, ExprStatement } from "../types/xdo.js";
 import type { Value } from "../values/value.js";
 
 // ---------------------------------------------------------------------------
@@ -109,6 +109,14 @@ export interface SearchGroup {
 
 /** A node in the expression tree: a narrow `expr()`, a full `cmp()`, or an and/or group. */
 export type SearchNode = Comparison | SearchComparison | SearchGroup;
+
+/**
+ * A boolean condition for a `when`/predicate surface (conditional, while,
+ * precondition, array.* `!compare`, table `where`): one node, or a flat array of
+ * nodes ANDed together. The full Xano expression tree — a single `expr()` stays
+ * the discoverable common case.
+ */
+export type Condition = SearchNode | SearchNode[];
 
 /**
  * Build a comparison over the full operator set (`in`, `like`, `ilike`,
@@ -203,11 +211,16 @@ export function encodeContainer(
   children: SearchNode[],
   joinOr: boolean,
   operand: OperandEncoder = passthroughOperand,
-): unknown[] {
-  return children.map((child, i) => {
+): ExprNode[] {
+  return children.map((child, i): ExprNode => {
     const or = joinOr && i > 0;
     if (isGroup(child)) {
-      return { type: "group", or, group: { expression: encodeContainer(child.children, child.or, operand) } };
+      const group: ExprGroup = {
+        type: "group",
+        or,
+        group: { expression: encodeContainer(child.children, child.or, operand) },
+      };
+      return group;
     }
     return toStatementNode(child, or, operand);
   });
@@ -220,9 +233,9 @@ export function encodeContainer(
  * rejecting encoder.
  */
 export function encodeExpression(
-  input: SearchNode | SearchNode[],
+  input: Condition,
   operand: OperandEncoder = passthroughOperand,
-): { expression: unknown[] } {
+): { expression: ExprNode[] } {
   const nodes = Array.isArray(input) ? input : [input];
   return { expression: encodeContainer(nodes, false, operand) };
 }
@@ -234,10 +247,10 @@ export function encodeExpression(
  * callers that emit exactly one comparison.
  */
 export function encodeComparison(
-  when: Comparison,
+  when: Condition,
   operand: OperandEncoder = passthroughOperand,
-): { expression: ExprStatement[] } {
-  return encodeExpression(when, operand) as { expression: ExprStatement[] };
+): { expression: ExprNode[] } {
+  return encodeExpression(when, operand);
 }
 
 /**
@@ -249,6 +262,6 @@ export function encodeComparison(
 export function encodeSearchExpression(
   clauses: Comparison[],
   operand: OperandEncoder = passthroughOperand,
-): { expression: ExprStatement[] } {
-  return encodeExpression(clauses, operand) as { expression: ExprStatement[] };
+): { expression: ExprNode[] } {
+  return encodeExpression(clauses, operand);
 }
