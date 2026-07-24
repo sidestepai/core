@@ -1,7 +1,8 @@
 /**
  * `sidestep profile me` — print the scoped user and, most importantly, the
- * instance base URL, as JSON on stdout. An agent reads the instance URL to
- * configure a frontend's API base before a static-host upload.
+ * instance base URL. On an interactive terminal it prints an aligned, colorized
+ * summary; when stdout is piped (an agent, `jq`, CI) it prints the projected
+ * JSON verbatim, so machine consumers keep a stable, parseable contract.
  *
  * Reuses the existing `GET /api:meta/auth/me` endpoint. It **projects only**
  * `id`/`name`/`email` and the instance base URL (from the token binding via
@@ -13,6 +14,7 @@
  */
 import type { ParsedArgs } from "./cli.js";
 import { getAccessToken } from "../auth/token.js";
+import { stdoutStyle, formatFields } from "./ui.js";
 
 /** Bound the metadata fetch so a stalled endpoint can't hang the CLI. */
 const PROFILE_TIMEOUT_MS = 30_000;
@@ -60,7 +62,26 @@ export async function fetchProfile(args: ParsedArgs): Promise<Profile> {
   };
 }
 
+/** Render the profile as an aligned, colorized summary for an interactive terminal. */
+function prettyProfile(p: Profile): string {
+  const s = stdoutStyle();
+  const who = [p.user.name, p.user.email && `<${p.user.email}>`].filter(Boolean).join(" ");
+  const id = p.user.id !== undefined ? ` ${s.dim(`· id ${p.user.id}`)}` : "";
+  return (
+    "\n" +
+    formatFields([
+      ["Signed in", who !== "" ? `${who}${id}` : s.dim("(unknown user)")],
+      ["Instance", s.bold(s.cyan(p.instance))],
+    ])
+  );
+}
+
 export async function runProfileCommand(args: ParsedArgs): Promise<void> {
   const profile = await fetchProfile(args);
-  process.stdout.write(JSON.stringify(profile, null, 2) + "\n");
+  // A TTY gets the human summary; a pipe (agent/jq/CI) gets stable JSON.
+  if (process.stdout.isTTY) {
+    process.stdout.write(prettyProfile(profile));
+  } else {
+    process.stdout.write(JSON.stringify(profile, null, 2) + "\n");
+  }
 }

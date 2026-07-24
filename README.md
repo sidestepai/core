@@ -1080,8 +1080,8 @@ sidestep sandbox deploy --bundle ws.json     # deploy an already-exported bundle
 sidestep sandbox export                      # export the DEPLOYED sandbox workspace as a JSON bundle → ./sandbox.json
 sidestep sandbox export --format multidoc --name backend               # …or the deployed sandbox as XanoScript → backend.xs
 sidestep sandbox export --format multidoc --path -                     # …stream the multidoc to stdout (deploy first)
-sidestep sandbox details                     # print the sandbox base URL + tenant details (JSON)
-sidestep profile me                          # print the scoped user + instance base URL (JSON)
+sidestep sandbox details                     # print the sandbox base URL + tenant details (pretty on a TTY, JSON when piped)
+sidestep profile me                          # print the scoped user + instance base URL (pretty on a TTY, JSON when piped)
 sidestep logout                              # revoke the refresh token + delete the local cache
 sidestep version                             # print the installed @sidestep/core version
 
@@ -1089,6 +1089,14 @@ sidestep validate ./xano/index.ts            # import into a live instance, diff
 sidestep validate ./xano/index.ts --runtime  # also run each deployed function on the engine
 sidestep validate ./xano/index.ts --capture  # write the fetched JSON as fixture candidates
 ```
+
+After a command succeeds the CLI checks npm (at most once an hour, cached in
+`~/.sidestep/update-check.json`) and prints a one-line nudge to **stderr** when a newer
+`@sidestep/core` is published — never to stdout, so piped bundles stay clean. The suggested
+command adapts to how you installed it (`npm i -g …` for a global install, `npm i -D …`
+when it's a project dependency). The check is best-effort and bounded (a slow or offline
+registry never delays a command), and stays silent under CI or when stderr isn't a terminal.
+Opt out with `SIDESTEP_NO_UPDATE_CHECK=1` (or the conventional `NO_UPDATE_NOTIFIER=1`).
 
 Emitters that write to disk (and the programmatic CLI) are Node-only — import them from
 `@sidestep/core/node`. The string emitters (`emit`, `emitBundle`, `serializeBundle`) stay

@@ -63,6 +63,30 @@ describe("sidestep profile me", () => {
     expect(out.user).toEqual({ id: 9, name: "Ada", email: "ada@example.com" });
   });
 
+  it("prints an aligned human summary (no JSON) when stdout is a TTY", async () => {
+    const authFile = writeTokenFile(dir);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(ME_BODY, { status: 200 }));
+    // NO_COLOR keeps the assertion free of ANSI escapes; the TTY flag drives the branch.
+    const prevColor = process.env.NO_COLOR;
+    process.env.NO_COLOR = "1";
+    const ttyDesc = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+    Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+    try {
+      await runProfileCommand(parseArgs(["profile", "me", "--config", authFile]));
+    } finally {
+      if (ttyDesc) Object.defineProperty(process.stdout, "isTTY", ttyDesc);
+      else delete (process.stdout as { isTTY?: boolean }).isTTY;
+      if (prevColor === undefined) delete process.env.NO_COLOR;
+      else process.env.NO_COLOR = prevColor;
+    }
+    const joined = stdout.join("");
+    expect(joined).toContain("Signed in");
+    expect(joined).toContain("Ada <ada@example.com>");
+    expect(joined).toContain("id 9");
+    expect(joined).toContain(INSTANCE);
+    expect(() => JSON.parse(joined)).toThrow(); // human view, not JSON
+  });
+
   it("never emits the raw `extras` blob", async () => {
     const authFile = writeTokenFile(dir);
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(ME_BODY, { status: 200 }));
