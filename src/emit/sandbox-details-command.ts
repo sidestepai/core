@@ -1,9 +1,11 @@
 /**
  * `sidestep sandbox details` — print the caller's singleton sandbox tenant, with
- * its public **base URL** as the headline field, as JSON on stdout. An agent
- * reads the base URL to point a frontend (or an HTTP client) at the backend it
- * deployed with `sidestep sandbox deploy`, without having to re-run a deploy to
- * recover it from the deploy response.
+ * its public **base URL** as the headline field. On an interactive terminal it
+ * prints an aligned, colorized summary; when stdout is piped (an agent, `jq`, CI)
+ * it prints the projected JSON verbatim, so machine consumers keep a stable,
+ * parseable contract. An agent reads the base URL to point a frontend (or an HTTP
+ * client) at the backend it deployed with `sidestep sandbox deploy`, without
+ * having to re-run a deploy to recover it from the deploy response.
  *
  * Reuses the existing `GET /api:meta/sandbox/me` endpoint ("get or create the
  * singleton sandbox tenant"). It **projects only** the safe, stable fields —
@@ -20,6 +22,7 @@
  */
 import type { ParsedArgs } from "./cli.js";
 import { getAccessToken } from "../auth/token.js";
+import { stdoutStyle, formatFields } from "./ui.js";
 
 /** Bound the metadata fetch so a stalled endpoint can't hang the CLI. */
 const SANDBOX_TIMEOUT_MS = 30_000;
@@ -98,7 +101,25 @@ export async function fetchSandboxDetails(args: ParsedArgs): Promise<SandboxDeta
   };
 }
 
+/** Render the sandbox details as an aligned, colorized summary for an interactive terminal. */
+function prettyDetails(d: SandboxDetails): string {
+  const s = stdoutStyle();
+  const { sandbox } = d;
+  const label = [sandbox.display ?? sandbox.name, sandbox.state && s.dim(`(${sandbox.state})`)]
+    .filter(Boolean)
+    .join(" ");
+  const rows: Array<[string, string]> = [["Base URL", s.bold(s.cyan(d.baseUrl))]];
+  if (label !== "") rows.push(["Sandbox", label]);
+  if (sandbox.expiresAt !== undefined) rows.push(["Expires", s.dim(String(sandbox.expiresAt))]);
+  return "\n" + formatFields(rows);
+}
+
 export async function runSandboxDetailsCommand(args: ParsedArgs): Promise<void> {
   const details = await fetchSandboxDetails(args);
-  process.stdout.write(JSON.stringify(details, null, 2) + "\n");
+  // A TTY gets the human summary; a pipe (agent/jq/CI) gets stable JSON.
+  if (process.stdout.isTTY) {
+    process.stdout.write(prettyDetails(details));
+  } else {
+    process.stdout.write(JSON.stringify(details, null, 2) + "\n");
+  }
 }

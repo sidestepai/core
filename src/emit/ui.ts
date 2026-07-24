@@ -8,25 +8,53 @@
  * or CI logs stay plain ASCII with no escape-sequence noise.
  */
 
-/** Whether to emit ANSI color: a real terminal, not opted out, or force-enabled. */
-const useColor =
-  process.env.FORCE_COLOR
+/** Color-capable iff a real terminal on `isTTY`, not opted out (NO_COLOR), or force-enabled. */
+function resolveColor(isTTY: boolean | undefined): boolean {
+  return process.env.FORCE_COLOR
     ? process.env.FORCE_COLOR !== "0"
-    : !process.env.NO_COLOR && process.stderr.isTTY === true;
-
-function paint(code: string, s: string): string {
-  return useColor ? `\x1b[${code}m${s}\x1b[0m` : s;
+    : !process.env.NO_COLOR && isTTY === true;
 }
 
-/** Small ANSI palette (no-ops when color is disabled). */
-export const style = {
-  bold: (s: string) => paint("1", s),
-  dim: (s: string) => paint("2", s),
-  green: (s: string) => paint("32", s),
-  red: (s: string) => paint("31", s),
-  yellow: (s: string) => paint("33", s),
-  cyan: (s: string) => paint("36", s),
-};
+/** A `style`-shaped ANSI palette whose color is gated on `on`. */
+function makePalette(on: boolean) {
+  const paint = (code: string, s: string) => (on ? `\x1b[${code}m${s}\x1b[0m` : s);
+  return {
+    bold: (s: string) => paint("1", s),
+    dim: (s: string) => paint("2", s),
+    green: (s: string) => paint("32", s),
+    red: (s: string) => paint("31", s),
+    yellow: (s: string) => paint("33", s),
+    cyan: (s: string) => paint("36", s),
+  };
+}
+
+/**
+ * Small ANSI palette for the stderr progress UI (no-ops when color is disabled).
+ * Color tracks STDERR, where every helper in this module writes.
+ */
+export const style = makePalette(resolveColor(process.stderr.isTTY));
+
+/**
+ * A palette for a human-facing view a command prints to STDOUT (its data
+ * channel) — so color tracks stdout's TTY, not stderr's. Built per call because
+ * a command may only print to stdout when it detects a TTY there.
+ */
+export function stdoutStyle(): ReturnType<typeof makePalette> {
+  return makePalette(resolveColor(process.stdout.isTTY));
+}
+
+/**
+ * Lay out label→value rows as an aligned, indented block (trailing newline
+ * included). Labels are dimmed and padded to a common width so values line up;
+ * values are passed through verbatim, so callers pre-color them as they like.
+ * Padding is applied to the raw label BEFORE dimming, so ANSI codes never skew
+ * the alignment.
+ */
+export function formatFields(rows: Array<[label: string, value: string]>): string {
+  const s = stdoutStyle();
+  const width = Math.max(0, ...rows.map(([label]) => label.length));
+  return rows.map(([label, value]) => `  ${s.dim(label.padEnd(width))}  ${value}`).join("\n") + "\n";
+}
 
 /** A primary progress step (`→ …`). */
 export function step(msg: string): void {

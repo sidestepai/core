@@ -62,6 +62,29 @@ describe("sidestep sandbox details", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it("prints an aligned human summary (no JSON) when stdout is a TTY", async () => {
+    const authFile = writeTokenFile(dir);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(SANDBOX_BODY, { status: 200 }));
+    const prevColor = process.env.NO_COLOR;
+    process.env.NO_COLOR = "1"; // assert on plain text, not ANSI
+    const ttyDesc = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+    Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+    try {
+      await runSandboxDetailsCommand(parseArgs(["sandbox", "details", "--config", authFile]));
+    } finally {
+      if (ttyDesc) Object.defineProperty(process.stdout, "isTTY", ttyDesc);
+      else delete (process.stdout as { isTTY?: boolean }).isTTY;
+      if (prevColor === undefined) delete process.env.NO_COLOR;
+      else process.env.NO_COLOR = prevColor;
+    }
+    const joined = stdout.join("");
+    expect(joined).toContain("Base URL");
+    expect(joined).toContain("https://abc123.xano.io");
+    expect(joined).toContain("My Sandbox");
+    expect(joined).toContain("(ok)");
+    expect(() => JSON.parse(joined)).toThrow(); // human view, not JSON
+  });
+
   it("calls sandbox/me with the bearer token and prints the base URL + projected fields", async () => {
     const authFile = writeTokenFile(dir);
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(SANDBOX_BODY, { status: 200 }));

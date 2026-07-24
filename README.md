@@ -1080,8 +1080,8 @@ sidestep sandbox deploy --bundle ws.json     # deploy an already-exported bundle
 sidestep sandbox export                      # export the DEPLOYED sandbox workspace as a JSON bundle → ./sandbox.json
 sidestep sandbox export --format multidoc --name backend               # …or the deployed sandbox as XanoScript → backend.xs
 sidestep sandbox export --format multidoc --path -                     # …stream the multidoc to stdout (deploy first)
-sidestep sandbox details                     # print the sandbox base URL + tenant details (JSON)
-sidestep profile me                          # print the scoped user + instance base URL (JSON)
+sidestep sandbox details                     # print the sandbox base URL + tenant details (pretty on a TTY, JSON when piped)
+sidestep profile me                          # print the scoped user + instance base URL (pretty on a TTY, JSON when piped)
 sidestep logout                              # revoke the refresh token + delete the local cache
 sidestep version                             # print the installed @sidestep/core version
 
