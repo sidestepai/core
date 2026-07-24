@@ -155,12 +155,11 @@ export type LlmSettings = AnthropicLlm | OpenAiLlm | GoogleGenAiLlm | XanoFreeLl
 
 /**
  * Structured-output authoring. `schema` is a record of named fields authored with
- * the `input.*` catalog — exactly like a `defineFunction`/`query` `input:` map. In
- * the engine the stored `structuredOutputsSchema` is `IProcessInput[]`, the same
- * wire shape as function inputs, so `encodeInput` produces it verbatim (no parallel
- * encoder). e.g. `output: { schema: { priority: input.enum(["low","high"]),
- * summary: input.text() } }`. The item shape is byte-verified against a captured
- * live-engine golden in the conformance corpus (issue #122).
+ * the `input.*` catalog — exactly like a `defineFunction`/`query` `input:` map. The
+ * stored `structuredOutputsSchema` is the same wire shape as function inputs, so
+ * `encodeInput` produces it verbatim (no parallel encoder). e.g.
+ * `output: { schema: { priority: input.enum(["low","high"]), summary: input.text() } }`.
+ * The item shape is byte-verified against a captured live-engine golden (issue #122).
  */
 export interface AgentOutput {
   schema: Record<string, InputDescriptor>;
