@@ -32,7 +32,7 @@ const probeSearchRight = defineFunction({
   stack: [
     s.db.query({
       table: posts,
-      where: expr(col("title"), "=", withFilters(c.text("HELLO"), filter("to_lower"))),
+      where: expr(col("title"), "=", withFilters(c.text("HELLO"), filter("lower"))),
       as: "rows",
     }),
   ],

@@ -13,9 +13,10 @@
  *   group     : { type:"group",     or, group:{expression:[ …children… ]} }
  *   operand   : { operand, tag, filters }  (+ optional `ignore_empty` on the right)
  *
- * `encodeContainer`/`toStatementNode` take an {@link OperandEncoder} so each
- * surface controls operand handling (e.g. db search rejects inline filtered
- * operands per #118) without duplicating the tree walk.
+ * Operands pass their tag/filters straight through — a filtered operand
+ * (`withFilters(...)`) is valid inline in every condition/`where` surface
+ * (conditional, while, db.query/addon, …), verified against a live engine
+ * (the old #118 db-search rejection no longer reproduces).
  */
 import type { ExprGroup, ExprNode, ExprOperand, ExprStatement } from "../types/xdo.js";
 import type { Value } from "../values/value.js";
@@ -173,31 +174,20 @@ export function isCmpNode(w: unknown): w is Comparison | SearchComparison {
 // tree walk.
 // ---------------------------------------------------------------------------
 
-/** Encodes one {@link Value} operand to the engine `{operand, tag, filters}` shape. */
-export type OperandEncoder = (v: Value, side: "left" | "right") => ExprOperand;
-
-/**
- * The default operand encoder: pass the value's tag/filters straight through.
- * This is the conditional family's long-standing behavior. db search overrides
- * it with a filter-rejecting encoder (#118) — see `db-search.ts`.
- */
-export function passthroughOperand(v: Value): ExprOperand {
+/** Encode one operand {@link Value} to the engine `{operand, tag, filters}` shape. */
+function toOperand(v: Value): ExprOperand {
   return { operand: v.value, tag: v.tag, filters: v.filters };
 }
 
 /** One `{type:"statement", or, group:{expression:[]}, statement:{op,left,right}}` node. */
-function toStatementNode(
-  node: Comparison | SearchComparison,
-  or: boolean,
-  operand: OperandEncoder,
-): ExprStatement {
-  const right = operand(node.right, "right");
+function toStatementNode(node: Comparison | SearchComparison, or: boolean): ExprStatement {
+  const right = toOperand(node.right);
   if ((node as SearchComparison).ignoreEmpty) right.ignore_empty = true;
   return {
     type: "statement",
     or,
     group: { expression: [] },
-    statement: { op: node.op, left: operand(node.left, "left"), right },
+    statement: { op: node.op, left: toOperand(node.left), right },
   };
 }
 
@@ -207,37 +197,28 @@ function toStatementNode(
  * AND (`false`) for a flat container/`and(...)`, OR (`true`) for `or(...)`. The
  * first sibling never ORs to a nonexistent predecessor.
  */
-export function encodeContainer(
-  children: SearchNode[],
-  joinOr: boolean,
-  operand: OperandEncoder = passthroughOperand,
-): ExprNode[] {
+export function encodeContainer(children: SearchNode[], joinOr: boolean): ExprNode[] {
   return children.map((child, i): ExprNode => {
     const or = joinOr && i > 0;
     if (isGroup(child)) {
       const group: ExprGroup = {
         type: "group",
         or,
-        group: { expression: encodeContainer(child.children, child.or, operand) },
+        group: { expression: encodeContainer(child.children, child.or) },
       };
       return group;
     }
-    return toStatementNode(child, or, operand);
+    return toStatementNode(child, or);
   });
 }
 
 /**
  * Encode a single node or a flat (ANDed) array of nodes into the engine's
- * `{ expression: [ … ] }` shape. The one entry point every surface routes
- * through. `operand` defaults to {@link passthroughOperand}; db search passes a
- * rejecting encoder.
+ * `{ expression: [ … ] }` shape — the one entry point every surface routes through.
  */
-export function encodeExpression(
-  input: Condition,
-  operand: OperandEncoder = passthroughOperand,
-): { expression: ExprNode[] } {
+export function encodeExpression(input: Condition): { expression: ExprNode[] } {
   const nodes = Array.isArray(input) ? input : [input];
-  return { expression: encodeContainer(nodes, false, operand) };
+  return { expression: encodeContainer(nodes, false) };
 }
 
 /**
@@ -246,22 +227,15 @@ export function encodeExpression(
  * kept as a named helper for the conditional/while/`!compare`/table-`where`
  * callers that emit exactly one comparison.
  */
-export function encodeComparison(
-  when: Condition,
-  operand: OperandEncoder = passthroughOperand,
-): { expression: ExprNode[] } {
-  return encodeExpression(when, operand);
+export function encodeComparison(when: Condition): { expression: ExprNode[] } {
+  return encodeExpression(when);
 }
 
 /**
  * Encode one or more comparisons into the engine's `{expression:[…]}` shape,
- * ANDed together (`or:false`). Same operand-based algebra as
- * {@link encodeComparison}, for the query/trigger search surfaces that AND a
- * list of clauses.
+ * ANDed together (`or:false`). Same algebra as {@link encodeComparison}, for the
+ * query/trigger search surfaces that AND a list of clauses.
  */
-export function encodeSearchExpression(
-  clauses: Comparison[],
-  operand: OperandEncoder = passthroughOperand,
-): { expression: ExprNode[] } {
-  return encodeExpression(clauses, operand);
+export function encodeSearchExpression(clauses: Comparison[]): { expression: ExprNode[] } {
+  return encodeExpression(clauses);
 }
