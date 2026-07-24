@@ -1,9 +1,10 @@
 /**
- * `s.conditional` — an `if (when) { then } else { else }` branch.
+ * `s.conditional` — an `if (when) { then } [else if …] else { else }` branch.
  *
- * PARAM GATE: `else` is optional. Each export shows one gate.
+ * PARAM GATE: `elif`/`else` are optional; `when` is any condition
+ * (`expr`/`cmp`/`and`/`or`). Each export shows one gate.
  */
-import { defineFunction, s, c, ref, expr } from "@sidestep/core";
+import { defineFunction, s, c, ref, expr, cmp, and, or } from "@sidestep/core";
 
 /** Gate 1 — `then` only (no else branch). */
 export const conditionalThenOnly = defineFunction({
@@ -30,4 +31,40 @@ export const conditionalThenElse = defineFunction({
     }),
   ],
   response: ref("sign"),
+});
+
+/** Gate 3 — `elif` chain: an ordered stack of else-if branches, then `else`. */
+export const conditionalElifChain = defineFunction({
+  name: "ex_conditional_elif_chain",
+  stack: [
+    s.set_var("score", c.int(72)),
+    s.conditional({
+      when: expr(ref("score"), ">=", c.int(90)),
+      then: [s.set_var("grade", c.text("A"))],
+      elif: [
+        { when: expr(ref("score"), ">=", c.int(80)), then: [s.set_var("grade", c.text("B"))] },
+        { when: expr(ref("score"), ">=", c.int(70)), then: [s.set_var("grade", c.text("C"))] },
+      ],
+      else: [s.set_var("grade", c.text("F"))],
+    }),
+  ],
+  response: ref("grade"),
+});
+
+/** Gate 4 — a grouped condition: full operator set (`cmp`) composed with `and`/`or`. */
+export const conditionalGrouped = defineFunction({
+  name: "ex_conditional_grouped",
+  stack: [
+    s.set_var("status", c.text("active")),
+    s.set_var("n", c.int(5)),
+    s.conditional({
+      when: and(
+        cmp(ref("status"), "like", c.text("%active%")),
+        or(expr(ref("n"), ">", c.int(0)), expr(ref("n"), "<", c.int(-10))),
+      ),
+      then: [s.set_var("ok", c.text("yes"))],
+      else: [s.set_var("ok", c.text("no"))],
+    }),
+  ],
+  response: ref("ok"),
 });
