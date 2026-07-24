@@ -166,6 +166,10 @@ describe("runInitCommand — orchestration (U3)", () => {
     expect(existsSync(join(target, "AGENTS.md"))).toBe(false);
     // package.json is valid JSON.
     expect(() => JSON.parse(readFileSync(join(target, "package.json"), "utf8"))).not.toThrow();
+    // EXAMPLE.md warns that event-driven objects don't fire in the sandbox (#133).
+    const exampleMd = readFileSync(join(target, "xano/EXAMPLE.md"), "utf8");
+    expect(exampleMd).toMatch(/deploy but do not fire in the sandbox/i);
+    expect(exampleMd).toContain("s.ai.agent.run");
   });
 
   it("refuses a non-empty target without --force, proceeds with it", async () => {

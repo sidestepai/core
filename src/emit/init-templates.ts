@@ -285,6 +285,17 @@ xano/
 5. **Compile** with \`npm run xano:export\`, and **deploy** with
    \`npm run xano:deploy\` (after \`sidestep login\`).
 
+## Testing in the sandbox
+
+Event-driven objects **deploy but do not fire in the sandbox**: a scheduled
+\`task\`, an \`mcpServer\`, and every trigger (a table insert/update/delete does NOT
+run its stack) import cleanly but never execute, and there's no way to fire one
+manually. Only synchronously-invoked objects — queries, functions, and the agents
+an endpoint calls with \`s.ai.agent.run\` — actually run. To test event-driven
+logic, factor its body into a \`defineFunction\` you can also call directly (e.g.
+from a query via \`s.function.run\`) and assert against that. See \`llms.txt\` for the
+full guidance.
+
 ## Wire the frontend
 
 In [\`../frontend/src/lib/api.ts\`](../frontend/src/lib/api.ts), import your query
