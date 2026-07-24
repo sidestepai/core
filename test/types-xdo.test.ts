@@ -29,6 +29,7 @@ describe("xdo types", () => {
     const ctx: ConditionalContext = {
       expr: { expression: [] },
       if: { run: [] },
+      elif: { run: [] },
       else: { run: [] },
     };
     expectTypeOf(ctx).toMatchTypeOf<ConditionalContext>();

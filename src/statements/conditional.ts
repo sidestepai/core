@@ -18,7 +18,7 @@
  * `cmp`/`and`/`or` tree) now lives in {@link ./expression.js}; re-exported here
  * so existing `./conditional.js` importers keep resolving.
  */
-import type { ConditionalContext } from "../types/xdo.js";
+import type { ConditionalContext, ConditionalElifContext } from "../types/xdo.js";
 import type { Statement } from "./statement.js";
 import { encodeStatement, registerStatement } from "./statement.js";
 import { encodeComparison, type Comparison } from "./expression.js";
@@ -32,21 +32,45 @@ export {
 } from "./expression.js";
 
 export const CONDITIONAL = "mvp:conditional";
+export const CONDITIONAL_ELIF = "mvp:conditional_elif";
+
+/** One `else if (when) { then }` branch of a {@link conditional}'s elif stack. */
+export interface ConditionalElifArgs {
+  when: Comparison;
+  then: Statement[];
+}
+
+/**
+ * A single elif branch (`mvp:conditional_elif`). Carries its own condition +
+ * body but no `else`/nested-`elif` — it's a leaf in the parent conditional's
+ * `elif.run` stack, the direct analogue of a `switch_case` under `mvp:switch`.
+ */
+export function conditionalElif(args: ConditionalElifArgs): Statement {
+  const context: ConditionalElifContext = {
+    expr: encodeComparison(args.when),
+    if: { run: args.then.map(encodeStatement) },
+  };
+  return { name: CONDITIONAL_ELIF, context, input: [] };
+}
 
 export interface ConditionalArgs {
   when: Comparison;
   then: Statement[];
+  /** Ordered `else if` branches, each `{ when, then }`. */
+  elif?: ConditionalElifArgs[];
   else?: Statement[];
 }
 
-/** A branching statement: `if (when) { then } else { else }`. */
+/** A branching statement: `if (when) { then } [else if …] else { else }`. */
 export function conditional(args: ConditionalArgs): Statement {
   const context: ConditionalContext = {
     expr: encodeComparison(args.when),
     if: { run: args.then.map(encodeStatement) },
+    elif: { run: (args.elif ?? []).map((e) => encodeStatement(conditionalElif(e))) },
     else: { run: (args.else ?? []).map(encodeStatement) },
   };
   return { name: CONDITIONAL, context, input: [] };
 }
 
 registerStatement(CONDITIONAL, conditional);
+registerStatement(CONDITIONAL_ELIF, conditionalElif);

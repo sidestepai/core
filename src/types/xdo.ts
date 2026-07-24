@@ -200,7 +200,20 @@ export interface ExprStatement {
 export interface ConditionalContext {
   expr: { expression: ExprStatement[] };
   if: { run: StackItemXdo[] };
+  /**
+   * The elif stack — a `run[]` of `mvp:conditional_elif` statements, each its own
+   * `{ expr, if:{run} }` branch (mirrors how `mvp:switch` stacks `switch_case`).
+   * The engine always persists this key, `{run:[]}` when there are no elif
+   * branches (verified against a live conditional capture).
+   */
+  elif: { run: StackItemXdo[] };
   else: { run: StackItemXdo[] };
+}
+
+/** `context` for a `mvp:conditional_elif` statement — one leaf branch of a conditional's elif stack. */
+export interface ConditionalElifContext {
+  expr: { expression: ExprStatement[] };
+  if: { run: StackItemXdo[] };
 }
 
 export interface CacheXdo {

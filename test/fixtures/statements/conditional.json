@@ -1,0 +1,237 @@
+{
+  "as": "",
+  "name": "mvp:conditional",
+  "_xsid": "f:2ed39cb9-7c1d-4215-bc39-95d50fb22a00",
+  "addon": [],
+  "input": [],
+  "mocks": {},
+  "output": {
+    "items": [],
+    "filters": [],
+    "customize": false
+  },
+  "context": {
+    "if": {
+      "run": [
+        {
+          "as": "bucket",
+          "name": "mvp:set_var",
+          "_xsid": "f:3fdf9c9e-321b-4b7f-a6dd-e746047b945f",
+          "addon": [],
+          "input": [],
+          "mocks": {},
+          "output": {
+            "items": [],
+            "filters": [],
+            "customize": false
+          },
+          "context": {
+            "tag": "const",
+            "value": "high",
+            "filters": []
+          },
+          "runtime": null,
+          "disabled": false,
+          "description": "",
+          "settings_registry": null
+        }
+      ]
+    },
+    "elif": {
+      "run": [
+        {
+          "as": "",
+          "name": "mvp:conditional_elif",
+          "_xsid": "f:8f136e4a-cf8d-455b-ba79-b95c14bc13d0",
+          "addon": [],
+          "input": [],
+          "mocks": {},
+          "output": {
+            "items": [],
+            "filters": [],
+            "customize": false
+          },
+          "context": {
+            "if": {
+              "run": [
+                {
+                  "as": "bucket",
+                  "name": "mvp:set_var",
+                  "_xsid": "f:199fdba7-7c6f-495f-9046-a5c866ffebe1",
+                  "addon": [],
+                  "input": [],
+                  "mocks": {},
+                  "output": {
+                    "items": [],
+                    "filters": [],
+                    "customize": false
+                  },
+                  "context": {
+                    "tag": "const",
+                    "value": "mid",
+                    "filters": []
+                  },
+                  "runtime": null,
+                  "disabled": false,
+                  "description": "",
+                  "settings_registry": null
+                }
+              ]
+            },
+            "expr": {
+              "expression": [
+                {
+                  "or": false,
+                  "type": "statement",
+                  "group": {
+                    "expression": []
+                  },
+                  "statement": {
+                    "op": ">",
+                    "left": {
+                      "tag": "var",
+                      "filters": [],
+                      "operand": "n"
+                    },
+                    "right": {
+                      "tag": "const:int",
+                      "filters": [],
+                      "operand": "3"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "runtime": null,
+          "disabled": false,
+          "description": "",
+          "settings_registry": null
+        },
+        {
+          "as": "",
+          "name": "mvp:conditional_elif",
+          "_xsid": "f:04eba8f6-e6b4-486a-ae20-94645fc2b4cc",
+          "addon": [],
+          "input": [],
+          "mocks": {},
+          "output": {
+            "items": [],
+            "filters": [],
+            "customize": false
+          },
+          "context": {
+            "if": {
+              "run": [
+                {
+                  "as": "bucket",
+                  "name": "mvp:set_var",
+                  "_xsid": "f:8f1a9a34-7899-46ba-bfda-1cc05654667f",
+                  "addon": [],
+                  "input": [],
+                  "mocks": {},
+                  "output": {
+                    "items": [],
+                    "filters": [],
+                    "customize": false
+                  },
+                  "context": {
+                    "tag": "const",
+                    "value": "low",
+                    "filters": []
+                  },
+                  "runtime": null,
+                  "disabled": false,
+                  "description": "",
+                  "settings_registry": null
+                }
+              ]
+            },
+            "expr": {
+              "expression": [
+                {
+                  "or": false,
+                  "type": "statement",
+                  "group": {
+                    "expression": []
+                  },
+                  "statement": {
+                    "op": ">",
+                    "left": {
+                      "tag": "var",
+                      "filters": [],
+                      "operand": "n"
+                    },
+                    "right": {
+                      "tag": "const:int",
+                      "filters": [],
+                      "operand": "0"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "runtime": null,
+          "disabled": false,
+          "description": "",
+          "settings_registry": null
+        }
+      ]
+    },
+    "else": {
+      "run": [
+        {
+          "as": "bucket",
+          "name": "mvp:set_var",
+          "_xsid": "f:29d473e6-d7df-435f-8412-69b18318d195",
+          "addon": [],
+          "input": [],
+          "mocks": {},
+          "output": {
+            "items": [],
+            "filters": [],
+            "customize": false
+          },
+          "context": {
+            "tag": "const",
+            "value": "none",
+            "filters": []
+          },
+          "runtime": null,
+          "disabled": false,
+          "description": "",
+          "settings_registry": null
+        }
+      ]
+    },
+    "expr": {
+      "expression": [
+        {
+          "or": false,
+          "type": "statement",
+          "group": {
+            "expression": []
+          },
+          "statement": {
+            "op": ">",
+            "left": {
+              "tag": "var",
+              "filters": [],
+              "operand": "n"
+            },
+            "right": {
+              "tag": "const:int",
+              "filters": [],
+              "operand": "10"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "runtime": null,
+  "disabled": false,
+  "description": "",
+  "settings_registry": null
+}
