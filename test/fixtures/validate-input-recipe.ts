@@ -21,10 +21,11 @@ export const createLink = query({
     // NOT a 200 `s.throw` body a client could mistake for success (see #21).
     // `fl.regex_test` runs PHP `preg_match(pattern, subject)` and is PATTERN-piped:
     // the piped value is the regex, the arg is the text — the REVERSE of
-    // `istarts_with` (#22). `~^https?://~i` (PCRE delimiters, case-insensitive)
-    // matches http/https and rejects `javascript:`/`data:`/`httpfoo://` alike.
+    // `istarts_with` (#22). `c.regex(...)` delimiter-wraps the pattern (a bare
+    // `c.text("^…")` is an invalid PCRE `withFilters` rejects, #128); case-insensitive
+    // `^https?://` matches http/https and rejects `javascript:`/`data:`/`httpfoo://`.
     s.precondition({
-      expr: expr(withFilters(c.text("~^https?://~i"), fl.regex_test(inp("url"))), "=", c.bool(true)),
+      expr: expr(withFilters(c.regex("^https?://", "i"), fl.regex_test(inp("url"))), "=", c.bool(true)),
       error_type: "badrequest",
       error: c.text("url must be an http(s) URL"),
     }),

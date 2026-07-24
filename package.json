@@ -1,6 +1,6 @@
 {
   "name": "@sidestep/core",
-  "version": "3.9.22",
+  "version": "3.9.23",
   "description": "Sidestep — a standalone TypeScript SDK for driving Xano infrastructure from code. Compiles typed Xano workspaces into importable JSON.",
   "keywords": [
     "sidestep",

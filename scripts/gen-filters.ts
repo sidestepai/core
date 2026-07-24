@@ -11,6 +11,19 @@ import { FILTER_NAMES, FILTER_SPECS } from "../src/values/generated/filters.gene
 
 const ROOT = fileURLToPath(new URL("../examples/sandbox/filters", import.meta.url));
 
+/** Pattern-piped regex filters — seeded with `c.regex(...)`, not a bare text
+ * value, to satisfy the `withFilters` delimiter guard (issue #128). Mirrors the
+ * set in src/values/value.ts. */
+const REGEX_PATTERN_FILTERS = new Set([
+  "regex_test",
+  "regex_match",
+  "regex_match_all",
+  "regex_matches",
+  "regex_replace",
+  "regex_get_all_matches",
+  "regex_get_first_match",
+]);
+
 function groupDir(g?: string): string {
   if (!g || g === "?") return "misc";
   return g.replace(/\s+functions?$/, "").replace(/[^a-z0-9]+/gi, "-").toLowerCase();
@@ -72,6 +85,12 @@ for (const name of FILTER_NAMES) {
   const required = (spec?.args ?? []).filter((a) => !a.optional);
   const argExprs = required.map((a) => argExpr(a.type, a.name));
   const filterCall = `fl["${name}"](${argExprs.join(", ")})`;
+  // Pattern-piped regex filters (regex_test/match/replace/…) filter the regex
+  // PATTERN, which must be delimiter-wrapped — `withFilters` throws on a bare
+  // `c.text` seed (issue #128). Seed those with `c.regex(...)` and let the
+  // group-appropriate text be the `subject` arg instead.
+  const isRegexPattern = REGEX_PATTERN_FILTERS.has(name);
+  const seed = isRegexPattern ? `c.regex("Hello")` : seedFor(group);
   const desc = spec?.description ? `\n * ${spec.description.replace(/\*\//g, "*\\/")}` : "";
   const constId = `filter${cap(camel(name))}`;
 
@@ -84,7 +103,7 @@ import { defineFunction, s, c, ref, withFilters, fl } from "@sidestep/core";
 
 export const ${constId} = defineFunction({
   name: "ex_filter_${name.replace(/[^a-zA-Z0-9]/g, "_")}",
-  stack: [s.set_var("out", withFilters(${seedFor(group)}, ${filterCall}))],
+  stack: [s.set_var("out", withFilters(${seed}, ${filterCall}))],
   response: ref("out"),
 });
 `;

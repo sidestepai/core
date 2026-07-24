@@ -37,6 +37,29 @@ describe("c.* constant constructors", () => {
     expect(JSON.parse(v.value)).toEqual([1, "two", true]);
   });
 
+  it("c.regex wraps a raw body in /…/ delimiters as a plain const (issue #128)", () => {
+    expect(c.regex("^[a-z]+$")).toEqual({ value: "/^[a-z]+$/", tag: "const", filters: [] });
+  });
+
+  it("c.regex appends flags after the closing delimiter", () => {
+    expect(c.regex("^https?://", "i").value).toBe("/^https?:\\/\\//i");
+  });
+
+  it("c.regex escapes interior forward slashes (keeps the /…/ literal valid)", () => {
+    expect(c.regex("\\d{2}/\\d{2}").value).toBe("/\\d{2}\\/\\d{2}/");
+  });
+
+  it("c.regex accepts a JS RegExp (source + flags, minus JS-only g/y/d)", () => {
+    expect(c.regex(/^[^@\s]+@[^@\s]+\.[^@\s]+$/i).value).toBe("/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/i");
+    // `g`/`y`/`d` are JS-only (PHP preg_* raises "Unknown modifier"), so dropped.
+    expect(c.regex(/foo/gimy).value).toBe("/foo/im");
+  });
+
+  it("c.regex rejects non-letter flags", () => {
+    expect(() => c.regex("foo", "1")).toThrow(/flags must be letters/);
+    expect(() => c.regex("foo", "/")).toThrow(/flags must be letters/);
+  });
+
   it("c.now emits the runtime-verified text('now') |to_epoch_ms chain (issue #120)", () => {
     expect(c.now()).toEqual({
       value: "now",
@@ -320,5 +343,51 @@ describe("filters", () => {
     const arrayed = withFilters(c.text("x"), [filter("trim"), filter("lower")]);
     expect(spread).toEqual(arrayed);
     expect(spread.filters.map((f) => f.name)).toEqual(["trim", "lower"]);
+  });
+});
+
+describe("withFilters guards the pattern-piped regex footgun (issue #128)", () => {
+  it("throws when a bare c.text pattern feeds a regex filter", () => {
+    // The reported repro: an undelimited pattern silently matches nothing.
+    expect(() =>
+      withFilters(c.text("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"), filter("regex_test", inp("email"))),
+    ).toThrow(/regex PATTERN|c\.regex/);
+    // Fires for the whole pattern-piped family, not just regex_test.
+    for (const n of ["regex_match", "regex_match_all", "regex_replace", "regex_matches"]) {
+      expect(() => withFilters(c.text("[a-z]+"), filter(n, inp("s")))).toThrow(/c\.regex/);
+    }
+  });
+
+  it("accepts a c.regex-built pattern", () => {
+    expect(() =>
+      withFilters(c.regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"), filter("regex_test", inp("email"))),
+    ).not.toThrow();
+  });
+
+  it("accepts a valid hand-delimited c.text pattern (any PCRE delimiter, with flags)", () => {
+    // The guard emulates PHP's delimiter scan, so a correct `~…~i` is allowed —
+    // it rejects invalid patterns, not merely non-slash delimiters.
+    expect(() => withFilters(c.text("~^https?://~i"), filter("regex_test", inp("url")))).not.toThrow();
+    expect(() => withFilters(c.text("#\\d+#"), filter("regex_test", inp("s")))).not.toThrow();
+  });
+
+  it("does not fire for regex_quote (piped value is raw text, not a pattern)", () => {
+    expect(() => withFilters(c.text("a.b(c)"), filter("regex_quote"))).not.toThrow();
+  });
+
+  it("does not fire when the pattern is a non-const value (can't inspect it)", () => {
+    // A ref/inp holding a pattern is trusted — only bare const literals are checked.
+    expect(() => withFilters(inp("pattern"), filter("regex_test", inp("s")))).not.toThrow();
+    expect(() => withFilters(ref("pat"), filter("regex_test", inp("s")))).not.toThrow();
+  });
+
+  it("does not fire when the regex filter isn't first / the base is already filtered", () => {
+    // Mid-chain: the regex filter's input is a transformed value, not the const.
+    expect(() =>
+      withFilters(c.text("^x$"), filter("lower"), filter("regex_test", inp("s"))),
+    ).not.toThrow();
+    // Base already carries filters, so the const string isn't the direct pattern.
+    const seeded = withFilters(c.text("^x$"), filter("trim"));
+    expect(() => withFilters(seeded, filter("regex_test", inp("s")))).not.toThrow();
   });
 });

@@ -8,6 +8,6 @@ import { defineFunction, s, c, ref, withFilters, fl } from "@sidestep/core";
 
 export const filterRegexMatch = defineFunction({
   name: "ex_filter_regex_match",
-  stack: [s.set_var("out", withFilters(c.text("Hello World"), fl["regex_match"](c.text("x"))))],
+  stack: [s.set_var("out", withFilters(c.regex("Hello"), fl["regex_match"](c.text("x"))))],
   response: ref("out"),
 });
