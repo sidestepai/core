@@ -4,6 +4,7 @@
  * encoder (KTD-6) with the input field context.
  */
 import type { InputXdo } from "../types/xdo.js";
+import { isTaggedValue } from "../values/value.js";
 import { encodeField, INPUT_CONTEXT } from "../fields/field.js";
 import type { FieldOptions, MethodArg, ReadonlyMethods } from "../fields/field.js";
 import { f, toNestedFields } from "../fields/catalog.js";
@@ -155,5 +156,19 @@ export const input = {
 
 /** Encode a named input descriptor into the full stored `InputXdo`. */
 export function encodeInput(name: string, descriptor: InputDescriptor): InputXdo {
+  // Guard the `inp(...)` (value ref, tag "input") vs `input.*` (descriptor)
+  // collision: an `input:` map wants descriptor factories (`input.text()`),
+  // but `inp("x")` — the value ref used one line over in a `where`/stack slot —
+  // shares the word "input" and mis-types easily (a listed llms.txt gotcha,
+  // issue #124.2). A `Value` has no `type`/`options`, so it would otherwise
+  // encode into a broken field silently. TS already rejects this for typed
+  // callers; this catches JS/`any`-typed ones with a message that names the fix.
+  if (isTaggedValue(descriptor)) {
+    throw new Error(
+      `input "${name}": got a value ref (inp("${descriptor.value}"), tag "${descriptor.tag}") where an input descriptor is required. ` +
+        `An "input:" map wants a descriptor factory like input.text()/input.int()/input.enum([...]) — not the value ref inp(...). ` +
+        `Reach for inp("${name}") only to READ this input inside a where/stack/value slot.`,
+    );
+  }
   return encodeField(name, descriptor.type, descriptor.options, INPUT_CONTEXT) as InputXdo;
 }

@@ -509,24 +509,34 @@ So `ref("answer.result")` returns the text; a bare `ref("answer")` returns the w
 metadata object. Both are typed: `ref("answer")` is `AgentRunResult` and the dotted
 `ref("answer.result")` projects its `.result` field, so `InferResponse` reflects the real
 shape either way (neither is `unknown`). `result` is a `string` for a text agent; for a
-structured-output agent narrow it with the type-only `resultShape` witness:
-`s.ai.agent.run({ agent, as: "answer", resultShape: {} as { sentiment: string } })` — then
-`ref("answer.result")` types to `{ sentiment: string }`.
+structured-output agent it is inferred from the agent's `output.schema` — pass the agent
+*handle* to `s.ai.agent.run` and `ref("answer.result")` types to that schema's shape with no
+extra hint (see below). The type-only `resultShape` witness is only for overriding that
+inference, or for typing an agent referenced by bare name:
+`s.ai.agent.run({ agent: "classifier", as: "answer", resultShape: {} as { sentiment: string } })`.
 
 **Structured outputs.** Constrain what the model returns by authoring `output.schema` on
 the agent — a named-field record built with the `input.*` catalog, exactly like a function
 `input:` map (the engine stores it as `structuredOutputsSchema`):
 
 ```ts
-agent({
+const classifier = agent({
   name: "classifier",
   llm: { type: "xano-free", prompt: "Ticket: {{ $args.body }}" },
   output: { schema: { priority: input.enum(["low", "high"]), summary: input.text() } },
 });
+
+// The schema is declared once. Pass the handle and `.result` is typed from it:
+query({
+  name: "classify", verb: "POST", apiGroup: api,
+  input: { body: input.text({ required: true }) },
+  stack: [s.ai.agent.run({ agent: classifier, args: obj({ body: inp("body") }), as: "answer" })],
+  response: ref("answer.result"),  // typed { priority: "low" | "high"; summary: string }
+});
 ```
 
-The authored schema shapes the model's output; the call-site `resultShape` above shapes the
-inferred `.result` TS type — the two are independent today.
+The authored schema both constrains the model's output *and* types the call site's `.result`
+— no second `resultShape` witness needed.
 
 **MCP endpoint URL.** An `mcpServer()` handle derives its endpoint from the def — no
 hardcoding, the same contract `query.getPath()` gives API endpoints:

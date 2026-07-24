@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { input, encodeInput } from "../src/inputs/input.js";
 import { f } from "../src/fields/catalog.js";
+import { inp } from "../src/values/value.js";
+import type { InputDescriptor } from "../src/inputs/input.js";
 
 /**
  * The `name` input entry in the persisted form: inputs share the column field
@@ -148,5 +150,14 @@ describe("encodeInput", () => {
     const enc = encodeInput("gallery", input.list(input.image()));
     expect(enc.type).toBe("blob_img");
     expect(enc.style).toEqual({ type: "list" });
+  });
+
+  // #124.2 — the `inp(...)` (value ref) vs `input.*` (descriptor) collision. A
+  // value ref slipped into an `input:` map (via JS/`any`, past the TS guard)
+  // fails loudly with a message naming the fix, not a silently-broken field.
+  it("rejects a value ref (inp) passed where an input descriptor is required", () => {
+    const wrong = inp("author") as unknown as InputDescriptor;
+    expect(() => encodeInput("author", wrong)).toThrow(/value ref/);
+    expect(() => encodeInput("author", wrong)).toThrow(/input\.text\(\)/);
   });
 });
