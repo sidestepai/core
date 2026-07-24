@@ -22,7 +22,8 @@ import { encodeStatement } from "../../src/statements/statement.js";
 import { deriveGuid } from "../../src/refs/guid.js";
 import { table } from "../../src/kinds/table.js";
 import { f } from "../../src/fields/catalog.js";
-import { c, col, auth, inp } from "../../src/values/value.js";
+import { c, col, auth, inp, ref, withFilters } from "../../src/values/value.js";
+import { fl } from "../../src/values/generated/filters.generated.js";
 import { expr } from "../../src/statements/conditional.js";
 import { cmp, and, or } from "../../src/statements/special/db-search.js";
 import { normalize, loadFixture } from "../conformance/harness.js";
@@ -270,6 +271,37 @@ describe("db.query (mvp:dbo_view) emit shape", () => {
   it("cmp() rejects an unsupported operator at authoring time", () => {
     // @ts-expect-error — "like?" is not a SearchOp
     expect(() => cmp(col("title"), "like?", inp("q"))).toThrow(/unsupported operator/);
+  });
+
+  it("rejects a filtered value in the right operand at export time (#118)", () => {
+    // Inline `withFilters(...)` in the operand 500s at runtime with
+    // `Undefined array key "name"`; catch it at export like obj() (#42).
+    const filtered = withFilters(inp("status"), fl.first_notempty(c.text("%")));
+    expect(() => encodeStatement(dbQuery({ table: note, where: cmp(col("status"), "ilike", filtered) }))).toThrow(
+      /right operand carries a filter chain.*set_var/s,
+    );
+  });
+
+  it("rejects a filtered value in the left operand at export time (#118)", () => {
+    const filtered = withFilters(col("title"), fl.trim());
+    expect(() => encodeStatement(dbQuery({ table: note, where: cmp(filtered, "=", c.text("x")) }))).toThrow(
+      /left operand carries a filter chain/,
+    );
+  });
+
+  it("also rejects a filtered operand in a narrow expr() clause (#118)", () => {
+    const filtered = withFilters(inp("status"), fl.first_notempty(c.text("%")));
+    expect(() => encodeStatement(dbQuery({ table: note, where: expr(col("status"), "=", filtered) }))).toThrow(
+      /filter chain/,
+    );
+  });
+
+  it("the documented workaround — a filtered value in a set_var, ref() in the operand — encodes fine (#118)", () => {
+    const enc = encodeStatement(dbQuery({ table: note, where: cmp(col("status"), "ilike", ref("pat")) }));
+    const stmt = (
+      enc.context as { search: { expression: { statement: { right: unknown } }[] } }
+    ).search.expression[0]!.statement;
+    expect(stmt.right).toEqual({ operand: "pat", tag: "var", filters: [] });
   });
 
   it("or() emits a group node; second child carries or:true", () => {
