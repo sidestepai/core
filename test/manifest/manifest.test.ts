@@ -9,6 +9,7 @@ import { registeredKinds } from "../../src/kinds/kind.js";
 import { TAGS } from "../../src/types/xdo.js";
 import { TOTAL_STATEMENTS } from "../../src/statements/surfaces.js";
 import { FILTER_NAMES } from "../../src/values/generated/filters.generated.js";
+import { sys } from "../../src/values/value.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { version: string };
@@ -108,6 +109,17 @@ describe("manifest", () => {
 
   it("exposes the full tag catalog", () => {
     expect(m.values.tags).toEqual(TAGS);
+  });
+
+  it("sys.* catalog entry names every live sys accessor", () => {
+    // Drift guard: the hand-written `Accessors: …` prose in the sys.* constructor
+    // entry must list every `Object.keys(sys)` name, so adding an accessor without
+    // updating the catalog fails here rather than shipping a stale published list.
+    const entry = m.values.constructors.find((c) => c.name === "sys.*");
+    expect(entry).toBeDefined();
+    for (const accessor of Object.keys(sys)) {
+      expect(entry!.description).toContain(accessor);
+    }
   });
 
   it("catalogs every value-pipeline filter with honest typed coverage", () => {
