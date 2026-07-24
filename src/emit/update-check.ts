@@ -19,6 +19,7 @@
 import { existsSync, readFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { createRequire } from "node:module";
 import { atomicWrite } from "../util/atomic-write.js";
 import { readVersion } from "./cli.js";
 import { style, warn, detail, blank } from "./ui.js";
@@ -35,8 +36,12 @@ function cachePath(): string {
   return process.env.SIDESTEP_UPDATE_CACHE ?? join(homedir(), ".sidestep", "update-check.json");
 }
 
-/** Re-hit the registry at most once a day; otherwise serve the cached answer. */
-const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+/**
+ * Re-hit the registry at most once an hour; otherwise serve the cached answer.
+ * Short by design — we publish often during rapid prototyping, so a stale nudge
+ * should never lag a release by more than an hour.
+ */
+const CHECK_INTERVAL_MS = 60 * 60 * 1000;
 
 /** Bound the registry fetch so a stalled endpoint can't hang the CLI. */
 const FETCH_TIMEOUT_MS = 2_000;
@@ -183,13 +188,43 @@ export async function resolveUpdateNotice(opts?: {
   return latest && isNewer(latest, current) ? { current, latest } : null;
 }
 
+/**
+ * Whether this CLI is a project-local dependency or a global install — so the
+ * nudge suggests the matching upgrade command. We resolve `@sidestep/core` from
+ * the user's CWD: if their project depends on it the resolve succeeds (a local
+ * `-D` upgrade is right); if it doesn't, the running CLI must be the global
+ * install, so `-g` is right. Dependency-free and spawn-free (no `npm root -g`).
+ * `SIDESTEP_INSTALL_MODE` overrides it (tests, or a user who wants to pin the
+ * suggestion). Any unexpected error falls back to `global` — the safe default,
+ * since suggesting `-g` to a local-dep user is a no-op they'll notice, whereas
+ * suggesting `-D` to a global user would wrongly add a stray project dependency.
+ */
+export function detectInstallMode(): "global" | "local" {
+  const override = process.env.SIDESTEP_INSTALL_MODE;
+  if (override === "global" || override === "local") return override;
+  try {
+    const requireFromCwd = createRequire(join(process.cwd(), "package.json"));
+    requireFromCwd.resolve("@sidestep/core/package.json");
+    return "local";
+  } catch {
+    return "global";
+  }
+}
+
+/** The `npm install` line that upgrades an install of the given kind. */
+export function upgradeCommand(mode: "global" | "local"): string {
+  return mode === "global"
+    ? "npm i -g @sidestep/core@latest"
+    : "npm i -D @sidestep/core@latest";
+}
+
 /** Print the two-line upgrade nudge to stderr, styled but color-safe. */
 export function printUpdateNotice(notice: UpdateNotice): void {
   blank();
   warn(
     `A new @sidestep/core is available: ${style.dim(notice.current)} → ${style.green(notice.latest)}`,
   );
-  detail("update: npm i -D @sidestep/core@latest");
+  detail(`update: ${upgradeCommand(detectInstallMode())}`);
 }
 
 /**

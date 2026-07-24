@@ -2,7 +2,12 @@ import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isNewer, resolveUpdateNotice } from "../../src/emit/update-check.js";
+import {
+  isNewer,
+  resolveUpdateNotice,
+  detectInstallMode,
+  upgradeCommand,
+} from "../../src/emit/update-check.js";
 
 describe("isNewer (dependency-free semver compare)", () => {
   it("compares release versions by x.y.z", () => {
@@ -84,11 +89,11 @@ describe("resolveUpdateNotice (cache + fetch)", () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it("re-fetches once the cache is stale (>24h)", async () => {
-    const twoDaysAgo = Date.now() - 2 * 24 * 60 * 60 * 1000;
+  it("re-fetches once the cache is stale (>1h)", async () => {
+    const ninetyMinAgo = Date.now() - 90 * 60 * 1000;
     writeFileSync(
       process.env.SIDESTEP_UPDATE_CACHE!,
-      JSON.stringify({ latest: "3.9.0", checkedAt: twoDaysAgo }),
+      JSON.stringify({ latest: "3.9.0", checkedAt: ninetyMinAgo }),
     );
     const spy = mockFetch("3.11.0");
     const notice = await resolveUpdateNotice({ current: "3.9.25", force: true });
@@ -123,6 +128,37 @@ describe("resolveUpdateNotice (cache + fetch)", () => {
       expect(spy).not.toHaveBeenCalled();
     } finally {
       delete process.env.SIDESTEP_NO_UPDATE_CHECK;
+    }
+  });
+});
+
+describe("detectInstallMode + upgradeCommand", () => {
+  afterEach(() => {
+    delete process.env.SIDESTEP_INSTALL_MODE;
+  });
+
+  it("maps each mode to the matching npm command", () => {
+    expect(upgradeCommand("global")).toBe("npm i -g @sidestep/core@latest");
+    expect(upgradeCommand("local")).toBe("npm i -D @sidestep/core@latest");
+  });
+
+  it("honors the SIDESTEP_INSTALL_MODE override", () => {
+    process.env.SIDESTEP_INSTALL_MODE = "global";
+    expect(detectInstallMode()).toBe("global");
+    process.env.SIDESTEP_INSTALL_MODE = "local";
+    expect(detectInstallMode()).toBe("local");
+  });
+
+  it("reports 'global' when @sidestep/core is not a dependency of the CWD", () => {
+    // A temp dir has no node_modules chain that resolves the package → global.
+    const cwd = process.cwd();
+    const dir = mkdtempSync(join(tmpdir(), "sidestep-cwd-"));
+    try {
+      process.chdir(dir);
+      expect(detectInstallMode()).toBe("global");
+    } finally {
+      process.chdir(cwd);
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });
