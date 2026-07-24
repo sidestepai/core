@@ -1,5 +1,5 @@
 import { describe, it, expect, expectTypeOf } from "vitest";
-import { c, ref, inp, auth, out, filter, withFilters } from "../src/values/value.js";
+import { c, ref, inp, auth, env, setting, sys, out, filter, withFilters } from "../src/values/value.js";
 import type { Value, RefValue } from "../src/values/value.js";
 
 describe("c.* constant constructors", () => {
@@ -168,6 +168,90 @@ describe("references", () => {
 
   it("a safe ref stays branded as a RefValue at the type level", () => {
     expectTypeOf(ref("owner.user_id", { safe: true })).toEqualTypeOf<RefValue<"owner.user_id">>();
+  });
+});
+
+describe("env vs setting vs sys (issue #110)", () => {
+  it("env produces an env tag (user-defined dashboard vars)", () => {
+    expect(env("STRIPE_KEY")).toEqual({ value: "STRIPE_KEY", tag: "env", filters: [] });
+  });
+
+  it("setting produces a setting tag with the raw name", () => {
+    expect(setting("$remote_ip")).toEqual({ value: "$remote_ip", tag: "setting", filters: [] });
+  });
+
+  it("sys.* emit the $-prefixed system vars as settings (not env)", () => {
+    // The whole point: these look like `$env.$remote_ip` in XanoScript but are a
+    // *setting* tag, so env("remote_ip") would read the wrong thing.
+    expect(sys.remoteIp()).toEqual({ value: "$remote_ip", tag: "setting", filters: [] });
+    expect(sys.requestMethod()).toEqual({ value: "$request_method", tag: "setting", filters: [] });
+    expect(sys.requestUri()).toEqual({ value: "$request_uri", tag: "setting", filters: [] });
+    expect(sys.requestQueryString()).toEqual({
+      value: "$request_querystring",
+      tag: "setting",
+      filters: [],
+    });
+    expect(sys.httpHeaders()).toEqual({ value: "$http_headers", tag: "setting", filters: [] });
+    expect(sys.requestAuthToken()).toEqual({
+      value: "$request_auth_token",
+      tag: "setting",
+      filters: [],
+    });
+    expect(sys.apiBaseUrl()).toEqual({ value: "$api_baseurl", tag: "setting", filters: [] });
+    expect(sys.datasource()).toEqual({ value: "$datasource", tag: "setting", filters: [] });
+    expect(sys.branch()).toEqual({ value: "$branch", tag: "setting", filters: [] });
+    expect(sys.tenant()).toEqual({ value: "$tenant", tag: "setting", filters: [] });
+    expect(sys.release()).toEqual({ value: "$release", tag: "setting", filters: [] });
+    expect(sys.platform()).toEqual({ value: "$platform", tag: "setting", filters: [] });
+    expect(sys.isDebugger()).toEqual({ value: "$debugger", tag: "setting", filters: [] });
+  });
+
+  it("sys covers every system var in the workspace environment panel", () => {
+    // Guard against drift: the accessor set must match the canonical 13-name list.
+    const emitted = [
+      sys.remoteIp(),
+      sys.requestMethod(),
+      sys.requestUri(),
+      sys.requestQueryString(),
+      sys.httpHeaders(),
+      sys.requestAuthToken(),
+      sys.apiBaseUrl(),
+      sys.datasource(),
+      sys.branch(),
+      sys.tenant(),
+      sys.release(),
+      sys.platform(),
+      sys.isDebugger(),
+    ].map((v) => v.value);
+    expect(new Set(emitted)).toEqual(
+      new Set([
+        "$remote_ip",
+        "$request_method",
+        "$request_uri",
+        "$request_querystring",
+        "$http_headers",
+        "$request_auth_token",
+        "$api_baseurl",
+        "$datasource",
+        "$branch",
+        "$tenant",
+        "$release",
+        "$platform",
+        "$debugger",
+      ]),
+    );
+  });
+
+  it("a sys value keys a public-endpoint rate limit off the caller IP", () => {
+    // The canonical public variant: auth("id") is null on a public host, so key by IP.
+    const key = withFilters(c.text("rl:apply:"), filter("concat", sys.remoteIp()));
+    expect(key).toEqual({
+      value: "rl:apply:",
+      tag: "const",
+      filters: [
+        { name: "concat", disabled: false, arg: [{ value: "$remote_ip", tag: "setting", filters: [] }] },
+      ],
+    });
   });
 });
 

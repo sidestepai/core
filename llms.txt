@@ -1,4 +1,4 @@
-# sidestep v3.9.15
+# sidestep v3.9.16
 
 > TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.
 
@@ -396,8 +396,9 @@ response-bearing triggers) maps to the stored `result[]`:
 - `inp(name: string) => Value` — Reference a function input → tag "input".
 - `col(name: string) => Value` — Reference a table column → tag "col".
 - `auth(path?: string) => Value` — Reference the authenticated identity (auth("id") → $auth.id) → tag "auth".
-- `env(name: string) => Value` — Reference an environment variable → tag "env".
-- `setting(name: string) => Value` — Reference a workspace setting → tag "setting".
+- `env(name: string) => Value` — Reference a USER-DEFINED environment variable → tag "env". Not for built-in request/system vars — those are settings (see sys.*); env("remote_ip") reads a user var named remote_ip, not the caller IP.
+- `setting(name: string) => Value` — Reference a workspace setting → tag "setting". Built-in system vars are $-prefixed settings, e.g. setting("$remote_ip"); prefer the typed sys.* accessors.
+- `sys.*() => Value` — Built-in system / request-context variables → tag "setting" ($-prefixed). Accessors: remoteIp, requestMethod, requestUri, requestQueryString, httpHeaders, requestAuthToken, apiBaseUrl, datasource, branch, tenant, release, platform, isDebugger. In XanoScript these are $env.$remote_ip etc.; sys.remoteIp() is the public-endpoint rate-limit key (auth("id") is null there).
 - `filter(name: string, ...args: Value[]) => FilterXdo` — Build a filter-chain entry by raw name (escape hatch).
 - `fl.*(...args: Value[]) => FilterXdo` — Typed value-pipeline filters; see the `filters` catalog.
 - `withFilters(value: Value, ...filters: FilterXdo[]) => Value` — Attach a filter chain to a value (filters passed spread; an array is also accepted).

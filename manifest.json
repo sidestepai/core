@@ -1,6 +1,6 @@
 {
   "name": "sidestep",
-  "version": "3.9.15",
+  "version": "3.9.16",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
@@ -81,12 +81,17 @@
       {
         "name": "env",
         "signature": "(name: string) => Value",
-        "description": "Reference an environment variable → tag \"env\"."
+        "description": "Reference a USER-DEFINED environment variable → tag \"env\". Not for built-in request/system vars — those are settings (see sys.*); env(\"remote_ip\") reads a user var named remote_ip, not the caller IP."
       },
       {
         "name": "setting",
         "signature": "(name: string) => Value",
-        "description": "Reference a workspace setting → tag \"setting\"."
+        "description": "Reference a workspace setting → tag \"setting\". Built-in system vars are $-prefixed settings, e.g. setting(\"$remote_ip\"); prefer the typed sys.* accessors."
+      },
+      {
+        "name": "sys.*",
+        "signature": "() => Value",
+        "description": "Built-in system / request-context variables → tag \"setting\" ($-prefixed). Accessors: remoteIp, requestMethod, requestUri, requestQueryString, httpHeaders, requestAuthToken, apiBaseUrl, datasource, branch, tenant, release, platform, isDebugger. In XanoScript these are $env.$remote_ip etc.; sys.remoteIp() is the public-endpoint rate-limit key (auth(\"id\") is null there)."
       },
       {
         "name": "filter",

@@ -245,15 +245,73 @@ export function auth(path = ""): Value {
   return val(path, "auth");
 }
 
-/** Reference an environment variable (`{tag:"env", value}`), e.g. `env("STRIPE_KEY")`. */
+/**
+ * Reference a **user-defined environment variable** (`{tag:"env", value}`) — the
+ * ones you set in the workspace dashboard, e.g. `env("STRIPE_KEY")` → `$env.STRIPE_KEY`.
+ *
+ * **Not** for the built-in request/system variables (client IP, HTTP method, data
+ * source, …). Those look like `$env.$remote_ip` in XanoScript but are a *different*
+ * tag under the hood (`setting`, not `env`), so `env("remote_ip")` does **not** read
+ * the caller's IP — it reads a user env var literally named `remote_ip` (almost always
+ * unset → null). Use {@link sys} for those (`sys.remoteIp()`), or {@link setting} with
+ * the exact `$`-prefixed name.
+ */
 export function env(name: string): Value {
   return val(name, "env");
 }
 
-/** Reference a workspace setting (`{tag:"setting", value}`). */
+/**
+ * Reference a workspace setting by raw name (`{tag:"setting", value}`). The built-in
+ * request/system variables are settings with a **`$`-prefixed** name — `setting("$remote_ip")`,
+ * `setting("$datasource")`, etc. Prefer the typed {@link sys} accessors, which spell the
+ * names for you and avoid the `$`-prefix footgun; drop to `setting()` only for a name `sys`
+ * doesn't cover.
+ */
 export function setting(name: string): Value {
   return val(name, "setting");
 }
+
+/**
+ * Built-in **system / request-context variables**. In XanoScript these are written
+ * `$env.$remote_ip`, `$env.$datasource`, … — note the second `$`: they are *settings*
+ * (`{tag:"setting", value:"$remote_ip"}`), distinct from the user-defined env vars that
+ * {@link env} reaches. Reaching for `env("remote_ip")` silently reads the wrong thing;
+ * these accessors emit the correct `setting("$…")` form so you never type the `$` prefix.
+ *
+ * The one that matters most: on a **public** endpoint `auth("id")` is null (every caller
+ * collapses into one bucket), so key a rate limit off {@link sys.remoteIp} instead —
+ * `withFilters(c.text("rl:apply:"), fl.concat(sys.remoteIp()))`.
+ *
+ * Mirrors the full workspace "environment" panel; every accessor returns a {@link Value}.
+ */
+export const sys = {
+  /** Client IP address (`$remote_ip`, text). Best public-endpoint rate-limit key. */
+  remoteIp: (): Value => val("$remote_ip", "setting"),
+  /** HTTP method of the request — `GET`, `POST`, … (`$request_method`, text). */
+  requestMethod: (): Value => val("$request_method", "setting"),
+  /** Full request URI/path (`$request_uri`, text). */
+  requestUri: (): Value => val("$request_uri", "setting"),
+  /** Raw query-string portion of the URL (`$request_querystring`, text). */
+  requestQueryString: (): Value => val("$request_querystring", "setting"),
+  /** Request headers as an object/map (`$http_headers`, object). */
+  httpHeaders: (): Value => val("$http_headers", "setting"),
+  /** The caller's `Authorization` bearer token, if present (`$request_auth_token`, text). */
+  requestAuthToken: (): Value => val("$request_auth_token", "setting"),
+  /** API base URL for the request (`$api_baseurl`, text). */
+  apiBaseUrl: (): Value => val("$api_baseurl", "setting"),
+  /** Active data source name — e.g. `live` or a branch source (`$datasource`, text). */
+  datasource: (): Value => val("$datasource", "setting"),
+  /** Active branch name (`$branch`, text). */
+  branch: (): Value => val("$branch", "setting"),
+  /** Tenant identifier for multi-tenant instances (`$tenant`, text). */
+  tenant: (): Value => val("$tenant", "setting"),
+  /** Current release number (`$release`, int). */
+  release: (): Value => val("$release", "setting"),
+  /** Platform identifier (`$platform`, int). */
+  platform: (): Value => val("$platform", "setting"),
+  /** `true` when the request is running under the debugger (`$debugger`, bool). */
+  isDebugger: (): Value => val("$debugger", "setting"),
+};
 
 /**
  * Reference a column of the **parent statement's output row** (`{tag:"output",
