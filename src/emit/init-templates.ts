@@ -215,7 +215,7 @@ export function renderXanoIndex({ appName }: TemplateVars): string {
  *   const createNote = query({
  *     name: "create_note",
  *     verb: "POST",
- *     group: api,
+ *     apiGroup: api,
  *     input: { body: input.text({ required: true }) },
  *     // ...build the stack with the s.* statement helpers...
  *   });
@@ -261,7 +261,7 @@ xano/
 ├── index.ts          default export: the workspace registering everything below
 ├── tables/<name>.ts  a table (name, typed schema, indexes)
 ├── api/<group>.ts    an API group; pin its canonical slug so paths are stable
-└── api/<endpoint>.ts a query: name, verb, group, typed input, a stack, a response
+└── api/<endpoint>.ts a query: name, verb, apiGroup, typed input, a stack, a response
 \`\`\`
 
 ## Steps
@@ -271,7 +271,7 @@ xano/
 2. **Define an API group** with \`apiGroup({ name, canonical })\`. Pinning the
    canonical slug keeps the public path stable and lets \`getPath()\` resolve in
    the browser bundle without a lock file.
-3. **Define endpoints** with \`query({ name, verb, group, input, ... })\`, building
+3. **Define endpoints** with \`query({ name, verb, apiGroup, input, ... })\`, building
    the logic from the \`s.*\` statement helpers and the expression/column/input/
    reference helpers.
 4. **Register everything** in \`index.ts\`:
