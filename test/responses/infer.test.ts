@@ -461,6 +461,7 @@ describe("InferResponse — single-variable trace (U5, type-level)", () => {
       getLink.name,
       undeclared.name,
       objectResponse.name,
+      nestedObjectResponse.name,
       singleVar.name,
     ];
     expect(names.every((n) => n.length > 0)).toBe(true);

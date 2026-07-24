@@ -330,7 +330,10 @@ For a **computed or multi-key object response**, author it as a *record of value
 `response: { success: c.bool(true), id: inp("id") }` — **not** `c.obj({ ... })`. `c.obj` builds
 a JSON *constant* by stringifying its argument, so a tagged value nested inside it serializes as
 internal representation the engine can't decode (a runtime 500); nesting one is now a compile
-error that points you at the record form (issue #42).
+error that points you at the record form (issue #42). A **nested plain object** in a record
+response (`response: { user: { id: ref("u"), age: 3 } }`) is auto-wrapped for you — no manual
+`obj({ ... })` — and raw literals in a call/agent `input` map coerce too
+(`s.function.run({ fn, input: { max_age_days: 3 } })` — no `c.int(3)`).
 
 When a response is filtered, computed, or otherwise opaque to the static walk, declare it once
 on the query and every caller derives from that single source of truth:
@@ -818,7 +821,25 @@ array (ANDed) and branch on the result, rather than pushing the check to the cli
   grafts onto the row as an `unknown` key in `InferResponse` (shadowing a column throws).
 - **`aggregate: { group?, eval?, sort?, paging? }`** (with `returnType: "aggregate"`) builds
   `context.return.aggregate` — `group`/`eval` are `{ name, as, filters? }` (an aggregator like
-  `sum`/`count` rides `filters`).
+  `sum`/`count` rides `filters`). Write each `name` as a **bare column** (`"status"`) — it is
+  alias-qualified to `"<table>.status"` on emit (the engine rejects a bare column in an
+  aggregate); an already-dotted `name` (a `bind`ed/joined column) passes through. Byte-verified
+  against a live engine.
+
+  ```ts
+  s.db.query({
+    table: posts,
+    returnType: "aggregate",
+    aggregate: {
+      group: [{ name: "published", as: "published" }],
+      eval: [
+        { name: "id", as: "count", filters: [{ name: "count" }] },
+        { name: "score", as: "total", filters: [{ name: "sum" }] },
+      ],
+    },
+    as: "rollup",
+  })
+  ```
 - **`distinct`** (`"auto"` default | `"yes"` | `"no"`) rides `context.return.<list|stream>.distinct`.
 
 **Paging changes the response shape.** Supplying `paging` with metadata on (the
