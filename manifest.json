@@ -1,6 +1,6 @@
 {
   "name": "sidestep",
-  "version": "3.9.17",
+  "version": "3.9.18",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
@@ -52,6 +52,11 @@
         "name": "c.array",
         "signature": "(a: Json[]) => Value",
         "description": "Array constant (JSON string) → tag \"const:array\". Plain JSON literals only — a nested tagged value is rejected, same as c.obj (issue #42)."
+      },
+      {
+        "name": "c.now",
+        "signature": "() => Value",
+        "description": "Current time as epoch-ms — the text(\"now\") |to_epoch_ms chain (Xano has no $now setting, so it lives on c.* not sys). It is a FILTERED value, so it can't be an inline where/cmp operand (rejected at export, issue #118) — hoist it into an s.set_var and do cutoff math there (cutoff = now - max_age), then compare against the var (issue #120)."
       },
       {
         "name": "obj",

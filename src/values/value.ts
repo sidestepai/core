@@ -146,6 +146,21 @@ export const c = {
     return val("null", "const:null");
   },
   /**
+   * Current time as an **epoch-milliseconds** value — the runtime-verified chain
+   * `text("now") |to_epoch_ms`. Xano has no `$now` *setting*, so this lives on
+   * `c.*` (a current-time literal) rather than {@link sys} (which emits
+   * `setting("$…")` and would reference a dead `$now` var).
+   *
+   * It returns a **filtered** value, so — like any filter chain — it **cannot be
+   * an inline `where`/`cmp` operand** (`export()` rejects that; issue #118). Hoist
+   * it into a stack var first, then reference the var:
+   * `s.set_var({ name: "cutoff", value: withFilters(c.now(), fl.epochms_add_ms(c.int(-maxAgeMs))) })`
+   * and compare `col("created_at")` against `ref("cutoff")`. (issue #120)
+   */
+  now(): Value {
+    return withFilters(val("now", "const"), filter("to_epoch_ms"));
+  },
+  /**
    * Object constant → JSON-string value with `tag:"const:obj"`. Takes **plain
    * JSON literals only**: nesting a tagged value (`inp`/`ref`/`auth`/`c.*`) is a
    * compile error and throws at runtime — it would serialize as internal
