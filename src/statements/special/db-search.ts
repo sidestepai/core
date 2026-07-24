@@ -139,20 +139,39 @@ function isCmpNode(w: unknown): w is Comparison | SearchComparison {
   return typeof w === "object" && w !== null && !Array.isArray(w) && "op" in w && "left" in w;
 }
 
-/** Encode a tagged value to the `{operand, tag, filters}` search operand shape. */
-function toOperand(v: Value): { operand: string; tag: string; filters: unknown[] } {
+/**
+ * Encode a tagged value to the `{operand, tag, filters}` search operand shape.
+ *
+ * A value carrying a **filter chain** (`withFilters(...)`) is rejected here, at
+ * author/export time. The engine's search-operand evaluator resolves a filtered
+ * operand through a different, `name`-keyed shape than the inline
+ * `{operand,tag,filters}` one this encoder emits, so an inline filtered operand
+ * compiles and `export`s clean but 500s at runtime with an
+ * `Undefined array key "name"` (#118). Mirrors `obj()` (#42), which likewise
+ * rejects inline filtered values: compute the filtered value in a prior stack
+ * step (`setVar`) and reference the var in the operand instead.
+ */
+function toOperand(v: Value, side: "left" | "right"): { operand: string; tag: string; filters: unknown[] } {
+  if (v.filters.length > 0) {
+    throw new Error(
+      `db search: the ${side} operand carries a filter chain (withFilters), which the engine ` +
+        `can't resolve inline in a where/cmp comparison — it 500s at runtime with ` +
+        `'Undefined array key "name"'. Compute the filtered value in a prior step ` +
+        `(e.g. \`s.set_var("v", withFilters(...))\`) and reference the var in the operand (\`ref("v")\`).`,
+    );
+  }
   return { operand: v.value, tag: v.tag, filters: v.filters };
 }
 
 /** One `{type:"statement", or, group:{expression:[]}, statement:{op,left,right}}` node. */
 function toStatementNode(node: Comparison | SearchComparison, or: boolean): unknown {
-  const right: Record<string, unknown> = toOperand(node.right);
+  const right: Record<string, unknown> = toOperand(node.right, "right");
   if ((node as SearchComparison).ignoreEmpty) right.ignore_empty = true;
   return {
     type: "statement",
     or,
     group: { expression: [] },
-    statement: { op: node.op, left: toOperand(node.left), right },
+    statement: { op: node.op, left: toOperand(node.left, "left"), right },
   };
 }
 
