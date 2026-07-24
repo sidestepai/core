@@ -146,6 +146,39 @@ export function encodeEval(evals?: readonly DbEval[]): unknown[] | undefined {
 }
 
 /**
+ * Alias-qualify aggregate `group`/`eval` column names. The engine rejects a bare
+ * (dotless) column in an aggregate with `Unsupported param format - <col>`; a name
+ * must be `<tableAlias>.<column>`. A bare author name is prefixed with the query's
+ * primary table alias (`primaryAlias`, the table name — the default `dbo.as`); a
+ * name the author already dotted (a `bind`ed/joined column) passes through. The
+ * result is guarded to a real `<alias>.<col>` shape so an unresolvable name fails
+ * at export instead of 500ing at runtime. Used by both `db.query` aggregate and
+ * the `cardinality:"aggregate"` addon.
+ */
+export function qualifyAggregateEvals(
+  evals: readonly DbEval[] | undefined,
+  primaryAlias: string,
+  kind: "group" | "eval",
+): DbEval[] | undefined {
+  if (!evals?.length) return evals as DbEval[] | undefined;
+  return evals.map((e) => {
+    const name = e.name.includes(".") ? e.name : `${primaryAlias}.${e.name}`;
+    // Emulates the engine's own check: the qualified name must be a real
+    // `<alias>.<column>` (non-empty on both sides of the dot). Trips when the
+    // primary alias is unresolvable or the author's dotted name is malformed.
+    if (!/^[^.]+\.[^.].*$/.test(name)) {
+      throw new Error(
+        `aggregate ${kind}: name "${e.name}" must be an alias-qualified column ` +
+          `(e.g. "${primaryAlias || "<table>"}.${e.name}") — the engine rejects a bare ` +
+          `column name in an aggregate. Qualify it with the table alias, or the bind ` +
+          `alias for a joined column.`,
+      );
+    }
+    return { ...e, name };
+  });
+}
+
+/**
  * The keys a set of `eval` (or aggregate `group`/`eval`) columns graft onto a
  * row. Each entry's `as` alias becomes a key valued `unknown` — a filter
  * pipeline's output isn't statically knowable. An absent set contributes none.

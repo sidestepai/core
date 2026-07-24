@@ -40,7 +40,7 @@ import type { LeanInput } from "../lean-input.js";
 import { tableColumns } from "../../kinds/table.js";
 import type { ColumnDef, TableDef, InferRow } from "../../kinds/table.js";
 import type { Prettify } from "../../fields/value-types.js";
-import { encodeSearch, encodeSort, encodeEval } from "./db-search.js";
+import { encodeSearch, encodeSort, encodeEval, qualifyAggregateEvals } from "./db-search.js";
 import type { DbWhere, SortDirective, DbEval, EvalFields, AggregateRow } from "./db-search.js";
 export type { DbWhere, SortDir, SortDirective, DbEval, DbEvalFilter } from "./db-search.js";
 
@@ -236,7 +236,10 @@ export interface DbAggregatePaging {
  * Aggregate/group-by config for `returnType:"aggregate"` (`context.return.aggregate`).
  * `group` are the group-by columns and `eval` the aggregator columns (each
  * `{ name, as, filters }` — an aggregator like `sum`/`count` rides `filters`).
- * Both `as` sets graft onto the aggregate row (`unknown` values).
+ * Both `as` sets graft onto the aggregate row (`unknown` values). Write `name` as
+ * a bare column (`"status"`) — it is alias-qualified to `"<table>.status"` on emit
+ * (the engine requires the qualified form); pass an already-dotted `name` for a
+ * `bind`ed/joined column and it is left as-is.
  */
 export interface DbAggregate {
   group?: DbEval[];
@@ -1155,14 +1158,15 @@ function assertNoEvalShadow(table: ObjectRef, evals?: readonly DbEval[]): void {
  */
 /**
  * Encode `context.return.aggregate` — `{ sort, paging?, eval, group }`. `group`
- * and `eval` reuse the {@link encodeEval} `{ as, name, filters }` shape. Aggregate
- * paging is `{ page, per_page, metadata, enabled }` — no `offset`/`totals`.
+ * and `eval` reuse the {@link encodeEval} `{ as, name, filters }` shape, with their
+ * `name` alias-qualified against `primaryAlias` (see {@link qualifyAggregateEvals}).
+ * Aggregate paging is `{ page, per_page, metadata, enabled }` — no `offset`/`totals`.
  */
-function encodeAggregate(agg?: DbAggregate): unknown {
+function encodeAggregate(agg: DbAggregate | undefined, primaryAlias: string): unknown {
   const block: Record<string, unknown> = {
     sort: encodeSort(agg?.sort),
-    eval: encodeEval(agg?.eval) ?? [],
-    group: encodeEval(agg?.group) ?? [],
+    eval: encodeEval(qualifyAggregateEvals(agg?.eval, primaryAlias, "eval")) ?? [],
+    group: encodeEval(qualifyAggregateEvals(agg?.group, primaryAlias, "group")) ?? [],
   };
   if (agg?.paging) {
     block.paging = {
@@ -1182,9 +1186,10 @@ function encodeReturn(
   forceEnabled = false,
   distinct: DbDistinct = "auto",
   aggregate?: DbAggregate,
+  primaryAlias = "",
 ): unknown {
   const sortEls = encodeSort(sort);
-  if (returnType === "aggregate") return encodeAggregate(aggregate);
+  if (returnType === "aggregate") return encodeAggregate(aggregate, primaryAlias);
   if (returnType === "count" || returnType === "exists") return { type: returnType };
   if (returnType === "single") return { type: "single", single: { sort: sortEls } };
   // `enabled:true` gates the engine's paging (+ the simpleExternal page/per_page/
@@ -1328,6 +1333,9 @@ export function dbQuery<
   assertNoAddonShadow(args.table, args.addon);
   assertNoEvalShadow(args.table, args.eval);
   const returnType: DbReturnType = args.returnType ?? "list";
+  // The primary table alias (the default `dbo.as`) — used to qualify aggregate
+  // group/eval column names, which the engine requires as `<alias>.<column>`.
+  const primaryAlias = typeof args.table === "string" ? args.table : args.table.name;
   const context: Record<string, unknown> = { dbo: { id: resolveRef("dbo", args.table) } };
   const search = encodeSearch(args.where, args.additionalWhere);
   if (search !== undefined) context.search = search;
@@ -1353,10 +1361,10 @@ export function dbQuery<
     }
     // `external`'s page/per_page are gated by static `paging.enabled` just like
     // simpleExternal — force it on so a self-contained blob isn't silently no-op'd.
-    context.return = encodeReturn(returnType, args.sort, args.paging, true, args.distinct, args.aggregate);
+    context.return = encodeReturn(returnType, args.sort, args.paging, true, args.distinct, args.aggregate, primaryAlias);
     context.external = encodeExternal(args.external);
   } else {
-    context.return = encodeReturn(returnType, args.sort, args.paging, false, args.distinct, args.aggregate);
+    context.return = encodeReturn(returnType, args.sort, args.paging, false, args.distinct, args.aggregate, primaryAlias);
     if (simpleExternal) context.simpleExternal = simpleExternal;
   }
   // A `list` query with paging enabled + metadata on returns a paging envelope,

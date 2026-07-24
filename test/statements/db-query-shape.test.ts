@@ -455,15 +455,43 @@ describe("db.query (mvp:dbo_view) emit shape", () => {
         },
       }),
     );
+    // group/eval column names are alias-qualified with the table name — the
+    // engine rejects a bare (dotless) column in an aggregate ("Unsupported param
+    // format - <col>"). The author writes bare names; the SDK qualifies them.
     expect(ret(enc)).toEqual({
       type: "aggregate",
       aggregate: {
         sort: [{ sortBy: "uid", orderBy: "asc" }],
-        eval: [{ as: "cnt", name: "id", filters: [{ name: "count", arg: [] }] }],
-        group: [{ as: "uid", name: "user_id", filters: [] }],
+        eval: [{ as: "cnt", name: "note.id", filters: [{ name: "count", arg: [] }] }],
+        group: [{ as: "uid", name: "note.user_id", filters: [] }],
         paging: { page: 1, per_page: 50, metadata: true, enabled: true },
       },
     });
+  });
+
+  it("aggregate passes an author-qualified (dotted) name through unchanged", () => {
+    const enc = encodeStatement(
+      dbQuery({
+        table: note,
+        returnType: "aggregate",
+        // a `bind`ed/joined column the author already qualified — do not re-prefix
+        aggregate: { group: [{ name: "author.name", as: "author_name" }] },
+      }),
+    );
+    expect((ret(enc) as { aggregate: { group: { name: string }[] } }).aggregate.group[0]!.name).toBe(
+      "author.name",
+    );
+  });
+
+  it("aggregate throws at export when a dotted name is malformed (engine would reject)", () => {
+    // A name the author dotted but left malformed (trailing dot → empty column)
+    // passes through qualification but is not a real `<alias>.<column>`. Fail loud
+    // at export, not 500 at runtime.
+    expect(() =>
+      encodeStatement(
+        dbQuery({ table: note, returnType: "aggregate", aggregate: { group: [{ name: "note.", as: "x" }] } }),
+      ),
+    ).toThrow(/alias-qualified/);
   });
 
   it("aggregate without paging omits the paging block", () => {
