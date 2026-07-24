@@ -123,6 +123,66 @@ function val(value: string, tag: Tag, filters: FilterXdo[] = []): Value {
   return { value, tag, filters };
 }
 
+/** PCRE modifiers that also exist (and mean the same thing) as JS RegExp flags.
+ * A `RegExp`'s `g`/`y`/`d` are JS-only — passing them to PHP `preg_*` raises
+ * "Unknown modifier", so they are dropped when deriving flags from a RegExp. */
+const PCRE_JS_FLAGS = "imsxu";
+
+/** Escape any interior forward slash so a `/…/`-delimited literal stays valid
+ * (`\d/\d` → `\d\/\d`). Backslash escapes are skipped so `\/` is never doubled. */
+function escapeRegexSlashes(body: string): string {
+  let out = "";
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (ch === "\\") {
+      out += ch + (body[i + 1] ?? "");
+      i++;
+      continue;
+    }
+    out += ch === "/" ? "\\/" : ch;
+  }
+  return out;
+}
+
+/**
+ * Emulate PHP's delimiter scan to decide whether a const string is a *valid*
+ * PCRE literal (`/…/flags`, `~…~i`, `(…)`, …) — the check behind the {@link
+ * withFilters} guard. The delimiter is the first char (must be non-alphanumeric,
+ * non-backslash, non-whitespace); the pattern ends at the next *unescaped*
+ * closing delimiter, after which only flag letters may follow. A bare JS-style
+ * body (`^[^@\s]+$`, `[a-z]+`, `\d{2}`) fails this — exactly the input PHP rejects,
+ * so the guard fires on the same strings the engine would silently no-match on.
+ */
+function isValidPcreLiteral(s: string): boolean {
+  if (s.length < 2) return false;
+  const d = s[0]!;
+  if (/[a-zA-Z0-9\\\s]/.test(d)) return false;
+  const close = ({ "(": ")", "[": "]", "{": "}", "<": ">" } as Record<string, string>)[d] ?? d;
+  let i = 1;
+  for (; i < s.length; i++) {
+    if (s[i] === "\\") {
+      i++;
+      continue;
+    }
+    if (s[i] === close) break;
+  }
+  if (i >= s.length) return false;
+  return /^[a-zA-Z]*$/.test(s.slice(i + 1));
+}
+
+/** The pattern-piped regex filters: the value they filter is the regex PATTERN,
+ * so a bare (undelimited) const there is the {@link withFilters} footgun. Excludes
+ * `regex_quote` (whose piped value is raw text to be escaped, not a pattern). */
+const REGEX_PATTERN_FILTERS = new Set([
+  "regex_test",
+  "regex_match",
+  "regex_match_all",
+  "regex_matches",
+  "regex_replace",
+  "regex_get_all_matches",
+  "regex_get_first_match",
+]);
+
 /** Constant constructors. Values always serialize as strings (per fixture). */
 export const c = {
   /** Plain string constant → `tag:"const"`. */
@@ -144,6 +204,32 @@ export const c = {
   /** Null constant → `tag:"const:null"`, value `"null"` (per engine fixture). */
   null(): Value {
     return val("null", "const:null");
+  },
+  /**
+   * Build a **regex pattern value** for the pattern-piped regex filters
+   * (`fl.regex_test`/`regex_match`/`regex_replace`/…). Xano runs PHP `preg_*`, so
+   * the pattern MUST be delimiter-wrapped — a bare `c.text("^…$")` is an invalid
+   * PCRE and the filter then matches *nothing* for every input, so a precondition
+   * built on it silently rejects all values (issue #128). This wraps the raw
+   * pattern in `/…/`, escapes any interior `/`, and appends `flags`, so the result
+   * is always valid; `withFilters` rejects a bare `c.text` pattern and points here.
+   *
+   * Pass a JS `RegExp` (source + flags used directly, minus JS-only `g`/`y`/`d`):
+   * `c.regex(/^[^@\s]+@[^@\s]+\.[^@\s]+$/i)`, or a raw body + optional PCRE flags:
+   * `c.regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", "i")`. The pattern is the piped
+   * value; the filter's `subject` arg is the text tested against it.
+   */
+  regex(pattern: string | RegExp, flags?: string): Value {
+    const body = typeof pattern === "string" ? pattern : pattern.source;
+    const raw =
+      flags ??
+      (typeof pattern === "string"
+        ? ""
+        : [...pattern.flags].filter((ch) => PCRE_JS_FLAGS.includes(ch)).join(""));
+    if (!/^[a-zA-Z]*$/.test(raw)) {
+      throw new Error(`c.regex: flags must be letters (e.g. "i", "im"), got ${JSON.stringify(raw)}`);
+    }
+    return val(`/${escapeRegexSlashes(body)}/${raw}`, "const");
   },
   /**
    * Current time as an **epoch-milliseconds** value — the runtime-verified chain
@@ -357,11 +443,34 @@ export function withFilters<V extends Value>(
   value: V,
   ...filters: (FilterXdo | FilterXdo[])[]
 ): FilteredValue & (V extends ColValue ? { readonly __col: true } : unknown) {
+  const added = filters.flat();
+  // Guard the pattern-piped regex footgun (issue #128): when a regex filter is
+  // the first thing applied to a bare `const` value, that value IS the pattern —
+  // and an undelimited PCRE silently matches nothing for every input (a
+  // precondition on it rejects all values, valid ones included). Only fire when
+  // the base is an unfiltered const literal we can actually inspect; a ref/inp
+  // pattern or a mid-chain value is left alone. Point straight at `c.regex`.
+  const first = added[0];
+  if (
+    first &&
+    REGEX_PATTERN_FILTERS.has(first.name) &&
+    value.filters.length === 0 &&
+    value.tag === "const" &&
+    !isValidPcreLiteral(value.value)
+  ) {
+    throw new Error(
+      `Regex filter \`${first.name}\` is pattern-piped: the value it filters is the ` +
+        `regex PATTERN, which PHP \`preg_*\` requires to be delimiter-wrapped. ` +
+        `${JSON.stringify(value.value)} is a bare pattern, so the engine matches nothing ` +
+        `for every input (a precondition on it silently rejects all values). Build it with ` +
+        `c.regex(${JSON.stringify(value.value)}) instead of c.text(...). (issue #128)`,
+    );
+  }
   // `__filtered` is a phantom carrier — the runtime object is the plain
   // `{value, tag, filters}` Value; the cast marks the type as filter-reshaped so
   // `InferResponse` degrades it to `unknown`. A `col()`-derived chain keeps the
   // `__col` brand so `withFilters(col("x"), fl.add(...))` is rejected in a `row`
   // just like a bare `col()` (issue #32) — the wrapped form is the actual footgun.
-  return { ...value, filters: [...value.filters, ...filters.flat()] } as FilteredValue &
+  return { ...value, filters: [...value.filters, ...added] } as FilteredValue &
     (V extends ColValue ? { readonly __col: true } : unknown);
 }

@@ -994,10 +994,11 @@ import { s, c, inp, expr, withFilters, fl } from "@sidestep/core";
 s.precondition({
   // `fl.regex_test` runs PHP `preg_match(pattern, subject)`. It is PATTERN-piped:
   // the piped value is the regex, the arg is the text tested — the REVERSE of
-  // `istarts_with`, whose piped value is the subject (#22). The pattern needs
-  // PCRE delimiters (`~…~i` = case-insensitive); `^https?://` matches http/https
-  // and rejects `javascript:`, `data:`, and `httpfoo://` lookalikes alike.
-  expr: expr(withFilters(c.text("~^https?://~i"), fl.regex_test(inp("url"))), "=", c.bool(true)),
+  // `istarts_with`, whose piped value is the subject (#22). Build the pattern with
+  // `c.regex(...)` — it delimiter-wraps for you (a bare `c.text("^…")` is an invalid
+  // PCRE that matches nothing, so `withFilters` rejects it, #128). `^https?://`
+  // matches http/https and rejects `javascript:`, `data:`, `httpfoo://` alike.
+  expr: expr(withFilters(c.regex("^https?://", "i"), fl.regex_test(inp("url"))), "=", c.bool(true)),
   error_type: "badrequest",                       // → HTTP 400 (not a 200 throw)
   error: c.text("url must be an http(s) URL"),
 })

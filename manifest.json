@@ -1,6 +1,6 @@
 {
   "name": "sidestep",
-  "version": "3.9.22",
+  "version": "3.9.23",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
@@ -7269,7 +7269,7 @@
       ],
       "result": "text[]",
       "group": "text",
-      "description": "Return the first set of matches performed by a regular expression Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains."
+      "description": "Return the first set of matches performed by a regular expression Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains. Build the pattern with c.regex(...) (delimiter-wrapped); a bare c.text(...) is rejected (issue #128)."
     },
     {
       "name": "regex_match_all",
@@ -7283,7 +7283,7 @@
       ],
       "result": "text[]",
       "group": "text",
-      "description": "Return all matches performed by a regular expression on the Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains."
+      "description": "Return all matches performed by a regular expression on the Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains. Build the pattern with c.regex(...) (delimiter-wrapped); a bare c.text(...) is rejected (issue #128)."
     },
     {
       "name": "regex_quote",
@@ -7316,7 +7316,7 @@
       ],
       "result": "text",
       "group": "text",
-      "description": "Perform a regular expression search and replace on the supplied subject text. Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains."
+      "description": "Perform a regular expression search and replace on the supplied subject text. Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains. Build the pattern with c.regex(...) (delimiter-wrapped); a bare c.text(...) is rejected (issue #128)."
     },
     {
       "name": "regex_test",
@@ -7330,7 +7330,7 @@
       ],
       "result": "bool",
       "group": "text",
-      "description": "Tests if a regular expression matches the supplied subject text. Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains."
+      "description": "Tests if a regular expression matches the supplied subject text. Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains. Build the pattern with c.regex(...) (delimiter-wrapped); a bare c.text(...) is rejected (issue #128)."
     },
     {
       "name": "reverse",

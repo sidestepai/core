@@ -1,4 +1,4 @@
-# sidestep v3.9.22
+# sidestep v3.9.23
 
 > TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.
 
@@ -294,13 +294,15 @@ Where a cold reader's intuition usually diverges from this API:
 - **`get_input`/`get_raw_input` read the whole payload**, not one named input
   (args are `{ as?, encoding?, excludeMiddleware? }` — no `name`). For a single
   input use `inp("name")`.
-- **Regex filters (`regex_matches`/`regex_match`/`regex_replace`) need `/…/` delimiters.**
-  They are PHP `preg_match` under the hood, so a bare JS-style body (`^[^@\s]+@...$`)
-  is an invalid pattern — `regex_matches` then returns `false` for *every* input, so a
-  precondition on it silently rejects all values (valid ones included). Delimit it:
-  `"/^[^@\s]+@[^@\s]+\.[^@\s]+$/"|regex_matches:$email` (flags go after the close
-  slash, e.g. `/foo/i`). Better still, prefer a native typed input (`input.email({...})`)
-  over hand-rolled validation. Third-party engine behavior.
+- **Build regex-filter patterns with `c.regex(body, flags?)`, never `c.text`.**
+  The regex filters (`regex_test`/`regex_match`/`regex_replace`/…) are pattern-piped
+  PHP `preg_*`: the piped value is the PATTERN and must be delimiter-wrapped. A bare
+  `c.text("^[^@\s]+@...$")` is an invalid pattern that matches *nothing* for every
+  input, so a precondition on it silently rejects all values (valid ones included).
+  `c.regex("^[^@\s]+@[^@\s]+\.[^@\s]+$", "i")` wraps + escapes it for you (accepts a
+  JS `RegExp` too: `c.regex(/^…$/i)`), and `withFilters` throws on a bare `c.text`
+  pattern pointing here (#128). Better still, prefer a native typed input
+  (`input.email({...})`) over hand-rolled validation. Third-party engine behavior.
 - **Declare inputs with `input.<type>()`, read them with `inp("name")`.** In an
   `input: {}` block the columns are `input.text({...})` etc.; `inp` is the *value
   ref* that reads an input inside the stack (`inp("name")`). Writing `inp.text({...})`
