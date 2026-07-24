@@ -67,8 +67,9 @@ export const input = {
    * - **Login:** `s.security.check_password` receives the *already-hashed* submission
    *   (a fresh random salt each request), compares it against the stored hash, and
    *   never matches — so login always fails with a false "invalid password".
-   * - **Signup:** the value is hashed here, then the `f.password` column re-hashes on
-   *   write.
+   * - **Signup:** the value is hashed here at bind, so the `f.password` column then sees
+   *   an already-hashed `salt.hash` value and stores it as-is (the column's hash-on-write
+   *   skips a value already in that shape) — the plaintext never lands in the column.
    *
    * Recipe: use {@link input.text} (e.g. `input.text({ methods: ["min:6"] })`) for the
    * password on **both** signup and login, let the `f.password` *column* hash on write,

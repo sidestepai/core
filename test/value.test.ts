@@ -207,23 +207,29 @@ describe("env vs setting vs sys (issue #110)", () => {
   });
 
   it("sys covers every system var in the workspace environment panel", () => {
-    // Guard against drift: the accessor set must match the canonical 13-name list.
-    const emitted = [
-      sys.remoteIp(),
-      sys.requestMethod(),
-      sys.requestUri(),
-      sys.requestQueryString(),
-      sys.httpHeaders(),
-      sys.requestAuthToken(),
-      sys.apiBaseUrl(),
-      sys.datasource(),
-      sys.branch(),
-      sys.tenant(),
-      sys.release(),
-      sys.platform(),
-      sys.isDebugger(),
-    ].map((v) => v.value);
-    expect(new Set(emitted)).toEqual(
+    // Guard against drift: iterate the live `sys` object so adding or removing an
+    // accessor forces this list (and the manifest catalog) to be updated in lockstep.
+    expect(Object.keys(sys).sort()).toEqual(
+      [
+        "remoteIp",
+        "requestMethod",
+        "requestUri",
+        "requestQueryString",
+        "httpHeaders",
+        "requestAuthToken",
+        "apiBaseUrl",
+        "datasource",
+        "branch",
+        "tenant",
+        "release",
+        "platform",
+        "isDebugger",
+      ].sort(),
+    );
+
+    // Every accessor emits a $-prefixed setting (never an env tag).
+    const emitted = Object.values(sys).map((accessor) => accessor());
+    expect(new Set(emitted.map((v) => v.value))).toEqual(
       new Set([
         "$remote_ip",
         "$request_method",
@@ -240,6 +246,7 @@ describe("env vs setting vs sys (issue #110)", () => {
         "$debugger",
       ]),
     );
+    expect(emitted.every((v) => v.tag === "setting")).toBe(true);
   });
 
   it("a sys value keys a public-endpoint rate limit off the caller IP", () => {
