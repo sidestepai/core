@@ -1,0 +1,326 @@
+{
+  "tag": [],
+  "docs": "",
+  "guid": "63aabd93694405ed46aafb83020b7e41",
+  "name": "ex_agent_structured",
+  "spec": "",
+  "tool": [],
+  "type": "agent",
+  "branch": {
+    "id": 0
+  },
+  "enabled": true,
+  "history": {
+    "inherit": true,
+    "tool_limit": 100,
+    "tool_enabled": true
+  },
+  "canonical": "agent-structured",
+  "middleware": {
+    "pre": [],
+    "post": [],
+    "pre_customize": false,
+    "post_customize": false
+  },
+  "description": "",
+  "instructions": "",
+  "agent_settings": {
+    "type": "xano-free",
+    "model": "",
+    "prompt": "Ticket: {{ $args.body }}",
+    "configs": {
+      "xano-free": {
+        "baseURL": "",
+        "headers": "",
+        "temperature": 1,
+        "safetySettings": "",
+        "thinkingConfig": {
+          "thinkingBudget": 0,
+          "includeThoughts": false
+        },
+        "useSearchGrounding": false,
+        "dynamicRetrievalConfig": ""
+      }
+    },
+    "max_steps": 5,
+    "telemetry": {
+      "enabled": false,
+      "langfuse": {
+        "base_url": "",
+        "public_key": "",
+        "secret_key": ""
+      },
+      "langsmith": {
+        "api_key": ""
+      },
+      "braintrust": {
+        "api_key": "",
+        "project_name": ""
+      },
+      "destination": ""
+    },
+    "prompt_type": "prompt",
+    "system_prompt": "Classify the ticket.",
+    "prompt_messages": "",
+    "structuredOutputs": true,
+    "structuredOutputsSchema": [
+      {
+        "list": {
+          "max": "",
+          "min": ""
+        },
+        "mode": "",
+        "name": "priority",
+        "type": "enum",
+        "_xsid": "",
+        "merge": false,
+        "style": {
+          "type": "single"
+        },
+        "access": "public",
+        "format": "",
+        "hidden": [],
+        "values": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "vector": {
+          "size": 3
+        },
+        "default": "",
+        "methods": [],
+        "children": [],
+        "nullable": false,
+        "override": [],
+        "required": false,
+        "customize": {},
+        "sensitive": false,
+        "description": "",
+        "market_item": {
+          "id": 0,
+          "guid": "",
+          "version": 0
+        },
+        "is_settings_registry": false
+      },
+      {
+        "list": {
+          "max": "",
+          "min": ""
+        },
+        "mode": "",
+        "name": "category",
+        "type": "text",
+        "_xsid": "",
+        "merge": false,
+        "style": {
+          "type": "single"
+        },
+        "access": "public",
+        "format": "",
+        "hidden": [],
+        "values": [],
+        "vector": {
+          "size": 3
+        },
+        "default": "",
+        "methods": [],
+        "children": [],
+        "nullable": false,
+        "override": [],
+        "required": false,
+        "customize": {},
+        "sensitive": false,
+        "description": "",
+        "market_item": {
+          "id": 0,
+          "guid": "",
+          "version": 0
+        },
+        "is_settings_registry": false
+      },
+      {
+        "list": {
+          "max": "",
+          "min": ""
+        },
+        "mode": "",
+        "name": "summary",
+        "type": "text",
+        "_xsid": "",
+        "merge": false,
+        "style": {
+          "type": "single"
+        },
+        "access": "public",
+        "format": "",
+        "hidden": [],
+        "values": [],
+        "vector": {
+          "size": 3
+        },
+        "default": "",
+        "methods": [],
+        "children": [],
+        "nullable": false,
+        "override": [],
+        "required": false,
+        "customize": {},
+        "sensitive": false,
+        "description": "",
+        "market_item": {
+          "id": 0,
+          "guid": "",
+          "version": 0
+        },
+        "is_settings_registry": false
+      },
+      {
+        "list": {
+          "max": "",
+          "min": ""
+        },
+        "mode": "",
+        "name": "tags",
+        "type": "text",
+        "_xsid": "",
+        "merge": false,
+        "style": {
+          "type": "list"
+        },
+        "access": "public",
+        "format": "",
+        "hidden": [],
+        "values": [],
+        "vector": {
+          "size": 3
+        },
+        "default": "",
+        "methods": [],
+        "children": [],
+        "nullable": false,
+        "override": [],
+        "required": false,
+        "customize": {},
+        "sensitive": false,
+        "description": "",
+        "market_item": {
+          "id": 0,
+          "guid": "",
+          "version": 0
+        },
+        "is_settings_registry": false
+      },
+      {
+        "list": {
+          "max": "",
+          "min": ""
+        },
+        "mode": "",
+        "name": "meta",
+        "type": "obj",
+        "_xsid": "",
+        "merge": false,
+        "style": {
+          "type": "single"
+        },
+        "access": "public",
+        "format": "",
+        "hidden": [],
+        "values": [],
+        "vector": {
+          "size": 3
+        },
+        "default": "",
+        "methods": [],
+        "children": [
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "score",
+            "type": "int",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": false,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "flagged",
+            "type": "bool",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": false,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          }
+        ],
+        "nullable": false,
+        "override": [],
+        "required": false,
+        "customize": {},
+        "sensitive": false,
+        "description": "",
+        "market_item": {
+          "id": 0,
+          "guid": "",
+          "version": 0
+        },
+        "is_settings_registry": false
+      }
+    ]
+  }
+}

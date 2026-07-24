@@ -513,6 +513,21 @@ structured-output agent narrow it with the type-only `resultShape` witness:
 `s.ai.agent.run({ agent, as: "answer", resultShape: {} as { sentiment: string } })` — then
 `ref("answer.result")` types to `{ sentiment: string }`.
 
+**Structured outputs.** Constrain what the model returns by authoring `output.schema` on
+the agent — a named-field record built with the `input.*` catalog, exactly like a function
+`input:` map (the engine stores it as `structuredOutputsSchema`):
+
+```ts
+agent({
+  name: "classifier",
+  llm: { type: "xano-free", prompt: "Ticket: {{ $args.body }}" },
+  output: { schema: { priority: input.enum(["low", "high"]), summary: input.text() } },
+});
+```
+
+The authored schema shapes the model's output; the call-site `resultShape` above shapes the
+inferred `.result` TS type — the two are independent today.
+
 **MCP endpoint URL.** An `mcpServer()` handle derives its endpoint from the def — no
 hardcoding, the same contract `query.getPath()` gives API endpoints:
 

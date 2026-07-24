@@ -60,6 +60,9 @@ import type { ObjectKind } from "./kind.js";
 import { encodeToolsetBase, resolveToolsetCanonical } from "./toolset.js";
 import type { ToolsetBaseXdo, ToolsetToolRef } from "./toolset.js";
 import type { HistoryInput } from "./history.js";
+import { encodeInput } from "../inputs/input.js";
+import type { InputDescriptor } from "../inputs/input.js";
+import type { InputXdo } from "../types/xdo.js";
 
 /** The LLM provider — the `agent_settings.type` value and the `configs` key. */
 export type LlmProvider = "xano-free" | "openai" | "anthropic" | "google-genai";
@@ -151,12 +154,15 @@ export interface XanoFreeLlm extends LlmCommon {
 export type LlmSettings = AnthropicLlm | OpenAiLlm | GoogleGenAiLlm | XanoFreeLlm;
 
 /**
- * Structured-output authoring. `schema` is the stored `structuredOutputsSchema`
- * (an array of Xano schema items). Left as `unknown[]` pending the golden
- * fixture that locks the item shape (KTD-6); passed through verbatim.
+ * Structured-output authoring. `schema` is a record of named fields authored with
+ * the `input.*` catalog — exactly like a `defineFunction`/`query` `input:` map. The
+ * stored `structuredOutputsSchema` is the same wire shape as function inputs, so
+ * `encodeInput` produces it verbatim (no parallel encoder). e.g.
+ * `output: { schema: { priority: input.enum(["low","high"]), summary: input.text() } }`.
+ * The item shape is byte-verified against a captured live-engine golden (issue #122).
  */
 export interface AgentOutput {
-  schema: unknown[];
+  schema: Record<string, InputDescriptor>;
   /** Whether structured output is enabled (`structuredOutputs`). Defaults to true. */
   enabled?: boolean;
 }
@@ -197,7 +203,7 @@ export interface AgentSettingsXdo {
   prompt: string;
   prompt_messages: string;
   structuredOutputs: boolean;
-  structuredOutputsSchema: unknown[];
+  structuredOutputsSchema: InputXdo[];
   configs: Record<string, Record<string, unknown>>;
 }
 
@@ -285,7 +291,9 @@ function buildAgentSettings(def: AgentDef): AgentSettingsXdo {
     prompt: promptType === "prompt" ? (llm.prompt ?? "") : "",
     prompt_messages: promptType === "messages" ? (llm.messages ?? "") : "",
     structuredOutputs: def.output ? (def.output.enabled ?? true) : false,
-    structuredOutputsSchema: def.output?.schema ?? [],
+    structuredOutputsSchema: def.output
+      ? Object.entries(def.output.schema).map(([name, d]) => encodeInput(name, d))
+      : [],
     configs: { [llm.type]: buildProviderConfig(llm) },
   };
 }
