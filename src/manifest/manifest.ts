@@ -466,6 +466,55 @@ const fieldLine = (f: ManifestField, sPath: string): string => {
 };
 
 /**
+ * Curated, COMPLETE one-line notes for the typed filters whose signature alone
+ * underspecifies behavior. The lean `llms.txt` filter catalog renders these in
+ * place of the raw source descriptions — which are dropped from the primary (they
+ * are 40% name-restating and 70% truncated mid-sentence) but retained in full in
+ * `manifest.json`. Keyed by bare filter name. Mirrors the OVERRIDDEN_SURFACES /
+ * DEFAULT_KEEP curated-override pattern; the completeness test (llms-filters) proves
+ * every load-bearing filter has a note here or an entry in SELF_EVIDENT_FILTERS.
+ */
+export const FILTER_NOTES: Record<string, string> = {
+  // "Direction" family — which operand is the subject is genuinely confusing.
+  contains: "piped value is the subject text; the arg is the substring searched for",
+  ends_with: "piped value is the subject text; the arg is the substring searched for",
+  starts_with: "piped value is the subject text; the arg is the substring searched for",
+  icontains: "case-insensitive; piped value is the subject, the arg is the substring",
+  iends_with: "case-insensitive; piped value is the subject, the arg is the substring",
+  istarts_with: "case-insensitive; piped value is the subject, the arg is the substring",
+  // "empty" is a specific set of values, not just null.
+  filter_empty: 'keeps entries that are not empty ("", null, 0, "0", false, [], {})',
+  first_notempty: 'first value that is not empty ("", null, 0, "0", false, [], {})',
+  // The `code`/lambda arg is a JS expression body, not a column path.
+  map: "`code` is a JS expression body run per element",
+  every: "`code` is a JS boolean expression run per element (true for all?)",
+  some: "`code` is a JS boolean expression run per element (true for any?)",
+  findIndex: "`code` is a JS boolean expression; returns the first matching index",
+  lambda: "runs a JavaScript expression body",
+  // Non-obvious names.
+  epochms_transform: 'applies a relative shift (e.g. "+1 day") to the timestamp',
+  unpick: "returns the object without the named keys (inverse of a pick)",
+};
+
+/**
+ * Typed filters that ARE load-bearing (non-name-restating, complete source
+ * description) but whose name + signature is self-evident, so they intentionally
+ * carry no note. Recorded explicitly so the completeness test can prove every
+ * load-bearing filter is a conscious keep-or-drop decision, not a silent gap.
+ */
+export const SELF_EVIDENT_FILTERS: ReadonlySet<string> = new Set([
+  "array_fill",
+  "array_fill_keys",
+  "array_slice",
+  "epochms_add_ms",
+  "epochms_add_secs",
+  "epochms_from_format",
+  "range",
+  "regex_quote",
+  "filter_empty_text",
+]);
+
+/**
  * Render the manifest as `llms.txt` — a concise, link-free plaintext grounding
  * doc an agent can read to learn how to author a sidestep workspace.
  */
@@ -949,7 +998,11 @@ export function renderLlmsTxt(m: Manifest): string {
   for (const fl of typedFilters) {
     const sig = (fl.args ?? []).map((a) => `${a.name}${a.optional ? "?" : ""}: ${a.type}`).join(", ");
     const ret = fl.result ? `: ${fl.result}` : "";
-    lines.push(`- \`${fl.fl}(${sig})${ret}\`${fl.description ? ` — ${fl.description}` : ""}`);
+    // Signature-first: render only a curated note (complete, non-truncated) where the
+    // signature underspecifies; the raw source description is dropped from the primary
+    // but retained in manifest.json.
+    const note = FILTER_NOTES[fl.name];
+    lines.push(`- \`${fl.fl}(${sig})${ret}\`${note ? ` — ${note}` : ""}`);
   }
   const byName = m.filters.filter((fl) => !fl.typed).map((fl) => fl.name);
   lines.push("", `Other filters (reachable as \`fl.<name>\`, variadic): ${byName.join(", ")}.`, "");

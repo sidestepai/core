@@ -496,135 +496,135 @@ persists empty. So the safe counter drops out of the typed surface: hardcode
 the physical name after inspecting the deployed table. A typed atomic path needs an
 engine change (issue #35).
 
-- `fl.add(value: decimal): decimal` — Add 2 values together and return the answer
-- `fl.append(value: <T>, path: text): <T>[]` — Push an element on to the end of an array within an object and return the updated object
-- `fl.array_diff(value: <T>[]): <T>[]` — Return the entries from the first array that are not in the second
-- `fl.array_diff_assoc(value: <T>[]): <T>[]` — Return the entries from the first array that are not in the second
-- `fl.array_fill(start?: int, count: int): any[]` — Create an array of a certain size with a default value.
-- `fl.array_fill_keys(keys?: any[]): any[]` — Create an array of keys with a default value.
-- `fl.array_intersect(value: <T>[]): <T>[]` — Return the entries from the first array that are also present in
-- `fl.array_intersect_assoc(value: <T>[]): <T>[]` — Return the entries from the first array that are also present in
-- `fl.array_merge(value: <T>[]): <T>[]` — Merge the first level of elements of both arrays together and
-- `fl.array_merge_recursive(value: <T>[]): <T>[]` — Merge the elements from all levels of both arrays together and
-- `fl.array_push(value: <T>): <T>[]` — Push an element on to the end of an array and return the new array
-- `fl.array_remove(value: <T>, path: text, strict?: bool): <T>[]` — Remove any elements from the array that match the supplied value
-- `fl.array_slice(offset?: int, length?: int): <T>[]` — Extract a section from an array.
-- `fl.array_unshift(value: <T>): <T>[]` — Push an element to the beginning of an array and return the new array
-- `fl.base_convert(from_base: any, to_base: any): text` — Converts a value between two bases
-- `fl.bitwise_and(value: int): int` — Bitwise AND 2 values together and return the answer
-- `fl.bitwise_or(value: int): int` — Bitwise OR 2 values together and return the answer
-- `fl.bitwise_xor(value: int): int` — Bitwise XOR 2 values together and return the answer
-- `fl.concat(value: any): text` — Concatenates two values together
-- `fl.contains(search: text): bool` — Returns whether or not the expression is found Direction: the piped value is the subject text; the argument is the substring searched for.
-- `fl.convert_encoding(to: text, from: text): text` — Convert the character encoding of the supplied text
-- `fl.create_object(values?: <T>[]): any` — Creates an object based on a list of keys and a list of values
-- `fl.crypto_jwe_decode(check_claims?: json, key: json, key_algorithm?: enum, content_algorithm?: enum, timeDrift?: int): json` — Decodes the JWE token and return the result
-- `fl.crypto_jwe_encode(headers?: json, key: json, key_algorithm?: enum, content_algorithm?: enum, ttl?: int): text` — Encodes the value and return the result as a JWE token
-- `fl.crypto_jws_decode(check_claims?: json, key: json, algorithm?: enum, timeDrift?: int): json` — Decodes the JWS token and return the result
-- `fl.crypto_jws_encode(headers?: json, key: json, algorithm?: enum, ttl?: int): text` — Encodes the value and return the result as a JWS token
-- `fl.csv_create(rows: text[], separator?: text, enclosure?: text, escape?: text): text` — Creates a CSV format data stream from a list of column names and their corresponding data rows.
-- `fl.csv_decode(separator?: text, enclosure?: text, escape?: text): any` — Decodes the value represented in the CSV format and returns the result
-- `fl.csv_encode(separator?: text, enclosure?: text, escape?: text): text` — Encodes the value and returns the result in CSV format
-- `fl.csv_parse(separator?: text, enclosure?: text, escape?: text): any` — Parse the contents of a CSV file and convert it into an array of objects.
-- `fl.decrypt(algorithm?: enum, key: text, iv: text): text` — Decrypts the value and returns the result.
-- `fl.detect_encoding(encodings?: text): text` — Detect the character encoding of the supplied text
-- `fl.div(value: decimal): decimal` — Divides 2 values together and returns the answer
-- `fl.encrypt(algorithm?: enum, key: text, iv: text): text` — Encrypts the value and returns the result in raw binary form.
-- `fl.ends_with(search: text): bool` — Returns whether or not the expression is present at the end Direction: the piped value is the subject text; the argument is the substring searched for.
-- `fl.epochms_add_ms(milliseconds: int): epochms` — Add milliseconds to a timestamp. (negative values are ok)
-- `fl.epochms_add_secs(seconds: int): epochms` — Add seconds to a timestamp. (negative values are ok)
-- `fl.epochms_date(format: text, timezone?: text): text` — Converts a timestamp into a human readable formatted date based on
-- `fl.epochms_from_format(format: text, timezone?: text): text` — Parse a timestamp from a flexible format.
-- `fl.epochms_transform(format: text, timezone?: text): text` — Takes a timestamp and applies a relative transformation to it. Ex.
-- `fl.eq(value: <T>): bool` — Returns a boolean if both values are equal
-- `fl.every(code: text, timeout?: int): any[]` — Checks if all elements in the array pass the test implemented by the provided function.
-- `fl.filter(code: text, timeout?: int): any[]` — Filters the elements of an array based on the code block returning true to keep the element or false to skip it.
-- `fl.filter_empty(path: text): <T>[]` — Returns a new array with only entries that are not empty ("", null, 0, "0", false, [], {})
-- `fl.filter_empty_array(path: text): <T>[]` — Returns a new array with only entries that are not an empty array `[]`
-- `fl.filter_empty_object(path: text): <T>[]` — Returns a new array with only entries that are not an empty object `{}`
-- `fl.filter_empty_text(path: text): <T>[]` — Returns a new array with only entries that are not empty ("", null, 0, "0", false, [], {})
-- `fl.filter_false(path: text): <T>[]` — Returns a new array with only entries that are not false
-- `fl.filter_null(path: text): <T>[]` — Returns a new array with only entries that are not null
-- `fl.filter_zero(path: text): <T>[]` — Returns a new array with only entries that are not zero
-- `fl.find(code: text, timeout?: int): any[]` — Finds if all elements in the array pass the test implemented by the provided function.
-- `fl.findIndex(code: text, timeout?: int): any[]` — Finds the index of the first element in the array that passes the test implemented by the provided function.
-- `fl.first_notempty(value: any): any` — Returns the first value that is not empty - i.e. not ("", null, 0, "0", false, [], {})
-- `fl.first_notnull(value: any): any` — Returns the first value that is not null
-- `fl.fsort(path: text, type?: enum, asc?: bool): <T>[]` — Sort an array of elements with an optional path inside the element
-- `fl.get(path: text, default?: json): any` — Returns the value of an object at the specified path
-- `fl.gt(value: <T>): bool` — Returns a boolean if the left value is greater than the right value
-- `fl.gte(value: <T>): bool` — Returns a boolean if the left value is greater than or equal to the
-- `fl.has(path: text): bool` — Returns the existence of whether or not something is present in the object at the specified path
-- `fl.hmac_md5(key: text, raw?: bool): text` — Returns a MD5 signature representation of the value using a shared secret via the HMAC method
-- `fl.hmac_sha1(key: text, raw?: bool): text` — Returns a SHA1 signature representation of the value using a shared secret via the HMAC method
-- `fl.hmac_sha256(key: text, raw?: bool): text` — Returns a SHA256 signature representation of the value using a shared secret via the HMAC method
-- `fl.hmac_sha384(key: text, raw?: bool): text` — Returns a SHA384 signature representation of the value using a shared secret via the HMAC method
-- `fl.hmac_sha512(key: text, raw?: bool): text` — Returns a SHA512 signature representation of the value using a shared secret via the HMAC method
-- `fl.icontains(search: text): bool` — Returns whether or not the case-insensitive expression is found Direction: the piped value is the subject text; the argument is the substring searched for.
-- `fl.iends_with(search: text): bool` — Returns whether or not the case-insensitive expression is present at the end Direction: the piped value is the subject text; the argument is the substring searched for.
-- `fl.in(search: <T>): bool` — Returns whether or not the value is in the array
-- `fl.index_by(path: text): <T>[]` — Create a new array indexed off of the value of each item's path
-- `fl.istarts_with(search: text): bool` — Returns whether or not the case-insensitive expression is present at the beginning Direction: the piped value is the subject text; the argument is the substring searched for.
-- `fl.join(separator: text): text` — Joins an array into a text string via the separator and returns the result
-- `fl.lambda(code: text, timeout?: int): any` — Business logic using JavaScript.
-- `fl.log(base: <T>): decimal` — Returns the logarithm with a custom base
-- `fl.lt(value: <T>): bool` — Returns a boolean if the left value is less than the right value
-- `fl.lte(value: <T>): bool` — Returns a boolean if the left value is less than or equal to the right value
-- `fl.ltrim(mask?: text): text` — Trim whitespace or other characters from the left side and return the result
-- `fl.map(code: text, timeout?: int): any[]` — Creates a new array with the results of calling a provided function on every element in the calling array.
-- `fl.md5(raw?: bool): text` — Returns a MD5 signature representation of the value
-- `fl.mod(value: int): int` — Modulus 2 values together and return the answer
-- `fl.mul(value: decimal): decimal` — Multiplies 2 values together and returns the answer
-- `fl.ne(value: <T>): bool` — Returns a boolean if both values are not equal
-- `fl.num_max(value: any): decimal` — Returns the max both values
-- `fl.num_min(value: any): decimal` — Returns the min both values
-- `fl.number_format(decimals?: int, decimal_separator?: text, thousands_separator?: text): string` — Format a number with flexible support over decimal places, thousands separator, and decimal separator.
-- `fl.pick(keys: text): <T>` — Pick keys from the object to create a new object of just those keys.
-- `fl.pow(exp: <T>): decimal` — Returns the value raised to the power of exp.
-- `fl.prepend(value: <T>, path: text): <T>[]` — Push an element on to the beginning of an array within an object and return the updated object
-- `fl.range(start: int, stop: int): int[]` — Returns array of values between the specified start/stop.
-- `fl.reduce(initial_value?: int, code: text, timeout?: int): any[]` — Reduces the array to a single value using the code block to combine each element of the array.
-- `fl.regex_match(subject: text): text[]` — Return the first set of matches performed by a regular expression Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains.
-- `fl.regex_match_all(subject: text): text[]` — Return all matches performed by a regular expression on the Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains.
-- `fl.regex_quote(delimiter?: text): text` — Update the supplied text value to be properly escaped for regular expressions.
-- `fl.regex_replace(replacement: text, subject: text): text` — Perform a regular expression search and replace on the supplied subject text. Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains.
-- `fl.regex_test(subject: text): bool` — Tests if a regular expression matches the supplied subject text. Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains.
-- `fl.round(precision?: int): decimal` — Round a decimal with optional precision
-- `fl.rtrim(mask?: text): text` — Trim whitespace or other characters from the right return the result
-- `fl.secureid_decode(salt: text): int` — Returns the id of the original encode
-- `fl.secureid_encode(salt: text): text` — Returns an encrypted version of the id
-- `fl.set(path: text, value: any): any` — Sets a value at the path within the object and returns the updated object
-- `fl.set_conditional(path: text, value: any, conditional: any): any` — Sets a value at the path within the object and returns the updated object, if the conditional expression is true
-- `fl.set_ifnotempty(path: text, value: any): any` — Sets a value (if it is not empty: "", null, 0, "0", false, [], {}) at the path within the object and returns the updated object
-- `fl.set_ifnotnull(path: text, value: any): any` — Sets a value (if it is not null) at the path within the object and returns the updated object
-- `fl.sha1(raw?: bool): text` — Returns a SHA1 signature representation of the value
-- `fl.sha256(raw?: bool): text` — Returns a SHA256 signature representation of the value
-- `fl.sha384(raw?: bool): text` — Returns a SHA384 signature representation of the value
-- `fl.sha512(raw?: bool): text` — Returns a SHA512 signature representation of the value
-- `fl.some(code: text, timeout?: int): any[]` — Checks if at least one element in the array passes the test implemented by the provided function.
-- `fl.split(separator: text): text[]` — Splits text into an array of text and returns the result
-- `fl.starts_with(search: text): bool` — Returns whether or not the expression is present at the beginning Direction: the piped value is the subject text; the argument is the substring searched for.
-- `fl.string_replace(search: text, replacement: text): text` — Replace a text phrase with another
-- `fl.strip_tags(exclude?: text): text` — Removes HTML tags from a string
-- `fl.stripos(search: text): int` — Returns the index of the case-insensitive expression or false if it
-- `fl.strpos(search: text): int` — Returns the index of the case-sensitive expression or false if it
-- `fl.sub(value: decimal): decimal` — Subtracts 2 values together and returns the answer
-- `fl.substr(start: int, length: int): text` — Extracts a section of text
-- `fl.to_epoch_day(timezone?: text): int` — Converts a text expression (now, next friday, Jan 1 2000) to the
-- `fl.to_epoch_hour(timezone?: text): int` — Converts a text expression (now, next friday, Jan 1 2000) to the
-- `fl.to_epoch_minute(timezone?: text): int` — Converts a text expression (now, next friday, Jan 1 2000) to the
-- `fl.to_epoch_ms(timezone?: text): int` — Converts a text expression (now, next friday, Jan 1 2000) to the
-- `fl.to_epoch_sec(timezone?: text): int` — Converts a text expression (now, next friday, Jan 1 2000) to the
-- `fl.to_epochms(timezone?: text): epochms` — Converts a text expression (now, next friday, Jan 1 2000) to
-- `fl.transform(expression: text): any` — Processes an expression with local data bound to the $this variable
-- `fl.trim(mask?: text): text` — Trim whitespace or other characters from both sides and return the result
-- `fl.unique(path: text): <T>[]` — Returns unique values of an array
-- `fl.unpick(keys: text): <T>` — Remove keys from the object to create a new object of the remaining keys.
-- `fl.unset(path: text): any` — Removes a value at the path within the object and returns the updated object
-- `fl.url_addarg(key: text, value: text, encoding_rfc3986?: bool): text` — Parses a URL and returns an updated version with an encoded version of the supplied argument
-- `fl.url_delarg(key: text): text` — Parses a URL and returns an updated version with the supplied argument removed
-- `fl.url_getarg(key: text, default?: text): text` — Gets the argument's value from a URL
-- `fl.url_hasarg(key: text): text` — Returns the existence of a argument in the URL
+- `fl.add(value: decimal): decimal`
+- `fl.append(value: <T>, path: text): <T>[]`
+- `fl.array_diff(value: <T>[]): <T>[]`
+- `fl.array_diff_assoc(value: <T>[]): <T>[]`
+- `fl.array_fill(start?: int, count: int): any[]`
+- `fl.array_fill_keys(keys?: any[]): any[]`
+- `fl.array_intersect(value: <T>[]): <T>[]`
+- `fl.array_intersect_assoc(value: <T>[]): <T>[]`
+- `fl.array_merge(value: <T>[]): <T>[]`
+- `fl.array_merge_recursive(value: <T>[]): <T>[]`
+- `fl.array_push(value: <T>): <T>[]`
+- `fl.array_remove(value: <T>, path: text, strict?: bool): <T>[]`
+- `fl.array_slice(offset?: int, length?: int): <T>[]`
+- `fl.array_unshift(value: <T>): <T>[]`
+- `fl.base_convert(from_base: any, to_base: any): text`
+- `fl.bitwise_and(value: int): int`
+- `fl.bitwise_or(value: int): int`
+- `fl.bitwise_xor(value: int): int`
+- `fl.concat(value: any): text`
+- `fl.contains(search: text): bool` — piped value is the subject text; the arg is the substring searched for
+- `fl.convert_encoding(to: text, from: text): text`
+- `fl.create_object(values?: <T>[]): any`
+- `fl.crypto_jwe_decode(check_claims?: json, key: json, key_algorithm?: enum, content_algorithm?: enum, timeDrift?: int): json`
+- `fl.crypto_jwe_encode(headers?: json, key: json, key_algorithm?: enum, content_algorithm?: enum, ttl?: int): text`
+- `fl.crypto_jws_decode(check_claims?: json, key: json, algorithm?: enum, timeDrift?: int): json`
+- `fl.crypto_jws_encode(headers?: json, key: json, algorithm?: enum, ttl?: int): text`
+- `fl.csv_create(rows: text[], separator?: text, enclosure?: text, escape?: text): text`
+- `fl.csv_decode(separator?: text, enclosure?: text, escape?: text): any`
+- `fl.csv_encode(separator?: text, enclosure?: text, escape?: text): text`
+- `fl.csv_parse(separator?: text, enclosure?: text, escape?: text): any`
+- `fl.decrypt(algorithm?: enum, key: text, iv: text): text`
+- `fl.detect_encoding(encodings?: text): text`
+- `fl.div(value: decimal): decimal`
+- `fl.encrypt(algorithm?: enum, key: text, iv: text): text`
+- `fl.ends_with(search: text): bool` — piped value is the subject text; the arg is the substring searched for
+- `fl.epochms_add_ms(milliseconds: int): epochms`
+- `fl.epochms_add_secs(seconds: int): epochms`
+- `fl.epochms_date(format: text, timezone?: text): text`
+- `fl.epochms_from_format(format: text, timezone?: text): text`
+- `fl.epochms_transform(format: text, timezone?: text): text` — applies a relative shift (e.g. "+1 day") to the timestamp
+- `fl.eq(value: <T>): bool`
+- `fl.every(code: text, timeout?: int): any[]` — `code` is a JS boolean expression run per element (true for all?)
+- `fl.filter(code: text, timeout?: int): any[]`
+- `fl.filter_empty(path: text): <T>[]` — keeps entries that are not empty ("", null, 0, "0", false, [], {})
+- `fl.filter_empty_array(path: text): <T>[]`
+- `fl.filter_empty_object(path: text): <T>[]`
+- `fl.filter_empty_text(path: text): <T>[]`
+- `fl.filter_false(path: text): <T>[]`
+- `fl.filter_null(path: text): <T>[]`
+- `fl.filter_zero(path: text): <T>[]`
+- `fl.find(code: text, timeout?: int): any[]`
+- `fl.findIndex(code: text, timeout?: int): any[]` — `code` is a JS boolean expression; returns the first matching index
+- `fl.first_notempty(value: any): any` — first value that is not empty ("", null, 0, "0", false, [], {})
+- `fl.first_notnull(value: any): any`
+- `fl.fsort(path: text, type?: enum, asc?: bool): <T>[]`
+- `fl.get(path: text, default?: json): any`
+- `fl.gt(value: <T>): bool`
+- `fl.gte(value: <T>): bool`
+- `fl.has(path: text): bool`
+- `fl.hmac_md5(key: text, raw?: bool): text`
+- `fl.hmac_sha1(key: text, raw?: bool): text`
+- `fl.hmac_sha256(key: text, raw?: bool): text`
+- `fl.hmac_sha384(key: text, raw?: bool): text`
+- `fl.hmac_sha512(key: text, raw?: bool): text`
+- `fl.icontains(search: text): bool` — case-insensitive; piped value is the subject, the arg is the substring
+- `fl.iends_with(search: text): bool` — case-insensitive; piped value is the subject, the arg is the substring
+- `fl.in(search: <T>): bool`
+- `fl.index_by(path: text): <T>[]`
+- `fl.istarts_with(search: text): bool` — case-insensitive; piped value is the subject, the arg is the substring
+- `fl.join(separator: text): text`
+- `fl.lambda(code: text, timeout?: int): any` — runs a JavaScript expression body
+- `fl.log(base: <T>): decimal`
+- `fl.lt(value: <T>): bool`
+- `fl.lte(value: <T>): bool`
+- `fl.ltrim(mask?: text): text`
+- `fl.map(code: text, timeout?: int): any[]` — `code` is a JS expression body run per element
+- `fl.md5(raw?: bool): text`
+- `fl.mod(value: int): int`
+- `fl.mul(value: decimal): decimal`
+- `fl.ne(value: <T>): bool`
+- `fl.num_max(value: any): decimal`
+- `fl.num_min(value: any): decimal`
+- `fl.number_format(decimals?: int, decimal_separator?: text, thousands_separator?: text): string`
+- `fl.pick(keys: text): <T>`
+- `fl.pow(exp: <T>): decimal`
+- `fl.prepend(value: <T>, path: text): <T>[]`
+- `fl.range(start: int, stop: int): int[]`
+- `fl.reduce(initial_value?: int, code: text, timeout?: int): any[]`
+- `fl.regex_match(subject: text): text[]`
+- `fl.regex_match_all(subject: text): text[]`
+- `fl.regex_quote(delimiter?: text): text`
+- `fl.regex_replace(replacement: text, subject: text): text`
+- `fl.regex_test(subject: text): bool`
+- `fl.round(precision?: int): decimal`
+- `fl.rtrim(mask?: text): text`
+- `fl.secureid_decode(salt: text): int`
+- `fl.secureid_encode(salt: text): text`
+- `fl.set(path: text, value: any): any`
+- `fl.set_conditional(path: text, value: any, conditional: any): any`
+- `fl.set_ifnotempty(path: text, value: any): any`
+- `fl.set_ifnotnull(path: text, value: any): any`
+- `fl.sha1(raw?: bool): text`
+- `fl.sha256(raw?: bool): text`
+- `fl.sha384(raw?: bool): text`
+- `fl.sha512(raw?: bool): text`
+- `fl.some(code: text, timeout?: int): any[]` — `code` is a JS boolean expression run per element (true for any?)
+- `fl.split(separator: text): text[]`
+- `fl.starts_with(search: text): bool` — piped value is the subject text; the arg is the substring searched for
+- `fl.string_replace(search: text, replacement: text): text`
+- `fl.strip_tags(exclude?: text): text`
+- `fl.stripos(search: text): int`
+- `fl.strpos(search: text): int`
+- `fl.sub(value: decimal): decimal`
+- `fl.substr(start: int, length: int): text`
+- `fl.to_epoch_day(timezone?: text): int`
+- `fl.to_epoch_hour(timezone?: text): int`
+- `fl.to_epoch_minute(timezone?: text): int`
+- `fl.to_epoch_ms(timezone?: text): int`
+- `fl.to_epoch_sec(timezone?: text): int`
+- `fl.to_epochms(timezone?: text): epochms`
+- `fl.transform(expression: text): any`
+- `fl.trim(mask?: text): text`
+- `fl.unique(path: text): <T>[]`
+- `fl.unpick(keys: text): <T>` — returns the object without the named keys (inverse of a pick)
+- `fl.unset(path: text): any`
+- `fl.url_addarg(key: text, value: text, encoding_rfc3986?: bool): text`
+- `fl.url_delarg(key: text): text`
+- `fl.url_getarg(key: text, default?: text): text`
+- `fl.url_hasarg(key: text): text`
 
 Other filters (reachable as `fl.<name>`, variadic): abs, acos, acosh, addslashes, array_entries, array_keys, array_pop, array_shift, array_shuffle, array_values, asin, asinh, atan, atanh, avg, base64_decode, base64_decode_urlsafe, base64_encode, base64_encode_urlsafe, bin2hex, bindec, bitwise_not, capitalize, ceil, cos, count, create_object_from_entries, decbin, dechex, decoct, deg2rad, empty, escape, even, exp, first, flatten, floor, from_utf8, hex2bin, hexdec, is_array, is_bool, is_decimal, is_int, is_object, is_text, is_uuid, json_decode, json_encode, jwe_decode, jwe_encode, last, list_encodings, ln, log10, lower, max, min, not, octdec, odd, product, querystring_parse, rad2deg, reverse, safe_array, sin, sort, sprintf, sql_alias, sql_esc, sqrt, strip_accents, strlen, sum, tan, text_escape, text_unescape, to_bool, to_decimal, to_expr, to_int, to_text, to_utf8, uid, upper, url_decode, url_decode_rfc3986, url_encode, url_encode_rfc3986, url_parse, uuid4, xml_decode, yaml_decode, yaml_encode.
 
