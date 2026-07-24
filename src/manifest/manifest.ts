@@ -973,6 +973,8 @@ export function renderLlmsTxt(m: Manifest): string {
     "`regex_matches` needed; `input.int`/`input.decimal`/`input.uuid`/`input.enum([...])`/`input.date`",
     "likewise reject or coerce bad input at the boundary. Drop to `input.text` + `s.precondition`",
     "only for rules no type expresses (see the boundary-validation recipe in the README).",
+    "Normalizing transforms run on bind too — put `trim`/`lower`/`upper` on the input's `methods`",
+    "so `inp(\"name\")` reads already-normalized; don't reroll `var $x = inp(\"name\")|trim` in the stack.",
     "",
   );
   for (const ft of m.fieldTypes) {
