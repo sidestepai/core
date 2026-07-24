@@ -50,3 +50,28 @@ export const dbQueryCount = defineFunction({
   ],
   response: ref("total"),
 });
+
+/**
+ * Gate 4 — aggregate / group-by (`returnType: "aggregate"`). Roll rows up by a
+ * `group` column with `eval` aggregators (`count`/`sum`/… ride `filters`). Write
+ * `name` as a bare column — it is alias-qualified to `"posts.<col>"` on emit (the
+ * engine requires the qualified form for aggregate columns). Byte-verified (#133).
+ */
+export const dbQueryAggregate = defineFunction({
+  name: "ex_db_query_aggregate",
+  stack: [
+    s.db.query({
+      table: posts,
+      returnType: "aggregate",
+      aggregate: {
+        group: [{ name: "published", as: "published" }],
+        eval: [
+          { name: "id", as: "count", filters: [{ name: "count" }] },
+          { name: "score", as: "total", filters: [{ name: "sum" }] },
+        ],
+      },
+      as: "rollup",
+    }),
+  ],
+  response: ref("rollup"),
+});

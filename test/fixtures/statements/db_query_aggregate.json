@@ -1,0 +1,57 @@
+{
+  "as": "rollup",
+  "name": "mvp:dbo_view",
+  "_xsid": "f:8111663c-41f1-4f37-a100-6426bb8a289c",
+  "addon": [],
+  "input": [],
+  "mocks": {},
+  "output": {
+    "items": [],
+    "filters": [],
+    "customize": false
+  },
+  "context": {
+    "dbo": {
+      "id": "9ab739e80990643f17d26ae07bb76835"
+    },
+    "return": {
+      "type": "aggregate",
+      "aggregate": {
+        "eval": [
+          {
+            "as": "count",
+            "name": "posts.id",
+            "filters": [
+              {
+                "arg": [],
+                "name": "count"
+              }
+            ]
+          },
+          {
+            "as": "total",
+            "name": "posts.score",
+            "filters": [
+              {
+                "arg": [],
+                "name": "sum"
+              }
+            ]
+          }
+        ],
+        "sort": [],
+        "group": [
+          {
+            "as": "published",
+            "name": "posts.published",
+            "filters": []
+          }
+        ]
+      }
+    }
+  },
+  "runtime": null,
+  "disabled": false,
+  "description": "",
+  "settings_registry": null
+}

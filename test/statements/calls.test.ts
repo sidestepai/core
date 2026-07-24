@@ -25,7 +25,7 @@ import { encodeStatement } from "../../src/statements/statement.js";
 import { deriveGuid } from "../../src/refs/guid.js";
 import { Xano } from "../../src/workspace/xano.js";
 import { defineFunction } from "../../src/function/define.js";
-import { c } from "../../src/values/value.js";
+import { c, inp } from "../../src/values/value.js";
 import { normalize, loadFixture } from "../conformance/harness.js";
 
 describe("call-family specials", () => {
@@ -64,6 +64,32 @@ describe("call-family specials", () => {
     expect(enc.input).toEqual([
       { name: "q", value: "hi", tag: "const", filters: [], ignore: false, expand: false, children: [] },
     ]);
+  });
+
+  it("coerces raw literals in an input map to their constant tags (#133)", () => {
+    // `{ max_age_days: 3 }` just works — no c.int(3) needed.
+    const enc = encodeStatement(
+      functionRun({
+        fn: { name: "f" },
+        input: { max_age_days: 3, rate: 1.5, label: "hot", active: true },
+      }),
+    );
+    const byName = Object.fromEntries(
+      (enc.input as { name: string; value: unknown; tag: string }[]).map((e) => [e.name, e]),
+    );
+    expect(byName.max_age_days).toMatchObject({ value: "3", tag: "const:int" });
+    expect(byName.rate).toMatchObject({ value: "1.5", tag: "const:decimal" });
+    expect(byName.label).toMatchObject({ value: "hot", tag: "const" });
+    expect(byName.active).toMatchObject({ value: "true", tag: "const:bool" });
+  });
+
+  it("passes a tagged Value in an input map through unchanged", () => {
+    const enc = encodeStatement(apiCall({ api: { name: "ep" }, input: { n: c.int(7), s: inp("s") } }));
+    const byName = Object.fromEntries(
+      (enc.input as { name: string; value: unknown; tag: string }[]).map((e) => [e.name, e]),
+    );
+    expect(byName.n).toMatchObject({ value: "7", tag: "const:int" });
+    expect(byName.s).toMatchObject({ value: "s", tag: "input" });
   });
 
   it("round-trip: a function.call resolves to the guid the target function emits", () => {

@@ -72,12 +72,14 @@ describe("addon() typed authoring — encode", () => {
         eval: [{ name: "id", as: "cnt", filters: [{ name: "count" }] }],
       }),
     );
+    // group/eval names are alias-qualified with the addon's table ("user") — the
+    // engine rejects a bare column in an aggregate. Authored bare, emitted qualified.
     expect(a.context.return).toEqual({
       type: "aggregate",
       aggregate: {
         sort: [],
-        eval: [{ as: "cnt", name: "id", filters: [{ name: "count", arg: [] }] }],
-        group: [{ as: "grp", name: "name", filters: [] }],
+        eval: [{ as: "cnt", name: "user.id", filters: [{ name: "count", arg: [] }] }],
+        group: [{ as: "grp", name: "user.name", filters: [] }],
       },
     });
   });

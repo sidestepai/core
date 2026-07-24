@@ -55,8 +55,16 @@ describe("obj() — dynamic object value (const:expr2)", () => {
     expect(() => obj({ "not-ident": inp("x") })).toThrow(/bare identifier/);
   });
 
-  it("rejects a non-value, non-object member", () => {
-    // @ts-expect-error - number isn't a valid member
-    expect(() => obj({ x: 5 })).toThrow(/must be a Value/);
+  it("coerces raw scalar members to their constant fragments", () => {
+    // Raw scalars just work (#133) — same rendering as c.int/c.text/c.bool.
+    expect(obj({ n: 3, greeting: "hi", ok: true }).value).toBe(
+      '{ n: 3, greeting: "hi", ok: true }',
+    );
+    expect(obj({ rate: 1.5 }).value).toBe("{ rate: 1.5 }");
+  });
+
+  it("rejects a genuinely unsupported member (function/symbol)", () => {
+    // @ts-expect-error - a function isn't a valid member
+    expect(() => obj({ x: () => 1 })).toThrow(/must be a Value/);
   });
 });

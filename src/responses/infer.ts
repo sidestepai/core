@@ -145,7 +145,7 @@ export type DeriveResponse<Q> = Q extends { response?: infer Resp; stack?: infer
     ? unknown
     : Resp extends Value
       ? ResolveValue<Resp, S>
-      : Resp extends Record<string, Value>
+      : Resp extends Record<string, unknown>
         ? Prettify<{ -readonly [K in keyof Resp]: ResolveValue<Resp[K], S> }>
         : unknown
   : unknown;

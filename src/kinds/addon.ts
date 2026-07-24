@@ -18,7 +18,7 @@ import { encodeInput } from "../inputs/input.js";
 import type { InputDescriptor } from "../inputs/input.js";
 import { resolveRef } from "../refs/guid.js";
 import type { ObjectRef } from "../refs/guid.js";
-import { encodeSearch, encodeSort, encodeEval } from "../statements/special/db-search.js";
+import { encodeSearch, encodeSort, encodeEval, qualifyAggregateEvals } from "../statements/special/db-search.js";
 import type {
   DbWhere,
   SortDirective,
@@ -174,13 +174,21 @@ function buildContext(def: AddonDef): Record<string, unknown> {
   if (def.cardinality !== undefined && def.cardinality !== "list" && ctx.return === undefined) {
     if (def.cardinality === "aggregate") {
       // Build the full aggregate block from group/eval (same {as,name,filters}
-      // shape as db.query aggregate) so the graft type matches the emit.
+      // shape as db.query aggregate) so the graft type matches the emit. Names are
+      // alias-qualified with the addon's table (the engine rejects bare columns in
+      // an aggregate); an author-dotted (joined) name passes through.
+      const addonAlias =
+        def.table === undefined
+          ? ((ctx.dbo as { as?: string } | undefined)?.as ?? "")
+          : typeof def.table === "string"
+            ? def.table
+            : def.table.name;
       ctx.return = {
         type: "aggregate",
         aggregate: {
           sort: encodeSort(def.sort),
-          eval: encodeEval(def.eval) ?? [],
-          group: encodeEval(def.group) ?? [],
+          eval: encodeEval(qualifyAggregateEvals(def.eval, addonAlias, "eval")) ?? [],
+          group: encodeEval(qualifyAggregateEvals(def.group, addonAlias, "group")) ?? [],
         },
       };
     } else {

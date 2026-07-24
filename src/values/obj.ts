@@ -32,8 +32,13 @@
 import type { Value } from "./value.js";
 import { isTaggedValue } from "./value.js";
 
-/** A member of an {@link obj} literal — a {@link Value}, a nested record, or an array. */
-export type ObjMember = Value | ObjInput | ObjMember[];
+/**
+ * A member of an {@link obj} literal — a {@link Value}, a raw scalar literal
+ * (`string`/`number`/`boolean`, coerced to the matching constant), a nested
+ * record, or an array. Raw scalars let `obj({ max_age_days: 3 })` and
+ * `obj({ greeting: "hi" })` *just work* without wrapping each in `c.int`/`c.text`.
+ */
+export type ObjMember = Value | string | number | boolean | ObjInput | ObjMember[];
 /** The record shape {@link obj} accepts: keys → members. */
 export interface ObjInput {
   [key: string]: ObjMember;
@@ -76,15 +81,21 @@ function serializeValue(v: Value, path: string): string {
   }
 }
 
-/** Render any {@link ObjMember} (value, nested record, or array). */
+/** Render any {@link ObjMember} (scalar literal, value, nested record, or array). */
 function serializeMember(m: ObjMember, path: string): string {
+  // Raw scalar literals coerce to the matching constant fragment — same rendering
+  // as `c.text`/`c.int`/`c.decimal`/`c.bool` (see serializeValue's const cases).
+  if (typeof m === "string") return JSON.stringify(m);
+  if (typeof m === "number") return String(m);
+  if (typeof m === "boolean") return m ? "true" : "false";
   if (isTaggedValue(m)) return serializeValue(m, path);
   if (Array.isArray(m)) {
     return `[${m.map((el, i) => serializeMember(el, `${path}[${i}]`)).join(", ")}]`;
   }
   if (m !== null && typeof m === "object") return serializeRecord(m, path);
   throw new Error(
-    `obj(): \`${path}\` must be a Value (inp/ref/auth/col/c.*), a nested object, or an array (got ${typeof m}).`,
+    `obj(): \`${path}\` must be a Value (inp/ref/auth/col/c.*), a scalar literal ` +
+      `(string/number/boolean), a nested object, or an array (got ${typeof m}).`,
   );
 }
 

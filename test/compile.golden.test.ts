@@ -48,6 +48,22 @@ describe("compile() response mapping", () => {
   it("an undefined response produces an empty result", () => {
     expect(encodeResponse(undefined)).toEqual([]);
   });
+
+  it("auto-wraps a nested plain object member via obj() (#133)", () => {
+    // response: { user: { id: ref(x), age: 3 } } just works — no manual obj({...}).
+    const result = encodeResponse({ user: { id: ref("x1"), age: 3 }, status: c.text("ok") });
+    expect(result).toEqual([
+      { filters: [], name: "user", tag: "const:expr2", value: "{ id: $var.x1, age: 3 }", _xsid: "", disabled: false },
+      { filters: [], name: "status", tag: "const", value: "ok", _xsid: "", disabled: false },
+    ]);
+  });
+
+  it("a deeply nested object member wraps recursively", () => {
+    const result = encodeResponse({ meta: { page: { n: ref("p") } } });
+    expect(result).toEqual([
+      { filters: [], name: "meta", tag: "const:expr2", value: "{ page: { n: $var.p } }", _xsid: "", disabled: false },
+    ]);
+  });
 });
 
 describe("compile() envelope + validation", () => {

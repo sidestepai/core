@@ -41,21 +41,25 @@ import { registerStatement } from "../statement.js";
 import type { Value } from "../../values/value.js";
 import { resolveRef } from "../../refs/guid.js";
 import type { ObjectRef } from "../../refs/guid.js";
+import { coerceScalar } from "./coerce.js";
+import type { InputValue } from "./coerce.js";
+
+/** A call/agent `{name: value}` input map — raw scalar literals coerce to constants. */
+export type CallInput = Record<string, InputValue>;
 
 /** A stored tagged-value triple `{value, tag, filters}`. */
 function vf(v: Value): { value: string; tag: string; filters: unknown[] } {
   return { value: v.value, tag: v.tag, filters: v.filters };
 }
 
-/** Encode a call's `{name: value}` input map into the stored `input[]` entries. */
-function encodeCallInput(input?: Record<string, Value>): unknown[] {
+/**
+ * Encode a call's `{name: value}` input map into the stored `input[]` entries.
+ * Each value is coerced via {@link coerceScalar}, so a raw literal (`{ n: 3 }`)
+ * works alongside a tagged {@link Value} (`{ n: inp("n") }`).
+ */
+function encodeCallInput(input?: CallInput): unknown[] {
   if (!input) return [];
-  return Object.entries(input).map(([name, v]) => ({
-    name,
-    value: v.value,
-    tag: v.tag,
-    filters: v.filters,
-  }));
+  return Object.entries(input).map(([name, v]) => ({ name, ...vf(coerceScalar(v)) }));
 }
 
 export interface FunctionRunArgs {
@@ -64,7 +68,7 @@ export interface FunctionRunArgs {
   /** Capture the result into this stack variable. */
   as?: string;
   /** Input bindings, keyed by the target's input names. */
-  input?: Record<string, Value>;
+  input?: CallInput;
 }
 
 /** `function.run <fn>` — run another function inline. */
@@ -80,7 +84,7 @@ export function functionRun(args: FunctionRunArgs): Statement {
 export interface FunctionCallArgs {
   fn: ObjectRef;
   as?: string;
-  input?: Record<string, Value>;
+  input?: CallInput;
 }
 
 /** `function.call <fn>` — invoke a function as a workspace run. */
@@ -97,7 +101,7 @@ export interface ApiCallArgs {
   /** The target API endpoint (a `query` object). */
   api: ObjectRef;
   as?: string;
-  input?: Record<string, Value>;
+  input?: CallInput;
   /** Override request headers (an assignment value, typically an object). */
   headers?: Value;
   /** Authenticate the call with a token (and optionally ignore its expiry). */
@@ -149,7 +153,7 @@ export function taskCall(args: TaskCallArgs): Statement {
 export interface ToolCallArgs {
   tool: ObjectRef;
   as?: string;
-  input?: Record<string, Value>;
+  input?: CallInput;
 }
 
 /** `tool.call <tool>` — invoke a tool as a workspace run. */
@@ -165,7 +169,7 @@ export function toolCall(args: ToolCallArgs): Statement {
 export interface TriggerCallArgs {
   trigger: ObjectRef;
   as?: string;
-  input?: Record<string, Value>;
+  input?: CallInput;
 }
 
 /** `trigger.call <trigger>` — invoke a trigger as a workspace run. */
@@ -181,7 +185,7 @@ export function triggerCall(args: TriggerCallArgs): Statement {
 export interface MiddlewareCallArgs {
   middleware: ObjectRef;
   as?: string;
-  input?: Record<string, Value>;
+  input?: CallInput;
 }
 
 /** `middleware.call <middleware>` — invoke middleware as a workspace run. */
@@ -197,7 +201,7 @@ export function middlewareCall(args: MiddlewareCallArgs): Statement {
 export interface AddonCallArgs {
   addon: ObjectRef;
   as?: string;
-  input?: Record<string, Value>;
+  input?: CallInput;
 }
 
 /** `addon.call <addon>` — invoke an addon as a workspace run. */
@@ -220,7 +224,7 @@ export interface ServiceFunctionRunArgs {
   /** The target function (def handle or name) in a connected service. */
   fn: ObjectRef;
   as?: string;
-  input?: Record<string, Value>;
+  input?: CallInput;
   /** Execution mode (`"shared"` default). */
   runtimeMode?: string;
 }
@@ -241,7 +245,7 @@ export interface ActionCallArgs {
   /** The action package identifier. */
   package?: string;
   as?: string;
-  input?: Record<string, Value>;
+  input?: CallInput;
 }
 
 /**

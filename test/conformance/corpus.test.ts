@@ -17,6 +17,7 @@ import {
   dbBulkUpdate,
   dbBulkDelete,
   dbExternalQuery,
+  dbQuery,
 } from "../../src/statements/special/db.js";
 import { apiCall } from "../../src/statements/special/calls.js";
 import { agent, table, f, query, apiGroup, input } from "../../src/index.js";
@@ -25,6 +26,8 @@ import { c, inp, ref, col, filter, withFilters } from "../../src/values/value.js
 
 /** Table def reused by the bulk rows — its dbo guid derives from `name`. */
 const capUsers = table({ name: "cap_users", schema: { name: f.text({}) } });
+/** Table for the aggregate row — dbo guid + qualified names derive from `name`. */
+const capPosts = table({ name: "posts", schema: { published: f.bool(), score: f.decimal() } });
 const capRows = () =>
   withFilters(c.text('[{"name":"a"},{"name":"b"}]'), [filter("json_decode")]);
 
@@ -422,6 +425,27 @@ const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
     build: () =>
       encodeStatement(
         dbBulkDelete({ table: capUsers, where: expr(col("name"), "=", c.text("x")), as: "r4" }),
+      ),
+  },
+  // db.query aggregate/group-by proven byte-exact against a live capture (#133):
+  // group/eval column names are alias-qualified (`posts.<col>`) — the engine
+  // rejects a bare column in an aggregate. Authored bare; emitted qualified.
+  {
+    fixture: "db_query_aggregate",
+    build: () =>
+      encodeStatement(
+        dbQuery({
+          table: capPosts,
+          returnType: "aggregate",
+          aggregate: {
+            group: [{ name: "published", as: "published" }],
+            eval: [
+              { name: "id", as: "count", filters: [{ name: "count" }] },
+              { name: "score", as: "total", filters: [{ name: "sum" }] },
+            ],
+          },
+          as: "rollup",
+        }),
       ),
   },
   {
