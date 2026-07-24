@@ -8,6 +8,12 @@ with `sidestep export ./xano/index.js`.
 
 Coverage: object kinds 12/24, statement surfaces 214/214, filters 225 (129 typed).
 
+Full reference: this doc shows the authoring signature for every kind, statement, and
+filter. For exhaustive per-entry detail NOT shown here — a statement's full field schema
+with engine defaults, a filter's complete argument list, the engine `storedName` mapping —
+do a TARGETED lookup in the shipped `manifest.json` (grep or `jq` the one entry you need;
+it is ~2x this file, so never read it whole).
+
 ## Quickstart
 
 A complete workspace: a table, an auth-aware endpoint that writes a row, and a
@@ -154,17 +160,12 @@ not a failure) when the archive has no root index.html with a `<head>` to anchor
 `window.XANO_HOST` is the sandbox tenant URL the APIs answer at — the same value `sandbox details`
 prints as `baseUrl`, NOT `profile me` (the account instance origin). Prefer runtime injection; use
 `sandbox details` out of band only when you'd rather bake the URL in at build time instead.
-CACHING — the static host serves index.html with `Cache-Control: public, max-age=3600`, so after a
-deploy a browser or CDN can return the OLD html (a pre-injection copy with no XANO_HOST) for up to an
-hour. When an agent verifies the deploy, do NOT re-fetch the bare URL in a retry loop — it may keep
-reading the cached copy and appear to hang. Fetch once with a cache-busting query param and grep for
-the injected line: `curl -s "$URL/?nocache=$EPOCH" | grep XANO_HOST` (or hard-reload / disable cache
-in the browser). Absence of XANO_HOST on a plain reload is almost always this cache, not a failed
-injection — confirm against a cache-busted fetch before re-deploying.
-NOTE — the emitted line uses BRACKET notation: `window["XANO_HOST"]="…";` (that is how each
-`window.<KEY>` global is written). Grep for the bare token `XANO_HOST`, not the exact string
-`window.XANO_HOST` (dot form) — the dot form is valid to READ the global in your app, but it is
-not what the served index.html contains, so an exact-string grep for it wrongly reads as "not injected".
+VERIFY with a CACHE-BUSTING fetch, not a retry loop: the host caches index.html, so
+re-fetching the bare URL can keep returning the OLD (pre-injection) copy and appear to
+hang. Fetch once cache-busted and grep the BARE token — the injected line is bracket form
+`window["XANO_HOST"]=…`, so grep `XANO_HOST`, NOT the dot form `window.XANO_HOST` (a dot-form
+exact match wrongly reads as "not injected"): `curl -s "$URL/?nocache=$EPOCH" | grep XANO_HOST`.
+(README covers the exact cache TTL and why the dot form still works in app code.)
 
 Auth is OAuth: run `sidestep login` once (browser consent; you pick the
 instance at consent; tokens cached in project-local `.xano/auth.json`,
