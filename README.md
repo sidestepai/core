@@ -1004,6 +1004,11 @@ s.precondition({
 })
 ```
 
+**Normalize on the input, not in the stack.** `methods` run at bind, before your stack — so
+`input.email({ methods: ["lower"] })` / `input.text({ methods: ["trim"] })` make `inp("email")` /
+`inp("name")` read already-normalized. Don't reroll the transform into a `var` (`inp("name")|trim`);
+put `trim`/`lower`/`upper` on the input and read the clean value directly.
+
 **Email/password auth (signup + login).** The trap: `input.password()` **hashes on bind**, so a
 password typed that way is already a hash before your stack runs — `check_password` then compares
 hash-vs-hash and login *always* fails. The fix is to take the password as **plain text** and let

@@ -18,10 +18,16 @@ export const dbGetById = defineFunction({
   response: ref("user"),
 });
 
-/** Gate 2 — lookup by a named column, with a narrowed `output` column set. */
+/**
+ * Gate 2 — lookup by a named column, with a narrowed `output` column set.
+ *
+ * `methods: ["lower"]` normalizes the lookup key AT BIND, so `inp("email")`
+ * matches an email stored lowercased. Without it, `Foo@x.com` misses the stored
+ * `foo@x.com` row — normalize the key on the input, don't reroll it in the stack.
+ */
 export const dbGetByEmail = defineFunction({
   name: "ex_db_get_by_email",
-  input: { email: input.email({ required: true }) },
+  input: { email: input.email({ required: true, methods: ["lower"] }) },
   stack: [
     s.db.get({
       table: users,

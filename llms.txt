@@ -1,4 +1,4 @@
-# sidestep v3.9.23
+# sidestep v3.9.24
 
 > TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.
 
@@ -459,6 +459,8 @@ malformed address with a 400 (and trims; add `methods: ["lower"]` to downcase) �
 `regex_matches` needed; `input.int`/`input.decimal`/`input.uuid`/`input.enum([...])`/`input.date`
 likewise reject or coerce bad input at the boundary. Drop to `input.text` + `s.precondition`
 only for rules no type expresses (see the boundary-validation recipe in the README).
+Normalizing transforms run on bind too — put `trim`/`lower`/`upper` on the input's `methods`
+so `inp("name")` reads already-normalized; don't reroll `var $x = inp("name")|trim` in the stack.
 
 - `f.text` — methods: alphaOk, digitOk, lower, max, min, ok, pattern, startsWith, trim, upper
 - `f.int` — methods: max, min
