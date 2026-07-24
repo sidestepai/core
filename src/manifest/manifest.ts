@@ -443,8 +443,27 @@ export function buildManifest(opts: { version?: string } = {}): Manifest {
   };
 }
 
-const fieldLine = (f: ManifestField): string =>
-  `${f.name}${f.optional ? "?" : ""}: ${f.type}${f.default !== undefined ? ` = ${JSON.stringify(f.default)}` : ""}`;
+/**
+ * Statement fields whose default is security- or behavior-relevant and must stay
+ * visible in the lean `llms.txt` — an agent that can't see the default would make a
+ * wrong call. Keyed `"<sPath>:<field>"`. Every other field default is dropped from
+ * `llms.txt` (it survives in `manifest.json`). Audit new statements for additions.
+ *
+ * `storage.create_*` default `access` to `"public"` (world-readable uploads) — the
+ * worked example that motivated this carve-out: an agent shipping user uploads must
+ * see the default is public, and it is not derivable from `access?: string`.
+ */
+const DEFAULT_KEEP = new Set<string>([
+  "storage.create_image:access",
+  "storage.create_attachment:access",
+  "storage.create_audio:access",
+  "storage.create_video:access",
+]);
+
+const fieldLine = (f: ManifestField, sPath: string): string => {
+  const keepDefault = f.default !== undefined && DEFAULT_KEEP.has(`${sPath}:${f.name}`);
+  return `${f.name}${f.optional ? "?" : ""}: ${f.type}${keepDefault ? ` = ${JSON.stringify(f.default)}` : ""}`;
+};
 
 /**
  * Render the manifest as `llms.txt` — a concise, link-free plaintext grounding
@@ -1025,11 +1044,21 @@ export function renderLlmsTxt(m: Manifest): string {
     lines.push(`### ${ns}`, "");
     for (const s of groups.get(ns)!) {
       const call = `s.${s.sPath}`;
-      const args = s.fields ? `{ ${s.fields.map(fieldLine).join("; ")} }` : "…";
       const flags = [s.declarative ? null : "special", s.registered ? null : "unregistered", s.output ? "output" : null]
         .filter(Boolean)
         .join(", ");
-      lines.push(`- \`${call}(${args})\` → \`${s.storedName}\`${flags ? ` [${flags}]` : ""}`);
+      const flagSuffix = flags ? ` [${flags}]` : "";
+      // Signature-first: the engine `storedName` is dropped (agents author `s.path`,
+      // never `mvp:*`; it survives in manifest.json). Declarative statements keep the
+      // field signature inline (defaults dropped except DEFAULT_KEEP); specials carry
+      // no field schema in the listing — their real signature lives in the Specials
+      // block / def-shapes / `.d.ts` — so they render as a terse discovery pointer.
+      if (s.fields) {
+        const args = s.fields.map((f) => fieldLine(f, s.sPath)).join("; ");
+        lines.push(`- \`${call}({ ${args} })\`${flagSuffix}`);
+      } else {
+        lines.push(`- \`${call}\`${flagSuffix}`);
+      }
     }
     lines.push("");
   }

@@ -701,298 +701,298 @@ Auth & calls:
 
 ### (top-level)
 
-- `s.await({ as?: string = ""; ids?: value = "[]"; timeout?: value = "10" })` → `mvp:async_function_await`
-- `s.foreach_break(…)` → `mvp:foreach_break` [special]
-- `s.comment(…)` → `mvp:comment` [special]
-- `s.conditional(…)` → `mvp:conditional` [special]
-- `s.foreach_continue(…)` → `mvp:foreach_continue` [special]
-- `s.for(…)` → `mvp:for` [special]
-- `s.foreach_remove(…)` → `mvp:foreach_remove` [special]
-- `s.foreach(…)` → `mvp:foreach` [special]
-- `s.group(…)` → `mvp:group` [special]
-- `s.placeholder(…)` → `mvp:placeholder` [special]
-- `s.precondition({ expr?: comparison = "null"; error_type?: string = "standard"; error?: value = ""; payload?: value })` → `mvp:precondition`
-- `s.return(…)` → `mvp:return` [special]
-- `s.switch(…)` → `mvp:switch` [special]
-- `s.throw({ name?: string = ""; value: value })` → `mvp:throw_error`
-- `s.try_catch(…)` → `mvp:try_catch` [special]
-- `s.update_var(…)` → `mvp:update_var` [special]
-- `s.set_var(…)` → `mvp:set_var` [special]
-- `s.while(…)` → `mvp:while` [special]
+- `s.await({ as?: string; ids?: value; timeout?: value })`
+- `s.foreach_break` [special]
+- `s.comment` [special]
+- `s.conditional` [special]
+- `s.foreach_continue` [special]
+- `s.for` [special]
+- `s.foreach_remove` [special]
+- `s.foreach` [special]
+- `s.group` [special]
+- `s.placeholder` [special]
+- `s.precondition({ expr?: comparison; error_type?: string; error?: value; payload?: value })`
+- `s.return` [special]
+- `s.switch` [special]
+- `s.throw({ name?: string; value: value })`
+- `s.try_catch` [special]
+- `s.update_var` [special]
+- `s.set_var` [special]
+- `s.while` [special]
 
 ### action
 
-- `s.action.call(…)` → `mvp:action` [special]
-- `s.action.package.call(…)` → `mvp:action_package` [special]
+- `s.action.call` [special]
+- `s.action.package.call` [special]
 
 ### addon
 
-- `s.addon.call(…)` → `mvp:workspace_run_addon` [special]
+- `s.addon.call` [special]
 
 ### ai
 
-- `s.ai.agent.run(…)` → `mvp:call_agent` [special]
-- `s.ai.external.mcp.server_details({ as?: string; url?: value; bearer_token?: value = ""; connection_type?: value = "sse" })` → `mvp:mcp_server_details`
-- `s.ai.external.mcp.tool.list({ as?: string; url?: value; bearer_token?: value = ""; connection_type?: value = "sse" })` → `mvp:mcp_list_tools`
-- `s.ai.external.mcp.tool.run({ as?: string; url?: value; bearer_token?: value = ""; connection_type?: value = "sse"; tool?: value = ""; args?: value })` → `mvp:mcp_call_tool`
+- `s.ai.agent.run` [special]
+- `s.ai.external.mcp.server_details({ as?: string; url?: value; bearer_token?: value; connection_type?: value })`
+- `s.ai.external.mcp.tool.list({ as?: string; url?: value; bearer_token?: value; connection_type?: value })`
+- `s.ai.external.mcp.tool.run({ as?: string; url?: value; bearer_token?: value; connection_type?: value; tool?: value; args?: value })`
 
 ### api
 
-- `s.api.call(…)` → `mvp:workspace_run_endpoint` [special]
-- `s.api.lambda({ as?: string; code?: value; timeout?: value })` → `mvp:lambda`
-- `s.api.microservice(…)` → `mvp:microservice_request` [special]
-- `s.api.realtime_event(…)` → `mvp:realtime_event` [special]
-- `s.api.request(…)` → `mvp:api_request` [special, output]
-- `s.api.stream({ value: value })` → `mvp:streaming_api_response`
+- `s.api.call` [special]
+- `s.api.lambda({ as?: string; code?: value; timeout?: value })`
+- `s.api.microservice` [special]
+- `s.api.realtime_event` [special]
+- `s.api.request` [special, output]
+- `s.api.stream({ value: value })`
 
 ### array
 
-- `s.array.difference({ as?: string = ""; expr?: value = "null"; value?: value = "[]"; by?: value = "null" })` → `mvp:array_difference`
-- `s.array.every({ expr?: value = "null"; as?: string = ""; if?: comparison = "null" })` → `mvp:array_every` [output]
-- `s.array.filter_count({ expr?: value = "null"; as?: string = ""; if?: comparison = "null" })` → `mvp:array_filter_count`
-- `s.array.filter({ expr?: value = "null"; as?: string = ""; if?: comparison = "null" })` → `mvp:array_filter`
-- `s.array.find_index({ expr?: value = "null"; as?: string = ""; if?: comparison = "null" })` → `mvp:array_find_index`
-- `s.array.find({ expr?: value = "null"; as?: string = ""; if?: comparison = "null" })` → `mvp:array_find` [output]
-- `s.array.group_by({ as?: string = ""; expr?: value = "null"; by?: value = "null" })` → `mvp:array_group_by`
-- `s.array.has({ expr?: value = "null"; as?: string = ""; if?: comparison = "null" })` → `mvp:array_has`
-- `s.array.intersection({ as?: string = ""; expr?: value = "null"; value?: value = "[]"; by?: value })` → `mvp:array_intersection`
-- `s.array.map(…)` → `mvp:array_map` [special]
-- `s.array.merge({ name?: string = ""; value?: value })` → `mvp:array_merge` [output]
-- `s.array.partition({ expr?: value = "null"; as?: string = ""; if?: comparison = "null" })` → `mvp:array_partition`
-- `s.array.pop({ name?: string = ""; as?: string = "" })` → `mvp:array_pop` [output]
-- `s.array.push({ name?: string = ""; value: value })` → `mvp:array_push` [output]
-- `s.array.shift({ name?: string = ""; as?: string = "" })` → `mvp:array_shift`
-- `s.array.union(…)` → `mvp:array_union` [special]
-- `s.array.unshift({ name?: string = ""; value: value })` → `mvp:array_unshift`
+- `s.array.difference({ as?: string; expr?: value; value?: value; by?: value })`
+- `s.array.every({ expr?: value; as?: string; if?: comparison })` [output]
+- `s.array.filter_count({ expr?: value; as?: string; if?: comparison })`
+- `s.array.filter({ expr?: value; as?: string; if?: comparison })`
+- `s.array.find_index({ expr?: value; as?: string; if?: comparison })`
+- `s.array.find({ expr?: value; as?: string; if?: comparison })` [output]
+- `s.array.group_by({ as?: string; expr?: value; by?: value })`
+- `s.array.has({ expr?: value; as?: string; if?: comparison })`
+- `s.array.intersection({ as?: string; expr?: value; value?: value; by?: value })`
+- `s.array.map` [special]
+- `s.array.merge({ name?: string; value?: value })` [output]
+- `s.array.partition({ expr?: value; as?: string; if?: comparison })`
+- `s.array.pop({ name?: string; as?: string })` [output]
+- `s.array.push({ name?: string; value: value })` [output]
+- `s.array.shift({ name?: string; as?: string })`
+- `s.array.union` [special]
+- `s.array.unshift({ name?: string; value: value })`
 
 ### cloud
 
-- `s.cloud.algolia.request({ as?: string; application_id: value; api_key: value; url: value; method: value; payload: value })` → `mvp:algolia_request` [output]
-- `s.cloud.aws.opensearch.document({ as?: string; auth_type?: value = "IAM"; key_id?: value = ""; access_key?: value = ""; region?: value = ""; method?: value = "GET"; index?: value = ""; base_url: value; doc_id?: value = ""; doc?: value = "" })` → `mvp:amazon_opensearch_document`
-- `s.cloud.aws.opensearch.query({ as?: string; auth_type?: value = "IAM"; key_id?: value = ""; access_key?: value = ""; region?: value = ""; index?: value = ""; payload?: value = "{}"; size?: value = "null"; from?: value = ""; sort?: value = "[]"; included_fields?: value = "[]"; return_type?: value = "search" })` → `mvp:amazon_opensearch_query`
-- `s.cloud.aws.opensearch.request({ as?: string; auth_type?: value = "IAM"; key_id?: value = ""; access_key?: value = ""; region?: value = ""; method?: value = "GET"; url?: value = ""; query?: value = "{}" })` → `mvp:amazon_opensearch_request`
-- `s.cloud.aws.s3.delete_file({ as?: string; bucket: value; region: value; key: value; secret: value; file_key: value })` → `mvp:amazon_s3_delete_file`
-- `s.cloud.aws.s3.get_file_info({ as?: string; bucket: value; region: value; key: value; secret: value; file_key: value })` → `mvp:amazon_s3_get_file_metadata`
-- `s.cloud.aws.s3.list_directory({ as?: string; bucket: value; region: value; key: value; secret: value; prefix: value; next_page_token: value })` → `mvp:amazon_s3_list_directory`
-- `s.cloud.aws.s3.read_file({ as?: string; bucket: value; region: value; key: value; secret: value; file_key: value })` → `mvp:amazon_s3_create_var_from_file_resource`
-- `s.cloud.aws.s3.sign_url({ as?: string; bucket: value; region: value; key: value; secret: value; file_key: value; ttl?: value = "300" })` → `mvp:amazon_s3_signed_url`
-- `s.cloud.aws.s3.upload_file({ as?: string; bucket: value; region: value; key: value; secret: value; file_key?: value; file: value; metadata: value; object_lock_mode?: value; object_lock_retain_until?: value })` → `mvp:amazon_s3_upload_file`
-- `s.cloud.azure.storage.delete_file({ as?: string; account_name: value; account_key: value; container_name: value; filePath: value })` → `mvp:azure_blob_storage_delete_file`
-- `s.cloud.azure.storage.get_file_info({ as?: string; account_name: value; account_key: value; container_name: value; filePath: value })` → `mvp:azure_blob_storage_get_file_metadata`
-- `s.cloud.azure.storage.list_directory({ as?: string; account_name: value; account_key: value; container_name: value; path: value })` → `mvp:azure_blob_storage_list_directory`
-- `s.cloud.azure.storage.read_file({ as?: string; account_name: value; account_key: value; container_name: value; filePath: value })` → `mvp:azure_blob_storage_create_var_from_file_resource`
-- `s.cloud.azure.storage.sign_url({ as?: string; account_name: value; account_key: value; container_name: value; path: value; ttl: value })` → `mvp:azure_blob_storage_signed_url`
-- `s.cloud.azure.storage.upload_file({ as?: string; account_name: value; account_key: value; container_name: value; filePath: value; file: value; metadata: value })` → `mvp:azure_blob_storage_upload_file`
-- `s.cloud.elasticsearch.document({ as?: string; auth_type?: value = "API Key"; key_id: value; access_key: value; region: value; method?: value = "GET"; index: value; base_url: value; doc_id: value; doc: value })` → `mvp:elasticsearch_document`
-- `s.cloud.elasticsearch.query({ as?: string; auth_type?: value = "API Key"; key_id?: value = ""; access_key?: value = ""; region?: value = ""; index?: value = ""; payload?: value = "{}"; size?: value = "null"; from?: value = ""; sort?: value = "[]"; included_fields?: value = "[]"; return_type?: value = "search" })` → `mvp:elasticsearch_query`
-- `s.cloud.elasticsearch.request({ as?: string; auth_type?: value = "API Key"; key_id?: value = ""; access_key?: value = ""; region?: value = ""; method?: value = "POST"; url?: value = ""; query?: value = "{}" })` → `mvp:elasticsearch_request`
-- `s.cloud.google.storage.delete_file({ as?: string; service_account: value; bucket: value; filePath: value })` → `mvp:google_cloud_storage_delete_file`
-- `s.cloud.google.storage.get_file_info({ as?: string; service_account: value; bucket: value; filePath: value })` → `mvp:google_cloud_storage_get_file_metadata`
-- `s.cloud.google.storage.list_directory({ as?: string; service_account: value; bucket: value; path: value })` → `mvp:google_cloud_storage_list_directory`
-- `s.cloud.google.storage.read_file({ as?: string; service_account: value; bucket: value; filePath: value })` → `mvp:google_cloud_storage_create_var_from_file_resource`
-- `s.cloud.google.storage.sign_url({ as?: string; service_account: value; bucket: value; filePath: value; method: value; ttl: value })` → `mvp:google_cloud_storage_signed_url`
-- `s.cloud.google.storage.upload_file({ as?: string; service_account: value; bucket: value; filePath: value; file: value; metadata: value })` → `mvp:google_cloud_storage_upload_file`
-- `s.cloud.job.await(…)` → `mvp:cloud_job_await` [special]
-- `s.cloud.job.status(…)` → `mvp:cloud_job_status` [special]
-- `s.cloud.job(…)` → `mvp:cloud_job` [special]
+- `s.cloud.algolia.request({ as?: string; application_id: value; api_key: value; url: value; method: value; payload: value })` [output]
+- `s.cloud.aws.opensearch.document({ as?: string; auth_type?: value; key_id?: value; access_key?: value; region?: value; method?: value; index?: value; base_url: value; doc_id?: value; doc?: value })`
+- `s.cloud.aws.opensearch.query({ as?: string; auth_type?: value; key_id?: value; access_key?: value; region?: value; index?: value; payload?: value; size?: value; from?: value; sort?: value; included_fields?: value; return_type?: value })`
+- `s.cloud.aws.opensearch.request({ as?: string; auth_type?: value; key_id?: value; access_key?: value; region?: value; method?: value; url?: value; query?: value })`
+- `s.cloud.aws.s3.delete_file({ as?: string; bucket: value; region: value; key: value; secret: value; file_key: value })`
+- `s.cloud.aws.s3.get_file_info({ as?: string; bucket: value; region: value; key: value; secret: value; file_key: value })`
+- `s.cloud.aws.s3.list_directory({ as?: string; bucket: value; region: value; key: value; secret: value; prefix: value; next_page_token: value })`
+- `s.cloud.aws.s3.read_file({ as?: string; bucket: value; region: value; key: value; secret: value; file_key: value })`
+- `s.cloud.aws.s3.sign_url({ as?: string; bucket: value; region: value; key: value; secret: value; file_key: value; ttl?: value })`
+- `s.cloud.aws.s3.upload_file({ as?: string; bucket: value; region: value; key: value; secret: value; file_key?: value; file: value; metadata: value; object_lock_mode?: value; object_lock_retain_until?: value })`
+- `s.cloud.azure.storage.delete_file({ as?: string; account_name: value; account_key: value; container_name: value; filePath: value })`
+- `s.cloud.azure.storage.get_file_info({ as?: string; account_name: value; account_key: value; container_name: value; filePath: value })`
+- `s.cloud.azure.storage.list_directory({ as?: string; account_name: value; account_key: value; container_name: value; path: value })`
+- `s.cloud.azure.storage.read_file({ as?: string; account_name: value; account_key: value; container_name: value; filePath: value })`
+- `s.cloud.azure.storage.sign_url({ as?: string; account_name: value; account_key: value; container_name: value; path: value; ttl: value })`
+- `s.cloud.azure.storage.upload_file({ as?: string; account_name: value; account_key: value; container_name: value; filePath: value; file: value; metadata: value })`
+- `s.cloud.elasticsearch.document({ as?: string; auth_type?: value; key_id: value; access_key: value; region: value; method?: value; index: value; base_url: value; doc_id: value; doc: value })`
+- `s.cloud.elasticsearch.query({ as?: string; auth_type?: value; key_id?: value; access_key?: value; region?: value; index?: value; payload?: value; size?: value; from?: value; sort?: value; included_fields?: value; return_type?: value })`
+- `s.cloud.elasticsearch.request({ as?: string; auth_type?: value; key_id?: value; access_key?: value; region?: value; method?: value; url?: value; query?: value })`
+- `s.cloud.google.storage.delete_file({ as?: string; service_account: value; bucket: value; filePath: value })`
+- `s.cloud.google.storage.get_file_info({ as?: string; service_account: value; bucket: value; filePath: value })`
+- `s.cloud.google.storage.list_directory({ as?: string; service_account: value; bucket: value; path: value })`
+- `s.cloud.google.storage.read_file({ as?: string; service_account: value; bucket: value; filePath: value })`
+- `s.cloud.google.storage.sign_url({ as?: string; service_account: value; bucket: value; filePath: value; method: value; ttl: value })`
+- `s.cloud.google.storage.upload_file({ as?: string; service_account: value; bucket: value; filePath: value; file: value; metadata: value })`
+- `s.cloud.job.await` [special]
+- `s.cloud.job.status` [special]
+- `s.cloud.job` [special]
 
 ### datadog
 
-- `s.datadog.log_bulk({ entries: value; connection?: value })` → `mvp:datadog_log_bulk`
-- `s.datadog.log({ message?: value; status?: value; attributes?: value; service?: value; source?: value; env?: value; hostname?: value; tags?: value; timestamp?: value; connection?: value })` → `mvp:datadog_log`
-- `s.datadog.metric_bulk({ entries: value; connection?: value })` → `mvp:datadog_metric_bulk`
-- `s.datadog.metric({ metric?: value; value: value; type?: value; tags?: value; service?: value; source?: value; env?: value; hostname?: value; timestamp?: value; connection?: value })` → `mvp:datadog_metric`
+- `s.datadog.log_bulk({ entries: value; connection?: value })`
+- `s.datadog.log({ message?: value; status?: value; attributes?: value; service?: value; source?: value; env?: value; hostname?: value; tags?: value; timestamp?: value; connection?: value })`
+- `s.datadog.metric_bulk({ entries: value; connection?: value })`
+- `s.datadog.metric({ metric?: value; value: value; type?: value; tags?: value; service?: value; source?: value; env?: value; hostname?: value; timestamp?: value; connection?: value })`
 
 ### db
 
-- `s.db.add_or_edit(…)` → `mvp:dbo_addoreditby` [special]
-- `s.db.add(…)` → `mvp:dbo_add` [special]
-- `s.db.bulk.add(…)` → `mvp:dbo_bulkadd` [special]
-- `s.db.bulk.delete(…)` → `mvp:dbo_bulkdelete` [special]
-- `s.db.bulk.patch(…)` → `mvp:dbo_bulkpatch` [special]
-- `s.db.bulk.update(…)` → `mvp:dbo_bulkupdate` [special]
-- `s.db.del(…)` → `mvp:dbo_delby` [special]
-- `s.db.direct_query(…)` → `mvp:dbo_direct_query` [special]
-- `s.db.edit(…)` → `mvp:dbo_editby` [special]
-- `s.db.external.mssql.direct_query(…)` → `mvp:dbo_external_mssql_query` [special]
-- `s.db.external.mysql.direct_query(…)` → `mvp:dbo_external_mysql_query` [special]
-- `s.db.external.oracle.direct_query(…)` → `mvp:dbo_external_oracle_query` [special]
-- `s.db.external.postgres.direct_query(…)` → `mvp:dbo_external_postgres_query` [special]
-- `s.db.external.snowflake.direct_query(…)` → `mvp:dbo_external_snowflake_query` [special]
-- `s.db.get(…)` → `mvp:dbo_getby` [special]
-- `s.db.has(…)` → `mvp:dbo_hasby` [special]
-- `s.db.patch(…)` → `mvp:dbo_patch` [special]
-- `s.db.query(…)` → `mvp:dbo_view` [special]
-- `s.db.schema(…)` → `mvp:dbo_get_schema` [special]
-- `s.db.set_datasource({ value: value })` → `mvp:set_data_source`
-- `s.db.transaction(…)` → `mvp:db_transaction` [special]
-- `s.db.truncate(…)` → `mvp:dbo_truncate` [special]
+- `s.db.add_or_edit` [special]
+- `s.db.add` [special]
+- `s.db.bulk.add` [special]
+- `s.db.bulk.delete` [special]
+- `s.db.bulk.patch` [special]
+- `s.db.bulk.update` [special]
+- `s.db.del` [special]
+- `s.db.direct_query` [special]
+- `s.db.edit` [special]
+- `s.db.external.mssql.direct_query` [special]
+- `s.db.external.mysql.direct_query` [special]
+- `s.db.external.oracle.direct_query` [special]
+- `s.db.external.postgres.direct_query` [special]
+- `s.db.external.snowflake.direct_query` [special]
+- `s.db.get` [special]
+- `s.db.has` [special]
+- `s.db.patch` [special]
+- `s.db.query` [special]
+- `s.db.schema` [special]
+- `s.db.set_datasource({ value: value })`
+- `s.db.transaction` [special]
+- `s.db.truncate` [special]
 
 ### debug
 
-- `s.debug.log({ value: value })` → `mvp:debug_log`
-- `s.debug.stop({ value: value })` → `mvp:die`
+- `s.debug.log({ value: value })`
+- `s.debug.stop({ value: value })`
 
 ### expect
 
-- `s.expect.to_be_defined({ expr?: value = "" })` → `mvp:test_expect_to_be_defined`
-- `s.expect.to_be_empty({ expr?: value = "" })` → `mvp:test_expect_to_be_empty`
-- `s.expect.to_be_false({ expr?: value = "" })` → `mvp:test_expect_to_be_false`
-- `s.expect.to_be_greater_than({ expr?: value = ""; value?: value = "" })` → `mvp:test_expect_to_be_greater_than`
-- `s.expect.to_be_in_the_future({ expr?: value = "" })` → `mvp:test_expect_to_be_in_the_future`
-- `s.expect.to_be_in_the_past({ expr?: value = "" })` → `mvp:test_expect_to_be_in_the_past`
-- `s.expect.to_be_less_than({ expr?: value = ""; value?: value = "" })` → `mvp:test_expect_to_be_less_than`
-- `s.expect.to_be_null({ expr?: value = "" })` → `mvp:test_expect_to_be_null`
-- `s.expect.to_be_true({ expr?: value = "" })` → `mvp:test_expect_to_be_true`
-- `s.expect.to_be_within({ expr?: value = ""; min?: value = ""; max?: value = "" })` → `mvp:test_expect_to_be_within`
-- `s.expect.to_contain({ expr?: value = ""; value?: value = "" })` → `mvp:test_expect_to_contain`
-- `s.expect.to_end_with({ expr?: value = ""; value?: value = "" })` → `mvp:test_expect_to_end_with`
-- `s.expect.to_equal({ expr?: value = ""; value?: value = "" })` → `mvp:test_expect_to_equal`
-- `s.expect.to_match({ expr?: value = ""; value?: value = "" })` → `mvp:test_expect_to_match`
-- `s.expect.to_not_be_defined({ expr?: value = "" })` → `mvp:test_expect_to_not_be_defined`
-- `s.expect.to_not_be_null({ expr?: value = "" })` → `mvp:test_expect_to_not_be_null`
-- `s.expect.to_not_equal({ expr?: value = ""; value?: value = "" })` → `mvp:test_expect_to_not_equal`
-- `s.expect.to_start_with({ expr?: value = ""; value?: value = "" })` → `mvp:test_expect_to_start_with`
-- `s.expect.to_throw(…)` → `mvp:test_expect_to_throw` [special]
+- `s.expect.to_be_defined({ expr?: value })`
+- `s.expect.to_be_empty({ expr?: value })`
+- `s.expect.to_be_false({ expr?: value })`
+- `s.expect.to_be_greater_than({ expr?: value; value?: value })`
+- `s.expect.to_be_in_the_future({ expr?: value })`
+- `s.expect.to_be_in_the_past({ expr?: value })`
+- `s.expect.to_be_less_than({ expr?: value; value?: value })`
+- `s.expect.to_be_null({ expr?: value })`
+- `s.expect.to_be_true({ expr?: value })`
+- `s.expect.to_be_within({ expr?: value; min?: value; max?: value })`
+- `s.expect.to_contain({ expr?: value; value?: value })`
+- `s.expect.to_end_with({ expr?: value; value?: value })`
+- `s.expect.to_equal({ expr?: value; value?: value })`
+- `s.expect.to_match({ expr?: value; value?: value })`
+- `s.expect.to_not_be_defined({ expr?: value })`
+- `s.expect.to_not_be_null({ expr?: value })`
+- `s.expect.to_not_equal({ expr?: value; value?: value })`
+- `s.expect.to_start_with({ expr?: value; value?: value })`
+- `s.expect.to_throw` [special]
 
 ### function
 
-- `s.function.call(…)` → `mvp:workspace_run_function` [special]
-- `s.function.run(…)` → `mvp:function` [special]
+- `s.function.call` [special]
+- `s.function.run` [special]
 
 ### math
 
-- `s.math.add({ name?: string = ""; value: value })` → `mvp:math_add` [output]
-- `s.math.bitwise.and({ name?: string = ""; value: value })` → `mvp:bitwise_and` [output]
-- `s.math.bitwise.or({ name?: string = ""; value: value })` → `mvp:bitwise_or` [output]
-- `s.math.bitwise.xor({ name?: string = ""; value: value })` → `mvp:bitwise_xor` [output]
-- `s.math.div({ name?: string = ""; value: value })` → `mvp:math_div`
-- `s.math.mod({ name?: string = ""; value: value })` → `mvp:math_mod`
-- `s.math.mul({ name?: string = ""; value: value })` → `mvp:math_mul`
-- `s.math.sub({ name?: string = ""; value: value })` → `mvp:math_sub`
+- `s.math.add({ name?: string; value: value })` [output]
+- `s.math.bitwise.and({ name?: string; value: value })` [output]
+- `s.math.bitwise.or({ name?: string; value: value })` [output]
+- `s.math.bitwise.xor({ name?: string; value: value })` [output]
+- `s.math.div({ name?: string; value: value })`
+- `s.math.mod({ name?: string; value: value })`
+- `s.math.mul({ name?: string; value: value })`
+- `s.math.sub({ name?: string; value: value })`
 
 ### middleware
 
-- `s.middleware.call(…)` → `mvp:workspace_run_middleware` [special]
+- `s.middleware.call` [special]
 
 ### object
 
-- `s.object.entries({ as?: string; value?: value = "" })` → `mvp:object_entries` [output]
-- `s.object.keys({ as?: string; value?: value = "" })` → `mvp:object_keys` [output]
-- `s.object.values({ as?: string; value?: value = "" })` → `mvp:object_values` [output]
+- `s.object.entries({ as?: string; value?: value })` [output]
+- `s.object.keys({ as?: string; value?: value })` [output]
+- `s.object.values({ as?: string; value?: value })` [output]
 
 ### redis
 
-- `s.redis.count({ as?: string; key: value })` → `mvp:redis_countlist`
-- `s.redis.decr({ as?: string; key: value; by?: value })` → `mvp:redis_decr`
-- `s.redis.del({ key: value })` → `mvp:redis_del`
-- `s.redis.get({ as?: string; key: value })` → `mvp:redis_get`
-- `s.redis.has({ as?: string; key: value })` → `mvp:redis_has`
-- `s.redis.incr({ as?: string; key: value; by?: value })` → `mvp:redis_incr`
-- `s.redis.keys({ as?: string; search: value })` → `mvp:redis_keys`
-- `s.redis.pop({ as?: string; key: value; count?: value })` → `mvp:redis_poplist`
-- `s.redis.push({ as?: string; key: value; value: value })` → `mvp:redis_pushlist`
-- `s.redis.range({ as?: string; key: value; start?: value; stop?: value })` → `mvp:redis_rangelist`
-- `s.redis.ratelimit({ as?: string; key: value; max?: value; ttl?: value; error?: value })` → `mvp:redis_ratelimit`
-- `s.redis.remove({ key: value; value: value; count?: value })` → `mvp:redis_remove_list`
-- `s.redis.set({ key: value; data: value; ttl?: value })` → `mvp:redis_set`
-- `s.redis.shift({ as?: string; key: value; count?: value })` → `mvp:redis_shiftlist`
-- `s.redis.unshift({ as?: string; key: value; value: value })` → `mvp:redis_unshiftlist`
+- `s.redis.count({ as?: string; key: value })`
+- `s.redis.decr({ as?: string; key: value; by?: value })`
+- `s.redis.del({ key: value })`
+- `s.redis.get({ as?: string; key: value })`
+- `s.redis.has({ as?: string; key: value })`
+- `s.redis.incr({ as?: string; key: value; by?: value })`
+- `s.redis.keys({ as?: string; search: value })`
+- `s.redis.pop({ as?: string; key: value; count?: value })`
+- `s.redis.push({ as?: string; key: value; value: value })`
+- `s.redis.range({ as?: string; key: value; start?: value; stop?: value })`
+- `s.redis.ratelimit({ as?: string; key: value; max?: value; ttl?: value; error?: value })`
+- `s.redis.remove({ key: value; value: value; count?: value })`
+- `s.redis.set({ key: value; data: value; ttl?: value })`
+- `s.redis.shift({ as?: string; key: value; count?: value })`
+- `s.redis.unshift({ as?: string; key: value; value: value })`
 
 ### security
 
-- `s.security.check_password({ as?: string; text_password?: value; hash_password?: value })` → `mvp:check_pass` [output]
-- `s.security.create_auth_token(…)` → `mvp:create_auth` [special]
-- `s.security.create_curve_key({ as?: string; curve?: value; format?: value })` → `mvp:crypto_create_ec_key`
-- `s.security.create_password({ as?: string; character_count?: value; require_lowercase?: value; require_uppercase?: value; require_digit?: value; require_symbol?: value; symbol_whitelist?: value })` → `mvp:generate_pass`
-- `s.security.create_rsa_key({ as?: string; bits?: value; format?: value })` → `mvp:crypto_create_rsa_key`
-- `s.security.create_secret_key({ as?: string; bits?: value; format?: value })` → `mvp:crypto_create_octet_key`
-- `s.security.create_uuid({ as?: string })` → `mvp:uuid4`
-- `s.security.decrypt({ as?: string; data?: value; algorithm?: value; key?: value; iv?: value })` → `mvp:crypto_decrypt`
-- `s.security.encrypt({ as?: string; data?: value; algorithm?: value; key?: value; iv?: value })` → `mvp:crypto_encrypt`
-- `s.security.jwe_decode_legacy({ as?: string; token?: value; key?: value; audience?: value; key_algorithm?: value; content_algorithm?: value; timeDrift?: value })` → `mvp:crypto_jwe_decode`
-- `s.security.jwe_decode({ as?: string; token?: value; key?: value; check_claims?: value; key_algorithm?: value; content_algorithm?: value; timeDrift?: value })` → `mvp:crypto_jwe_decode2`
-- `s.security.jwe_encode_legacy({ as?: string; payload?: value; audience?: value; key?: value; key_algorithm?: value; content_algorithm?: value; ttl?: value })` → `mvp:crypto_jwe_encode`
-- `s.security.jwe_encode({ as?: string; headers?: value; claims?: value; key?: value; key_algorithm?: value; content_algorithm?: value; ttl?: value })` → `mvp:crypto_jwe_encode3`
-- `s.security.jws_decode({ as?: string; token?: value; key?: value; check_claims?: value; signature_algorithm?: value; timeDrift?: value })` → `mvp:crypto_jws_decode2`
-- `s.security.jws_encode({ as?: string; headers?: value; claims?: value; key?: value; signature_algorithm?: value; ttl?: value })` → `mvp:crypto_jws_encode2`
-- `s.security.random_bytes({ as?: string; length?: value })` → `mvp:random_bytes`
-- `s.security.random_number({ as?: string; min?: value; max?: value })` → `mvp:rand`
+- `s.security.check_password({ as?: string; text_password?: value; hash_password?: value })` [output]
+- `s.security.create_auth_token` [special]
+- `s.security.create_curve_key({ as?: string; curve?: value; format?: value })`
+- `s.security.create_password({ as?: string; character_count?: value; require_lowercase?: value; require_uppercase?: value; require_digit?: value; require_symbol?: value; symbol_whitelist?: value })`
+- `s.security.create_rsa_key({ as?: string; bits?: value; format?: value })`
+- `s.security.create_secret_key({ as?: string; bits?: value; format?: value })`
+- `s.security.create_uuid({ as?: string })`
+- `s.security.decrypt({ as?: string; data?: value; algorithm?: value; key?: value; iv?: value })`
+- `s.security.encrypt({ as?: string; data?: value; algorithm?: value; key?: value; iv?: value })`
+- `s.security.jwe_decode_legacy({ as?: string; token?: value; key?: value; audience?: value; key_algorithm?: value; content_algorithm?: value; timeDrift?: value })`
+- `s.security.jwe_decode({ as?: string; token?: value; key?: value; check_claims?: value; key_algorithm?: value; content_algorithm?: value; timeDrift?: value })`
+- `s.security.jwe_encode_legacy({ as?: string; payload?: value; audience?: value; key?: value; key_algorithm?: value; content_algorithm?: value; ttl?: value })`
+- `s.security.jwe_encode({ as?: string; headers?: value; claims?: value; key?: value; key_algorithm?: value; content_algorithm?: value; ttl?: value })`
+- `s.security.jws_decode({ as?: string; token?: value; key?: value; check_claims?: value; signature_algorithm?: value; timeDrift?: value })`
+- `s.security.jws_encode({ as?: string; headers?: value; claims?: value; key?: value; signature_algorithm?: value; ttl?: value })`
+- `s.security.random_bytes({ as?: string; length?: value })`
+- `s.security.random_number({ as?: string; min?: value; max?: value })`
 
 ### service
 
-- `s.service.function.run(…)` → `mvp:function` [special]
+- `s.service.function.run` [special]
 
 ### storage
 
-- `s.storage.create_attachment({ as?: string; value: value; access?: string = "public"; filename?: value })` → `mvp:create_attachment`
-- `s.storage.create_audio({ as?: string; value: value; access?: string = "public"; filename?: value })` → `mvp:create_audio` [output]
-- `s.storage.create_file_resource({ as?: string; filename: value; filedata: value })` → `mvp:create_file_resource` [output]
-- `s.storage.create_image({ as?: string; value: value; access?: string = "public"; filename?: value })` → `mvp:create_image` [output]
-- `s.storage.create_video({ as?: string; value: value; access?: string = "public"; filename?: value })` → `mvp:create_video` [output]
-- `s.storage.delete_file({ pathname: value })` → `mvp:delete_file` [output]
-- `s.storage.read_file_resource({ as?: string; value: value })` → `mvp:create_var_from_file_resource`
-- `s.storage.sign_private_url({ as?: string; pathname: value; ttl?: value })` → `mvp:vault_sign_url`
+- `s.storage.create_attachment({ as?: string; value: value; access?: string = "public"; filename?: value })`
+- `s.storage.create_audio({ as?: string; value: value; access?: string = "public"; filename?: value })` [output]
+- `s.storage.create_file_resource({ as?: string; filename: value; filedata: value })` [output]
+- `s.storage.create_image({ as?: string; value: value; access?: string = "public"; filename?: value })` [output]
+- `s.storage.create_video({ as?: string; value: value; access?: string = "public"; filename?: value })` [output]
+- `s.storage.delete_file({ pathname: value })` [output]
+- `s.storage.read_file_resource({ as?: string; value: value })`
+- `s.storage.sign_private_url({ as?: string; pathname: value; ttl?: value })`
 
 ### stream
 
-- `s.stream.from_csv({ as?: string; value: value; separator?: value = ","; enclosure?: value = "\\\""; escape_char?: value = "\\\"" })` → `mvp:csv_stream` [output]
-- `s.stream.from_jsonl({ as?: string; value: value })` → `mvp:jsonl_stream`
-- `s.stream.from_request(…)` → `mvp:streaming_api_request` [special]
+- `s.stream.from_csv({ as?: string; value: value; separator?: value; enclosure?: value; escape_char?: value })` [output]
+- `s.stream.from_jsonl({ as?: string; value: value })`
+- `s.stream.from_request` [special]
 
 ### task
 
-- `s.task.call(…)` → `mvp:workspace_run_task` [special]
+- `s.task.call` [special]
 
 ### text
 
-- `s.text.append({ name?: string = ""; value: value })` → `mvp:text_append`
-- `s.text.contains({ name?: string = ""; as?: string; value: value })` → `mvp:text_contains`
-- `s.text.ends_with({ name?: string = ""; as?: string; value: value })` → `mvp:text_ends_with`
-- `s.text.icontains({ name?: string = ""; as?: string; value: value })` → `mvp:text_icontains`
-- `s.text.iends_with({ name?: string = ""; as?: string; value: value })` → `mvp:text_iends_with`
-- `s.text.istarts_with({ name?: string = ""; as?: string; value: value })` → `mvp:text_istarts_with`
-- `s.text.ltrim({ name?: string = ""; value: value })` → `mvp:text_ltrim`
-- `s.text.prepend({ name?: string = ""; value: value })` → `mvp:text_prepend`
-- `s.text.rtrim({ name?: string = ""; value: value })` → `mvp:text_rtrim`
-- `s.text.starts_with({ name?: string = ""; as?: string; value: value })` → `mvp:text_starts_with`
-- `s.text.trim({ name?: string = ""; value: value })` → `mvp:text_trim`
+- `s.text.append({ name?: string; value: value })`
+- `s.text.contains({ name?: string; as?: string; value: value })`
+- `s.text.ends_with({ name?: string; as?: string; value: value })`
+- `s.text.icontains({ name?: string; as?: string; value: value })`
+- `s.text.iends_with({ name?: string; as?: string; value: value })`
+- `s.text.istarts_with({ name?: string; as?: string; value: value })`
+- `s.text.ltrim({ name?: string; value: value })`
+- `s.text.prepend({ name?: string; value: value })`
+- `s.text.rtrim({ name?: string; value: value })`
+- `s.text.starts_with({ name?: string; as?: string; value: value })`
+- `s.text.trim({ name?: string; value: value })`
 
 ### tool
 
-- `s.tool.call(…)` → `mvp:workspace_run_tool` [special]
+- `s.tool.call` [special]
 
 ### trigger
 
-- `s.trigger.call(…)` → `mvp:workspace_run_trigger` [special]
+- `s.trigger.call` [special]
 
 ### util
 
-- `s.util.geo_distance({ as?: string = ""; latitude_1?: value; longitude_1?: value; latitude_2?: value; longitude_2?: value })` → `mvp:calculate_geo_distance`
-- `s.util.get_all_input({ as?: string = "" })` → `mvp:get_all_input`
-- `s.util.get_env({ as?: string = "" })` → `mvp:get_env`
-- `s.util.get_input(…)` → `mvp:get_input` [special]
-- `s.util.get_raw_input(…)` → `mvp:get_input` [special]
-- `s.util.get_vars({ as?: string = "" })` → `mvp:get_vars`
-- `s.util.ip_lookup({ as?: string = ""; value: value })` → `mvp:ipaddress_lookup`
-- `s.util.post_process(…)` → `mvp:post_process` [special]
-- `s.util.send_email({ as?: string = ""; api_key?: value; service_provider?: value; subject?: value; message?: value; to?: value; bcc?: value; cc?: value; from?: value; reply_to?: value; scheduled_at?: value })` → `mvp:send_email`
-- `s.util.set_header({ value: value; duplicates?: string = "replace" })` → `mvp:setheader`
-- `s.util.sleep({ value: value })` → `mvp:sleep`
-- `s.util.template_engine({ as?: string = ""; value: value })` → `mvp:template_string`
+- `s.util.geo_distance({ as?: string; latitude_1?: value; longitude_1?: value; latitude_2?: value; longitude_2?: value })`
+- `s.util.get_all_input({ as?: string })`
+- `s.util.get_env({ as?: string })`
+- `s.util.get_input` [special]
+- `s.util.get_raw_input` [special]
+- `s.util.get_vars({ as?: string })`
+- `s.util.ip_lookup({ as?: string; value: value })`
+- `s.util.post_process` [special]
+- `s.util.send_email({ as?: string; api_key?: value; service_provider?: value; subject?: value; message?: value; to?: value; bcc?: value; cc?: value; from?: value; reply_to?: value; scheduled_at?: value })`
+- `s.util.set_header({ value: value; duplicates?: string })`
+- `s.util.sleep({ value: value })`
+- `s.util.template_engine({ as?: string; value: value })`
 
 ### webflow
 
-- `s.webflow.request(…)` → `mvp:connect_webflow_api_request` [special]
+- `s.webflow.request` [special]
 
 ### workflow_test
 
-- `s.workflow_test.call(…)` → `mvp:workspace_run_workflow_test` [special]
+- `s.workflow_test.call` [special]
 
 ### zip
 
-- `s.zip.add_to_archive({ file: value; filename: value; zip: value; password?: value; password_encryption?: value })` → `mvp:zip_add_file_resource`
-- `s.zip.create_archive({ as?: string; filename: value; password?: value; password_encryption?: value })` → `mvp:zip_create_file_resource`
-- `s.zip.delete_from_archive({ filename: value; zip: value; password?: value })` → `mvp:zip_delete_file_resource`
-- `s.zip.extract({ as?: string; zip: value; password?: value })` → `mvp:zip_extract_file_resource`
-- `s.zip.view_contents({ as?: string; zip: value; password?: value })` → `mvp:zip_view_contents`
+- `s.zip.add_to_archive({ file: value; filename: value; zip: value; password?: value; password_encryption?: value })`
+- `s.zip.create_archive({ as?: string; filename: value; password?: value; password_encryption?: value })`
+- `s.zip.delete_from_archive({ filename: value; zip: value; password?: value })`
+- `s.zip.extract({ as?: string; zip: value; password?: value })`
+- `s.zip.view_contents({ as?: string; zip: value; password?: value })`
