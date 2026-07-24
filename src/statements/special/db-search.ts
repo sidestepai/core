@@ -143,10 +143,10 @@ function isCmpNode(w: unknown): w is Comparison | SearchComparison {
  * Encode a tagged value to the `{operand, tag, filters}` search operand shape.
  *
  * A value carrying a **filter chain** (`withFilters(...)`) is rejected here, at
- * author/export time. The engine's search-operand evaluator (`Search.php`)
- * resolves a filtered operand through a different, `name`-keyed shape than the
- * inline `{operand,tag,filters}` one this encoder emits, so an inline filtered
- * operand compiles and `export`s clean but 500s at runtime with an
+ * author/export time. The engine's search-operand evaluator resolves a filtered
+ * operand through a different, `name`-keyed shape than the inline
+ * `{operand,tag,filters}` one this encoder emits, so an inline filtered operand
+ * compiles and `export`s clean but 500s at runtime with an
  * `Undefined array key "name"` (#118). Mirrors `obj()` (#42), which likewise
  * rejects inline filtered values: compute the filtered value in a prior stack
  * step (`setVar`) and reference the var in the operand instead.
