@@ -37,6 +37,32 @@ export const assistant = agent({
 });
 
 /**
+ * Structured outputs — `output.schema` is a named-field record authored with the
+ * `input.*` catalog (same surface as a function `input:` map). The engine stores
+ * it as `structuredOutputsSchema` and constrains the model to return that shape.
+ * Note: to also *type* the `.result` at the call site, pass `resultShape` to
+ * `s.ai.agent.run` — the authored schema shapes the model output, the hint shapes
+ * the inferred TS type.
+ */
+export const classifier = agent({
+  name: "ex_agent_classifier",
+  canonical: "classifier-agent",
+  llm: {
+    type: "xano-free",
+    systemPrompt: "Classify the support ticket.",
+    prompt: "Ticket: {{ $args.body }}",
+    maxSteps: 5,
+  },
+  output: {
+    schema: {
+      priority: input.enum(["low", "medium", "high"]),
+      category: input.text(),
+      summary: input.text(),
+    },
+  },
+});
+
+/**
  * Gate 3 — a worked endpoint that invokes the agent. `s.ai.agent.run` binds the
  * target by the agent's def handle (resolved to its `toolset` guid, remapped on
  * import like the call family), runs it, and returns the result. The endpoint's
