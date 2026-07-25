@@ -76,8 +76,28 @@ export async function runReleaseCommand(args: ParsedArgs): Promise<void> {
   success(`Released to instance workspace #${workspaceId}`);
   link(auth.instance);
 
+  // With release, the static frontend goes to the SAME instance workspace.
+  const summary: { released: boolean; workspaceId: number; instance: string; static?: { url: string | undefined } } = {
+    released: true,
+    workspaceId,
+    instance: auth.instance,
+  };
+  if (args.static !== undefined) {
+    const { buildStaticEnv, deployStaticTo } = await import("./deploy-command.js");
+    const env = buildStaticEnv(auth.instance, args.staticEnv);
+    const explicit = Object.keys(args.staticEnv).length > 0;
+    summary.static = await deployStaticTo(
+      args.static,
+      auth,
+      { baseUrl: auth.instance, workspaceId, label: undefined },
+      env,
+      explicit,
+      args.staticHost,
+    );
+  }
+
   if (!process.stdout.isTTY) {
-    process.stdout.write(JSON.stringify({ released: true, workspaceId, instance: auth.instance }, null, 2) + "\n");
+    process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
   }
 }
 

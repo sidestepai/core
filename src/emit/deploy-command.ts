@@ -18,9 +18,12 @@
  * lock. (Compiling an ENTRY FILE still maintains the local lock via
  * `exportBundleJson`, unrelated to the deploy.)
  *
- * `--static <dir>` deploys a frontend to the caller's OWN (parent) workspace, not
- * the env — the env does not serve static hosting. Independent of the backend
- * import: a static failure after a committed import exits distinctly.
+ * `--static <dir>` deploys a frontend alongside the backend. Its target depends
+ * on the destination: for `--dest ephemeral` it goes to the EPHEMERAL itself (so
+ * backend + frontend share one disposable environment); for `--dest sandbox` it
+ * goes to the caller's OWN (parent) workspace, since the sandbox tenant does not
+ * serve static hosting. Independent of the backend import: a static failure after
+ * a committed import exits distinctly.
  *
  * Node-only and lazily imported so the browser-safe authoring bundle stays clean.
  */
@@ -124,8 +127,17 @@ export async function runDeployCommand(args: ParsedArgs): Promise<void> {
   if (args.static !== undefined) {
     const env = buildStaticEnv(summary.url, args.staticEnv);
     const explicit = Object.keys(args.staticEnv).length > 0;
+    // Static-host target depends on the destination:
+    //   • ephemeral → the ephemeral itself (its base URL, workspace id 1), so
+    //     backend AND frontend live in the same disposable environment.
+    //   • sandbox   → the caller's PARENT workspace (the sandbox tenant does not
+    //     serve static hosting), resolved from the token.
+    const target: StaticTarget =
+      dest === "ephemeral" && summary.url !== undefined
+        ? { baseUrl: summary.url, workspaceId: 1, label: `ephemeral ${summary.ephemeral?.name ?? ""}`.trim() }
+        : { baseUrl: auth.instance, workspaceId: await resolveScopedWorkspaceId(auth), label: undefined };
     try {
-      summary.static = await deployParentStatic(args.static, auth, env, explicit, args.staticHost);
+      summary.static = await deployStaticTo(args.static, auth, target, env, explicit, args.staticHost);
     } catch (err) {
       warn("Backend deployed, but the static-host upload failed:");
       detail(err instanceof Error ? err.message : String(err));
@@ -220,18 +232,32 @@ async function deployEphemeral(
   };
 }
 
-async function deployParentStatic(
+/** Where a static frontend is uploaded: an env base URL + workspace id, with a display label. */
+export interface StaticTarget {
+  baseUrl: string;
+  workspaceId: number;
+  /** Human label for the progress line (e.g. `ephemeral e4f2`); falls back to `workspace #id`. */
+  label: string | undefined;
+}
+
+/**
+ * Archive `dir` and deploy it to a static host on the given target (env base URL
+ * + workspace id). `deploy` points this at the ephemeral itself or the parent
+ * workspace per destination; `release` reuses it for the instance workspace.
+ */
+export async function deployStaticTo(
   dir: string,
   auth: ResolvedAuth,
+  target: StaticTarget,
   env: Record<string, string>,
   explicit: boolean,
   host?: string,
 ): Promise<DeploySummary["static"]> {
   const { deployStaticHost } = await import("../deploy/static-host.js");
 
-  const workspaceId = await resolveScopedWorkspaceId(auth);
-  step(`Deploying static frontend ${dir} → workspace #${workspaceId}${host ? ` (host: ${host})` : ""}`);
-  const sh = await deployStaticHost({ host, dir, workspaceId, baseUrl: auth.instance, accessToken: auth.access_token, env });
+  const where = target.label && target.label !== "" ? target.label : `workspace #${target.workspaceId}`;
+  step(`Deploying static frontend ${dir} → ${where}${host ? ` (host: ${host})` : ""}`);
+  const sh = await deployStaticHost({ host, dir, workspaceId: target.workspaceId, baseUrl: target.baseUrl, accessToken: auth.access_token, env });
 
   const globals = Object.keys(env).map((k) => `window.${k}`);
   if (globals.length > 0) {

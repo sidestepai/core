@@ -148,9 +148,11 @@ frontend directory (a dependency-free gzipped tarball, 100 MB cap) and deploys
 it to a static host AFTER the backend import. No separate frontend host to
 configure, no CI upload script — backend and static frontend ship together.
 Output highlights the two live URLs: the backend URL, then `Static host
-deployed` with the frontend `<url>` beneath. The frontend goes to your OWN
-(parent) workspace, NOT the env — an ephemeral/sandbox does not serve static
-hosting.
+deployed` with the frontend `<url>` beneath. The static target depends on the
+destination: `--dest ephemeral` puts the frontend ON THE EPHEMERAL itself (so
+backend + frontend share one disposable environment); `--dest sandbox` puts it
+on your OWN (parent) workspace, since the sandbox tenant does not serve static
+hosting. (`release`, when enabled, ships both to your instance workspace.)
 The CLI resolves which workspace from your token (`auth/me`: the scoped workspace
 guid → its numeric id) and uploads to `/api:meta/workspace/{id}/static_host/default/build`,
 which auto-creates the host and auto-deploys to `dev`. The static step is

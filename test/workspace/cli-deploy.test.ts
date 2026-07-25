@@ -173,6 +173,22 @@ describe("sidestep deploy", () => {
     await expect(run(["deploy", bundleFile(dir), "--config", authFile, "--dest", "bogus"])).rejects.toThrow(/--dest must be/);
   });
 
+  it("ephemeral --static deploys the frontend to the EPHEMERAL itself (base URL, workspace 1)", async () => {
+    const site = join(dir, "site");
+    mkdirSync(site, { recursive: true });
+    writeFileSync(join(site, "index.html"), "<head></head>");
+    const m = seq(
+      res(EPH), // create
+      res(EPH), // ready
+      res({ id: 1 }), // backend import
+      res({ dev: { host: "my-app.xano.io" } }), // static build
+    );
+    await run(["deploy", "--bundle", bundleFile(dir), "--config", authFile, "--workspace", "114", "--static", site]);
+    // backend import + static build both target the ephemeral base URL / workspace 1
+    expect(m.mock.calls[2]![0]).toBe("https://e4f2-9ab1.xano.io/api:meta/workspace/1/import");
+    expect(m.mock.calls[3]![0]).toBe("https://e4f2-9ab1.xano.io/api:meta/workspace/1/static_host/default/build");
+  });
+
   // ── sandbox dest ──────────────────────────────────────────────────────────
 
   it("--dest sandbox resolves sandbox/me and imports to the sandbox base URL", async () => {
