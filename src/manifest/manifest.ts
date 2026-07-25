@@ -201,6 +201,12 @@ const CLI_COMMANDS: readonly ManifestCliCommand[] = [
     description: "Compile the default-exported Xano registry into the aggregate workspace bundle.",
   },
   {
+    command: "paths",
+    args: "<file> [--lock=<path>]",
+    description:
+      "List every API query's HTTP verb and resolved group-relative path (api:<canonical>/<name>). Alias: `routes`. Read-only — seeds an existing xano.lock to resolve canonicals but never writes one; a group with no resolvable canonical is reported with the `export --lock` fix.",
+  },
+  {
     command: "deploy",
     args: "<file> | --bundle <path>",
     flags: [
