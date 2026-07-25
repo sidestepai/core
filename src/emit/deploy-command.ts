@@ -78,8 +78,13 @@ export function buildStaticEnv(baseUrl: string | undefined, staticEnv: Record<st
  */
 export function deriveDisplay(bundleText: string, cwd: string): string {
   try {
-    const parsed = JSON.parse(bundleText) as { payload?: { workspace?: Array<{ name?: unknown }> } };
-    const name = parsed.payload?.workspace?.[0]?.name;
+    // `payload.workspace` is the workspace settings object (`{ name, ... }`);
+    // tolerate an array shape defensively.
+    const parsed = JSON.parse(bundleText) as { payload?: { workspace?: unknown } };
+    const w = parsed.payload?.workspace;
+    const name = Array.isArray(w)
+      ? (w[0] as { name?: unknown } | undefined)?.name
+      : (w as { name?: unknown } | undefined)?.name;
     if (typeof name === "string" && name.trim() !== "") return name;
   } catch {
     /* fall through to the directory name */
