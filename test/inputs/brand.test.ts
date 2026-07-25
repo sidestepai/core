@@ -59,8 +59,16 @@ describe("input value-type brands (type-level)", () => {
 
   it("file/geo/vector/tableRef inputs carry sensible value types", () => {
     expectTypeOf<ValueOf<ReturnType<typeof input.vector>>>().toEqualTypeOf<number[]>();
-    // tableRef → the referenced primary key (int or uuid).
-    expectTypeOf<BrandValue<ReturnType<typeof input.tableRef>>>().toEqualTypeOf<number | string>();
+    // tableRef → the referenced primary key's scalar: an int reference is a number,
+    // a `{ type: "uuid" }` reference is a string (never the loose `string | number`,
+    // #140). The default-options (int) path is covered in infer-row.test via a real
+    // `f.tableRef("post")` column.
+    expectTypeOf<
+      BrandValue<ReturnType<typeof input.tableRef<{ type: "int" }>>>
+    >().toEqualTypeOf<number>();
+    expectTypeOf<
+      BrandValue<ReturnType<typeof input.tableRef<{ type: "uuid" }>>>
+    >().toEqualTypeOf<string>();
     // file inputs are an opaque resource ref (object shape), not the raw bytes.
     expectTypeOf<BrandValue<ReturnType<typeof input.image>>>().toMatchTypeOf<{ path?: string }>();
   });

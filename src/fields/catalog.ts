@@ -127,6 +127,16 @@ export function toNestedFields(map: FieldMap): NestedField[] {
   return Object.entries(map).map(([name, d]) => ({ name, type: d.type, ...d.options }));
 }
 
+/**
+ * The stored scalar type of a `tableRef` FK, derived from its `type` option: a
+ * `uuid`-keyed reference stores a `string`, everything else (the default `int`)
+ * stores a `number`. Keeps `InferRow` honest — a FK column is the referenced
+ * table's PK value, never the loose `string | number`.
+ */
+type TableRefValue<O> = "uuid" extends (O extends { type: infer T } ? T : never)
+  ? string
+  : number;
+
 /** The rich field-type catalog. */
 export const f = {
   // --- scalars ---
@@ -227,7 +237,7 @@ export const f = {
    */
   tableRef<
     const O extends ConstMethodOpts<TableRefMethod> & { type?: "int" | "uuid" } = Record<string, never>,
-  >(table: ObjectRef, options: O = {} as O): FieldDescriptor & TypeBrand<number | string, O> {
+  >(table: ObjectRef, options: O = {} as O): FieldDescriptor & TypeBrand<TableRefValue<O>, O> {
     const { type = "int", methods = [], ...rest } = options as ConstMethodOpts<TableRefMethod> & {
       type?: "int" | "uuid";
     };
@@ -235,6 +245,6 @@ export const f = {
     return descriptor(type, {
       ...rest,
       methods: [...(methods ?? []), { name: "@", arg: [`dbo=${guid}`] }],
-    }) as FieldDescriptor & TypeBrand<number | string, O>;
+    }) as FieldDescriptor & TypeBrand<TableRefValue<O>, O>;
   },
 } as const;
