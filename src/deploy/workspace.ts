@@ -59,8 +59,8 @@ export async function resolveScopedWorkspaceId(auth: ResolvedAuth): Promise<numb
   if (ids.length === 1) return ids[0]!.id;
 
   throw new Error(
-    `Could not resolve which workspace to deploy the static frontend into from your token ` +
+    `Could not resolve which workspace to use from your token ` +
       `(scoped workspace ${scopedGuid ?? "(none)"} not found among ${ids.length} membership workspaces). ` +
-      `Sign in again with a workspace-scoped token (\`sidestep login\`).`,
+      `Pass \`--workspace <id>\`, or sign in again with a workspace-scoped token (\`sidestep login\`).`,
   );
 }

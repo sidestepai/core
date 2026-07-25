@@ -76,6 +76,14 @@ describe("sidestep ephemeral", () => {
     await run(["ephemeral", "list", "--config", authFile, "--global"]);
     expect(m.mock.calls[0]![0]).toBe(`${INSTANCE}/api:meta/ephemeral`);
   });
+  it("list without --workspace resolves the workspace id from the token (never hard-codes 1)", async () => {
+    // /api:meta/auth/me maps the token's scoped guid → its numeric workspace id.
+    const me = { extras: { oauth: { workspace: "guid-x" }, instance: { membership: { workspace: [{ guid: "guid-x", id: 9 }] } } } };
+    const m = seq(res(me), res([LIVE]));
+    await run(["ephemeral", "list", "--config", authFile]);
+    expect(m.mock.calls[0]![0]).toBe(`${INSTANCE}/api:meta/auth/me`);
+    expect(m.mock.calls[1]![0]).toBe(`${INSTANCE}/api:meta/workspace/9/ephemeral`);
+  });
   it("list renders 'No ephemeral tenants found' on empty (TTY)", async () => {
     seq(res([]));
     const prev = process.stdout.isTTY;
@@ -93,6 +101,13 @@ describe("sidestep ephemeral", () => {
     seq(res(LIVE));
     await run(["ephemeral", "get", "e4f2", "--config", authFile, "--workspace", "114"]);
     expect(JSON.parse(stdout.join("")).url).toBe("https://e4f2.xano.io");
+  });
+  it("get without --workspace resolves the workspace id from the token first", async () => {
+    const me = { extras: { oauth: { workspace: "guid-x" }, instance: { membership: { workspace: [{ guid: "guid-x", id: 9 }] } } } };
+    const m = seq(res(me), res(LIVE));
+    await run(["ephemeral", "get", "e4f2", "--config", authFile]);
+    expect(m.mock.calls[0]![0]).toBe(`${INSTANCE}/api:meta/auth/me`);
+    expect(m.mock.calls[1]![0]).toBe(`${INSTANCE}/api:meta/workspace/9/tenant/e4f2`);
   });
   it("get on a 404 fails with the expired/gone message and makes no base-URL call", async () => {
     const m = seq(res("nope", 404));
