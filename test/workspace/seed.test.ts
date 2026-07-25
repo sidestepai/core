@@ -42,10 +42,10 @@ describe("resolveSeedRows", () => {
 describe("coerceSeedRows", () => {
   it("coerces each column category to its wire form (happy path)", () => {
     const out = coerceSeedRows("products", cols, [
-      { name: "Widget", price: 9.99, qty: 3, active: true, sku: "abc", meta: { k: 1 } },
+      { id: 1, name: "Widget", price: 9.99, qty: 3, active: true, sku: "abc", meta: { k: 1 } },
     ]);
     expect(out).toEqual([
-      { name: "Widget", price: 9.99, qty: 3, active: true, sku: "abc", meta: { k: 1 } },
+      { id: 1, name: "Widget", price: 9.99, qty: 3, active: true, sku: "abc", meta: { k: 1 } },
     ]);
   });
 
@@ -57,21 +57,35 @@ describe("coerceSeedRows", () => {
     expect(row2!.launched_at).toBe(d.getTime());
   });
 
-  it("keeps the system id/created_at columns optional and honors an explicit id", () => {
-    expect(coerceSeedRows("products", cols, [{ name: "x" }])).toEqual([{ name: "x" }]);
+  it("honors an explicit id, and leaves created_at optional", () => {
     const [row] = coerceSeedRows("products", cols, [{ id: 42, name: "x" }]);
-    expect(row!.id).toBe(42);
+    expect(row).toEqual({ id: 42, name: "x" });
+  });
+
+  it("auto-numbers int-PK rows that omit id (1..N) so a bare seed just works", () => {
+    // The engine preserves seed ids and won't auto-fill — id-less rows would all
+    // collide on the primary key, so the SDK fills them.
+    expect(coerceSeedRows("products", cols, [{ name: "a" }, { name: "b" }])).toEqual([
+      { name: "a", id: 1 },
+      { name: "b", id: 2 },
+    ]);
+  });
+
+  it("rejects a mix of explicit and omitted id (ambiguous, collides on PK)", () => {
+    expect(() => coerceSeedRows("products", cols, [{ id: 5, name: "a" }, { name: "b" }])).toThrow(
+      /seed rows set `id` and the rest omit it/,
+    );
   });
 
   it("passes null through (nullability is the engine's to enforce)", () => {
-    expect(coerceSeedRows("products", cols, [{ name: "x", price: null }])).toEqual([
-      { name: "x", price: null },
+    expect(coerceSeedRows("products", cols, [{ id: 1, name: "x", price: null }])).toEqual([
+      { id: 1, name: "x", price: null },
     ]);
   });
 
   it("treats an explicit undefined value as an omitted column (JSON semantics)", () => {
-    expect(coerceSeedRows("products", cols, [{ name: "x", price: undefined }])).toEqual([
-      { name: "x" },
+    expect(coerceSeedRows("products", cols, [{ id: 1, name: "x", price: undefined }])).toEqual([
+      { id: 1, name: "x" },
     ]);
   });
 
@@ -138,7 +152,7 @@ describe("buildSeedContentFiles", () => {
     expect(files[0]!.name).toBe(`content/${guid}-1.json`);
     const env = JSON.parse(files[0]!.content) as { type: string; payload: unknown[] };
     expect(env.type).toBe("content");
-    expect(env.payload).toEqual([{ name: "a" }, { name: "b" }]);
+    expect(env.payload).toEqual([{ name: "a", id: 1 }, { name: "b", id: 2 }]);
   });
 
   it("emits nothing for tables without seed, or with an empty seed", async () => {
@@ -156,7 +170,7 @@ describe("buildSeedContentFiles", () => {
     const files = await buildSeedContentFiles([seeded]);
     expect(files).toHaveLength(1);
     const env = JSON.parse(files[0]!.content) as { payload: unknown[] };
-    expect(env.payload).toEqual([{ name: "z" }]);
+    expect(env.payload).toEqual([{ name: "z", id: 1 }]);
   });
 
   it("paginates a large seed into contiguous page files under one guid", async () => {

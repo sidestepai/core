@@ -128,7 +128,7 @@ export function coerceSeedRows(
   rows: readonly SeedRow[],
 ): Record<string, unknown>[] {
   const typeByName = new Map(columns.map((c) => [c.name, c.type]));
-  return rows.map((row, i) => {
+  const coerced = rows.map((row, i) => {
     const label = `table "${tableName}", seed row ${i}`;
     if (row === null || typeof row !== "object" || Array.isArray(row)) {
       throw new Error(`${label}: expected a row object, got ${Array.isArray(row) ? "array" : typeof row}.`);
@@ -148,6 +148,41 @@ export function coerceSeedRows(
       out[key] = coerceValue(label, key, type, value);
     }
     return out;
+  });
+  assignIntPrimaryKeys(tableName, columns, coerced);
+  return coerced;
+}
+
+/**
+ * Fill the `id` of int-PK seed rows that omit it. The content-import path
+ * PRESERVES each row's `id` and never auto-assigns one (a genuine engine export
+ * always carries `id`), so id-less rows would all insert as the same key and the
+ * import 500s with "Duplicate record detected". Verified against a live engine.
+ *
+ * For an int primary key we auto-number omitted rows `1..N` so `seed: [{...}, …]`
+ * just works; the engine resets the PK sequence past the max on import. All-or-
+ * nothing: a mix of explicit and omitted `id` is ambiguous (which numbers are
+ * free?) and throws. Non-int PKs (uuid) and `system:false` tables are left alone —
+ * the engine generates uuids, and a custom PK is the author's to supply.
+ */
+function assignIntPrimaryKeys(
+  tableName: string,
+  columns: ColumnDef[],
+  rows: Record<string, unknown>[],
+): void {
+  const idCol = columns.find((c) => c.name === "id");
+  if (idCol?.type !== "int") return;
+  const withId = rows.filter((r) => r.id !== undefined).length;
+  if (withId === rows.length) return; // all explicit — nothing to fill
+  if (withId !== 0) {
+    throw new Error(
+      `table "${tableName}": ${withId} of ${rows.length} seed rows set \`id\` and the rest omit it. ` +
+        `The engine preserves seed ids and won't auto-fill a missing one, so a mix collides on the ` +
+        `primary key. Provide \`id\` for every seed row, or none (they'll be auto-numbered 1..N).`,
+    );
+  }
+  rows.forEach((r, i) => {
+    r.id = i + 1;
   });
 }
 

@@ -24,8 +24,8 @@ describe("compileBundle seed threading", () => {
     const env = JSON.parse(content[0]!.content) as { type: string; payload: unknown[] };
     expect(env.type).toBe("content");
     expect(env.payload).toEqual([
-      { name: "Widget", price: 9.99 },
-      { name: "Gadget", price: 19.99 },
+      { name: "Widget", price: 9.99, id: 1 },
+      { name: "Gadget", price: 19.99, id: 2 },
     ]);
   });
 
