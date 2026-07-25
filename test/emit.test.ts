@@ -131,6 +131,23 @@ describe("CLI", () => {
     }
   });
 
+  it("`help` (and no command / --help / -h) prints the grouped command reference to stdout", async () => {
+    for (const argv of [["help"], [], ["--help"], ["-h"]]) {
+      const spy = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+      await run(argv);
+      const out = spy.mock.calls.map((c) => String(c[0])).join("");
+      // Header + at least one group title + a representative command row.
+      expect(out).toMatch(/the AI-first SDK & CLI for Xano/);
+      expect(out).toContain("deploy");
+      expect(out).toContain("login");
+      spy.mockRestore();
+    }
+  });
+
+  it("an unknown command's error points at `sidestep help`, not a wall of usage", async () => {
+    await expect(run(["frobnicate"])).rejects.toThrow(/Run `sidestep help`/);
+  });
+
   it("compiling the example module writes the expected JSON to --out", async () => {
     const examplePath = fileURLToPath(new URL("./fixtures/function-module.ts", import.meta.url));
     const outPath = join(tmpdir(), `sidestep-cli-${process.pid}.json`);

@@ -204,8 +204,8 @@ const CLI_COMMANDS: readonly ManifestCliCommand[] = [
       { flag: "--static <dir>", description: "Archive a built frontend directory and deploy it to your (parent) workspace's static host after the backend import. The backend URL is auto-injected into the build's root index.html as `window.XANO_HOST`, so the frontend needs no rebuild." },
       { flag: "--static-host <name>", description: "Static-host NAME to deploy the frontend to (default `default`). Give each app a DISTINCT host so deploys don't share and overwrite the one `default` host. The host is auto-created on first deploy." },
       { flag: "--static-env KEY=VALUE", description: "Repeatable. Bake extra PUBLIC config into the static build's index.html as `window.<KEY>` globals. Merged over the auto-seeded XANO_HOST; served verbatim, so never put secrets here." },
-      { flag: "--config <path>", description: "Project-local token cache (default: $XANO_CONFIG, then ./.xano/auth.json)." },
-      { flag: "--global", description: "Read credentials from the shared ~/.sidestep/auth.json cache. Reads always try ./.xano/auth.json first, then fall back to the global cache." },
+      { flag: "--config <path>", description: "Explicit token cache path (default: $XANO_CONFIG, then the shared ~/.sidestep/auth.json, falling back to ./.xano/auth.json when it exists)." },
+      { flag: "--local", description: "Read credentials from the project-local ./.xano/auth.json cache instead of the shared ~/.sidestep/auth.json one. Reads already prefer an existing project-local cache, so this only matters when both exist." },
     ],
     description:
       "Deploy the compiled workspace to a live environment and print its URL. Default `--dest ephemeral` create-or-refreshes a named auto-expiring environment: a live one is refreshed (URL unchanged), a gone/expired one is recreated (the new URL is called out). `--dest sandbox` targets the singleton throwaway. Each deploy is a full replace. Prints a projected, secret-free summary as JSON on stdout when piped. Never writes SERVER identities back into xano.lock (the compile step still maintains it as `export` does).",
@@ -221,9 +221,9 @@ const CLI_COMMANDS: readonly ManifestCliCommand[] = [
   },
   {
     command: "ephemeral list|get|delete|export",
-    args: "[<name>] [--global] [--workspace <id>] [--format <json|multidoc>] [--path <path>|-] [--yes]",
+    args: "[<name>] [--all-workspaces] [--workspace <id>] [--format <json|multidoc>] [--path <path>|-] [--yes]",
     flags: [
-      { flag: "list [--global]", description: "List ephemeral tenants in the workspace, or across all workspaces with --global. Expired-but-unswept rows are marked." },
+      { flag: "list [--all-workspaces]", description: "List ephemeral tenants in the token's parent workspace, or across every workspace on the instance with --all-workspaces. Expired-but-unswept rows are marked." },
       { flag: "get <name>", description: "Show one ephemeral's base URL, state, and expiry (JSON when piped)." },
       { flag: "delete <name> [--yes]", description: "Destroy an ephemeral (confirm unless --yes/--force). Idempotent if already gone; clears the matching local record." },
       { flag: "export <name> [--format json|multidoc] [--path <p>|-]", description: "Export the ephemeral's workspace as the JSON bundle (default) or XanoScript multidoc (.xs), mirroring `sandbox export`." },
@@ -245,25 +245,25 @@ const CLI_COMMANDS: readonly ManifestCliCommand[] = [
   },
   {
     command: "sandbox details",
-    args: "[--config <path>] [--global]",
+    args: "[--config <path>] [--local]",
     description:
       "Print the sandbox tenant as JSON, headlined by its public `baseUrl` — read it to point a frontend at the deployed backend without re-running a deploy. Projects only safe fields (never the raw tenant blob).",
   },
   {
     command: "profile me",
-    args: "[--config <path>] [--global]",
+    args: "[--config <path>] [--local]",
     description:
       "Print the scoped user and the instance base URL as JSON — read `instance` to configure a frontend's API base before a --static upload.",
   },
   {
     command: "login",
-    args: "[--origin <origin>] [--config <path>] [--global] [--port <n>] [--scope <list>]",
-    description: "OAuth sign-in (browser consent; pick the instance at consent). Caches tokens in ./.xano/auth.json, or in the shared ~/.sidestep/auth.json with --global. For CI, set $XANO_REFRESH_TOKEN + $XANO_CLIENT_ID instead.",
+    args: "[--origin <origin>] [--config <path>] [--local] [--port <n>] [--scope <list>]",
+    description: "OAuth sign-in (browser consent; pick the instance at consent). Caches tokens in the shared ~/.sidestep/auth.json (reused from any project), or in the project-local ./.xano/auth.json with --local. For CI, set $XANO_REFRESH_TOKEN + $XANO_CLIENT_ID instead.",
   },
   {
     command: "logout",
-    args: "[--config <path>] [--global]",
-    description: "Revoke the refresh token and delete the cached credentials (add --global to clear the shared ~/.sidestep cache).",
+    args: "[--config <path>] [--local]",
+    description: "Revoke the refresh token and delete the cached credentials — the shared ~/.sidestep cache by default, or the project-local ./.xano cache with --local.",
   },
   {
     command: "lock",
@@ -274,6 +274,11 @@ const CLI_COMMANDS: readonly ManifestCliCommand[] = [
     command: "version",
     args: "",
     description: "Print the installed @sidestep/core version to stdout (also `--version` / `-v`). Handy for debugging which build is running.",
+  },
+  {
+    command: "help",
+    args: "",
+    description: "Print the grouped command reference to stdout (also the no-argument default, `--help`, and `-h`).",
   },
 ];
 
@@ -668,7 +673,7 @@ export function renderLlmsTxt(m: Manifest): string {
     "  and takes no action, pending a record-preserving import (a release must not",
     "  wipe production table data the way a full replace would).",
     "- `sidestep ephemeral <list|get|delete|export>` — fully manage those",
-    "  environments. `list [--global]` enumerates them (expired rows marked); `get",
+    "  environments. `list [--all-workspaces]` enumerates them (expired rows marked); `get",
     "  <name>` shows the base URL/state/expiry; `delete <name>` destroys one",
     "  (idempotent if already gone); `export <name>` mirrors `sandbox export`.",
     "  get/export/delete surface one actionable message when a tenant has expired or",
@@ -734,8 +739,9 @@ export function renderLlmsTxt(m: Manifest): string {
     "(README covers the exact cache TTL and why the dot form still works in app code.)",
     "",
     "Auth is OAuth: run `sidestep login` once (browser consent; you pick the",
-    "instance at consent; tokens cached in project-local `.xano/auth.json`,",
-    "auto-gitignored) — every `deploy` reuses and refreshes them. The target",
+    "instance at consent; tokens cached in the shared `~/.sidestep/auth.json`",
+    "and reused from any project, or in project-local `.xano/auth.json` with",
+    "`--local` — auto-gitignored) — every `deploy` reuses and refreshes them. The target",
     "instance is always the one the token is bound to (its `aud`); there is no",
     "instance flag.",
     "AGENTS/CI: authenticate with `$XANO_REFRESH_TOKEN` + `$XANO_CLIENT_ID` +",

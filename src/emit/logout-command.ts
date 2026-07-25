@@ -1,6 +1,6 @@
 /**
- * `sidestep logout` — sign out of the project-local token cache (or the shared
- * `~/.sidestep` cache with `--global`).
+ * `sidestep logout` — sign out of the shared `~/.sidestep` cache (or the
+ * project-local token cache with `--local`).
  *
  * Mirrors the sidestep dashboard BFF's logout: best-effort REVOKE the refresh
  * token at the authorization server (so a leaked cache file can't be replayed),
@@ -12,19 +12,29 @@
  */
 import type { ParsedArgs } from "./cli.js";
 import { OpenIdProvider } from "../auth/oauth.js";
-import { readTokens, clearTokens, resolveAuthFilePath } from "../auth/store.js";
+import { readTokens, clearTokens, resolveAuthFilePath, globalAuthFilePath } from "../auth/store.js";
 import { resolveScope } from "../auth/config.js";
-import { success, warn, detail, hostLabel } from "./ui.js";
+import { success, warn, info, detail, hostLabel } from "./ui.js";
 
 export async function runLogoutCommand(args: ParsedArgs): Promise<void> {
-  // "write" mode: like `login`, target a definite cache. Clearing credentials
-  // must never silently fall back to the shared global cache — a plain `logout`
-  // in a project with no local cache is a no-op, not a revoke of `--global`.
+  // "write" mode: like `login`, target a definite cache. Defaults to the shared
+  // global cache (the common sign-in); `--local` clears the project cache
+  // instead. Never falls back between the two — the target is exactly the one
+  // the flag (or its absence) names.
   const authFilePath = resolveAuthFilePath(args, "write");
+  const targetsGlobal = authFilePath === globalAuthFilePath();
   const saved = readTokens(authFilePath);
   if (!saved) {
-    detail(`Not signed in (no token cache at ${authFilePath}). Nothing to do.`);
+    // An explicitly requested logout that finds nothing is worth an `i` line
+    // (your command had no effect), not a dim incidental detail.
+    info(`Not signed in (no token cache at ${authFilePath}). Nothing to do.`);
     return;
+  }
+
+  // The global cache is reused across every project, so revoking it here signs
+  // the user out everywhere — surface that before the irreversible revoke.
+  if (targetsGlobal) {
+    warn("Clearing the shared ~/.sidestep cache — this signs you out of every project that reuses it.");
   }
 
   if (saved.refresh_token) {

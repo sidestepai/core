@@ -71,9 +71,9 @@ describe("sidestep ephemeral", () => {
     expect(m.mock.calls[0]![0]).toBe(`${INSTANCE}/api:meta/workspace/114/ephemeral`);
     expect(JSON.parse(stdout.join(""))).toHaveLength(1);
   });
-  it("list --global hits the global route", async () => {
+  it("list --all-workspaces hits the cross-workspace route", async () => {
     const m = seq(res([LIVE]));
-    await run(["ephemeral", "list", "--config", authFile, "--global"]);
+    await run(["ephemeral", "list", "--config", authFile, "--all-workspaces"]);
     expect(m.mock.calls[0]![0]).toBe(`${INSTANCE}/api:meta/ephemeral`);
   });
   it("list without --workspace resolves the workspace id from the token (never hard-codes 1)", async () => {

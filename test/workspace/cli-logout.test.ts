@@ -98,9 +98,9 @@ describe("sidestep logout", () => {
     expect(stderr.join("")).toMatch(/not signed in/i);
   });
 
-  it("without --global never touches the shared cache (no silent global revoke)", async () => {
-    // A global cache exists, but the project has no local cache and we do not
-    // pass --global. `logout` must be a no-op — not a revoke of the shared cred.
+  it("--local never touches the shared cache (no silent global revoke)", async () => {
+    // A global cache exists, but with --local and no project-local cache
+    // `logout` must be a no-op — not a revoke of the shared cred.
     const globalPath = join(dir, "global", "auth.json");
     mkdirSync(join(dir, "global"), { recursive: true });
     writeFileSync(globalPath, JSON.stringify({ refresh_token: "shared-ref", auth_host: "https://app.xano.com", client_id: "dcr-abc" }));
@@ -109,7 +109,7 @@ describe("sidestep logout", () => {
     const cwd = process.cwd();
     try {
       process.chdir(dir); // no ./.xano/auth.json here
-      await run(["logout"]);
+      await run(["logout", "--local"]);
     } finally {
       process.chdir(cwd);
       delete process.env.XANO_GLOBAL_CONFIG;
@@ -120,7 +120,7 @@ describe("sidestep logout", () => {
     expect(stderr.join("")).toMatch(/not signed in/i);
   });
 
-  it("with --global revokes and clears the shared cache", async () => {
+  it("by default revokes and clears the shared global cache", async () => {
     const globalPath = join(dir, "global", "auth.json");
     mkdirSync(join(dir, "global"), { recursive: true });
     writeFileSync(
@@ -141,7 +141,7 @@ describe("sidestep logout", () => {
       throw new Error(`unexpected fetch: ${url}`);
     });
     try {
-      await run(["logout", "--global"]);
+      await run(["logout"]);
     } finally {
       delete process.env.XANO_GLOBAL_CONFIG;
     }
@@ -150,5 +150,7 @@ describe("sidestep logout", () => {
     expect(new URLSearchParams(revokeCall![1]!.body as string).get("token")).toBe("shared-ref");
     expect(existsSync(globalPath)).toBe(false); // shared cache cleared
     expect(stderr.join("")).toContain("Signed out");
+    // The user is warned that clearing the shared cache signs them out everywhere.
+    expect(stderr.join("")).toMatch(/every project/i);
   });
 });

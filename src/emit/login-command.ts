@@ -7,8 +7,8 @@
  * (discovers endpoints and dynamically registers, or reuses, a client whose
  * redirect_uri is exactly that loopback URL) → open the browser to the authorize
  * URL → capture the callback → exchange the code → read the bound instance from
- * the token's `aud` claim → write the project-local cache (0600) and ensure it
- * is gitignored.
+ * the token's `aud` claim → write the shared global cache (0600, or the
+ * project-local one with `--local`) and ensure it is gitignored.
  *
  * The user always picks the target instance at the hosted consent screen (like
  * the dashboard); the saved instance is the token's true `aud`, never a flag.
@@ -24,7 +24,7 @@ import * as client from "openid-client";
 import type { ParsedArgs } from "./cli.js";
 import { OpenIdProvider, oauthErrorCode, decodeAudience, CALLBACK_PATH, DEFAULT_PORT } from "../auth/oauth.js";
 import { startCallbackServer, openBrowser } from "../auth/loopback.js";
-import { writeTokens, ensureGitignored, resolveAuthFilePath, type TokenRecord } from "../auth/store.js";
+import { writeTokens, ensureGitignored, resolveAuthFilePath, globalAuthFilePath, type TokenRecord } from "../auth/store.js";
 import { resolveAuthHost, resolveScope, assertHttpsOrigin } from "../auth/config.js";
 import { step, success, warn, detail, blank, hostLabel } from "./ui.js";
 
@@ -54,8 +54,12 @@ export async function runLoginCommand(args: ParsedArgs): Promise<void> {
   blank();
   success(`Signed in to ${hostLabel(record.instance)}`);
   detail(`Tokens saved to ${authFilePath}`);
-  if (args.global) {
+  // Scope line keys on the resolved path, not the flag: an explicit `--config`
+  // path is neither cache, so it gets no (potentially false) scope claim.
+  if (authFilePath === globalAuthFilePath()) {
     detail("Using the shared ~/.sidestep cache — available from any project directory.");
+  } else if (args.local) {
+    detail("Using the project-local .xano cache — scoped to this directory.");
   }
 
   // Tokens are already durably saved; a .gitignore failure must not fail the

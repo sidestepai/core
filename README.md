@@ -1139,7 +1139,7 @@ sidestep deploy ./xano/index.ts --dest sandbox             # …or your throwawa
 sidestep deploy ./xano/index.ts --static ./frontend/dist   # also deploy a static frontend (onto the ephemeral)
 sidestep deploy ./xano/index.ts --static ./frontend/dist --static-env PK=pk_live_1   # + extra public config
 sidestep deploy --bundle ws.json             # deploy an already-exported bundle
-sidestep ephemeral list                      # list your ephemeral environments (--global for all workspaces)
+sidestep ephemeral list                      # list your ephemeral environments (--all-workspaces spans every workspace)
 sidestep ephemeral get <name>                # base URL, state, and expiry for one
 sidestep ephemeral delete <name> --yes       # destroy one
 sidestep release ./xano/index.ts             # promote to your main instance workspace (coming soon)
@@ -1148,8 +1148,9 @@ sidestep sandbox export --format multidoc --name backend               # …or t
 sidestep sandbox export --format multidoc --path -                     # …stream the multidoc to stdout (deploy first)
 sidestep sandbox details                     # print the sandbox base URL + tenant details (pretty on a TTY, JSON when piped)
 sidestep profile me                          # print the scoped user + instance base URL (pretty on a TTY, JSON when piped)
-sidestep logout                              # revoke the refresh token + delete the local cache
+sidestep logout                              # revoke the refresh token + clear the shared cache (--local for the project one)
 sidestep version                             # print the installed @sidestep/core version
+sidestep help                                # grouped command reference (also the no-arg default)
 
 sidestep validate ./xano/index.ts            # import into a live instance, diff each object back
 sidestep validate ./xano/index.ts --runtime  # also run each deployed function on the engine
@@ -1228,18 +1229,18 @@ authorize step never depends on the server tolerating an arbitrary loopback port
 registration is cached in `~/.xano/sidestep-clients.json`. The instance you're bound to is
 read from the token's own `aud` claim.
 
-Tokens (access + refresh) cache in a **project-local** `./.xano/auth.json`, which `login`
-**auto-adds to `.gitignore`**. Override with `--config`/`$XANO_CONFIG`, the OAuth host with
-`--origin`/`$XANO_ORIGIN`, and the loopback port with `--port`.
+Tokens (access + refresh) cache by default in a **shared** `~/.sidestep/auth.json`, reusable
+from **any** project directory — so a single `sidestep login` covers all your projects.
+Override the OAuth host with `--origin`/`$XANO_ORIGIN` and the loopback port with `--port`.
 
-**Global credentials** — pass `--global` to `login` to cache tokens in a **shared**
-`~/.sidestep/auth.json` instead, reusable from any project directory. Every command that
-**reads** credentials (`deploy`/`details`, `profile me`, token refresh) resolves them
-**project-local first, global as a fallback**: it uses `./.xano/auth.json` when present,
-otherwise `~/.sidestep/auth.json` — so a single `sidestep login --global` covers directories
-that have no local cache. `login` and `logout` do **not** fall back: they target the
-project-local cache unless you pass `--global`, so a plain `logout` never revokes the shared
-credential. An explicit `--config`/`$XANO_CONFIG` always wins over everything.
+**Project-local credentials** — pass `--local` to `login` to cache tokens in a
+**project-local** `./.xano/auth.json` instead (which `login` **auto-adds to `.gitignore`**),
+scoping the sign-in to that directory. Every command that **reads** credentials
+(`deploy`/`details`, `profile me`, token refresh) resolves them **project-local first, global
+as a fallback**: it uses `./.xano/auth.json` when present, otherwise `~/.sidestep/auth.json` —
+so a `--local` project keeps working without repeating the flag. `login` and `logout` do
+**not** fall back: they target the shared global cache unless you pass `--local`. An explicit
+`--config`/`$XANO_CONFIG` always wins over everything.
 
 `deploy <file>` runs the exact same pipeline as `export` (including `xano.lock`
 seeding), then create-or-refreshes the target environment and imports the compiled

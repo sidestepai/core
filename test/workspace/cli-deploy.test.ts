@@ -151,15 +151,18 @@ describe("sidestep deploy", () => {
     expect(body).toMatchObject({ display: "PR 123", expires_hours: 24 });
   });
 
-  it("writes ephemeral state to the LOCAL project even when authed via --global", async () => {
-    // token lives in a global cache, but the ephemeral record must still land in ./.xano/
+  it("writes ephemeral state to the LOCAL project even when authed via the shared global cache", async () => {
+    // token lives only in the shared global cache (the default), but the
+    // ephemeral record must still land in ./.xano/. Remove the project-local
+    // cache so auth genuinely resolves to the global one.
     const globalCache = join(dir, "global-auth.json");
     writeFileSync(globalCache, readFileSync(authFile, "utf8"));
+    rmSync(authFile);
     const prev = process.env.XANO_GLOBAL_CONFIG;
     process.env.XANO_GLOBAL_CONFIG = globalCache;
     try {
       seq(res(EPH), res(EPH), res({ id: 1 }));
-      await run(["deploy", "--bundle", bundleFile(dir), "--global", "--workspace", "114"]);
+      await run(["deploy", "--bundle", bundleFile(dir), "--workspace", "114"]);
       // state is project-local (dir/.xano/ephemeral.json), not next to the global cache
       expect(existsSync(statePath(dir))).toBe(true);
       expect(JSON.parse(readFileSync(statePath(dir), "utf8")).environments["114"].name).toBe("e4f2-9ab1");

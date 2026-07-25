@@ -1,4 +1,4 @@
-# sidestep v4.0.3
+# sidestep v4.1.0
 
 > TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.
 
@@ -118,7 +118,7 @@ live environment and prints its URL. `sidestep init` → `sidestep deploy` → U
   and takes no action, pending a record-preserving import (a release must not
   wipe production table data the way a full replace would).
 - `sidestep ephemeral <list|get|delete|export>` — fully manage those
-  environments. `list [--global]` enumerates them (expired rows marked); `get
+  environments. `list [--all-workspaces]` enumerates them (expired rows marked); `get
   <name>` shows the base URL/state/expiry; `delete <name>` destroys one
   (idempotent if already gone); `export <name>` mirrors `sandbox export`.
   get/export/delete surface one actionable message when a tenant has expired or
@@ -184,8 +184,9 @@ exact match wrongly reads as "not injected"): `curl -s "$URL/?nocache=$EPOCH" | 
 (README covers the exact cache TTL and why the dot form still works in app code.)
 
 Auth is OAuth: run `sidestep login` once (browser consent; you pick the
-instance at consent; tokens cached in project-local `.xano/auth.json`,
-auto-gitignored) — every `deploy` reuses and refreshes them. The target
+instance at consent; tokens cached in the shared `~/.sidestep/auth.json`
+and reused from any project, or in project-local `.xano/auth.json` with
+`--local` — auto-gitignored) — every `deploy` reuses and refreshes them. The target
 instance is always the one the token is bound to (its `aud`); there is no
 instance flag.
 AGENTS/CI: authenticate with `$XANO_REFRESH_TOKEN` + `$XANO_CLIENT_ID` +
