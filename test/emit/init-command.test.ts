@@ -182,6 +182,18 @@ describe("runInitCommand — orchestration (U3)", () => {
     expect(exampleMd).toContain("s.ai.agent.run");
   });
 
+  it("api.ts demonstrates the split-route-metadata pattern (#140)", async () => {
+    const target = join(dir, "split");
+    await runInitCommand(parseArgs(["init", target, "--no-install"]));
+    const apiTs = readFileSync(join(target, "frontend/src/lib/api.ts"), "utf8");
+    // Types imported type-only (erased), and the heavy-def escape hatch is shown.
+    expect(apiTs).toContain("import type { InferInput, InferResponse }");
+    expect(apiTs).toContain("ROUTES");
+    expect(apiTs).toContain("sidestep paths");
+    // Warns against importing the whole workspace for a path.
+    expect(apiTs).toMatch(/never[\s\S]*index\.js/i);
+  });
+
   it("refuses a non-empty target without --force, proceeds with it", async () => {
     const target = join(dir, "occupied");
     mkdirSync(target, { recursive: true });

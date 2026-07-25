@@ -338,6 +338,30 @@ describe("InferResponse — single-variable trace (U5, type-level)", () => {
     expectTypeOf<InferResponse<typeof patchLink>>().toEqualTypeOf<InferRow<typeof link>>();
   });
 
+  it("create_auth_token result returned → string, not unknown (#140)", () => {
+    const login = query({
+      verb: "POST",
+      apiGroup: links,
+      name: "login_token",
+      stack: [s.security.create_auth_token({ table: link, id: c.int(1), as: "token" })],
+      response: ref("token"),
+    });
+    expect(login.name).toBe("login_token");
+    expectTypeOf<InferResponse<typeof login>>().toEqualTypeOf<string>();
+  });
+
+  it("the token traces inside a record response too (the auth-response pattern, #140)", () => {
+    const login = query({
+      verb: "POST",
+      apiGroup: links,
+      name: "login_record",
+      stack: [s.security.create_auth_token({ table: link, id: c.int(1), as: "token" })],
+      response: { token: ref("token") },
+    });
+    expect(login.name).toBe("login_record");
+    expectTypeOf<InferResponse<typeof login>>().toEqualTypeOf<{ token: string }>();
+  });
+
   it("add_or_edit: db.add_or_edit upserted result returned → InferRow<typeof link>", () => {
     const upsertLink = query({
       verb: "POST",

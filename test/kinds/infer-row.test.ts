@@ -52,6 +52,18 @@ const external = table({
   system: false,
 });
 
+// FK columns store the referenced table's PK value: a default (int) reference is
+// a `number`, a `{ type: "uuid" }` reference is a `string` — never `string | number`.
+const comment = table({
+  name: "comment",
+  schema: {
+    body: f.text({ required: true }),
+    post_id: f.tableRef("post"),
+    author_id: f.tableRef("owned", { type: "uuid" }),
+    parent_id: f.tableRef("comment", { nullable: true }),
+  },
+});
+
 describe("InferRow (type-level)", () => {
   it("derives declared columns + injected system columns; all keys present", () => {
     expect(post.name).toBe("post");
@@ -103,6 +115,21 @@ describe("InferRow (type-level)", () => {
       sku: string;
       qty: number;
     }>();
+  });
+
+  it("tableRef FK infers the referenced PK's scalar type, not `string | number`", () => {
+    expect(comment.name).toBe("comment");
+    expectTypeOf<InferRow<typeof comment>>().toEqualTypeOf<{
+      id: number;
+      created_at: number;
+      body: string;
+      post_id: number;
+      author_id: string;
+      parent_id: number | null;
+    }>();
+    // Guard the exact members against the old loose `string | number` brand.
+    expectTypeOf<InferRow<typeof comment>>().toHaveProperty("post_id").toEqualTypeOf<number>();
+    expectTypeOf<InferRow<typeof comment>>().toHaveProperty("author_id").toEqualTypeOf<string>();
   });
 
   it("RowOf composes directly from a FieldMap", () => {

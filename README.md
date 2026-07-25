@@ -426,7 +426,10 @@ also pulls whatever its `stack` builds — the `s.*`/`c.*` factory *calls* run a
 to construct the def, so they can't be tree-shaken out. Types are free (`InferInput`/
 `InferRow` erase to nothing — use `import type`). To keep the client bundle lean, keep the
 route metadata a frontend needs (the handle for `getPath()`/`verb`, plus `type` imports)
-in a module separate from your stack-heavy authoring.
+in a module separate from your stack-heavy authoring — and for a def whose stack builds a
+heavy graph (an agent + its tools via `s.ai.agent.run`), don't import it in the browser at
+all: declare its `{ path, verb }` as plain metadata and verify it against the compiled
+bundle with `sidestep paths`.
 
 ---
 
