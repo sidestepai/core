@@ -1,73 +1,219 @@
 /**
- * `sidestep sandbox deploy` — compile-or-load a bundle, POST it to the sandbox,
- * and optionally upload a static frontend alongside it.
+ * `sidestep deploy [--dest sandbox|ephemeral]` — compile-or-load a bundle and
+ * import it into an environment. Default `--dest ephemeral`.
  *
- * The sandbox is the only deploy target. It is a throwaway dev loop against the
- * caller's singleton sandbox tenant, so nothing the SERVER returns is ever written
- * back into `xano.lock` — the sandbox is a different, ephemeral workspace and
- * reconciling its identities would pollute the lock. Guid reconciliation stays a
- * separate, explicit step (`sidestep lock adopt`) driven off an exported bundle.
+ * The two destinations share one archive-import core: each env is its own Xano
+ * environment at its own base URL, the caller's SAME OAuth token authenticates
+ * there, and the import goes to `{base_url}/api:meta/workspace/1/import` — a full
+ * clear-then-replace (reset is inherent; there is no opt-out).
  *
- * Note this is narrower than "never touches the lock": deploying an ENTRY FILE
- * goes through `exportBundleJson`, the same compile pipeline as `sidestep export`,
- * which does maintain the local lock as a side effect (when one exists or `--lock`
- * is passed). That write is local-identity bookkeeping, unrelated to the deploy.
- * `--bundle <path>` skips compiling entirely and so never touches the lock.
+ *   • `--dest ephemeral` (default): read `.xano/ephemeral.json` for the active
+ *     tenant, GET it, and create-or-refresh — a live tenant is refreshed (URL
+ *     unchanged); a 404/expired one is recreated (URL change is called out).
+ *   • `--dest sandbox`: resolve the singleton sandbox (`/api:meta/sandbox/me`)
+ *     and import into it. No local state; no URL-change tracking.
  *
- * `--static <dir>` deploys the frontend to the caller's OWN (parent) workspace,
- * NOT the sandbox — the sandbox tenant does not serve static hosting (see
- * `../deploy/static-host.js`). The target workspace id is resolved from the OAuth
- * token (`../deploy/workspace.js`) and the upload uses the caller's ordinary
- * bearer, so the static step is independent of the backend deploy.
+ * Nothing the server returns is written back into `xano.lock` — the env is a
+ * different, throwaway workspace and reconciling its identities would pollute the
+ * lock. (Compiling an ENTRY FILE still maintains the local lock via
+ * `exportBundleJson`, unrelated to the deploy.)
  *
- * Both steps are independently idempotent: a static failure after a committed
- * backend deploy exits with a distinct code and a resumable message rather than
- * rolling anything back.
+ * `--static <dir>` deploys a frontend to the caller's OWN (parent) workspace, not
+ * the env — the env does not serve static hosting. Independent of the backend
+ * import: a static failure after a committed import exits distinctly.
  *
  * Node-only and lazily imported so the browser-safe authoring bundle stays clean.
  */
 import type { ParsedArgs } from "./cli.js";
 import { loadBundleText } from "./bundle-input.js";
 import { getAccessToken, type ResolvedAuth } from "../auth/token.js";
-import { postDeploy } from "../deploy/client.js";
-import { step, success, warn, detail, link } from "./ui.js";
+import { encodeWorkspaceArchive } from "../validate/archive.js";
+import { importWorkspaceArchive } from "../deploy/import.js";
+import {
+  createEphemeral,
+  getEphemeral,
+  waitUntilReady,
+  isExpired,
+  tenantBaseUrl,
+  type EphemeralSummary,
+} from "../deploy/ephemeral.js";
+import { readEphemeralState, getEnvironment, setEnvironment } from "../deploy/ephemeral-state.js";
+import { resolveScopedWorkspaceId } from "../deploy/workspace.js";
+import { step, success, warn, detail, info, link, formatExpiration } from "./ui.js";
+import { basename } from "node:path";
 
-const SANDBOX_DEPLOY_PATH = "/api:meta/sandbox/bundle";
-
-/** Exit code for a post-commit static failure (the backend deploy itself succeeded). */
+/** Exit code for a post-commit static failure (the backend import itself succeeded). */
 const EXIT_STATIC_FAILED = 3;
+/** Metadata fetch bound for `sandbox/me`, matching the other meta reads. */
+const SANDBOX_TIMEOUT_MS = 30_000;
 
-/**
- * The projected, safe-to-print deploy result written to stdout as JSON. Mirrors
- * `sandbox details` / `profile me`: only the stable, useful fields — never the
- * raw workspace blob, which carries per-tenant secrets (crypto keys, salts,
- * documentation tokens) that must not land in shell history or CI logs.
- */
+/** Deploy destination. */
+export type DeployDest = "sandbox" | "ephemeral";
+
 interface DeploySummary {
-  baseUrl: string | undefined;
-  workspace: { id: number | undefined; name: string | undefined } | undefined;
+  dest: DeployDest;
+  url: string | undefined;
+  ephemeral?: { name: string; display: string | undefined; expiresAt: string | number | undefined };
+  created?: boolean;
   static?: { url: string | undefined };
 }
 
 /**
- * Upload `dir` to the caller's (parent) workspace static host. Resolves the
- * target workspace id from the OAuth token, then uploads with the caller's own
- * bearer — the sandbox tenant does not serve static hosting, so the frontend
- * lives on the real workspace.
- */
-/**
  * Build the static-host config globals: the backend URL is seeded as `XANO_HOST`,
- * then the caller's `--static-env` pairs override/extend it (an explicit
- * `XANO_HOST=` wins over the seed). Exported for tests.
+ * then the caller's `--static-env` pairs override/extend it. Exported for tests.
  */
-export function buildStaticEnv(
-  baseUrl: string | undefined,
-  staticEnv: Record<string, string>,
-): Record<string, string> {
+export function buildStaticEnv(baseUrl: string | undefined, staticEnv: Record<string, string>): Record<string, string> {
   const env: Record<string, string> = {};
   if (baseUrl) env.XANO_HOST = baseUrl;
   Object.assign(env, staticEnv);
   return env;
+}
+
+/**
+ * Best-effort display name for an auto-created ephemeral: the workspace name
+ * baked into the compiled bundle, else the project directory basename.
+ */
+export function deriveDisplay(bundleText: string, cwd: string): string {
+  try {
+    const parsed = JSON.parse(bundleText) as { payload?: { workspace?: Array<{ name?: unknown }> } };
+    const name = parsed.payload?.workspace?.[0]?.name;
+    if (typeof name === "string" && name.trim() !== "") return name;
+  } catch {
+    /* fall through to the directory name */
+  }
+  return basename(cwd) || "sidestep-app";
+}
+
+/** Resolve the sandbox's base URL via get-or-create `sandbox/me`. */
+async function resolveSandboxBaseUrl(auth: ResolvedAuth): Promise<string> {
+  const url = new URL("/api:meta/sandbox/me", auth.instance);
+  const res = await fetch(url.href, {
+    headers: { accept: "application/json", Authorization: `Bearer ${auth.access_token}` },
+    signal: AbortSignal.timeout(SANDBOX_TIMEOUT_MS),
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`resolve sandbox failed (${res.status} ${res.statusText}):\n${text}`);
+  let tenant: Record<string, unknown> = {};
+  try {
+    tenant = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    throw new Error(`resolve sandbox: could not parse the ${url.pathname} response as JSON:\n${text}`);
+  }
+  return tenantBaseUrl(tenant, auth.instance);
+}
+
+export async function runDeployCommand(args: ParsedArgs): Promise<void> {
+  const dest: DeployDest = args.dest ?? "ephemeral";
+
+  // `--reset` is accepted but a no-op: every deploy is a full replace now.
+  if (args.reset) info("`--reset` is redundant — deploy is always a full replace.");
+
+  const { bundle, source } = await loadBundleText(
+    args,
+    `Missing input. Usage: sidestep deploy [--dest sandbox|ephemeral] <file> | --bundle <path>.`,
+  );
+
+  const auth = await getAccessToken(args);
+  const archive = encodeWorkspaceArchive(bundle);
+
+  const summary: DeploySummary =
+    dest === "sandbox"
+      ? await deploySandbox(auth, archive, source)
+      : await deployEphemeral(auth, { archive, bundle, source, args });
+
+  if (args.static !== undefined) {
+    const env = buildStaticEnv(summary.url, args.staticEnv);
+    const explicit = Object.keys(args.staticEnv).length > 0;
+    try {
+      summary.static = await deployParentStatic(args.static, auth, env, explicit, args.staticHost);
+    } catch (err) {
+      warn("Backend deployed, but the static-host upload failed:");
+      detail(err instanceof Error ? err.message : String(err));
+      detail(
+        `Retry just the static step: sidestep deploy --static ${args.static}` +
+          (args.staticHost ? ` --static-host ${args.staticHost}` : ""),
+      );
+      process.exitCode = EXIT_STATIC_FAILED;
+    }
+  }
+
+  // stdout is the machine-readable data channel: emit the projected, secret-free
+  // summary as JSON when it's piped or redirected. On an interactive terminal the
+  // progress lines already carry the URL, so a raw dump would just be noise.
+  if (!process.stdout.isTTY) {
+    process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
+  }
+}
+
+async function deploySandbox(auth: ResolvedAuth, archive: Uint8Array, source: string): Promise<DeploySummary> {
+  step(`Deploying ${source} → sandbox (full replace)`);
+  const baseUrl = await resolveSandboxBaseUrl(auth);
+  await importWorkspaceArchive(auth, { baseUrl, archive });
+  success("Backend deployed to sandbox");
+  link(baseUrl);
+  return { dest: "sandbox", url: baseUrl };
+}
+
+async function deployEphemeral(
+  auth: ResolvedAuth,
+  ctx: { archive: Uint8Array; bundle: string; source: string; args: ParsedArgs },
+): Promise<DeploySummary> {
+  const { archive, bundle, source, args } = ctx;
+  const parentWorkspaceId = args.workspace ?? (await resolveScopedWorkspaceId(auth));
+  const dir = process.cwd();
+  const stored = getEnvironment(readEphemeralState(dir), parentWorkspaceId);
+
+  // Decide refresh (existing, live) vs. create (none tracked, or gone/expired).
+  let target: EphemeralSummary | null = null;
+  if (stored) {
+    const existing = await getEphemeral(auth, { parentWorkspaceId, name: stored.name });
+    if (existing && !isExpired(existing.expiresAt)) target = existing;
+  }
+  const created = target === null;
+
+  if (target === null) {
+    const display = args.name ?? deriveDisplay(bundle, dir);
+    step(`Deploying ${source} → new ephemeral "${display}"`);
+    const fresh = await createEphemeral(auth, { parentWorkspaceId, display, expiresHours: args.expiresHours });
+    detail(`Waiting for ${fresh.name} to become ready…`);
+    target = await waitUntilReady(auth, { parentWorkspaceId, name: fresh.name });
+  } else {
+    step(`Deploying ${source} → ephemeral ${target.name} (refresh, full replace)`);
+  }
+
+  const baseUrl = target.url;
+  if (baseUrl === undefined) {
+    throw new Error(`Ephemeral "${target.name}" has no base URL yet — try \`sidestep deploy\` again.`);
+  }
+
+  // Persist BEFORE import so an import failure still leaves a pointer the next
+  // deploy can refresh rather than leaking a fresh tenant.
+  setEnvironment(dir, parentWorkspaceId, {
+    name: target.name,
+    display: target.display ?? args.name ?? target.name,
+    url: baseUrl,
+    expires_at: target.expiresAt,
+  });
+
+  await importWorkspaceArchive(auth, { baseUrl, archive });
+
+  const urlChanged = created || (stored !== undefined && stored.url !== baseUrl);
+  if (urlChanged) {
+    success(`Ephemeral ${target.name} deployed`);
+    warn("New ephemeral URL:");
+    link(baseUrl);
+  } else {
+    success(`Refreshed ${target.name} (URL unchanged)`);
+    link(baseUrl);
+  }
+  detail(`Expires ${formatExpiration(target.expiresAt)}`);
+
+  return {
+    dest: "ephemeral",
+    url: baseUrl,
+    ephemeral: { name: target.name, display: target.display, expiresAt: target.expiresAt },
+    created,
+  };
 }
 
 async function deployParentStatic(
@@ -77,88 +223,20 @@ async function deployParentStatic(
   explicit: boolean,
   host?: string,
 ): Promise<DeploySummary["static"]> {
-  const { resolveScopedWorkspaceId } = await import("../deploy/workspace.js");
   const { deployStaticHost } = await import("../deploy/static-host.js");
 
   const workspaceId = await resolveScopedWorkspaceId(auth);
   step(`Deploying static frontend ${dir} → workspace #${workspaceId}${host ? ` (host: ${host})` : ""}`);
-  const sh = await deployStaticHost({
-    host,
-    dir,
-    workspaceId,
-    baseUrl: auth.instance,
-    accessToken: auth.access_token,
-    env,
-  });
+  const sh = await deployStaticHost({ host, dir, workspaceId, baseUrl: auth.instance, accessToken: auth.access_token, env });
 
-  // Report config injection as its own outcome before the deploy line, so the
-  // sub-steps read as a checklist that ends on the highlighted URL.
   const globals = Object.keys(env).map((k) => `window.${k}`);
   if (globals.length > 0) {
-    if (sh.envInjected) {
-      success(`Config injected into index.html: ${globals.join(", ")}`);
-    } else if (explicit) {
-      // The caller asked for config via --static-env and it could not be delivered — warn loudly.
-      warn(`Config not injected — no <head> in a root index.html to anchor to. ${globals.join(", ")} unset.`);
-    } else {
-      // Only the auto-seeded XANO_HOST was in play; a static host with no root index.html is a fine, quiet outcome.
-      detail(`No root index.html to inject window.XANO_HOST into — skipped.`);
-    }
+    if (sh.envInjected) success(`Config injected into index.html: ${globals.join(", ")}`);
+    else if (explicit) warn(`Config not injected — no <head> in a root index.html to anchor to. ${globals.join(", ")} unset.`);
+    else detail(`No root index.html to inject window.XANO_HOST into — skipped.`);
   }
 
   success("Static host deployed");
   if (sh.url) link(sh.url);
   return { url: sh.url };
-}
-
-export async function runDeployCommand(args: ParsedArgs): Promise<void> {
-  const { bundle, source } = await loadBundleText(
-    args,
-    `Missing input. Usage: sidestep sandbox deploy <file> | --bundle <path>.`,
-  );
-
-  step(
-    args.reset
-      ? `Deploying ${source} → sandbox (reset: clears the workspace, then imports)`
-      : `Deploying ${source} → sandbox (merge)`,
-  );
-
-  const query: Record<string, string> = {};
-  if (args.reset) query.reset = "true";
-
-  const auth = await getAccessToken(args);
-  const resp = await postDeploy({ bundle, endpointPath: SANDBOX_DEPLOY_PATH, auth, query });
-
-  success(resp.workspace?.name ? `Backend deployed to sandbox ${resp.workspace.name}` : "Backend deployed to sandbox");
-  if (resp.baseUrl) link(resp.baseUrl);
-
-  const summary: DeploySummary = {
-    baseUrl: resp.baseUrl,
-    workspace: resp.workspace ? { id: resp.workspace.id, name: resp.workspace.name } : undefined,
-  };
-
-  if (args.static !== undefined) {
-    // Seed the backend URL as window.XANO_HOST, then let --static-env override/extend it.
-    const env = buildStaticEnv(resp.baseUrl, args.staticEnv);
-    const explicit = Object.keys(args.staticEnv).length > 0;
-    try {
-      summary.static = await deployParentStatic(args.static, auth, env, explicit, args.staticHost);
-    } catch (err) {
-      warn("Backend deployed, but the static-host upload failed:");
-      detail(err instanceof Error ? err.message : String(err));
-      detail(
-        `Retry just the static step: sidestep sandbox deploy --static ${args.static}` +
-          (args.staticHost ? ` --static-host ${args.staticHost}` : ""),
-      );
-      process.exitCode = EXIT_STATIC_FAILED;
-    }
-  }
-
-  // stdout is the machine-readable data channel: emit the projected, secret-free
-  // summary as JSON when it's piped or redirected (`… deploy | jq`, CI logs). When
-  // stdout is an interactive terminal, a raw JSON dump under the formatted progress
-  // is just noise — the workspace and URLs are already shown as progress lines.
-  if (!process.stdout.isTTY) {
-    process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
-  }
 }

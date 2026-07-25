@@ -100,6 +100,24 @@ export function blank(): void {
 }
 
 /**
+ * Render an ephemeral expiry (the API serializes it as `"2026-07-24 20:49:15+0000"`,
+ * or tolerate a raw unix-epoch number) as a human "in Xh Ym" string, or "expired"
+ * once it has passed. Shared by `deploy`, `ephemeral list`, and `ephemeral get`
+ * so the countdown reads identically everywhere. Falls back to the raw value if
+ * it can't be parsed, and "—" when absent.
+ */
+export function formatExpiration(expiresAt: string | number | undefined | null): string {
+  if (expiresAt === undefined || expiresAt === null || expiresAt === "") return "—";
+  const ms = typeof expiresAt === "number" ? expiresAt * 1000 : Date.parse(String(expiresAt).replace(" ", "T"));
+  if (Number.isNaN(ms)) return String(expiresAt);
+  const diff = (ms - Date.now()) / 1000;
+  if (diff <= 0) return "expired";
+  const hours = Math.floor(diff / 3600);
+  const minutes = Math.floor((diff % 3600) / 60);
+  return `in ${hours}h ${minutes}m`;
+}
+
+/**
  * A human-friendly label for an origin: drop the scheme (and any trailing slash)
  * so `https://app.xano.com/` reads as `app.xano.com`. Falls back to the raw
  * string if it isn't a parseable URL.
