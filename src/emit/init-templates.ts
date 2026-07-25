@@ -306,9 +306,21 @@ full guidance.
 
 ## Wire the frontend
 
-In [\`../frontend/src/lib/api.ts\`](../frontend/src/lib/api.ts), import your query
-defs and derive paths and types from them (\`getPath()\`, \`InferInput\`,
-\`InferResponse\`) — never hand-type a URL or a request body.
+In [\`../frontend/src/lib/api.ts\`](../frontend/src/lib/api.ts), derive paths and
+types from your query defs (\`getPath()\`, \`InferInput\`, \`InferResponse\`) — never
+hand-type a URL or a request body.
+
+Keep the client bundle lean (**split route metadata from stack-heavy authoring**):
+
+- \`import type\` for shapes — \`InferInput\`/\`InferResponse\` erase to nothing.
+- Import the **one lean query def** for its \`getPath()\`/\`verb\`, never \`xano/index.ts\`
+  (that pulls the whole workspace). A def's \`s.*\`/\`c.*\` stack calls run at module
+  load to build it, so they can't be tree-shaken out of the bundle.
+- A def whose stack builds a heavy graph — an agent + its tools via \`s.ai.agent.run\`
+  — drags that whole graph in. For those, don't import the def in the browser:
+  declare its \`{ path, verb }\` as plain metadata (see the \`ROUTES\` example in
+  \`api.ts\`) and verify it against the compiled bundle with
+  \`npx sidestep paths xano/index.ts\`.
 `;
 }
 
@@ -364,14 +376,29 @@ export function renderIndexCss(): string {
 }
 
 export function renderApiTs(): string {
-  return `// The one contract: import your sidestep query defs and derive paths and
-// request/response *types* from them. Never hand-type a URL or a request body —
-// change a def and everything here follows.
+  return `// The one contract: derive paths and request/response *types* from your sidestep
+// query defs. Never hand-type a URL or a request body — change a def and
+// everything here follows.
+//
+// Keep the client bundle lean (the split-route-metadata rule):
+//   • \`import type\` for shapes — InferInput/InferResponse erase to nothing.
+//   • Import the ONE lean query def module for its getPath()/verb — never
+//     ../../../xano/index.js (that pulls the whole workspace) and never a def
+//     whose stack builds a heavy graph (an agent + its tools via s.ai.agent.run):
+//     those s.*/c.* factory calls run at module load and can't be tree-shaken out.
+//   • For such a stack-heavy endpoint, don't import its def in the browser at all —
+//     declare its { path, verb } in the ROUTES table below and verify it against
+//     the compiled bundle with \`npx sidestep paths xano/index.ts\`.
 //
 // This starter has no endpoints yet. Once you add one in xano/, wire it like:
 //
-//   import { createNoteQuery } from "../../../xano/api/create-note.js";
+//   // Types are free — always import them type-only.
 //   import type { InferInput, InferResponse } from "@sidestep/core";
+//   import type { createNoteQuery } from "../../../xano/api/create-note.js";
+//
+//   // Runtime path/verb: import the lean def value, OR (for a stack-heavy def)
+//   // read it from ROUTES so the def never enters the bundle.
+//   import { createNoteQuery } from "../../../xano/api/create-note.js";
 //
 //   export type CreateNoteBody = InferInput<typeof createNoteQuery>;
 //   export type Note = InferResponse<typeof createNoteQuery>;
@@ -385,6 +412,13 @@ export function renderApiTs(): string {
 //     if (!res.ok) throw new Error(await res.text());
 //     return res.json();
 //   }
+//
+// The stack-heavy escape hatch — plain metadata, no def import, no bundle cost.
+// Keep it in sync with \`npx sidestep paths xano/index.ts\` (it prints verb + path):
+//
+//   export const ROUTES = {
+//     triageRequest: { path: "/api:notes/triage_request", verb: "POST" },
+//   } as const;
 
 /**
  * The deployed Xano backend's base URL. Injected as \`window.XANO_HOST\` by
