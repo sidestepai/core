@@ -71,13 +71,20 @@ export function isExpired(expiresAt: string | number | undefined): boolean {
   return Number.isFinite(ms) && ms <= Date.now();
 }
 
-/** Project a raw tenant record to the safe summary, deriving its base URL. */
+/**
+ * Project a raw tenant record to the safe summary, deriving its base URL. The URL
+ * always resolves: the tenant's own `xano_domain` when it has one, else the
+ * instance-origin tenant path (`{instance}/tenant/{name}`) — the form dev/self-
+ * hosted instances use when a tenant has no dedicated domain. `url` is undefined
+ * only when the row carries no name to route to.
+ */
 function project(tenant: Record<string, unknown>, instance: string): EphemeralSummary {
+  const name = asString(tenant.name);
   return {
     id: asNumber(tenant.id),
-    name: asString(tenant.name) ?? "",
+    name: name ?? "",
     display: asString(tenant.display),
-    url: asString(tenant.xano_domain) ? tenantBaseUrl(tenant, instance) : undefined,
+    url: name !== undefined || asString(tenant.xano_domain) ? tenantBaseUrl(tenant, instance) : undefined,
     state: asString(tenant.state),
     expiresAt: (tenant.ephemeral_expires_at as string | number | undefined) ?? undefined,
     workspaceId: asNumber(tenant.workspace_id),
