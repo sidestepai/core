@@ -2,18 +2,19 @@
 
 # SideStep
 
-### Your Xano backend, as TypeScript. Deployed to a live URL in one command.
+### Your whole backend, in TypeScript. Live on the internet in one command.
 
-**Write your database, APIs, functions, triggers, and AI agents in typed TypeScript.
-Then `sidestep deploy` the whole thing — plus an optional static frontend — to a live,
-disposable Xano environment that spins up on demand and prints its URL.**
+**Write your app in TypeScript — the database, the APIs, even AI agents. Or let an
+AI write it for you. Then run one command and it's live on Xano's cloud, with its own
+URL. No servers, no setup, no config. That's it.**
 
 </div>
 
 ```bash
-npx sidestep login                 # 1. sign in once (OAuth — opens your browser)
-npx sidestep init my-app && cd my-app   # 2. scaffold a full-stack project
-npx sidestep deploy ./xano/index.ts --static ./dist   # 3. ship it → live URL
+npx sidestep login                      # 1. sign in (opens your browser)
+npx sidestep init my-app && cd my-app   # 2. scaffold your backend + frontend
+npm run build                           # 3. build your frontend → frontend/dist
+npx sidestep deploy ./xano/index.ts --static ./frontend/dist   # 4. deploy both → live URLs
 ```
 
 ```
@@ -28,13 +29,11 @@ npx sidestep deploy ./xano/index.ts --static ./dist   # 3. ship it → live URL
 
 <div align="center">
 
-**Three commands from empty folder to a live full-stack app.** `init` scaffolds a
-typed backend and a Vite + React frontend; `deploy` spins up an **ephemeral environment**
-and ships the database, APIs, functions, triggers — **and** the compiled web app — in a
-single authenticated call, then hands you a URL. Deploy again and it refreshes the same
-environment; edit your TypeScript (by hand or with an AI agent) and `deploy` again — you're
-iterating on real infrastructure in seconds. No export/import dance, no upload script, no CI
-glue between your API and your app.
+**From an empty folder to a live full-stack app.** `init` sets up your project — a
+TypeScript backend and a React frontend. `npm run build` builds your frontend, then
+`deploy` puts both online and hands you a live URL. Change your code — yourself or with
+an AI — and deploy again; your app updates in seconds. No servers to set up, nothing to
+configure, no glue code between your backend and your frontend.
 
 [Deploy it](#deploy-it-backend--frontend-one-command) ·
 [The model](#the-model-typescript-in-real-infrastructure-out) ·
@@ -100,8 +99,8 @@ and uploads it to the edge-served static host, right after the backend import, i
 ```bash
 # Build once, then ship backend + frontend together. The deploy wires the
 # backend URL into the frontend for you — no need to know it before building.
-npm run build                                          # → ./dist
-npx sidestep deploy ./xano/index.ts --static ./dist
+npm run build                                          # → frontend/dist
+npx sidestep deploy ./xano/index.ts --static ./frontend/dist
 ```
 
 ```
@@ -132,7 +131,7 @@ glue wiring the two together. Manage your environments with `sidestep ephemeral
 > `window.XANO_HOST` is the **sandbox tenant** URL your deployed APIs answer at (the same
 > value `sidestep sandbox details` prints as `baseUrl`); it is *not* `sidestep profile me`,
 > which prints your account's instance origin. Because injection happens at deploy time, a
-> prebuilt `./dist` retargets any sandbox with **no rebuild** — ideal for headless agents.
+> prebuilt `frontend/dist` retargets any sandbox with **no rebuild** — ideal for headless agents.
 > Add your own public config (base URLs, *publishable* keys) with `--static-env KEY=VALUE`
 > (repeatable), exposed the same way as `window.<KEY>`. A static host serves these files
 > verbatim to the browser, so everything injected is **public** — never put secrets here;
@@ -1137,8 +1136,8 @@ sidestep lock adopt live-export.json --yes   # seed the lock from a live engine 
 sidestep login                               # OAuth sign-in (once) — pick the instance at consent
 sidestep deploy ./xano/index.ts              # compile + import into a live ephemeral (the dev loop) → URL
 sidestep deploy ./xano/index.ts --dest sandbox             # …or your throwaway singleton sandbox
-sidestep deploy ./xano/index.ts --static ./dist            # also deploy a static frontend (onto the ephemeral)
-sidestep deploy ./xano/index.ts --static ./dist --static-env PK=pk_live_1   # + extra public config
+sidestep deploy ./xano/index.ts --static ./frontend/dist   # also deploy a static frontend (onto the ephemeral)
+sidestep deploy ./xano/index.ts --static ./frontend/dist --static-env PK=pk_live_1   # + extra public config
 sidestep deploy --bundle ws.json             # deploy an already-exported bundle
 sidestep ephemeral list                      # list your ephemeral environments (--global for all workspaces)
 sidestep ephemeral get <name>                # base URL, state, and expiry for one
@@ -1278,7 +1277,7 @@ values are **public**: base URLs and *publishable* keys only, never secrets (tho
 backend env, read via `env(name)`). Injection is skipped (reported as a warning, not a
 failure) when the archive has no root `index.html` with a `<head>` to anchor to; values are
 `<`-escaped so one containing `</script>` can't break out of the element. This is why a
-prebuilt `./dist` can retarget any sandbox with no rebuild.
+prebuilt `frontend/dist` can retarget any sandbox with no rebuild.
 
 > **Caching — verify with a cache buster.** The static host serves `index.html` with
 > `Cache-Control: public, max-age=3600`, so a browser (or CDN) that loaded the page before
