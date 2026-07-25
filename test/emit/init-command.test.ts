@@ -91,6 +91,9 @@ describe("templates (U2)", () => {
     const pkg = JSON.parse(renderPackageJson({ appName: "my-app", coreVersion: "3.9.7" }));
     expect(pkg.name).toBe("my-app");
     expect(pkg.dependencies["@sidestep/core"]).toBe("^3.9.7");
+    // @sidestep/auth is bundled by default — it's the add-on nearly every project
+    // reaches for, and the scaffold references its registerAuth(...) example.
+    expect(pkg.dependencies["@sidestep/auth"]).toMatch(/^\^\d+\.\d+\.\d+/);
     expect(pkg.scripts["xano:deploy"]).toContain("./frontend/dist");
     expect(pkg.scripts["xano:export"]).toContain("./xano/index.ts");
   });

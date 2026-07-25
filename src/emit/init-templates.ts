@@ -29,6 +29,15 @@ export function coreDep(coreVersion: string): string {
   return /^\d+\.\d+\.\d+/.test(coreVersion) ? `^${coreVersion}` : "^3.0.0";
 }
 
+/**
+ * The `@sidestep/auth` range for the scaffold. Bundled by default because auth is
+ * the add-on nearly every project reaches for, and the scaffold references it in
+ * the README + `xano/index.ts` — pre-installing it means the `registerAuth(...)`
+ * example works without a separate `npm i`. Independent release cadence from the
+ * CLI, so it's a plain pin; bump it here when auth ships a new minor.
+ */
+const AUTH_DEP = "^0.4.0";
+
 export function renderPackageJson({ appName, coreVersion }: TemplateVars): string {
   const pkg = {
     name: appName,
@@ -45,6 +54,7 @@ export function renderPackageJson({ appName, coreVersion }: TemplateVars): strin
     },
     dependencies: {
       "@sidestep/core": coreDep(coreVersion),
+      "@sidestep/auth": AUTH_DEP,
       react: "^19.1.0",
       "react-dom": "^19.1.0",
     },
@@ -189,8 +199,8 @@ body — change a def and the frontend types follow.
 sidestep is composable with other \`@sidestep/*\` packages:
 
 - **[\`@sidestep/auth\`](https://www.npmjs.com/package/@sidestep/auth)** — turnkey
-  authentication (user/login/signup tables and endpoints). Install it
-  (\`npm i @sidestep/auth\`) and register it in \`xano/index.ts\`.
+  authentication (user/login/signup tables and endpoints). Already installed;
+  register it in \`xano/index.ts\` when you want it.
 - More \`@sidestep/*\` packages can register onto the same workspace as they
   become available.
 `;
