@@ -135,6 +135,21 @@ describe("manifest", () => {
     }
   });
 
+  // #145 (Trap B): the input.password → check_password double-hash footgun (#109)
+  // is guarded only by prose (a static/runtime rejection is infeasible — the value
+  // at the check_password call site is an unbranded inp("password")). Pin the
+  // Gotchas coverage so a future regen can't silently drop the warning or its
+  // input.text + f.password workaround.
+  it("llms.txt keeps the input.password double-hash gotcha and its workaround (#145/#109)", () => {
+    const txt = renderLlmsTxt(m);
+    expect(txt).toContain("input.password");
+    expect(txt).toMatch(/double-hash/i);
+    expect(txt).toContain("check_password");
+    // The workaround: input.text + the column-side hash-on-write.
+    expect(txt).toContain("input.text");
+    expect(txt).toContain("f.password");
+  });
+
   it("committed manifest.json is up to date (run `npm run manifest`)", () => {
     const committed = readFileSync(join(ROOT, "manifest.json"), "utf8");
     expect(committed).toBe(JSON.stringify(m, null, 2) + "\n");
