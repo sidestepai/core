@@ -54,10 +54,13 @@ export interface ManifestStatement {
   /** Whether the statement emits an `output` envelope. Declarative only. */
   output?: boolean;
   /**
-   * What the statement's `as:` output variable holds — the value name and its
-   * type — so the manifest answers "what does this bind?" without falling back
-   * to prose. Curated (see `STATEMENT_RESULTS`); present only for statements whose
-   * result is stable and documented. Mirrors {@link ManifestFilter.result}.
+   * What the statement's `as:` output variable holds — so the manifest answers
+   * "what does this bind?" without falling back to prose. Curated (see
+   * `STATEMENT_RESULTS`); present only for statements whose result is stable and
+   * documented. Analogous to {@link ManifestFilter.result}, but structured: `name`
+   * is the binding field (always `as` today, carried explicitly so the descriptor
+   * is self-describing for machine consumers), `type` its value type, `note` an
+   * optional caveat.
    */
   result?: { name: string; type: string; note?: string };
   /** Field schema — present for declarative statements. */

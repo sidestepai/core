@@ -301,6 +301,15 @@ function resolveCanonical(
  * `getPath()` method — and preserves the exact, branded `input` map on the
  * return type so `InferInput<typeof theQuery>` recovers the request-payload type.
  */
+/**
+ * The `/api:<canonical>/<name>` path's trailing `<name>` segment: the query name
+ * with any leading slash stripped. Shared so a consumer reconstructing the path
+ * from an exported bundle (`sidestep paths`) stays in lockstep with `getPath()`.
+ */
+export function pathSegment(name: string): string {
+  return name.replace(/^\/+/, "");
+}
+
 function queryImpl<
   const I extends Record<string, InputDescriptor> = Record<never, never>,
   Res = never,
@@ -309,7 +318,7 @@ function queryImpl<
 >(def: QueryDef<I, Res, Resp, S>): QueryHandle<I, Res, Resp, S> {
   // The path segment is invariant across calls; only the canonical can vary
   // (via an override), so normalize the name once here.
-  const path = def.name.replace(/^\/+/, "");
+  const path = pathSegment(def.name);
   const getPath = (opts?: { canonical?: string }): string =>
     `/api:${resolveCanonical(def, opts?.canonical)}/${path}`;
   return { ...def, getPath };

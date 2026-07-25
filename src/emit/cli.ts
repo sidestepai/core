@@ -33,6 +33,7 @@ import { buildSeedContentFiles, type SeedContentFile } from "../workspace/seed.j
 import { writeArtifact } from "./write.js";
 import { findUnresolvableFilters } from "../validate/filter-names.js";
 import type { FunctionDef } from "../function/define.js";
+import { pathSegment, type HttpVerb } from "../kinds/query.js";
 import { Xano } from "../workspace/xano.js";
 import {
   createLockContext,
@@ -818,11 +819,13 @@ async function runPaths(args: ParsedArgs): Promise<void> {
   const file = args.file!;
   const lockPath = resolveLockPath(args, file);
   // Seed an existing lock BEFORE importing defs (references bake guids on load),
-  // exactly like compile/export — but never write it back; `paths` is read-only.
+  // exactly like compile/export — read it ONCE and feed the same parsed model to
+  // both seed + context (a second read could observe a concurrently-changed lock),
+  // but never write it back; `paths` is read-only.
   resetLockOverrides();
-  const lockExists = existsSync(lockPath);
-  const lockCtx = lockExists ? createLockContext(readLockFile(lockPath)) : undefined;
-  if (lockExists) seedLockOverrides(readLockFile(lockPath));
+  const lockModel = existsSync(lockPath) ? readLockFile(lockPath) : undefined;
+  const lockCtx = lockModel ? createLockContext(lockModel) : undefined;
+  if (lockModel) seedLockOverrides(lockModel);
 
   const def = await loadDefault(file);
   if (!Xano.isXano(def)) {
@@ -830,7 +833,7 @@ async function runPaths(args: ParsedArgs): Promise<void> {
   }
   const bundle = def.export(lockCtx ? { lock: lockCtx } : {});
   const payload = bundle.payload as { query?: unknown[]; app?: unknown[] };
-  const queries = (payload.query ?? []) as Array<{ name: string; verb: string; app?: { id?: string } }>;
+  const queries = (payload.query ?? []) as Array<{ name: string; verb: HttpVerb; app?: { id?: string } }>;
   const apps = (payload.app ?? []) as Array<{ guid?: string; canonical?: string }>;
   const canonicalByGuid = new Map(apps.map((a) => [a.guid, a.canonical]));
 
@@ -839,11 +842,12 @@ async function runPaths(args: ParsedArgs): Promise<void> {
     return;
   }
 
-  type Row = { verb: string; name: string; canonical: string | undefined };
+  type Row = { verb: HttpVerb; name: string; canonical: string | undefined };
   const rows: Row[] = queries.map((q) => ({
+    verb: q.verb, // already an uppercase HttpVerb in the bundle
     // Match getPath(): the path segment drops any leading slash on the name.
-    verb: (q.verb ?? "GET").toUpperCase(),
-    name: q.name.replace(/^\/+/, ""),
+    name: pathSegment(q.name),
+    // An unresolved group emits canonical "" (api-group.ts) → fold to undefined.
     canonical: q.app?.id ? canonicalByGuid.get(q.app.id) || undefined : undefined,
   }));
   rows.sort((a, b) => (a.canonical ?? "").localeCompare(b.canonical ?? "") || a.name.localeCompare(b.name));
