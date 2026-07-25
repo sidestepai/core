@@ -252,6 +252,9 @@ async function deployEphemeral(
     link(baseUrl);
   }
   detail(`Expires ${formatExpiration(target.expiresAt)}`);
+  // `target.name` (the tenant handle, e.g. `ewap-8wz9-9e13`) — NOT the display —
+  // is what `ephemeral get/delete/export` take, so spell out the handle to use.
+  detail(`Manage with \`sidestep ephemeral get ${target.name}\``);
 
   return {
     dest: "ephemeral",

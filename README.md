@@ -1146,8 +1146,8 @@ sidestep deploy ./xano/index.ts --static ./frontend/dist   # also deploy a stati
 sidestep deploy ./xano/index.ts --static ./frontend/dist --static-env PK=pk_live_1   # + extra public config
 sidestep deploy --bundle ws.json             # deploy an already-exported bundle
 sidestep ephemeral list                      # list your ephemeral environments (--all-workspaces spans every workspace)
-sidestep ephemeral get <name>                # base URL, state, and expiry for one
-sidestep ephemeral delete <name> --yes       # destroy one
+sidestep ephemeral get <tenant>              # base URL, state, and expiry for one (<tenant> = the tenant name, e.g. ewap-8wz9-9e13, NOT the display name — `ephemeral list` shows it in bold)
+sidestep ephemeral delete <tenant> --yes     # destroy one
 sidestep release ./xano/index.ts             # promote to your main instance workspace (coming soon)
 sidestep sandbox export                      # export the DEPLOYED sandbox workspace as a JSON bundle → ./sandbox.json
 sidestep sandbox export --format multidoc --name backend               # …or the deployed sandbox as XanoScript → backend.xs

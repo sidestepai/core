@@ -120,7 +120,10 @@ async function runList(args: ParsedArgs): Promise<void> {
     const expTxt = exp === "expired" ? s.red("expired") : s.dim(`expires ${exp}`);
     const state = r.state ? s.dim(`[${r.state}]`) : "";
     const ws = args.allWorkspaces && r.workspaceId ? s.dim(` (workspace ${r.workspaceId})`) : "";
-    return `  ${s.bold(r.display ?? r.name)} ${s.dim(`(${r.name})`)} ${state} ${expTxt}${ws}`;
+    // The tenant name is the handle you pass to `get`/`delete`/`export`, so it
+    // leads (bold); the human display, if it differs, trails dimmed.
+    const label = r.display && r.display !== r.name ? ` ${s.dim(r.display)}` : "";
+    return `  ${s.bold(r.name)}${label} ${state} ${expTxt}${ws}`;
   });
   process.stdout.write(lines.join("\n") + "\n");
 }
@@ -140,7 +143,10 @@ async function runGet(args: ParsedArgs): Promise<void> {
   const s = stdoutStyle();
   const rows: Array<[string, string]> = [];
   if (summary.url) rows.push(["Base URL", s.bold(s.cyan(summary.url))]);
-  rows.push(["Ephemeral", `${summary.display ?? summary.name} ${s.dim(`(${summary.name})`)}`]);
+  // "Tenant" (not "Ephemeral") names the handle you pass to `get`/`delete`/
+  // `export`; the human display, if it differs, trails dimmed.
+  const label = summary.display && summary.display !== summary.name ? ` ${s.dim(summary.display)}` : "";
+  rows.push(["Tenant", `${s.bold(summary.name)}${label}`]);
   if (summary.state) rows.push(["State", summary.state]);
   rows.push(["Expires", s.dim(formatExpiration(summary.expiresAt))]);
   process.stdout.write("\n" + formatFields(rows));
