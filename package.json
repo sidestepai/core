@@ -1,13 +1,15 @@
 {
   "name": "@sidestep/core",
   "version": "3.9.27",
-  "description": "Sidestep — a standalone TypeScript SDK for driving Xano infrastructure from code. Compiles typed Xano workspaces into importable JSON.",
+  "description": "Sidestep — your Xano backend as TypeScript. `sidestep deploy` ships your typed workspace (and an optional static frontend) to a live, auto-expiring ephemeral environment and prints its URL. init → deploy → URL.",
   "keywords": [
     "sidestep",
     "xano",
     "sdk",
     "typescript",
-    "codegen",
+    "deploy",
+    "ephemeral",
+    "preview-environments",
     "infrastructure-as-code"
   ],
   "homepage": "https://github.com/sidestepai/core#readme",
