@@ -22,7 +22,7 @@
  *   (3) realtime_event — context.{channel,data,auth.{dbo_id,row_id}} CONFIRMED by
  *       the schema transform (auth_table via !map:dbo:constant → table guid).
  */
-import type { Statement } from "../statement.js";
+import type { Statement, AsShapeBrand } from "../statement.js";
 import { encodeStatement, registerStatement } from "../statement.js";
 import { c } from "../../values/value.js";
 import type { Value } from "../../values/value.js";
@@ -160,7 +160,7 @@ export function realtimeEvent(a: RealtimeEventArgs): Statement {
 
 // --- auth token (declarative) ----------------------------------------------
 
-export interface CreateAuthTokenArgs {
+export interface CreateAuthTokenArgs<As extends string = string> {
   /** The auth table the token authenticates against. */
   table: ObjectRef;
   /** Token id (the authenticated row id). */
@@ -169,11 +169,20 @@ export interface CreateAuthTokenArgs {
   extras?: Value;
   /** Expiry in seconds. Defaults to `86400` (24h); `0` never expires. */
   expiration?: Value;
-  as?: string;
+  as?: As;
 }
 
-/** `security.create_auth_token { … }` — mint an auth token (`mvp:create_auth`). */
-export function createAuthToken(a: CreateAuthTokenArgs): Statement {
+/**
+ * `security.create_auth_token { … }` — mint an auth token (`mvp:create_auth`).
+ *
+ * Branded `AsShapeBrand<As, string>` (like the `db.*` producers) so a
+ * `ref("<as>")` to the minted token traces to `string` via `InferResponse`
+ * instead of `unknown` — the token is always a JWT string. The brand is phantom;
+ * the emitted statement bytes are unchanged.
+ */
+export function createAuthToken<const As extends string = "">(
+  a: CreateAuthTokenArgs<As>,
+): Statement & AsShapeBrand<As, string> {
   return {
     name: "mvp:create_auth",
     context: {},
@@ -184,7 +193,7 @@ export function createAuthToken(a: CreateAuthTokenArgs): Statement {
       { name: "expiration", ...vf(a.expiration ?? c.int(86400)) },
       { name: "id", ...vf(a.id) },
     ],
-  };
+  } as unknown as Statement & AsShapeBrand<As, string>;
 }
 
 // --- expect.to_throw (structural) ------------------------------------------
