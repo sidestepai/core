@@ -147,7 +147,7 @@ function parsePort(raw: string | undefined): number {
 }
 
 /** Nouns that take a verb as a second token (`sidestep <noun> <verb> …`). */
-const NOUN_COMMANDS = new Set(["sandbox", "profile"]);
+const NOUN_COMMANDS = new Set(["sandbox", "profile", "ephemeral"]);
 
 export function parseArgs(argv: string[]): ParsedArgs {
   const [command, ...afterCommand] = argv;
@@ -602,6 +602,11 @@ export async function run(argv: string[]): Promise<void> {
     // commands never pay its import cost.
     const { runDeployCommand } = await import("./deploy-command.js");
     return runDeployCommand(args);
+  }
+  if (command === "ephemeral") {
+    // Lazily imported like the other Node-only command modules.
+    const { runEphemeralCommand } = await import("./ephemeral-command.js");
+    return runEphemeralCommand(args);
   }
   if (command === "sandbox") {
     if (args.subcommand === "deploy") {
