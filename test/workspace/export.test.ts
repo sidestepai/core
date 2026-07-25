@@ -33,7 +33,10 @@ describe("Xano.export() bundle", () => {
     for (const key of PAYLOAD_ARRAY_KEYS) {
       expect(bundle.payload[key]).toEqual([]);
     }
-    expect(bundle.payload.workspace).toEqual({});
+    // The workspace always carries a guid (the workspace-import path requires it);
+    // with no name registered it derives deterministically from "workspace".
+    expect(bundle.payload.workspace).toEqual({ guid: expect.any(String) });
+    expect((bundle.payload.workspace as { guid: string }).guid).not.toBe("");
     expect(bundle.payload.partial).toBe(false);
   });
 
