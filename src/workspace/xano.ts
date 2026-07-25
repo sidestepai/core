@@ -187,6 +187,15 @@ export class Xano {
     // resolve a request identity — the silent null-bucket collapse (issue #81).
     this.validateMiddlewareAuth(sections);
     if (lockCtx) this.applyLock(lockCtx, sections);
+    // The workspace-import path requires `workspace.guid`. Under a lock,
+    // `applyLock` stamps it from the workspace canonical; without one, derive a
+    // deterministic guid from the workspace name so a lock-less `deploy` still
+    // imports. Deterministic → stable across redeploys (refresh doesn't churn it).
+    // Follow-up: build with a lock by default instead of this fallback.
+    if (this.workspaceConfig.guid === undefined) {
+      const wsName = typeof this.workspaceConfig.name === "string" ? this.workspaceConfig.name : "workspace";
+      this.workspaceConfig.guid = deriveGuid("workspace", wsName);
+    }
     return buildBundle({
       type: this.bundleType,
       workspace: this.workspaceConfig,

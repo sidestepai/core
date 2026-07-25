@@ -72,8 +72,12 @@ export interface ParsedArgs {
   yes: boolean;
   /** `push --bundle <path>`: upload an already-exported bundle instead of a file entry. */
   bundle: string | undefined;
-  /** `deploy --reset`: full clear (records + sequences) then import — a from-scratch rebuild. */
+  /** `--reset`: accepted but redundant — every deploy is a full replace now. */
   reset: boolean;
+  /** `deploy --dest sandbox|ephemeral`: which environment to import into (default `ephemeral`). */
+  dest: "sandbox" | "ephemeral" | undefined;
+  /** `deploy --expires-hours <n>`: ephemeral create-time TTL (1–72, default 1 server-side). */
+  expiresHours: number | undefined;
   /** `deploy --static <dir>`: archive this directory and deploy it to the sandbox's static host. */
   static: string | undefined;
   /**
@@ -143,7 +147,7 @@ function parsePort(raw: string | undefined): number {
 }
 
 /** Nouns that take a verb as a second token (`sidestep <noun> <verb> …`). */
-const NOUN_COMMANDS = new Set(["sandbox", "profile"]);
+const NOUN_COMMANDS = new Set(["sandbox", "profile", "ephemeral"]);
 
 export function parseArgs(argv: string[]): ParsedArgs {
   const [command, ...afterCommand] = argv;
@@ -163,6 +167,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let yes = false;
   let bundle: string | undefined;
   let reset = false;
+  let dest: "sandbox" | "ephemeral" | undefined;
+  let expiresHours: number | undefined;
   let staticDir: string | undefined;
   let staticHost: string | undefined;
   const staticEnv: Record<string, string> = {};
@@ -204,6 +210,14 @@ export function parseArgs(argv: string[]): ParsedArgs {
       bundle = arg.slice("--bundle=".length);
     } else if (arg === "--reset") {
       reset = true;
+    } else if (arg === "--dest") {
+      dest = parseDest(rest[++i]);
+    } else if (arg.startsWith("--dest=")) {
+      dest = parseDest(arg.slice("--dest=".length));
+    } else if (arg === "--expires-hours") {
+      expiresHours = parseExpiresHours(rest[++i]);
+    } else if (arg.startsWith("--expires-hours=")) {
+      expiresHours = parseExpiresHours(arg.slice("--expires-hours=".length));
     } else if (arg === "--static-env" || arg.startsWith("--static-env=")) {
       const kv = arg === "--static-env" ? rest[++i] : arg.slice("--static-env=".length);
       const eq = kv?.indexOf("=") ?? -1;
@@ -293,7 +307,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       const flag = arg.split("=")[0];
       throw new Error(
         `\`${flag}\` was removed along with \`sidestep workspace deploy\` — ` +
-          `the sandbox is the only deploy target. Use \`sidestep sandbox deploy\` (optionally with \`--reset\`).`,
+          `deploy targets are selected with \`sidestep deploy --dest <ephemeral|sandbox>\`.`,
       );
     } else {
       positionals.push(arg);
@@ -312,6 +326,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
     yes,
     bundle,
     reset,
+    dest,
+    expiresHours,
     static: staticDir,
     staticHost,
     staticEnv,
@@ -347,6 +363,21 @@ function parseWorkspaceId(raw: string | undefined): number {
 function parseFormat(raw: string | undefined): "json" | "multidoc" {
   if (raw === "json" || raw === "multidoc") return raw;
   throw new Error(`--format must be "json" or "multidoc" (got "${raw ?? ""}").`);
+}
+
+/** Parse a `--dest` value, rejecting anything but the two supported destinations. */
+function parseDest(raw: string | undefined): "sandbox" | "ephemeral" {
+  if (raw === "sandbox" || raw === "ephemeral") return raw;
+  throw new Error(`--dest must be "sandbox" or "ephemeral" (got "${raw ?? ""}").`);
+}
+
+/** Parse a `--expires-hours` value, matching the server's 1–72 bound. */
+function parseExpiresHours(raw: string | undefined): number {
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > 72) {
+    throw new Error(`--expires-hours must be an integer 1–72 (got "${raw ?? ""}").`);
+  }
+  return n;
 }
 
 /**
@@ -474,7 +505,9 @@ const USAGE =
   "sidestep version | " +
   "sidestep login [--origin <origin>] [--config <path>] [--global] [--port <n>] | " +
   "sidestep logout [--config <path>] [--global] | " +
-  "sidestep sandbox deploy <file>|--bundle <path> [--reset] [--static <dir>] [--static-host <name>] [--static-env KEY=VALUE] [--config <path>] [--global] | " +
+  "sidestep deploy <file>|--bundle <path> [--dest <sandbox|ephemeral>] [--name <display>] [--workspace <id>] [--expires-hours <n>] [--static <dir>] [--static-host <name>] [--static-env KEY=VALUE] [--config <path>] [--global] | " +
+  "sidestep release <file>|--bundle <path> [--yes]  (coming soon — promotes to your instance workspace) | " +
+  "sidestep ephemeral <list|get|delete|export> [<name>] [--global] [--workspace <id>] [--format <json|multidoc>] [--path <path>|-] [--yes] | " +
   "sidestep sandbox export [--format <json|multidoc>] [--path <path>|-] [--name <name>] | " +
   "sidestep sandbox details [--config <path>] [--global] | " +
   "sidestep profile me [--config <path>] [--global] | " +
@@ -565,12 +598,28 @@ export async function run(argv: string[]): Promise<void> {
     const { runLogoutCommand } = await import("./logout-command.js");
     return runLogoutCommand(args);
   }
+  if (command === "deploy") {
+    // The deploy core lives in its own (Node-only) module so the bin's other
+    // commands never pay its import cost.
+    const { runDeployCommand } = await import("./deploy-command.js");
+    return runDeployCommand(args);
+  }
+  if (command === "ephemeral") {
+    // Lazily imported like the other Node-only command modules.
+    const { runEphemeralCommand } = await import("./ephemeral-command.js");
+    return runEphemeralCommand(args);
+  }
+  if (command === "release") {
+    // Promote to the instance workspace. Fully plumbed but gated (see the module).
+    const { runReleaseCommand } = await import("./release-command.js");
+    return runReleaseCommand(args);
+  }
   if (command === "sandbox") {
     if (args.subcommand === "deploy") {
-      // The deploy core lives in its own (Node-only) module so the bin's other
-      // commands never pay its import cost.
-      const { runDeployCommand } = await import("./deploy-command.js");
-      return runDeployCommand(args);
+      throw new Error(
+        `\`sidestep sandbox deploy\` was removed — use \`sidestep deploy --dest sandbox\` ` +
+          `(same behavior against the singleton sandbox, unified under \`deploy\`). ${USAGE}`,
+      );
     }
     if (args.subcommand === "details") {
       // Lazily imported like the other Node-only commands so the browser-safe
@@ -585,13 +634,13 @@ export async function run(argv: string[]): Promise<void> {
     }
     throw new Error(
       `Unknown sandbox subcommand "${args.subcommand ?? ""}". ` +
-        `Did you mean \`sidestep sandbox deploy\`, \`sidestep sandbox export\`, or \`sidestep sandbox details\`? ${USAGE}`,
+        `Did you mean \`sidestep sandbox export\` or \`sidestep sandbox details\`? (Deploy moved to \`sidestep deploy --dest sandbox\`.) ${USAGE}`,
     );
   }
   if (command === "workspace") {
     throw new Error(
-      `\`sidestep workspace deploy\` was removed — the sandbox is the only deploy target. ` +
-        `Use \`sidestep sandbox deploy\`. ${USAGE}`,
+      `\`sidestep workspace deploy\` was removed — use \`sidestep deploy\` ` +
+        `(\`--dest ephemeral\` by default, or \`--dest sandbox\`). ${USAGE}`,
     );
   }
   if (command === "profile") {
@@ -603,7 +652,7 @@ export async function run(argv: string[]): Promise<void> {
   }
   if (command === "push") {
     throw new Error(
-      `\`sidestep push\` was removed — use \`sidestep sandbox deploy\` (same behavior against the sandbox, new name). ${USAGE}`,
+      `\`sidestep push\` was removed — use \`sidestep deploy\` (\`--dest ephemeral\` by default, or \`--dest sandbox\`). ${USAGE}`,
     );
   }
   if (command === "validate") {

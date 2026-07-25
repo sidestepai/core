@@ -204,6 +204,6 @@ export async function runInitCommand(args: ParsedArgs): Promise<void> {
       (args.noInstall ? `  npm install\n` : ``) +
       `  npm run dev            # run the frontend\n` +
       `  sidestep login         # authenticate with Xano\n` +
-      `  npm run build && npm run xano:deploy   # ship it`,
+      `  npm run build && npm run xano:deploy   # deploy → live ephemeral URL`,
   );
 }

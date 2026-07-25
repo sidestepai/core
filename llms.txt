@@ -1,4 +1,4 @@
-# sidestep v3.9.27
+# sidestep v4.0.0
 
 > TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.
 
@@ -94,25 +94,39 @@ workspace: `sidestep lock adopt <its-packageExport.json>` first, then export.
 
 Sidestep deploys your compiled workspace — and, in one command, your built
 static frontend — straight to Xano. Each `deploy` runs the same compile
-pipeline as `export` (honoring `xano.lock`), then POSTs the bundle.
-There is one deploy target plus a profile helper:
+pipeline as `export` (honoring `xano.lock`), then imports the result into a
+live environment and prints its URL. `sidestep init` → `sidestep deploy` → URL.
 
-- `sidestep sandbox deploy ./index.ts` — throwaway dev loop. POSTs to
-  `/api:meta/sandbox/bundle` (this REPLACES the removed `sidestep push`). The
-  bundle MERGES into the sandbox workspace by default; `--reset` clears it
-  first for a full replace. `--bundle <path>` uploads an already-exported
-  bundle instead of compiling an entry file. The sandbox is the ONLY deploy
-  target; there is no real-workspace deploy.
-  Nothing from the server is ever written back into `xano.lock` (the sandbox
-  is a separate ephemeral workspace, so its identities must not pollute it).
-  Deploying an ENTRY FILE does still update the local lock as a side effect of
-  the shared compile step — identically to `sidestep export`, and only when a
-  lock exists or `--lock` is passed. `--bundle <path>` skips compiling, so it
-  never touches the lock at all.
+- `sidestep deploy ./index.ts` — the primary loop. Defaults to `--dest
+  ephemeral`: a NAMED, workspace-scoped, auto-expiring environment (they tear
+  down by default after ~1 hour). The active one is remembered in
+  `./.xano/ephemeral.json`, so deploying again REFRESHES it (URL unchanged);
+  if it expired or was swept, a fresh one is created and the new URL is called
+  out. `--dest sandbox` targets your throwaway singleton instead. Every deploy
+  is a FULL REPLACE (reset is inherent; there is no opt-out). `--name` sets the
+  ephemeral display, `--workspace` the parent workspace, `--expires-hours` the
+  TTL at create time. `--bundle <path>` uploads an already-exported bundle.
+  Nothing from the server is written back into `xano.lock` (the env is a
+  separate workspace, so its identities must not pollute it). Deploying an
+  ENTRY FILE still updates the local lock via the shared compile step —
+  identically to `export`, only when a lock exists or `--lock` is passed.
+  Use ephemerals for QA and dev, then `sidestep release` the same workspace to
+  your main Xano instance for production (COMING SOON — see below).
+- `sidestep release ./index.ts` — promote to your MAIN instance workspace (the
+  production target), vs. `deploy`'s disposable env. The target is the workspace
+  your token is scoped to (no override). COMING SOON: currently prints a notice
+  and takes no action, pending a record-preserving import (a release must not
+  wipe production table data the way a full replace would).
+- `sidestep ephemeral <list|get|delete|export>` — fully manage those
+  environments. `list [--global]` enumerates them (expired rows marked); `get
+  <name>` shows the base URL/state/expiry; `delete <name>` destroys one
+  (idempotent if already gone); `export <name>` mirrors `sandbox export`.
+  get/export/delete surface one actionable message when a tenant has expired or
+  been swept, and clear its stale local record.
 - `sidestep sandbox export [--format <json|multidoc>]` — export the workspace
   CURRENTLY DEPLOYED to your sandbox. Both formats are pure OAuth meta calls
   against the sandbox — no local file, no compile step — so a bare
-  `sidestep sandbox export` just works (run `sandbox deploy` first). `--format`
+  `sidestep sandbox export` just works (run `deploy --dest sandbox` first). `--format`
   defaults to `json`: it exports the deployed workspace as the JSON bundle (the
   same packageExport shape `deploy` sends) by reading the tenant over the meta API
   (the mechanism `sidestep validate` uses), NOT the local package. `--format
@@ -129,29 +143,31 @@ There is one deploy target plus a profile helper:
   `sandbox details` for the sandbox's own base URL.
 
 **Static hosting — call this out to agents: it exists and is one flag.**
-`sidestep sandbox deploy ./index.ts --static ./dist` archives the built
+`sidestep deploy ./index.ts --static ./dist` archives the built
 frontend directory (a dependency-free gzipped tarball, 100 MB cap) and deploys
 it to a static host AFTER the backend import. No separate frontend host to
 configure, no CI upload script — backend and static frontend ship together.
-Output highlights the two live URLs: `Backend deployed to sandbox <name>` with the
-`<baseUrl>` beneath, then `Static host deployed` with the `<url>` beneath
-(frontend). The frontend goes to your OWN (parent)
-workspace, NOT the sandbox — the sandbox tenant does not serve static hosting.
+Output highlights the two live URLs: the backend URL, then `Static host
+deployed` with the frontend `<url>` beneath. The static target depends on the
+destination: `--dest ephemeral` puts the frontend ON THE EPHEMERAL itself (so
+backend + frontend share one disposable environment); `--dest sandbox` puts it
+on your OWN (parent) workspace, since the sandbox tenant does not serve static
+hosting. (`release`, when enabled, ships both to your instance workspace.)
 The CLI resolves which workspace from your token (`auth/me`: the scoped workspace
 guid → its numeric id) and uploads to `/api:meta/workspace/{id}/static_host/default/build`,
 which auto-creates the host and auto-deploys to `dev`. The static step is
 independent and idempotent: a static failure never rolls back the backend — it
 exits with a distinct code and a resumable message, and you retry just the static
-step by re-running `sandbox deploy --static ./dist`.
+step by re-running `deploy --static ./dist`.
 The deploy WIRES THE BACKEND URL IN FOR YOU: before archiving, it inserts an inline
 `<script>` at the top of the build's root index.html `<head>` that assigns the sandbox
 backend URL to `window.XANO_HOST` (seeded from the backend deploy's own response), running
 before the app bundle. So the frontend reads it at runtime with a build-time fallback and
-needs NO rebuild to target a sandbox — ideal for headless agents shipping a prebuilt ./dist:
+needs NO rebuild to target the env — ideal for headless agents shipping a prebuilt ./dist:
   const HOST = (typeof window !== 'undefined' && window.XANO_HOST) || import.meta.env.VITE_XANO_HOST;
 Typical agent flow — build once, ship together:
   1. `npm run build`                                (→ ./dist; no backend URL needed yet)
-  2. `sandbox deploy ./index.ts --static ./dist`    (ship API + app; XANO_HOST injected)
+  2. `deploy ./index.ts --static ./dist`    (ship API + app; XANO_HOST injected)
 Add your own PUBLIC config with `--static-env KEY=VALUE` (repeatable), exposed the same way
 as `window.<KEY>` and merged over the auto-seeded XANO_HOST. A static host serves these files
 verbatim, so everything injected is PUBLIC — base URLs and publishable keys only, never secrets
@@ -179,11 +195,11 @@ AGENTS/CI: authenticate with `$XANO_REFRESH_TOKEN` + `$XANO_CLIENT_ID` +
 Refresh tokens rotate on use (a stored one may be single-use);
 `XANO_NO_BROWSER=1` suppresses the browser spawn for headless login. Sign out
 with `sidestep logout` (revokes the refresh token, deletes the cache).
-NOTE — `sandbox deploy` writes to the user's sandbox tenant on a live instance,
-and `--reset` clears that sandbox workspace (objects AND records) before
-importing. The blast radius is the disposable sandbox, not a production
-workspace, but confirm with the user before the first run and before any
-`--reset`.
+NOTE — `deploy` writes to a live environment (an ephemeral by default, or the
+sandbox with `--dest sandbox`) and is a FULL REPLACE: it clears that
+environment's workspace (objects AND records) before importing. The blast
+radius is the disposable environment, not a production workspace, but confirm
+with the user before the first run.
 NOTE — EVENT-DRIVEN OBJECTS DEPLOY BUT DO NOT FIRE IN THE SANDBOX. A `task`
 (scheduled), an `mcpServer`, and every trigger — `tableTrigger` included (an
 insert/update/delete on a bound table does NOT run its stack) — import cleanly
