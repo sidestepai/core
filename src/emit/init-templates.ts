@@ -41,7 +41,7 @@ export function renderPackageJson({ appName, coreVersion }: TemplateVars): strin
       preview: "vite preview",
       typecheck: "tsc --noEmit",
       "xano:export": "sidestep export ./xano/index.ts --out workspace.json",
-      "xano:deploy": "sidestep sandbox deploy ./xano/index.ts --reset --static ./frontend/dist",
+      "xano:deploy": "sidestep deploy ./xano/index.ts --static ./frontend/dist",
     },
     dependencies: {
       "@sidestep/core": coreDep(coreVersion),
@@ -166,8 +166,10 @@ npm run xano:deploy     # ship the backend + static frontend together
 \`\`\`
 
 - \`npm run xano:export\` compiles the backend to \`workspace.json\` (don't commit it).
-- \`npm run xano:deploy\` deploys the backend and the built frontend to your
-  sandbox in one clean step.
+- \`npm run xano:deploy\` deploys the backend and the built frontend to a live
+  **ephemeral** environment and prints its URL. Run it again to refresh the same
+  environment; if it expired, a fresh one is created and the new URL is called out.
+- Deploying to your throwaway singleton sandbox instead: \`sidestep deploy --dest sandbox\`.
 
 ## The one contract
 
@@ -380,7 +382,7 @@ export function renderApiTs(): string {
 
 /**
  * The deployed Xano backend's base URL. Injected as \`window.XANO_HOST\` by
- * \`sidestep sandbox deploy --static\`, or read from \`VITE_XANO_HOST\` in dev.
+ * \`sidestep deploy --static\`, or read from \`VITE_XANO_HOST\` in dev.
  * Empty string when neither is set (the UI runs with no backend).
  */
 export const XANO_HOST: string =
