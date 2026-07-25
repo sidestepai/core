@@ -151,6 +151,24 @@ describe("sidestep deploy", () => {
     expect(body).toMatchObject({ display: "PR 123", expires_hours: 24 });
   });
 
+  it("writes ephemeral state to the LOCAL project even when authed via --global", async () => {
+    // token lives in a global cache, but the ephemeral record must still land in ./.xano/
+    const globalCache = join(dir, "global-auth.json");
+    writeFileSync(globalCache, readFileSync(authFile, "utf8"));
+    const prev = process.env.XANO_GLOBAL_CONFIG;
+    process.env.XANO_GLOBAL_CONFIG = globalCache;
+    try {
+      seq(res(EPH), res(EPH), res({ id: 1 }));
+      await run(["deploy", "--bundle", bundleFile(dir), "--global", "--workspace", "114"]);
+      // state is project-local (dir/.xano/ephemeral.json), not next to the global cache
+      expect(existsSync(statePath(dir))).toBe(true);
+      expect(JSON.parse(readFileSync(statePath(dir), "utf8")).environments["114"].name).toBe("e4f2-9ab1");
+    } finally {
+      if (prev === undefined) delete process.env.XANO_GLOBAL_CONFIG;
+      else process.env.XANO_GLOBAL_CONFIG = prev;
+    }
+  });
+
   it("rejects an invalid --dest at parse time", async () => {
     await expect(run(["deploy", bundleFile(dir), "--config", authFile, "--dest", "bogus"])).rejects.toThrow(/--dest must be/);
   });

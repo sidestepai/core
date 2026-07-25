@@ -8166,24 +8166,36 @@
       "description": "Compile the default-exported Xano registry into the aggregate workspace bundle."
     },
     {
-      "command": "sandbox deploy",
+      "command": "deploy",
       "args": "<file> | --bundle <path>",
       "flags": [
         {
-          "flag": "--reset",
-          "description": "Clear the sandbox workspace first for a full replace (default merges)."
+          "flag": "--dest <sandbox|ephemeral>",
+          "description": "Which environment to import into. Default `ephemeral`: a named, workspace-scoped, auto-expiring tenant, create-or-refreshed (tracked in ./.xano/ephemeral.json). `sandbox`: the throwaway singleton. Both do a FULL REPLACE (reset is inherent; no opt-out)."
+        },
+        {
+          "flag": "--name <display>",
+          "description": "Ephemeral display name at create time (default: the workspace name from the bundle, else the project dir basename). Ignored for --dest sandbox."
+        },
+        {
+          "flag": "--workspace <id>",
+          "description": "Parent workspace id to create the ephemeral in (default: the token's scoped workspace). The env's own workspace id is always 1."
+        },
+        {
+          "flag": "--expires-hours <n>",
+          "description": "Ephemeral TTL at create time, 1–72 (default 1). Only applies when a new ephemeral is created, not on refresh."
         },
         {
           "flag": "--static <dir>",
-          "description": "Archive a built frontend directory and deploy it to your workspace's static host (auto-deployed to dev) after the backend import. The backend URL is auto-injected into the build's root index.html as `window.XANO_HOST`, so the frontend needs no rebuild to target a sandbox."
+          "description": "Archive a built frontend directory and deploy it to your (parent) workspace's static host after the backend import. The backend URL is auto-injected into the build's root index.html as `window.XANO_HOST`, so the frontend needs no rebuild."
         },
         {
           "flag": "--static-host <name>",
-          "description": "Static-host NAME to deploy the frontend to (default `default`). Give each app a DISTINCT host so deploys don't share and overwrite the one `default` host — that shared host is why the first load after a deploy can serve a previous app's cached index.html. The host is auto-created on first deploy."
+          "description": "Static-host NAME to deploy the frontend to (default `default`). Give each app a DISTINCT host so deploys don't share and overwrite the one `default` host. The host is auto-created on first deploy."
         },
         {
           "flag": "--static-env KEY=VALUE",
-          "description": "Repeatable. Bake extra PUBLIC config into the static build's index.html as `window.<KEY>` globals (base URLs, publishable keys). Merged over the auto-seeded XANO_HOST; a static host serves these verbatim, so never put secrets here."
+          "description": "Repeatable. Bake extra PUBLIC config into the static build's index.html as `window.<KEY>` globals. Merged over the auto-seeded XANO_HOST; served verbatim, so never put secrets here."
         },
         {
           "flag": "--config <path>",
@@ -8194,7 +8206,30 @@
           "description": "Read credentials from the shared ~/.sidestep/auth.json cache. Reads always try ./.xano/auth.json first, then fall back to the global cache."
         }
       ],
-      "description": "Deploy the compiled workspace to your sandbox (replaces the removed `push`), optionally with a static frontend. Prints a projected, secret-free summary as JSON on stdout (baseUrl + workspace id/name, plus the static URL when --static is used). The sandbox is the only deploy target. Never writes SERVER identities back into xano.lock (the compile step still maintains it exactly as `export` does)."
+      "description": "Deploy the compiled workspace to a live environment and print its URL. Default `--dest ephemeral` create-or-refreshes a named auto-expiring environment: a live one is refreshed (URL unchanged), a gone/expired one is recreated (the new URL is called out). `--dest sandbox` targets the singleton throwaway. Each deploy is a full replace. Prints a projected, secret-free summary as JSON on stdout when piped. Never writes SERVER identities back into xano.lock (the compile step still maintains it as `export` does)."
+    },
+    {
+      "command": "ephemeral list|get|delete|export",
+      "args": "[<name>] [--global] [--workspace <id>] [--format <json|multidoc>] [--path <path>|-] [--yes]",
+      "flags": [
+        {
+          "flag": "list [--global]",
+          "description": "List ephemeral tenants in the workspace, or across all workspaces with --global. Expired-but-unswept rows are marked."
+        },
+        {
+          "flag": "get <name>",
+          "description": "Show one ephemeral's base URL, state, and expiry (JSON when piped)."
+        },
+        {
+          "flag": "delete <name> [--yes]",
+          "description": "Destroy an ephemeral (confirm unless --yes/--force). Idempotent if already gone; clears the matching local record."
+        },
+        {
+          "flag": "export <name> [--format json|multidoc] [--path <p>|-]",
+          "description": "Export the ephemeral's workspace as the JSON bundle (default) or XanoScript multidoc (.xs), mirroring `sandbox export`."
+        }
+      ],
+      "description": "Manage the ephemeral environments `deploy` creates. get/export/delete resolve the tenant first: a swept (404) or past-expiry tenant yields one actionable 'run `sidestep deploy`' message (never touching the dead env), and clears its stale local record."
     },
     {
       "command": "sandbox export",
@@ -8217,7 +8252,7 @@
           "description": "Output basename override (default `sandbox`)."
         }
       ],
-      "description": "Export the workspace CURRENTLY DEPLOYED to your sandbox — as the JSON bundle (default) or the XanoScript multidoc (.xs). Both are pure OAuth meta calls against the sandbox: no local file, no compile step, so a bare `sandbox export` just works (run `sandbox deploy` first). To compile a LOCAL workspace to JSON instead, use `sidestep export <file>`. env/records/draft are unsupported (endpoint defaults)."
+      "description": "Export the workspace CURRENTLY DEPLOYED to your sandbox — as the JSON bundle (default) or the XanoScript multidoc (.xs). Both are pure OAuth meta calls against the sandbox: no local file, no compile step, so a bare `sandbox export` just works (run `sidestep deploy --dest sandbox` first). To compile a LOCAL workspace to JSON instead, use `sidestep export <file>`. env/records/draft are unsupported (endpoint defaults)."
     },
     {
       "command": "sandbox details",

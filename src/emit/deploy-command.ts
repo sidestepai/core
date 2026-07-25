@@ -160,6 +160,10 @@ async function deployEphemeral(
 ): Promise<DeploySummary> {
   const { archive, bundle, source, args } = ctx;
   const parentWorkspaceId = args.workspace ?? (await resolveScopedWorkspaceId(auth));
+  // Ephemeral state is ALWAYS the project directory, never the global cache —
+  // even when auth came from `--global`. That's deliberate: it keys the active
+  // ephemeral to the folder you're deploying from, so different projects (and
+  // parallel deploys) each track their own environment independently.
   const dir = process.cwd();
   const stored = getEnvironment(readEphemeralState(dir), parentWorkspaceId);
 
