@@ -436,7 +436,7 @@ export const OVERRIDDEN_SURFACES = new Set([
  * array-predicate ops). A statement absent from this map simply has no `result`
  * in the manifest — read its `output` flag and the prose. `T` = the bound
  * `table()`'s `InferRow`. Types trace to `src/responses/infer.ts`; the db.* and
- * check_password shapes are byte/source-verified (#145).
+ * check_password shapes are verified against a live engine (#145).
  */
 const STATEMENT_RESULTS: Record<string, { name: string; type: string; note?: string }> = {
   // db.* — mirrors the curated "Runtime behavior" block and InferResponse (#105/#145).
@@ -450,7 +450,7 @@ const STATEMENT_RESULTS: Record<string, { name: string; type: string; note?: str
   "db.query": { name: "as", type: "InferRow<T>[]", note: "a paging envelope when metadata paging is on (#58)" },
   "db.bulk.patch": { name: "as", type: "InferRow<T>[]" },
   "db.bulk.delete": { name: "as", type: "number", note: "count of deleted rows" },
-  // security.check_password — the engine filter returns `plain === hashed` (boolean), #109/#145.
+  // security.check_password binds a boolean (does the plaintext match the stored hash), #109/#145.
   "security.check_password": {
     name: "as",
     type: "boolean",
@@ -503,8 +503,9 @@ export function buildManifest(opts: { version?: string } = {}): Manifest {
     }
     // Curated result descriptor — attaches to declarative AND special surfaces
     // (the db.* family is `special`, so this must run independent of `spec`).
-    const result = STATEMENT_RESULTS[surface];
-    if (result) entry.result = result;
+    // `hasOwn` guards a surface name colliding with an inherited Object member,
+    // mirroring the FILTER_NOTES lookup below.
+    if (Object.hasOwn(STATEMENT_RESULTS, surface)) entry.result = STATEMENT_RESULTS[surface];
     return entry;
   });
 

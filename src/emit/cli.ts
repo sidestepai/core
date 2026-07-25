@@ -38,6 +38,7 @@ import { Xano } from "../workspace/xano.js";
 import {
   createLockContext,
   emptyLock,
+  lockKey,
   mergeObserved,
   serializeLock,
   validateLockModel,
@@ -818,24 +819,37 @@ async function runCompile(args: ParsedArgs): Promise<void> {
 async function runPaths(args: ParsedArgs): Promise<void> {
   const file = args.file!;
   const lockPath = resolveLockPath(args, file);
-  // Seed an existing lock BEFORE importing defs (references bake guids on load),
-  // exactly like compile/export — read it ONCE and feed the same parsed model to
-  // both seed + context (a second read could observe a concurrently-changed lock),
-  // but never write it back; `paths` is read-only.
+  // Read an existing lock to resolve canonicals READ-ONLY, mirroring
+  // getPath()/resolveCanonical (in-code canonical → locked-by-name → unresolved).
+  // Deliberately export WITHOUT a lock context: that path MINTS a fresh random
+  // canonical for any group the lock doesn't yet know (applyLock), which `paths`
+  // would then print as a resolved URL even though it's ephemeral and unpersisted
+  // — a token that would differ from the one a real `export --lock` freezes.
+  // `paths` never mints or writes. resetLockOverrides clears any stale seed a
+  // prior in-process command left, so reference guids bake consistently.
   resetLockOverrides();
   const lockModel = existsSync(lockPath) ? readLockFile(lockPath) : undefined;
-  const lockCtx = lockModel ? createLockContext(lockModel) : undefined;
-  if (lockModel) seedLockOverrides(lockModel);
 
   const def = await loadDefault(file);
   if (!Xano.isXano(def)) {
     throw new Error(`Module "${file}" must default-export a Xano registry for \`paths\`.`);
   }
-  const bundle = def.export(lockCtx ? { lock: lockCtx } : {});
+  const bundle = def.export();
   const payload = bundle.payload as { query?: unknown[]; app?: unknown[] };
   const queries = (payload.query ?? []) as Array<{ name: string; verb: HttpVerb; app?: { id?: string } }>;
-  const apps = (payload.app ?? []) as Array<{ guid?: string; canonical?: string }>;
-  const canonicalByGuid = new Map(apps.map((a) => [a.guid, a.canonical]));
+  const apps = (payload.app ?? []) as Array<{ name?: string; guid?: string; canonical?: string }>;
+
+  // guid → resolved canonical: an in-code `apiGroup({ canonical })` (already in
+  // the payload) wins; otherwise the lock's frozen token, keyed by group name.
+  // A group with neither stays unresolved (no minting).
+  const canonicalByGuid = new Map<string, string>();
+  for (const a of apps) {
+    if (typeof a.guid !== "string") continue;
+    const inCode = typeof a.canonical === "string" && a.canonical !== "" ? a.canonical : undefined;
+    const locked = typeof a.name === "string" ? lockModel?.objects[lockKey("app", a.name)]?.canonical : undefined;
+    const resolved = inCode ?? locked;
+    if (resolved) canonicalByGuid.set(a.guid, resolved);
+  }
 
   if (queries.length === 0) {
     info("No API queries registered in this workspace.");
@@ -847,8 +861,7 @@ async function runPaths(args: ParsedArgs): Promise<void> {
     verb: q.verb, // already an uppercase HttpVerb in the bundle
     // Match getPath(): the path segment drops any leading slash on the name.
     name: pathSegment(q.name),
-    // An unresolved group emits canonical "" (api-group.ts) → fold to undefined.
-    canonical: q.app?.id ? canonicalByGuid.get(q.app.id) || undefined : undefined,
+    canonical: q.app?.id ? canonicalByGuid.get(q.app.id) : undefined,
   }));
   rows.sort((a, b) => (a.canonical ?? "").localeCompare(b.canonical ?? "") || a.name.localeCompare(b.name));
 
