@@ -92,6 +92,20 @@ export function deriveDisplay(bundleText: string, cwd: string): string {
   return basename(cwd) || "sidestep-app";
 }
 
+/**
+ * Resolve the PARENT workspace id an ephemeral is created under: an explicit
+ * `--workspace` wins; otherwise fall back to the token's own scoped workspace.
+ * The `resolve` seam is injectable for tests. Exported so the fallback (never
+ * a hard-coded id) is locked against regression.
+ */
+export async function resolveParentWorkspaceId(
+  explicit: number | undefined,
+  auth: ResolvedAuth,
+  resolve: (auth: ResolvedAuth) => Promise<number> = resolveScopedWorkspaceId,
+): Promise<number> {
+  return explicit ?? (await resolve(auth));
+}
+
 /** Resolve the sandbox's base URL via get-or-create `sandbox/me`. */
 async function resolveSandboxBaseUrl(auth: ResolvedAuth): Promise<string> {
   const url = new URL("/api:meta/sandbox/me", auth.instance);
@@ -181,10 +195,12 @@ async function deployEphemeral(
   ctx: { archive: Uint8Array; bundle: string; source: string; args: ParsedArgs },
 ): Promise<DeploySummary> {
   const { archive, bundle, source, args } = ctx;
-  // The parent workspace defaults to 1 (the primary workspace on a standard
-  // instance), NOT the token's scoped workspace — so a bare `sidestep deploy`
-  // works regardless of the authed profile. `--workspace` overrides it.
-  const parentWorkspaceId = args.workspace ?? 1;
+  // The parent workspace is where the ephemeral is *created*. Resolve it from the
+  // token's own scope (`resolveScopedWorkspaceId`) rather than assuming id 1 —
+  // instances number workspaces from their own sequence, so a hard-coded 1 404s
+  // ("Invalid workspace") anywhere the first workspace isn't 1. `--workspace`
+  // overrides for the rare multi-workspace / cross-scope case.
+  const parentWorkspaceId = await resolveParentWorkspaceId(args.workspace, auth);
   // Ephemeral state is ALWAYS the project directory, never the global cache —
   // even when auth came from `--global`. That's deliberate: it keys the active
   // ephemeral to the folder you're deploying from, so different projects (and

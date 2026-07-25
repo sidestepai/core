@@ -169,12 +169,15 @@ describe("sidestep deploy", () => {
     }
   });
 
-  it("defaults the parent workspace to 1 when --workspace is omitted (no token resolution)", async () => {
-    const m = seq(res(EPH), res(EPH), res({ id: 1 }));
+  it("resolves the parent workspace from the token when --workspace is omitted (not a hard-coded 1)", async () => {
+    // /auth/me maps the token's scoped guid to its numeric workspace id (9 here).
+    const me = { extras: { oauth: { workspace: "ws-guid" }, instance: { membership: { workspace: [{ guid: "ws-guid", id: 9 }] } } } };
+    const m = seq(res(me), res(EPH), res(EPH), res({ id: 1 }));
     await run(["deploy", "--bundle", bundleFile(dir), "--config", authFile]); // no --workspace
-    // create targets workspace/1/ephemeral; no /auth/me resolution call is made
-    expect(m.mock.calls[0]![0]).toBe(`${INSTANCE}/api:meta/workspace/1/ephemeral`);
-    expect(m.mock.calls.some((c) => String(c[0]).includes("/auth/me"))).toBe(false);
+    // first resolve the scoped workspace via /auth/me…
+    expect(m.mock.calls[0]![0]).toBe(`${INSTANCE}/api:meta/auth/me`);
+    // …then create against THAT id, never a hard-coded workspace/1 (which 404s "Invalid workspace")
+    expect(m.mock.calls[1]![0]).toBe(`${INSTANCE}/api:meta/workspace/9/ephemeral`);
   });
 
   it("rejects an invalid --dest at parse time", async () => {

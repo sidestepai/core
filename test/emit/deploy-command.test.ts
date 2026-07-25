@@ -1,5 +1,27 @@
-import { describe, it, expect } from "vitest";
-import { buildStaticEnv, deriveDisplay } from "../../src/emit/deploy-command.js";
+import { describe, it, expect, vi } from "vitest";
+import { buildStaticEnv, deriveDisplay, resolveParentWorkspaceId } from "../../src/emit/deploy-command.js";
+import type { ResolvedAuth } from "../../src/auth/token.js";
+
+const auth: ResolvedAuth = { instance: "https://inst.xano.io", access_token: "tok" } as ResolvedAuth;
+
+describe("resolveParentWorkspaceId", () => {
+  it("prefers an explicit --workspace without touching the token", async () => {
+    const resolve = vi.fn(async () => 9);
+    expect(await resolveParentWorkspaceId(200, auth, resolve)).toBe(200);
+    expect(resolve).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the token's scoped workspace when --workspace is omitted", async () => {
+    const resolve = vi.fn(async () => 9);
+    expect(await resolveParentWorkspaceId(undefined, auth, resolve)).toBe(9);
+    expect(resolve).toHaveBeenCalledWith(auth);
+  });
+
+  it("never falls back to a hard-coded id 1", async () => {
+    const resolve = vi.fn(async () => 42);
+    expect(await resolveParentWorkspaceId(undefined, auth, resolve)).toBe(42);
+  });
+});
 
 describe("deriveDisplay", () => {
   it("reads the workspace name from payload.workspace (object shape)", () => {
