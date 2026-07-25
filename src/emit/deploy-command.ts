@@ -116,13 +116,18 @@ export async function runDeployCommand(args: ParsedArgs): Promise<void> {
   // `--reset` is accepted but a no-op: every deploy is a full replace now.
   if (args.reset) info("`--reset` is redundant — deploy is always a full replace.");
 
-  const { bundle, source } = await loadBundleText(
+  const { bundle, source, content } = await loadBundleText(
     args,
     `Missing input. Usage: sidestep deploy [--dest sandbox|ephemeral] <file> | --bundle <path>.`,
+    { withSeed: true },
   );
 
   const auth = await getAccessToken(args);
-  const archive = encodeWorkspaceArchive(bundle);
+  if (content.length > 0) {
+    const rows = content.length === 1 ? "1 seed content file" : `${content.length} seed content files`;
+    detail(`Bundling ${rows} (full replace re-seeds cleanly).`);
+  }
+  const archive = encodeWorkspaceArchive(bundle, content);
 
   const summary: DeploySummary =
     dest === "sandbox"

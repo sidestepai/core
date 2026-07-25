@@ -97,6 +97,16 @@ export class Xano {
     return this;
   }
 
+  /**
+   * The registered table defs (with their authored `seed`), for the Node deploy
+   * path to build `content/` seed entries. Deliberately NOT reached from
+   * `export()` — seed values are resolved only in the deploy pipeline, so they
+   * never enter the browser-safe bundle. See {@link import("./seed.js")}.
+   */
+  tables(): readonly TableDef[] {
+    return [...this.tableDefs];
+  }
+
   registerFunctions(defs: FunctionDef[]): this {
     return this.register("function", defs);
   }

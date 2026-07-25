@@ -13,20 +13,36 @@
  * Node-only (reads the filesystem); imported by the Node-only command modules.
  */
 import { existsSync, readFileSync } from "node:fs";
-import { exportBundleJson, type ParsedArgs } from "./cli.js";
+import { compileBundle, type ParsedArgs } from "./cli.js";
+import type { SeedContentFile } from "../workspace/seed.js";
 
 /** The resolved bundle text plus the input it came from (an entry file or a `--bundle` path). */
 export interface LoadedBundle {
   bundle: string;
   source: string;
+  /**
+   * Seed `content/` archive entries — populated only when `opts.withSeed` is set
+   * AND the input is an entry `<file>` (a pre-exported `--bundle` carries schema
+   * only; there is no live registry to resolve seed rows from).
+   */
+  content: SeedContentFile[];
 }
 
 /**
  * Resolve the bundle text from `--bundle <path>` or an entry `<file>`.
  * Throws on: both supplied, a missing `--bundle` file, or neither supplied
  * (the last using the caller-supplied {@link missingMessage}).
+ *
+ * With `opts.withSeed`, an entry-file compile also resolves the tables' seed rows
+ * into signed `content/` entries (the deploy path asks for this). A `--bundle`
+ * path cannot — it's already-serialized text with no registry — so `content` is
+ * empty there.
  */
-export async function loadBundleText(args: ParsedArgs, missingMessage: string): Promise<LoadedBundle> {
+export async function loadBundleText(
+  args: ParsedArgs,
+  missingMessage: string,
+  opts: { withSeed?: boolean } = {},
+): Promise<LoadedBundle> {
   if (args.bundle !== undefined) {
     if (args.file !== undefined) {
       throw new Error(`Pass either an entry <file> or --bundle <path>, not both.`);
@@ -34,10 +50,11 @@ export async function loadBundleText(args: ParsedArgs, missingMessage: string): 
     if (!existsSync(args.bundle)) {
       throw new Error(`${args.bundle} not found. Run \`sidestep export --out ${args.bundle}\` first.`);
     }
-    return { bundle: readFileSync(args.bundle, "utf8"), source: args.bundle };
+    return { bundle: readFileSync(args.bundle, "utf8"), source: args.bundle, content: [] };
   }
   if (args.file !== undefined) {
-    return { bundle: await exportBundleJson(args), source: args.file };
+    const { bundle, content } = await compileBundle(args, { seed: opts.withSeed });
+    return { bundle, source: args.file, content };
   }
   throw new Error(missingMessage);
 }
