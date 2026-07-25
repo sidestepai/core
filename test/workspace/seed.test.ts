@@ -20,6 +20,7 @@ const products = table({
     launched_at: f.timestamp(),
     sku: f.uuid(),
     meta: f.json(),
+    tags: f.text({ array: true }),
   },
 });
 
@@ -69,6 +70,18 @@ describe("coerceSeedRows", () => {
       { name: "a", id: 1 },
       { name: "b", id: 2 },
     ]);
+  });
+
+  it("coerces an array column element-wise, and rejects a non-array value for it", () => {
+    const [row] = coerceSeedRows("products", cols, [{ id: 1, name: "x", tags: ["a", "b"] }]);
+    expect(row!.tags).toEqual(["a", "b"]);
+    expect(() => coerceSeedRows("products", cols, [{ id: 1, name: "x", tags: "a" }])).toThrow(
+      /column "tags" \(text\[\]\): expected an array/,
+    );
+    // A wrong-typed element is located by index.
+    expect(() => coerceSeedRows("products", cols, [{ id: 1, name: "x", tags: [5] }])).toThrow(
+      /column "tags\[0\]" \(text\): expected a string/,
+    );
   });
 
   it("rejects a mix of explicit and omitted id (ambiguous, collides on PK)", () => {

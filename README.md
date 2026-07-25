@@ -224,6 +224,36 @@ runs, and more. **All 214 engine statement surfaces are authorable** — every f
 matches the Xano engine, and the output is proven byte-for-byte against the engine's own
 golden fixtures.
 
+### Seed data
+
+Give a table `seed` rows and they ship into the database on deploy — so a fresh
+environment comes up with lookup tables, demo content, or fixtures already in place,
+not empty:
+
+```ts
+const product = table({
+  name: "product",
+  schema: {
+    sku:   f.text({ required: true }),
+    name:  f.text({ required: true }),
+    price: f.decimal(),
+    tags:  f.text({ array: true }),
+  },
+  // Rows are validated against the column types before deploy. Omit `id` and
+  // int-PK rows are auto-numbered 1..N (or set `id` on every row); a bad value
+  // or unknown column is a loud error, never a silent drop.
+  seed: [
+    { sku: "SKU-001", name: "Aeron Chair",   price: 1395, tags: ["furniture", "ergonomic"] },
+    { sku: "SKU-002", name: "Standing Desk", price: 599,  tags: ["furniture"] },
+  ],
+});
+```
+
+Deploy is a full replace, so re-deploying re-seeds cleanly — no duplicate rows. Seed
+data travels only in the deploy package (resolved at deploy time); it never enters the
+type-only workspace your frontend imports. For large or generated data, pass a loader
+instead of an inline array: `seed: () => import("./products.seed.json")`.
+
 ---
 
 ## 60-second quickstart

@@ -53,7 +53,7 @@ export async function resolveSeedRows(source: SeedSource): Promise<SeedRow[]> {
  * default and ship their JSON value as-authored, since the engine accepts the
  * stored JSON form directly.
  */
-function coerceValue(
+function coerceScalarValue(
   label: string,
   column: string,
   type: string,
@@ -101,6 +101,21 @@ function coerceValue(
   }
 }
 
+/**
+ * Coerce one column value, honoring an `array` column: an array-typed column
+ * expects an array (or null) and each element is coerced by the base type;
+ * a scalar column coerces the value directly. A non-array value for an array
+ * column (or vice-versa) throws, named by column (and element index).
+ */
+function coerceColumnValue(label: string, col: ColumnDef, value: unknown): unknown {
+  if (value === null) return null;
+  if (col.array) {
+    if (!Array.isArray(value)) throw located(label, col.name, `${col.type}[]`, value, "an array");
+    return value.map((el, j) => coerceScalarValue(label, `${col.name}[${j}]`, col.type, el));
+  }
+  return coerceScalarValue(label, col.name, col.type, value);
+}
+
 function located(
   label: string,
   column: string,
@@ -127,7 +142,7 @@ export function coerceSeedRows(
   columns: ColumnDef[],
   rows: readonly SeedRow[],
 ): Record<string, unknown>[] {
-  const typeByName = new Map(columns.map((c) => [c.name, c.type]));
+  const colByName = new Map(columns.map((c) => [c.name, c]));
   const coerced = rows.map((row, i) => {
     const label = `table "${tableName}", seed row ${i}`;
     if (row === null || typeof row !== "object" || Array.isArray(row)) {
@@ -138,14 +153,14 @@ export function coerceSeedRows(
       // An explicit `undefined` (e.g. from spreading an optional field) is treated
       // as an omitted column, matching JSON.stringify — not a coercion error.
       if (value === undefined) continue;
-      const type = typeByName.get(key);
-      if (type === undefined) {
+      const col = colByName.get(key);
+      if (col === undefined) {
         const known = columns.map((c) => c.name).join(", ");
         throw new Error(
           `${label}: unknown column "${key}" (not in table schema). Known columns: ${known}.`,
         );
       }
-      out[key] = coerceValue(label, key, type, value);
+      out[key] = coerceColumnValue(label, col, value);
     }
     return out;
   });
