@@ -12,9 +12,9 @@
  */
 import type { ParsedArgs } from "./cli.js";
 import { OpenIdProvider } from "../auth/oauth.js";
-import { readTokens, clearTokens, resolveAuthFilePath } from "../auth/store.js";
+import { readTokens, clearTokens, resolveAuthFilePath, globalAuthFilePath } from "../auth/store.js";
 import { resolveScope } from "../auth/config.js";
-import { success, warn, detail, hostLabel } from "./ui.js";
+import { success, warn, info, detail, hostLabel } from "./ui.js";
 
 export async function runLogoutCommand(args: ParsedArgs): Promise<void> {
   // "write" mode: like `login`, target a definite cache. Defaults to the shared
@@ -22,10 +22,19 @@ export async function runLogoutCommand(args: ParsedArgs): Promise<void> {
   // instead. Never falls back between the two — the target is exactly the one
   // the flag (or its absence) names.
   const authFilePath = resolveAuthFilePath(args, "write");
+  const targetsGlobal = authFilePath === globalAuthFilePath();
   const saved = readTokens(authFilePath);
   if (!saved) {
-    detail(`Not signed in (no token cache at ${authFilePath}). Nothing to do.`);
+    // An explicitly requested logout that finds nothing is worth an `i` line
+    // (your command had no effect), not a dim incidental detail.
+    info(`Not signed in (no token cache at ${authFilePath}). Nothing to do.`);
     return;
+  }
+
+  // The global cache is reused across every project, so revoking it here signs
+  // the user out everywhere — surface that before the irreversible revoke.
+  if (targetsGlobal) {
+    warn("Clearing the shared ~/.sidestep cache — this signs you out of every project that reuses it.");
   }
 
   if (saved.refresh_token) {

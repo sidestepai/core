@@ -199,6 +199,64 @@ describe("sidestep login (end-to-end)", () => {
     expect(existsSync(join(dir, "clients.json"))).toBe(true);
   });
 
+  it("with no flag writes to the shared GLOBAL cache and says so", async () => {
+    const globalCache = join(dir, "global-auth.json");
+    process.env.XANO_GLOBAL_CONFIG = globalCache;
+    stubOauthFetch({ access_token: jwtWithAud("https://x8ki.xano.io"), refresh_token: "ref", expires_in: 600 });
+    const cwd = process.cwd();
+    try {
+      process.chdir(dir); // so a stray ./.xano can't shadow the default
+      const p = run(["login", "--port", "0"]); // no --config, no --local
+      await waitFor(() => stderr.join("").includes("/oauth2/authorize?"));
+      const authUrl = authorizeUrlFromStderr();
+      await hitCallback(`${authUrl.searchParams.get("redirect_uri")}?code=c&state=${authUrl.searchParams.get("state")}`);
+      await p;
+    } finally {
+      process.chdir(cwd);
+      delete process.env.XANO_GLOBAL_CONFIG;
+    }
+    // Token landed in the global cache, NOT the project-local one.
+    expect(existsSync(globalCache)).toBe(true);
+    expect(existsSync(join(dir, ".xano", "auth.json"))).toBe(false);
+    expect(JSON.parse(readFileSync(globalCache, "utf8")).instance).toBe("https://x8ki.xano.io");
+    expect(stderr.join("")).toMatch(/shared ~\/\.sidestep cache/);
+  });
+
+  it("with --local writes to the project-local cache and says so", async () => {
+    process.env.XANO_GLOBAL_CONFIG = join(dir, "global-auth.json");
+    stubOauthFetch({ access_token: jwtWithAud("https://x8ki.xano.io"), refresh_token: "ref", expires_in: 600 });
+    const cwd = process.cwd();
+    try {
+      process.chdir(dir);
+      const p = run(["login", "--local", "--port", "0"]);
+      await waitFor(() => stderr.join("").includes("/oauth2/authorize?"));
+      const authUrl = authorizeUrlFromStderr();
+      await hitCallback(`${authUrl.searchParams.get("redirect_uri")}?code=c&state=${authUrl.searchParams.get("state")}`);
+      await p;
+    } finally {
+      process.chdir(cwd);
+      delete process.env.XANO_GLOBAL_CONFIG;
+    }
+    // Token landed in ./.xano/, NOT the global cache.
+    expect(existsSync(join(dir, ".xano", "auth.json"))).toBe(true);
+    expect(existsSync(join(dir, "global-auth.json"))).toBe(false);
+    expect(stderr.join("")).toMatch(/project-local \.xano cache/);
+  });
+
+  it("with --config <path> claims neither cache scope (no false 'shared' line)", async () => {
+    stubOauthFetch({ access_token: jwtWithAud("https://x8ki.xano.io"), refresh_token: "ref", expires_in: 600 });
+    const p = run(["login", "--config", authPath, "--port", "0"]);
+    await waitFor(() => stderr.join("").includes("/oauth2/authorize?"));
+    const authUrl = authorizeUrlFromStderr();
+    await hitCallback(`${authUrl.searchParams.get("redirect_uri")}?code=c&state=${authUrl.searchParams.get("state")}`);
+    await p;
+    const out = stderr.join("");
+    expect(out).toMatch(new RegExp(`Tokens saved to ${authPath.replace(/[.\\/]/g, "\\$&")}`));
+    // The explicit path is neither the shared nor the project-local cache, so no scope claim.
+    expect(out).not.toMatch(/shared ~\/\.sidestep cache/);
+    expect(out).not.toMatch(/project-local \.xano cache/);
+  });
+
   it("errors when the issued token carries no readable aud", async () => {
     stubOauthFetch({ access_token: "opaque-not-a-jwt", refresh_token: "ref", expires_in: 600 });
     const p = run(["login", "--config", authPath, "--port", "0"]);

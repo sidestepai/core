@@ -275,6 +275,11 @@ const CLI_COMMANDS: readonly ManifestCliCommand[] = [
     args: "",
     description: "Print the installed @sidestep/core version to stdout (also `--version` / `-v`). Handy for debugging which build is running.",
   },
+  {
+    command: "help",
+    args: "",
+    description: "Print the grouped command reference to stdout (also the no-argument default, `--help`, and `-h`).",
+  },
 ];
 
 /**

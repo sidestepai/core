@@ -1148,8 +1148,9 @@ sidestep sandbox export --format multidoc --name backend               # …or t
 sidestep sandbox export --format multidoc --path -                     # …stream the multidoc to stdout (deploy first)
 sidestep sandbox details                     # print the sandbox base URL + tenant details (pretty on a TTY, JSON when piped)
 sidestep profile me                          # print the scoped user + instance base URL (pretty on a TTY, JSON when piped)
-sidestep logout                              # revoke the refresh token + delete the local cache
+sidestep logout                              # revoke the refresh token + clear the shared cache (--local for the project one)
 sidestep version                             # print the installed @sidestep/core version
+sidestep help                                # grouped command reference (also the no-arg default)
 
 sidestep validate ./xano/index.ts            # import into a live instance, diff each object back
 sidestep validate ./xano/index.ts --runtime  # also run each deployed function on the engine

@@ -43,6 +43,11 @@ export function globalAuthFilePath(): string {
   return process.env.XANO_GLOBAL_CONFIG ?? join(homedir(), ".sidestep", "auth.json");
 }
 
+/** The project-local token cache path (`./.xano/auth.json`), resolved absolute. */
+export function localAuthFilePath(): string {
+  return resolve(DEFAULT_AUTH_FILE);
+}
+
 /**
  * Resolve the token cache path. Precedence, highest first:
  *   1. `--config <path>` / `$XANO_CONFIG` — an explicit path always wins.
@@ -62,7 +67,7 @@ export function resolveAuthFilePath(args: ParsedArgs, mode: "read" | "write" = "
   const explicit = args.authFile ?? process.env.XANO_CONFIG;
   if (explicit !== undefined) return resolve(explicit);
 
-  const local = resolve(DEFAULT_AUTH_FILE);
+  const local = localAuthFilePath();
   if (args.local) return local;
 
   const global = globalAuthFilePath();

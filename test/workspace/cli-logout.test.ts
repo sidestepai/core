@@ -150,5 +150,7 @@ describe("sidestep logout", () => {
     expect(new URLSearchParams(revokeCall![1]!.body as string).get("token")).toBe("shared-ref");
     expect(existsSync(globalPath)).toBe(false); // shared cache cleared
     expect(stderr.join("")).toContain("Signed out");
+    // The user is warned that clearing the shared cache signs them out everywhere.
+    expect(stderr.join("")).toMatch(/every project/i);
   });
 });

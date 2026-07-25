@@ -24,7 +24,7 @@ import * as client from "openid-client";
 import type { ParsedArgs } from "./cli.js";
 import { OpenIdProvider, oauthErrorCode, decodeAudience, CALLBACK_PATH, DEFAULT_PORT } from "../auth/oauth.js";
 import { startCallbackServer, openBrowser } from "../auth/loopback.js";
-import { writeTokens, ensureGitignored, resolveAuthFilePath, type TokenRecord } from "../auth/store.js";
+import { writeTokens, ensureGitignored, resolveAuthFilePath, globalAuthFilePath, type TokenRecord } from "../auth/store.js";
 import { resolveAuthHost, resolveScope, assertHttpsOrigin } from "../auth/config.js";
 import { step, success, warn, detail, blank, hostLabel } from "./ui.js";
 
@@ -54,10 +54,12 @@ export async function runLoginCommand(args: ParsedArgs): Promise<void> {
   blank();
   success(`Signed in to ${hostLabel(record.instance)}`);
   detail(`Tokens saved to ${authFilePath}`);
-  if (args.local) {
-    detail("Using the project-local .xano cache — scoped to this directory.");
-  } else {
+  // Scope line keys on the resolved path, not the flag: an explicit `--config`
+  // path is neither cache, so it gets no (potentially false) scope claim.
+  if (authFilePath === globalAuthFilePath()) {
     detail("Using the shared ~/.sidestep cache — available from any project directory.");
+  } else if (args.local) {
+    detail("Using the project-local .xano cache — scoped to this directory.");
   }
 
   // Tokens are already durably saved; a .gitignore failure must not fail the

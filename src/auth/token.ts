@@ -10,9 +10,17 @@
 import lockfile from "proper-lockfile";
 import type { ParsedArgs } from "../emit/cli.js";
 import { OpenIdProvider, oauthErrorCode, decodeAudience, type RawTokens } from "./oauth.js";
-import { readTokens, writeTokens, clearTokens, resolveAuthFilePath, type TokenRecord } from "./store.js";
+import {
+  readTokens,
+  writeTokens,
+  clearTokens,
+  resolveAuthFilePath,
+  globalAuthFilePath,
+  localAuthFilePath,
+  type TokenRecord,
+} from "./store.js";
 import { resolveAuthHost, resolveScope, assertHttpsOrigin } from "./config.js";
-import { detail, hostLabel } from "../emit/ui.js";
+import { detail, warn, hostLabel } from "../emit/ui.js";
 
 /** Refresh this many ms before the cached access token actually expires. */
 const EXPIRY_SKEW_MS = 30_000;
@@ -149,6 +157,8 @@ export async function getAccessToken(args: ParsedArgs): Promise<ResolvedAuth> {
     );
   }
 
+  warnIfLocalShadowsGlobal(args, authFilePath, saved);
+
   const instance = saved.instance;
   assertHttpsOrigin(instance, "instance");
 
@@ -157,6 +167,32 @@ export async function getAccessToken(args: ParsedArgs): Promise<ResolvedAuth> {
   }
 
   return refreshUnderLock(authFilePath, saved);
+}
+
+/**
+ * Loud guard against a stale project-local cache silently shadowing the global
+ * default. Pre-4.1.0 releases wrote `./.xano/auth.json` by default, so an old
+ * project dir can still hold a leftover local cache; read mode prefers it over
+ * the global one, which — if the two are bound to DIFFERENT instances — would
+ * point a full-replace deploy at the wrong instance with no visible sign.
+ *
+ * Only fires for the *default* resolution (no `--config`/`$XANO_CONFIG`, no
+ * `--local`) that landed on the local cache while a divergent global cache also
+ * exists. An explicit path or `--local` is a deliberate choice and stays quiet.
+ */
+function warnIfLocalShadowsGlobal(args: ParsedArgs, resolved: string, saved: TokenRecord): void {
+  const isDefaultResolution = args.authFile === undefined && process.env.XANO_CONFIG === undefined && !args.local;
+  if (!isDefaultResolution || resolved !== localAuthFilePath()) return;
+  const globalPath = globalAuthFilePath();
+  if (globalPath === resolved) return;
+  const globalSaved = readTokens(globalPath);
+  if (globalSaved && globalSaved.instance !== saved.instance) {
+    warn(
+      `Using project-local ${resolved} (bound to ${hostLabel(saved.instance)}), but a global ` +
+        `cache bound to ${hostLabel(globalSaved.instance)} also exists — the local cache wins. ` +
+        `Remove ./.xano/auth.json (or pass --config) to use the global credential instead.`,
+    );
+  }
 }
 
 /**
