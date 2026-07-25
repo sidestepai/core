@@ -689,7 +689,11 @@
           "optional": true,
           "default": "null"
         }
-      ]
+      ],
+      "result": {
+        "name": "as",
+        "type": "boolean"
+      }
     },
     {
       "surface": "array.filter_count",
@@ -2425,14 +2429,24 @@
       "storedName": "mvp:dbo_addoreditby",
       "sPath": "db.add_or_edit",
       "registered": true,
-      "declarative": false
+      "declarative": false,
+      "result": {
+        "name": "as",
+        "type": "InferRow<T>",
+        "note": "upserts and never misses"
+      }
     },
     {
       "surface": "db.add",
       "storedName": "mvp:dbo_add",
       "sPath": "db.add",
       "registered": true,
-      "declarative": false
+      "declarative": false,
+      "result": {
+        "name": "as",
+        "type": "InferRow<T>",
+        "note": "the full inserted row incl. id/created_at"
+      }
     },
     {
       "surface": "db.bulk.add",
@@ -2446,14 +2460,23 @@
       "storedName": "mvp:dbo_bulkdelete",
       "sPath": "db.bulk.delete",
       "registered": true,
-      "declarative": false
+      "declarative": false,
+      "result": {
+        "name": "as",
+        "type": "number",
+        "note": "count of deleted rows"
+      }
     },
     {
       "surface": "db.bulk.patch",
       "storedName": "mvp:dbo_bulkpatch",
       "sPath": "db.bulk.patch",
       "registered": true,
-      "declarative": false
+      "declarative": false,
+      "result": {
+        "name": "as",
+        "type": "InferRow<T>[]"
+      }
     },
     {
       "surface": "db.bulk.update",
@@ -2467,7 +2490,12 @@
       "storedName": "mvp:dbo_delby",
       "sPath": "db.del",
       "registered": true,
-      "declarative": false
+      "declarative": false,
+      "result": {
+        "name": "as",
+        "type": "null",
+        "note": "the engine deletes and returns no value; throws NotFound on a miss"
+      }
     },
     {
       "surface": "db.direct_query",
@@ -2481,7 +2509,12 @@
       "storedName": "mvp:dbo_editby",
       "sPath": "db.edit",
       "registered": true,
-      "declarative": false
+      "declarative": false,
+      "result": {
+        "name": "as",
+        "type": "InferRow<T>",
+        "note": "the full post-mutation row; throws NotFound on a miss"
+      }
     },
     {
       "surface": "db.external.mssql.direct_query",
@@ -2523,28 +2556,47 @@
       "storedName": "mvp:dbo_getby",
       "sPath": "db.get",
       "registered": true,
-      "declarative": false
+      "declarative": false,
+      "result": {
+        "name": "as",
+        "type": "InferRow<T> | null",
+        "note": "binds null on a miss, never throws"
+      }
     },
     {
       "surface": "db.has",
       "storedName": "mvp:dbo_hasby",
       "sPath": "db.has",
       "registered": true,
-      "declarative": false
+      "declarative": false,
+      "result": {
+        "name": "as",
+        "type": "boolean"
+      }
     },
     {
       "surface": "db.patch",
       "storedName": "mvp:dbo_patch",
       "sPath": "db.patch",
       "registered": true,
-      "declarative": false
+      "declarative": false,
+      "result": {
+        "name": "as",
+        "type": "InferRow<T>",
+        "note": "the full post-mutation row; throws NotFound on a miss"
+      }
     },
     {
       "surface": "db.query",
       "storedName": "mvp:dbo_view",
       "sPath": "db.query",
       "registered": true,
-      "declarative": false
+      "declarative": false,
+      "result": {
+        "name": "as",
+        "type": "InferRow<T>[]",
+        "note": "a paging envelope when metadata paging is on (#58)"
+      }
     },
     {
       "surface": "db.schema",
@@ -2673,7 +2725,11 @@
           "type": "value",
           "optional": false
         }
-      ]
+      ],
+      "result": {
+        "name": "as",
+        "type": "number"
+      }
     },
     {
       "surface": "math.bitwise.and",
@@ -2694,7 +2750,11 @@
           "type": "value",
           "optional": false
         }
-      ]
+      ],
+      "result": {
+        "name": "as",
+        "type": "number"
+      }
     },
     {
       "surface": "math.bitwise.or",
@@ -2715,7 +2775,11 @@
           "type": "value",
           "optional": false
         }
-      ]
+      ],
+      "result": {
+        "name": "as",
+        "type": "number"
+      }
     },
     {
       "surface": "math.bitwise.xor",
@@ -2736,7 +2800,11 @@
           "type": "value",
           "optional": false
         }
-      ]
+      ],
+      "result": {
+        "name": "as",
+        "type": "number"
+      }
     },
     {
       "surface": "math.div",
@@ -2848,7 +2916,11 @@
           "optional": true,
           "default": ""
         }
-      ]
+      ],
+      "result": {
+        "name": "as",
+        "type": "[string, unknown][]"
+      }
     },
     {
       "surface": "object.keys",
@@ -2869,7 +2941,11 @@
           "optional": true,
           "default": ""
         }
-      ]
+      ],
+      "result": {
+        "name": "as",
+        "type": "string[]"
+      }
     },
     {
       "surface": "object.values",
@@ -2890,7 +2966,11 @@
           "optional": true,
           "default": ""
         }
-      ]
+      ],
+      "result": {
+        "name": "as",
+        "type": "unknown[]"
+      }
     },
     {
       "surface": "placeholder",
@@ -3322,7 +3402,12 @@
           "type": "value",
           "optional": true
         }
-      ]
+      ],
+      "result": {
+        "name": "as",
+        "type": "boolean",
+        "note": "true when the plaintext matches the stored hash. ⚠ input.password double-hashes — pass input.text() plaintext (#109)"
+      }
     },
     {
       "surface": "security.create_auth_token",

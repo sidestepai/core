@@ -678,7 +678,8 @@ take one typed args object (field names match the engine) and their full field
 schema is listed per-namespace below. Specials (`[special]`) are hand-authored;
 their signatures are listed in **Specials — authored signatures** just below.
 Fields marked `value` take a `Value` (`c.*`/`ref`/`inp`); `comparison` takes an
-`expr(...)`.
+`expr(...)`. A `→ as: <type>` suffix names what the statement's `as:` output var
+holds (curated, not exhaustive — absence means read the `[output]` flag and prose).
 
 ### Specials — authored signatures
 
@@ -791,7 +792,7 @@ Auth & calls:
 ### array
 
 - `s.array.difference({ as?: string; expr?: value; value?: value; by?: value })`
-- `s.array.every({ expr?: value; as?: string; if?: comparison })` [output]
+- `s.array.every({ expr?: value; as?: string; if?: comparison })` [output] → as: boolean
 - `s.array.filter_count({ expr?: value; as?: string; if?: comparison })`
 - `s.array.filter({ expr?: value; as?: string; if?: comparison })`
 - `s.array.find_index({ expr?: value; as?: string; if?: comparison })`
@@ -848,24 +849,24 @@ Auth & calls:
 
 ### db
 
-- `s.db.add_or_edit` [special]
-- `s.db.add` [special]
+- `s.db.add_or_edit` [special] → as: InferRow<T> (upserts and never misses)
+- `s.db.add` [special] → as: InferRow<T> (the full inserted row incl. id/created_at)
 - `s.db.bulk.add` [special]
-- `s.db.bulk.delete` [special]
-- `s.db.bulk.patch` [special]
+- `s.db.bulk.delete` [special] → as: number (count of deleted rows)
+- `s.db.bulk.patch` [special] → as: InferRow<T>[]
 - `s.db.bulk.update` [special]
-- `s.db.del` [special]
+- `s.db.del` [special] → as: null (the engine deletes and returns no value; throws NotFound on a miss)
 - `s.db.direct_query` [special]
-- `s.db.edit` [special]
+- `s.db.edit` [special] → as: InferRow<T> (the full post-mutation row; throws NotFound on a miss)
 - `s.db.external.mssql.direct_query` [special]
 - `s.db.external.mysql.direct_query` [special]
 - `s.db.external.oracle.direct_query` [special]
 - `s.db.external.postgres.direct_query` [special]
 - `s.db.external.snowflake.direct_query` [special]
-- `s.db.get` [special]
-- `s.db.has` [special]
-- `s.db.patch` [special]
-- `s.db.query` [special]
+- `s.db.get` [special] → as: InferRow<T> | null (binds null on a miss, never throws)
+- `s.db.has` [special] → as: boolean
+- `s.db.patch` [special] → as: InferRow<T> (the full post-mutation row; throws NotFound on a miss)
+- `s.db.query` [special] → as: InferRow<T>[] (a paging envelope when metadata paging is on (#58))
 - `s.db.schema` [special]
 - `s.db.set_datasource({ value: value })`
 - `s.db.transaction` [special]
@@ -905,10 +906,10 @@ Auth & calls:
 
 ### math
 
-- `s.math.add({ name?: string; value: value })` [output]
-- `s.math.bitwise.and({ name?: string; value: value })` [output]
-- `s.math.bitwise.or({ name?: string; value: value })` [output]
-- `s.math.bitwise.xor({ name?: string; value: value })` [output]
+- `s.math.add({ name?: string; value: value })` [output] → as: number
+- `s.math.bitwise.and({ name?: string; value: value })` [output] → as: number
+- `s.math.bitwise.or({ name?: string; value: value })` [output] → as: number
+- `s.math.bitwise.xor({ name?: string; value: value })` [output] → as: number
 - `s.math.div({ name?: string; value: value })`
 - `s.math.mod({ name?: string; value: value })`
 - `s.math.mul({ name?: string; value: value })`
@@ -920,9 +921,9 @@ Auth & calls:
 
 ### object
 
-- `s.object.entries({ as?: string; value?: value })` [output]
-- `s.object.keys({ as?: string; value?: value })` [output]
-- `s.object.values({ as?: string; value?: value })` [output]
+- `s.object.entries({ as?: string; value?: value })` [output] → as: [string, unknown][]
+- `s.object.keys({ as?: string; value?: value })` [output] → as: string[]
+- `s.object.values({ as?: string; value?: value })` [output] → as: unknown[]
 
 ### redis
 
@@ -944,7 +945,7 @@ Auth & calls:
 
 ### security
 
-- `s.security.check_password({ as?: string; text_password?: value; hash_password?: value })` [output]
+- `s.security.check_password({ as?: string; text_password?: value; hash_password?: value })` [output] → as: boolean (true when the plaintext matches the stored hash. ⚠ input.password double-hashes — pass input.text() plaintext (#109))
 - `s.security.create_auth_token` [special]
 - `s.security.create_curve_key({ as?: string; curve?: value; format?: value })`
 - `s.security.create_password({ as?: string; character_count?: value; require_lowercase?: value; require_uppercase?: value; require_digit?: value; require_symbol?: value; symbol_whitelist?: value })`

@@ -53,6 +53,13 @@ export interface ManifestStatement {
   declarative: boolean;
   /** Whether the statement emits an `output` envelope. Declarative only. */
   output?: boolean;
+  /**
+   * What the statement's `as:` output variable holds — the value name and its
+   * type — so the manifest answers "what does this bind?" without falling back
+   * to prose. Curated (see `STATEMENT_RESULTS`); present only for statements whose
+   * result is stable and documented. Mirrors {@link ManifestFilter.result}.
+   */
+  result?: { name: string; type: string; note?: string };
   /** Field schema — present for declarative statements. */
   fields?: ManifestField[];
 }
@@ -411,6 +418,46 @@ export const OVERRIDDEN_SURFACES = new Set([
   "mvp:microservice_request",
 ]);
 
+/**
+ * What each statement's `as:` output var holds — the machine-readable companion
+ * to the curated db.* "Runtime behavior" prose (and grounded in the same
+ * `InferResponse` truth). Keyed by the public `surface`. Curated by design and
+ * NOT exhaustive: it covers the statements whose result is stable and verified
+ * (the db.* family, `security.check_password`, and the clearly-typed math/object/
+ * array-predicate ops). A statement absent from this map simply has no `result`
+ * in the manifest — read its `output` flag and the prose. `T` = the bound
+ * `table()`'s `InferRow`. Types trace to `src/responses/infer.ts`; the db.* and
+ * check_password shapes are byte/source-verified (#145).
+ */
+const STATEMENT_RESULTS: Record<string, { name: string; type: string; note?: string }> = {
+  // db.* — mirrors the curated "Runtime behavior" block and InferResponse (#105/#145).
+  "db.get": { name: "as", type: "InferRow<T> | null", note: "binds null on a miss, never throws" },
+  "db.add": { name: "as", type: "InferRow<T>", note: "the full inserted row incl. id/created_at" },
+  "db.edit": { name: "as", type: "InferRow<T>", note: "the full post-mutation row; throws NotFound on a miss" },
+  "db.patch": { name: "as", type: "InferRow<T>", note: "the full post-mutation row; throws NotFound on a miss" },
+  "db.add_or_edit": { name: "as", type: "InferRow<T>", note: "upserts and never misses" },
+  "db.del": { name: "as", type: "null", note: "the engine deletes and returns no value; throws NotFound on a miss" },
+  "db.has": { name: "as", type: "boolean" },
+  "db.query": { name: "as", type: "InferRow<T>[]", note: "a paging envelope when metadata paging is on (#58)" },
+  "db.bulk.patch": { name: "as", type: "InferRow<T>[]" },
+  "db.bulk.delete": { name: "as", type: "number", note: "count of deleted rows" },
+  // security.check_password — the engine filter returns `plain === hashed` (boolean), #109/#145.
+  "security.check_password": {
+    name: "as",
+    type: "boolean",
+    note: "true when the plaintext matches the stored hash. ⚠ input.password double-hashes — pass input.text() plaintext (#109)",
+  },
+  // Clearly-typed declarative ops.
+  "array.every": { name: "as", type: "boolean" },
+  "math.add": { name: "as", type: "number" },
+  "math.bitwise.and": { name: "as", type: "number" },
+  "math.bitwise.or": { name: "as", type: "number" },
+  "math.bitwise.xor": { name: "as", type: "number" },
+  "object.keys": { name: "as", type: "string[]" },
+  "object.values": { name: "as", type: "unknown[]" },
+  "object.entries": { name: "as", type: "[string, unknown][]" },
+};
+
 function fieldsOf(spec: StatementSpec): ManifestField[] {
   return spec.rules.map((r) => {
     const f: ManifestField = {
@@ -445,6 +492,10 @@ export function buildManifest(opts: { version?: string } = {}): Manifest {
       // Overridden surfaces defer their signature to the hand-authored prose entry.
       if (!overridden) entry.fields = fieldsOf(spec);
     }
+    // Curated result descriptor — attaches to declarative AND special surfaces
+    // (the db.* family is `special`, so this must run independent of `spec`).
+    const result = STATEMENT_RESULTS[surface];
+    if (result) entry.result = result;
     return entry;
   });
 
@@ -1087,7 +1138,8 @@ export function renderLlmsTxt(m: Manifest): string {
     "schema is listed per-namespace below. Specials (`[special]`) are hand-authored;",
     "their signatures are listed in **Specials — authored signatures** just below.",
     "Fields marked `value` take a `Value` (`c.*`/`ref`/`inp`); `comparison` takes an",
-    "`expr(...)`.",
+    "`expr(...)`. A `→ as: <type>` suffix names what the statement's `as:` output var",
+    "holds (curated, not exhaustive — absence means read the `[output]` flag and prose).",
     "",
   );
 
@@ -1179,11 +1231,15 @@ export function renderLlmsTxt(m: Manifest): string {
       // field signature inline (defaults dropped except DEFAULT_KEEP); specials carry
       // no field schema in the listing — their real signature lives in the Specials
       // block / def-shapes / `.d.ts` — so they render as a terse discovery pointer.
+      // The `as:` output binding, when curated — `→ as: <type> (<note>)`.
+      const resultSuffix = s.result
+        ? ` → ${s.result.name}: ${s.result.type}${s.result.note ? ` (${s.result.note})` : ""}`
+        : "";
       if (s.fields) {
         const args = s.fields.map((f) => fieldLine(f, s.sPath)).join("; ");
-        lines.push(`- \`${call}({ ${args} })\`${flagSuffix}`);
+        lines.push(`- \`${call}({ ${args} })\`${flagSuffix}${resultSuffix}`);
       } else {
-        lines.push(`- \`${call}\`${flagSuffix}`);
+        lines.push(`- \`${call}\`${flagSuffix}${resultSuffix}`);
       }
     }
     lines.push("");

@@ -135,6 +135,33 @@ describe("manifest", () => {
     }
   });
 
+  // #145 (Ask #1): output-bearing statements carry a machine-readable result
+  // descriptor (`as` var name + type) so the manifest answers "what does this
+  // bind?" without falling back to prose. Curated, not exhaustive.
+  it("statements carry a curated result descriptor for the tester's flagship + db family (#145)", () => {
+    const bySurface = new Map(m.statements.map((x) => [x.surface, x]));
+    // The exact case the feedback named: security.check_password → boolean.
+    expect(bySurface.get("security.check_password")?.result).toMatchObject({ name: "as", type: "boolean" });
+    expect(bySurface.get("security.check_password")?.result?.note).toMatch(/input\.password/);
+    // db.* mirrors InferResponse / the curated Runtime behavior prose.
+    expect(bySurface.get("db.get")?.result?.type).toBe("InferRow<T> | null");
+    expect(bySurface.get("db.add")?.result?.type).toBe("InferRow<T>");
+    expect(bySurface.get("db.has")?.result?.type).toBe("boolean");
+    expect(bySurface.get("db.query")?.result?.type).toBe("InferRow<T>[]");
+    // A clearly-typed declarative op.
+    expect(bySurface.get("math.add")?.result?.type).toBe("number");
+    // Absent from the curated map ⇒ no result descriptor (field is optional).
+    expect(bySurface.get("db.truncate")?.result).toBeUndefined();
+  });
+
+  it("renderLlmsTxt surfaces the result binding inline in the statement catalog (#145)", () => {
+    const txt = renderLlmsTxt(m);
+    expect(txt).toContain("s.security.check_password");
+    // The `→ as: <type>` suffix rides the catalog line.
+    expect(txt).toMatch(/s\.security\.check_password.*→ as: boolean/);
+    expect(txt).toMatch(/s\.db\.get.*→ as: InferRow<T> \| null/);
+  });
+
   // #145 (Trap B): the input.password → check_password double-hash footgun (#109)
   // is guarded only by prose (a static/runtime rejection is infeasible — the value
   // at the check_password call site is an unbranded inp("password")). Pin the
