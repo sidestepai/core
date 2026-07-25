@@ -47,7 +47,7 @@ import {
 } from "../lock/lock.js";
 import { readLockFile, writeLockFile } from "../lock/io.js";
 import { resetLockOverrides, seedLockOverrides } from "../lock/store.js";
-import { warn, info, detail } from "./ui.js";
+import { warn, info, detail, stdoutStyle } from "./ui.js";
 
 export interface ParsedArgs {
   command: string | undefined;
@@ -100,12 +100,18 @@ export interface ParsedArgs {
   /** `--config <path>`: project-local token cache. Default: $XANO_CONFIG, then ./.xano/auth.json. */
   authFile: string | undefined;
   /**
-   * `--global`: use the shared `~/.sidestep/auth.json` cache instead of the
-   * project-local `./.xano/auth.json`. `login --global` writes there; other
-   * commands read it when the project has no local cache (reads always try the
-   * project-local cache first, then fall back to the global one).
+   * `--local`: use the project-local `./.xano/auth.json` cache instead of the
+   * shared `~/.sidestep/auth.json` one (the default). `login --local` writes
+   * there; other commands read it. Without `--local`, reads still prefer an
+   * existing project-local cache before falling back to the global one, so a
+   * `--local` project keeps working without repeating the flag.
    */
-  global: boolean;
+  local: boolean;
+  /**
+   * `ephemeral list --all-workspaces`: enumerate ephemeral tenants across every
+   * workspace on the instance, not just the token's parent workspace.
+   */
+  allWorkspaces: boolean;
   /** `login --port <n>`: fixed loopback callback port (default: an ephemeral port). */
   port: number | undefined;
   /** `login --scope "<space list>"`: OAuth scopes to request (default: the built-in xano-cli set). */
@@ -175,7 +181,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
   const staticEnv: Record<string, string> = {};
   let authHost: string | undefined;
   let authFile: string | undefined;
-  let useGlobal = false;
+  let useLocal = false;
+  let allWorkspaces = false;
   let port: number | undefined;
   let scope: string | undefined;
   let runtime = false;
@@ -242,8 +249,10 @@ export function parseArgs(argv: string[]): ParsedArgs {
       authFile = rest[++i];
     } else if (arg.startsWith("--config=")) {
       authFile = arg.slice("--config=".length);
-    } else if (arg === "--global") {
-      useGlobal = true;
+    } else if (arg === "--local") {
+      useLocal = true;
+    } else if (arg === "--all-workspaces") {
+      allWorkspaces = true;
     } else if (arg === "--port") {
       port = parsePort(rest[++i]);
     } else if (arg.startsWith("--port=")) {
@@ -334,7 +343,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
     staticEnv,
     authHost,
     authFile,
-    global: useGlobal,
+    local: useLocal,
+    allWorkspaces,
     port,
     scope,
     runtime,
@@ -500,20 +510,79 @@ export function readVersion(): string {
   return "unknown";
 }
 
-const USAGE =
-  "Usage: sidestep <compile|export> <file> [--out <path>] [--lock[=<path>]] [--frozen-lock] [--strict] | " +
-  "sidestep init [<dir>] [--name <name>] [--ai <claude|codex|cursor|none>] [--force] [--no-install] | " +
-  "sidestep version | " +
-  "sidestep login [--origin <origin>] [--config <path>] [--global] [--port <n>] | " +
-  "sidestep logout [--config <path>] [--global] | " +
-  "sidestep deploy <file>|--bundle <path> [--dest <sandbox|ephemeral>] [--name <display>] [--workspace <id>] [--expires-hours <n>] [--static <dir>] [--static-host <name>] [--static-env KEY=VALUE] [--config <path>] [--global] | " +
-  "sidestep release <file>|--bundle <path> [--yes]  (coming soon — promotes to your instance workspace) | " +
-  "sidestep ephemeral <list|get|delete|export> [<name>] [--global] [--workspace <id>] [--format <json|multidoc>] [--path <path>|-] [--yes] | " +
-  "sidestep sandbox export [--format <json|multidoc>] [--path <path>|-] [--name <name>] | " +
-  "sidestep sandbox details [--config <path>] [--global] | " +
-  "sidestep profile me [--config <path>] [--global] | " +
-  "sidestep validate <file>|--bundle <path> [--runtime] [--capture] [--out <dir>] [--instance <url>] [--workspace <id>] [--verbose] | " +
-  "sidestep lock <rename|prune|adopt> …";
+/** One-line pointer to the full help — appended to command errors in place of a wall of usage text. */
+const HELP_HINT = "Run `sidestep help` to see all commands.";
+
+/**
+ * The command reference rendered by `printHelp`, grouped by task. Keep the name
+ * column short (the subcommands/flags live in the description) so the two-column
+ * layout stays tight and scannable. Update this — not a giant usage string —
+ * when commands change.
+ */
+const HELP_GROUPS: ReadonlyArray<{ title: string; rows: ReadonlyArray<readonly [name: string, desc: string]> }> = [
+  {
+    title: "Author",
+    rows: [
+      ["compile <file>", "Type-check and compile a workspace to XanoScript"],
+      ["export <file>", "Compile and write the deployable JSON bundle"],
+      ["init [dir]", "Scaffold a new sidestep project"],
+    ],
+  },
+  {
+    title: "Deploy",
+    rows: [
+      ["deploy <file>", "Ship to a live ephemeral env (or --dest sandbox) → URL"],
+      ["release <file>", "Promote to your instance workspace (coming soon)"],
+      ["validate <file>", "Deploy to a throwaway tenant and verify the round-trip"],
+    ],
+  },
+  {
+    title: "Environments",
+    rows: [
+      ["ephemeral", "Manage ephemeral envs — list, get, delete, export"],
+      ["sandbox", "Export or inspect your throwaway sandbox"],
+    ],
+  },
+  {
+    title: "Account",
+    rows: [
+      ["login", "OAuth sign-in — shared cache, or --local per project"],
+      ["logout", "Revoke the refresh token and clear the cache"],
+      ["profile me", "Show the signed-in user and instance URL"],
+    ],
+  },
+  {
+    title: "Maintenance",
+    rows: [
+      ["lock", "Maintain xano.lock identities — rename, prune, adopt"],
+      ["version", "Print the CLI version"],
+      ["help", "Show this help"],
+    ],
+  },
+];
+
+/**
+ * Render the grouped command reference to STDOUT (help is requested output, not
+ * an error). Names are padded to a common width so descriptions line up; color
+ * is applied after padding so ANSI codes never skew the alignment.
+ */
+export function printHelp(): void {
+  const s = stdoutStyle();
+  const width = Math.max(...HELP_GROUPS.flatMap((g) => g.rows.map(([name]) => name.length)));
+  const lines: string[] = [
+    `${s.bold("sidestep")} ${s.dim(`v${readVersion()}`)} — the AI-first SDK & CLI for Xano backends`,
+    "",
+    `${s.dim("Usage:")} sidestep ${s.cyan("<command>")} ${s.dim("[options]")}`,
+  ];
+  for (const group of HELP_GROUPS) {
+    lines.push("", s.bold(group.title));
+    for (const [name, desc] of group.rows) {
+      lines.push(`  ${s.cyan(name.padEnd(width))}  ${s.dim(desc)}`);
+    }
+  }
+  lines.push("", s.dim("Docs: https://www.npmjs.com/package/@sidestep/core"));
+  process.stdout.write(lines.join("\n") + "\n");
+}
 
 /** Quote a name for a suggested shell command when it needs it. */
 function shellName(name: string): string {
@@ -572,6 +641,10 @@ export async function run(argv: string[]): Promise<void> {
   const args = parseArgs(argv);
   const { command, out } = args;
 
+  if (command === undefined || command === "help" || command === "--help" || command === "-h") {
+    printHelp();
+    return;
+  }
   if (command === "version" || command === "--version" || command === "-v") {
     process.stdout.write(`${readVersion()}\n`);
     return;
@@ -619,7 +692,7 @@ export async function run(argv: string[]): Promise<void> {
     if (args.subcommand === "deploy") {
       throw new Error(
         `\`sidestep sandbox deploy\` was removed — use \`sidestep deploy --dest sandbox\` ` +
-          `(same behavior against the singleton sandbox, unified under \`deploy\`). ${USAGE}`,
+          `(same behavior against the singleton sandbox, unified under \`deploy\`). ${HELP_HINT}`,
       );
     }
     if (args.subcommand === "details") {
@@ -635,25 +708,25 @@ export async function run(argv: string[]): Promise<void> {
     }
     throw new Error(
       `Unknown sandbox subcommand "${args.subcommand ?? ""}". ` +
-        `Did you mean \`sidestep sandbox export\` or \`sidestep sandbox details\`? (Deploy moved to \`sidestep deploy --dest sandbox\`.) ${USAGE}`,
+        `Did you mean \`sidestep sandbox export\` or \`sidestep sandbox details\`? (Deploy moved to \`sidestep deploy --dest sandbox\`.) ${HELP_HINT}`,
     );
   }
   if (command === "workspace") {
     throw new Error(
       `\`sidestep workspace deploy\` was removed — use \`sidestep deploy\` ` +
-        `(\`--dest ephemeral\` by default, or \`--dest sandbox\`). ${USAGE}`,
+        `(\`--dest ephemeral\` by default, or \`--dest sandbox\`). ${HELP_HINT}`,
     );
   }
   if (command === "profile") {
     if (args.subcommand !== "me") {
-      throw new Error(`Unknown profile subcommand "${args.subcommand ?? ""}". Did you mean \`sidestep profile me\`? ${USAGE}`);
+      throw new Error(`Unknown profile subcommand "${args.subcommand ?? ""}". Did you mean \`sidestep profile me\`? ${HELP_HINT}`);
     }
     const { runProfileCommand } = await import("./profile-command.js");
     return runProfileCommand(args);
   }
   if (command === "push") {
     throw new Error(
-      `\`sidestep push\` was removed — use \`sidestep deploy\` (\`--dest ephemeral\` by default, or \`--dest sandbox\`). ${USAGE}`,
+      `\`sidestep push\` was removed — use \`sidestep deploy\` (\`--dest ephemeral\` by default, or \`--dest sandbox\`). ${HELP_HINT}`,
     );
   }
   if (command === "validate") {
@@ -663,10 +736,10 @@ export async function run(argv: string[]): Promise<void> {
     return runValidateCommand(args);
   }
   if (command !== "compile" && command !== "export") {
-    throw new Error(`Unknown command "${command ?? ""}". ${USAGE}`);
+    throw new Error(`Unknown command "${command ?? ""}". ${HELP_HINT}`);
   }
   if (!args.file) {
-    throw new Error(`Missing input file. ${USAGE}`);
+    throw new Error(`Missing input file. ${HELP_HINT}`);
   }
 
   if (command === "compile") {

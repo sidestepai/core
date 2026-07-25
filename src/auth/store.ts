@@ -35,7 +35,7 @@ export interface TokenRecord {
 const DEFAULT_AUTH_FILE = join(".xano", "auth.json");
 
 /**
- * Shared cross-project cache path (`--global`): `~/.sidestep/auth.json`.
+ * Shared cross-project cache path (the default): `~/.sidestep/auth.json`.
  * `$XANO_GLOBAL_CONFIG` overrides the location (mainly for tests, mirroring the
  * client store's `$XANO_CLIENT_FILE`).
  */
@@ -46,33 +46,31 @@ export function globalAuthFilePath(): string {
 /**
  * Resolve the token cache path. Precedence, highest first:
  *   1. `--config <path>` / `$XANO_CONFIG` — an explicit path always wins.
- *   2. `--global` — the shared `~/.sidestep/auth.json` cache.
- *   3. the project-local default `./.xano/auth.json`.
+ *   2. `--local` — the project-local `./.xano/auth.json` cache.
+ *   3. the shared `~/.sidestep/auth.json` global cache (the default).
  *
  * `mode` disambiguates the default (step 3):
- *   • `"write"` (login, logout) always targets the project-local cache — a
- *     command that writes or clears credentials must never silently touch the
- *     shared cache; reaching it requires an explicit `--global` (step 2).
+ *   • `"write"` (login, logout) always targets the shared global cache — the
+ *     common flow is one global sign-in reused from every project. Reach the
+ *     project-local cache with an explicit `--local` (step 2).
  *   • `"read"` (read-only commands: deploy, sandbox/profile reads, token
- *     refresh) tries the project-local cache first and, when it is absent, falls
- *     back to the global cache — so `sidestep login --global` once is picked up
- *     from any project directory.
+ *     refresh) still prefers an existing project-local cache and, when it is
+ *     absent, falls back to the global one — so a project that ran
+ *     `login --local` keeps working without repeating the flag.
  */
 export function resolveAuthFilePath(args: ParsedArgs, mode: "read" | "write" = "read"): string {
   const explicit = args.authFile ?? process.env.XANO_CONFIG;
   if (explicit !== undefined) return resolve(explicit);
-  if (args.global) return globalAuthFilePath();
 
   const local = resolve(DEFAULT_AUTH_FILE);
-  if (mode === "write") return local;
+  if (args.local) return local;
 
-  // Read: prefer the project-local cache, then fall back to the global one.
-  if (existsSync(local)) return local;
   const global = globalAuthFilePath();
-  if (existsSync(global)) return global;
-  // Nothing exists yet — return the local path so "not signed in" errors point
-  // at the conventional location.
-  return local;
+  if (mode === "write") return global;
+
+  // Read: prefer an existing project-local cache, then fall back to the global one.
+  if (existsSync(local)) return local;
+  return global;
 }
 
 /**

@@ -202,7 +202,7 @@ async function deployEphemeral(
   // overrides for the rare multi-workspace / cross-scope case.
   const parentWorkspaceId = await resolveParentWorkspaceId(args.workspace, auth);
   // Ephemeral state is ALWAYS the project directory, never the global cache —
-  // even when auth came from `--global`. That's deliberate: it keys the active
+  // even when auth came from the shared global cache. That's deliberate: it keys the active
   // ephemeral to the folder you're deploying from, so different projects (and
   // parallel deploys) each track their own environment independently.
   const dir = process.cwd();

@@ -102,7 +102,7 @@ export async function runEphemeralCommand(args: ParsedArgs): Promise<void> {
 
 async function runList(args: ParsedArgs): Promise<void> {
   const auth = await getAccessToken(args);
-  const rows = args.global
+  const rows = args.allWorkspaces
     ? await listAllEphemeral(auth)
     : await listEphemeral(auth, { parentWorkspaceId: await parentWorkspace(args, auth) });
 
@@ -119,7 +119,7 @@ async function runList(args: ParsedArgs): Promise<void> {
     const exp = formatExpiration(r.expiresAt);
     const expTxt = exp === "expired" ? s.red("expired") : s.dim(`expires ${exp}`);
     const state = r.state ? s.dim(`[${r.state}]`) : "";
-    const ws = args.global && r.workspaceId ? s.dim(` (workspace ${r.workspaceId})`) : "";
+    const ws = args.allWorkspaces && r.workspaceId ? s.dim(` (workspace ${r.workspaceId})`) : "";
     return `  ${s.bold(r.display ?? r.name)} ${s.dim(`(${r.name})`)} ${state} ${expTxt}${ws}`;
   });
   process.stdout.write(lines.join("\n") + "\n");

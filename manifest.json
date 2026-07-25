@@ -1,6 +1,6 @@
 {
   "name": "sidestep",
-  "version": "4.0.3",
+  "version": "4.1.0",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
@@ -8199,11 +8199,11 @@
         },
         {
           "flag": "--config <path>",
-          "description": "Project-local token cache (default: $XANO_CONFIG, then ./.xano/auth.json)."
+          "description": "Explicit token cache path (default: $XANO_CONFIG, then the shared ~/.sidestep/auth.json, falling back to ./.xano/auth.json when it exists)."
         },
         {
-          "flag": "--global",
-          "description": "Read credentials from the shared ~/.sidestep/auth.json cache. Reads always try ./.xano/auth.json first, then fall back to the global cache."
+          "flag": "--local",
+          "description": "Read credentials from the project-local ./.xano/auth.json cache instead of the shared ~/.sidestep/auth.json one. Reads already prefer an existing project-local cache, so this only matters when both exist."
         }
       ],
       "description": "Deploy the compiled workspace to a live environment and print its URL. Default `--dest ephemeral` create-or-refreshes a named auto-expiring environment: a live one is refreshed (URL unchanged), a gone/expired one is recreated (the new URL is called out). `--dest sandbox` targets the singleton throwaway. Each deploy is a full replace. Prints a projected, secret-free summary as JSON on stdout when piped. Never writes SERVER identities back into xano.lock (the compile step still maintains it as `export` does)."
@@ -8221,11 +8221,11 @@
     },
     {
       "command": "ephemeral list|get|delete|export",
-      "args": "[<name>] [--global] [--workspace <id>] [--format <json|multidoc>] [--path <path>|-] [--yes]",
+      "args": "[<name>] [--all-workspaces] [--workspace <id>] [--format <json|multidoc>] [--path <path>|-] [--yes]",
       "flags": [
         {
-          "flag": "list [--global]",
-          "description": "List ephemeral tenants in the workspace, or across all workspaces with --global. Expired-but-unswept rows are marked."
+          "flag": "list [--all-workspaces]",
+          "description": "List ephemeral tenants in the token's parent workspace, or across every workspace on the instance with --all-workspaces. Expired-but-unswept rows are marked."
         },
         {
           "flag": "get <name>",
@@ -8267,23 +8267,23 @@
     },
     {
       "command": "sandbox details",
-      "args": "[--config <path>] [--global]",
+      "args": "[--config <path>] [--local]",
       "description": "Print the sandbox tenant as JSON, headlined by its public `baseUrl` — read it to point a frontend at the deployed backend without re-running a deploy. Projects only safe fields (never the raw tenant blob)."
     },
     {
       "command": "profile me",
-      "args": "[--config <path>] [--global]",
+      "args": "[--config <path>] [--local]",
       "description": "Print the scoped user and the instance base URL as JSON — read `instance` to configure a frontend's API base before a --static upload."
     },
     {
       "command": "login",
-      "args": "[--origin <origin>] [--config <path>] [--global] [--port <n>] [--scope <list>]",
-      "description": "OAuth sign-in (browser consent; pick the instance at consent). Caches tokens in ./.xano/auth.json, or in the shared ~/.sidestep/auth.json with --global. For CI, set $XANO_REFRESH_TOKEN + $XANO_CLIENT_ID instead."
+      "args": "[--origin <origin>] [--config <path>] [--local] [--port <n>] [--scope <list>]",
+      "description": "OAuth sign-in (browser consent; pick the instance at consent). Caches tokens in the shared ~/.sidestep/auth.json (reused from any project), or in the project-local ./.xano/auth.json with --local. For CI, set $XANO_REFRESH_TOKEN + $XANO_CLIENT_ID instead."
     },
     {
       "command": "logout",
-      "args": "[--config <path>] [--global]",
-      "description": "Revoke the refresh token and delete the cached credentials (add --global to clear the shared ~/.sidestep cache)."
+      "args": "[--config <path>] [--local]",
+      "description": "Revoke the refresh token and delete the cached credentials — the shared ~/.sidestep cache by default, or the project-local ./.xano cache with --local."
     },
     {
       "command": "lock",
