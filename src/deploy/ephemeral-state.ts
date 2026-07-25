@@ -14,7 +14,7 @@
  * a 404 / past expiry as "create a new one", so a stale or corrupt file can
  * never block a deploy — reads fall back to empty rather than throwing.
  */
-import { readFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { atomicWrite } from "../util/atomic-write.js";
 import { ensureGitignored } from "../auth/store.js";
@@ -36,8 +36,6 @@ export interface EphemeralState {
   version: 1;
   environments: Record<string, EphemeralRecord>;
 }
-
-const EMPTY: EphemeralState = { version: 1, environments: {} };
 
 /** `./.xano/ephemeral.json` resolved against a project directory. */
 export function ephemeralStatePath(dir: string): string {
