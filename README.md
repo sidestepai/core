@@ -336,6 +336,9 @@ async function fetchPosts(): Promise<Post[]> {
 - **`listPosts.getPath()`** → the endpoint path, resolved from your code (or the frozen
   `xano.lock`). No hardcoded strings.
 - **`listPosts.verb`** → the HTTP method, straight from the def.
+- **`sidestep paths ./xano/index.ts`** (alias `routes`) → list every endpoint's verb and
+  resolved `api:<canonical>/<name>` path from the CLI, without writing a script — handy for
+  wiring a client or curling a live env.
 - **`InferInput<typeof someQuery>`** → the request-payload type, derived from a query's
   `input` map at compile time. Required inputs are required keys; enums become literal
   unions; nested objects and lists carry through. **No codegen, always in sync.**

@@ -105,7 +105,7 @@ describe("templates (U2)", () => {
   });
 
   it("README carries the tsx-from-project-root spot-check note (#145)", () => {
-    const md = renderReadme({ appName: "grant-triage" });
+    const md = renderReadme({ appName: "grant-triage", coreVersion: "4.2.0" });
     // The load-bearing kernel: run tsx <file.ts> from inside the project root.
     expect(md).toMatch(/tsx <file\.ts>/);
     expect(md).toMatch(/project root/);
