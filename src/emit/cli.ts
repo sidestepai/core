@@ -781,12 +781,10 @@ export async function compileBundle(
       `--frozen-lock: no xano.lock found at ${lockPath}. Create one with \`sidestep export --lock\` ` +
         `and commit it.`,
     );
-  } else {
-    info(
-      `Exporting without xano.lock — identities derive from names, so a rename becomes delete+create ` +
-        `on sync. Pass --lock to freeze them.`,
-    );
   }
+  // Note: the unlocked-export notice is intentionally suppressed for now — it
+  // fired on every export/deploy and was mostly noise. Lock-by-default is
+  // tracked separately; restore a one-time hint there.
 
   const def = await loadDefault(file);
   if (!Xano.isXano(def)) {
