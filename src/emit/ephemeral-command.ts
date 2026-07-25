@@ -20,7 +20,6 @@ import { writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import type { ParsedArgs } from "./cli.js";
 import { getAccessToken, type ResolvedAuth } from "../auth/token.js";
-import { resolveScopedWorkspaceId } from "../deploy/workspace.js";
 import {
   getEphemeral,
   listEphemeral,
@@ -36,9 +35,9 @@ import { step, success, warn, detail, info, formatFields, formatExpiration, stdo
 
 const TIMEOUT_MS = 120_000;
 
-/** Resolve the parent workspace id: explicit `--workspace` wins, else the token's scoped workspace. */
-async function parentWorkspace(args: ParsedArgs, auth: ResolvedAuth): Promise<number> {
-  return args.workspace ?? (await resolveScopedWorkspaceId(auth));
+/** Resolve the parent workspace id: explicit `--workspace` wins, else 1 (the standard primary workspace). */
+function parentWorkspace(args: ParsedArgs): number {
+  return args.workspace ?? 1;
 }
 
 /** The clear, actionable message for an ephemeral that has expired or been swept. */
@@ -98,7 +97,7 @@ async function runList(args: ParsedArgs): Promise<void> {
   const auth = await getAccessToken(args);
   const rows = args.global
     ? await listAllEphemeral(auth)
-    : await listEphemeral(auth, { parentWorkspaceId: await parentWorkspace(args, auth) });
+    : await listEphemeral(auth, { parentWorkspaceId: parentWorkspace(args) });
 
   if (!process.stdout.isTTY) {
     process.stdout.write(JSON.stringify(rows, null, 2) + "\n");
@@ -124,7 +123,7 @@ async function runList(args: ParsedArgs): Promise<void> {
 async function runGet(args: ParsedArgs): Promise<void> {
   const name = requireName(args, "get");
   const auth = await getAccessToken(args);
-  const parentWorkspaceId = await parentWorkspace(args, auth);
+  const parentWorkspaceId = parentWorkspace(args);
   const summary = await resolveLive(auth, parentWorkspaceId, name);
 
   if (!process.stdout.isTTY) {
@@ -145,7 +144,7 @@ async function runGet(args: ParsedArgs): Promise<void> {
 async function runDelete(args: ParsedArgs): Promise<void> {
   const name = requireName(args, "delete");
   const auth = await getAccessToken(args);
-  const parentWorkspaceId = await parentWorkspace(args, auth);
+  const parentWorkspaceId = parentWorkspace(args);
 
   if (!args.yes && !args.force) {
     const ok = await confirm(`Delete ephemeral "${name}"? This destroys it permanently.`);
@@ -170,7 +169,7 @@ async function runExport(args: ParsedArgs): Promise<void> {
   const name = requireName(args, "export");
   const format = args.format ?? "json";
   const auth = await getAccessToken(args);
-  const parentWorkspaceId = await parentWorkspace(args, auth);
+  const parentWorkspaceId = parentWorkspace(args);
   // Gone/expired gate first — this also yields the base URL for the json export.
   const summary = await resolveLive(auth, parentWorkspaceId, name);
 

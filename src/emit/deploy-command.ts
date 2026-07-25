@@ -176,7 +176,10 @@ async function deployEphemeral(
   ctx: { archive: Uint8Array; bundle: string; source: string; args: ParsedArgs },
 ): Promise<DeploySummary> {
   const { archive, bundle, source, args } = ctx;
-  const parentWorkspaceId = args.workspace ?? (await resolveScopedWorkspaceId(auth));
+  // The parent workspace defaults to 1 (the primary workspace on a standard
+  // instance), NOT the token's scoped workspace — so a bare `sidestep deploy`
+  // works regardless of the authed profile. `--workspace` overrides it.
+  const parentWorkspaceId = args.workspace ?? 1;
   // Ephemeral state is ALWAYS the project directory, never the global cache —
   // even when auth came from `--global`. That's deliberate: it keys the active
   // ephemeral to the folder you're deploying from, so different projects (and

@@ -8179,7 +8179,7 @@
         },
         {
           "flag": "--workspace <id>",
-          "description": "Parent workspace id to create the ephemeral in (default: the token's scoped workspace). The env's own workspace id is always 1."
+          "description": "Parent workspace id to create the ephemeral in (default: 1, the standard primary workspace — not resolved from the token). The env's own internal workspace id is always 1."
         },
         {
           "flag": "--expires-hours <n>",

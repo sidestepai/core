@@ -169,6 +169,14 @@ describe("sidestep deploy", () => {
     }
   });
 
+  it("defaults the parent workspace to 1 when --workspace is omitted (no token resolution)", async () => {
+    const m = seq(res(EPH), res(EPH), res({ id: 1 }));
+    await run(["deploy", "--bundle", bundleFile(dir), "--config", authFile]); // no --workspace
+    // create targets workspace/1/ephemeral; no /auth/me resolution call is made
+    expect(m.mock.calls[0]![0]).toBe(`${INSTANCE}/api:meta/workspace/1/ephemeral`);
+    expect(m.mock.calls.some((c) => String(c[0]).includes("/auth/me"))).toBe(false);
+  });
+
   it("rejects an invalid --dest at parse time", async () => {
     await expect(run(["deploy", bundleFile(dir), "--config", authFile, "--dest", "bogus"])).rejects.toThrow(/--dest must be/);
   });

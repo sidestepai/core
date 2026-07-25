@@ -199,7 +199,7 @@ const CLI_COMMANDS: readonly ManifestCliCommand[] = [
     flags: [
       { flag: "--dest <sandbox|ephemeral>", description: "Which environment to import into. Default `ephemeral`: a named, workspace-scoped, auto-expiring tenant, create-or-refreshed (tracked in ./.xano/ephemeral.json). `sandbox`: the throwaway singleton. Both do a FULL REPLACE (reset is inherent; no opt-out)." },
       { flag: "--name <display>", description: "Ephemeral display name at create time (default: the workspace name from the bundle, else the project dir basename). Ignored for --dest sandbox." },
-      { flag: "--workspace <id>", description: "Parent workspace id to create the ephemeral in (default: the token's scoped workspace). The env's own workspace id is always 1." },
+      { flag: "--workspace <id>", description: "Parent workspace id to create the ephemeral in (default: 1, the standard primary workspace — not resolved from the token). The env's own internal workspace id is always 1." },
       { flag: "--expires-hours <n>", description: "Ephemeral TTL at create time, 1–72 (default 1). Only applies when a new ephemeral is created, not on refresh." },
       { flag: "--static <dir>", description: "Archive a built frontend directory and deploy it to your (parent) workspace's static host after the backend import. The backend URL is auto-injected into the build's root index.html as `window.XANO_HOST`, so the frontend needs no rebuild." },
       { flag: "--static-host <name>", description: "Static-host NAME to deploy the frontend to (default `default`). Give each app a DISTINCT host so deploys don't share and overwrite the one `default` host. The host is auto-created on first deploy." },
