@@ -211,6 +211,15 @@ const CLI_COMMANDS: readonly ManifestCliCommand[] = [
       "Deploy the compiled workspace to a live environment and print its URL. Default `--dest ephemeral` create-or-refreshes a named auto-expiring environment: a live one is refreshed (URL unchanged), a gone/expired one is recreated (the new URL is called out). `--dest sandbox` targets the singleton throwaway. Each deploy is a full replace. Prints a projected, secret-free summary as JSON on stdout when piped. Never writes SERVER identities back into xano.lock (the compile step still maintains it as `export` does).",
   },
   {
+    command: "release",
+    args: "<file> | --bundle <path>",
+    flags: [
+      { flag: "--yes", description: "Skip the replace-confirmation (for CI). Only relevant once release is enabled." },
+    ],
+    description:
+      "COMING SOON. Promotes your compiled workspace to your MAIN Xano instance workspace (the production target), vs. `deploy` which ships to a disposable ephemeral/sandbox. The target workspace is the one your OAuth token is scoped to — there is no override. Currently gated: it prints a 'coming soon' message and takes no action, pending a record-preserving import (a release must not wipe production table data the way a full replace would).",
+  },
+  {
     command: "ephemeral list|get|delete|export",
     args: "[<name>] [--global] [--workspace <id>] [--format <json|multidoc>] [--path <path>|-] [--yes]",
     flags: [
@@ -651,8 +660,13 @@ export function renderLlmsTxt(m: Manifest): string {
     "  separate workspace, so its identities must not pollute it). Deploying an",
     "  ENTRY FILE still updates the local lock via the shared compile step —",
     "  identically to `export`, only when a lock exists or `--lock` is passed.",
-    "  Use ephemerals for QA and dev; later, deploy the same bundle to a dedicated",
-    "  metered instance for the same experience with a longer-lived environment.",
+    "  Use ephemerals for QA and dev, then `sidestep release` the same workspace to",
+    "  your main Xano instance for production (COMING SOON — see below).",
+    "- `sidestep release ./index.ts` — promote to your MAIN instance workspace (the",
+    "  production target), vs. `deploy`'s disposable env. The target is the workspace",
+    "  your token is scoped to (no override). COMING SOON: currently prints a notice",
+    "  and takes no action, pending a record-preserving import (a release must not",
+    "  wipe production table data the way a full replace would).",
     "- `sidestep ephemeral <list|get|delete|export>` — fully manage those",
     "  environments. `list [--global]` enumerates them (expired rows marked); `get",
     "  <name>` shows the base URL/state/expiry; `delete <name>` destroys one",

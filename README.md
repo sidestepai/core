@@ -2,37 +2,39 @@
 
 # SideStep
 
-### Your Xano backend, as TypeScript. Deployed to a live sandbox in one command.
+### Your Xano backend, as TypeScript. Deployed to a live URL in one command.
 
 **Write your database, APIs, functions, triggers, and AI agents in typed TypeScript.
-Then push the whole thing — plus an optional static frontend — to a disposable Xano
-sandbox with a single deploy.**
+Then `sidestep deploy` the whole thing — plus an optional static frontend — to a live,
+disposable Xano environment that spins up on demand and prints its URL.**
 
 </div>
 
 ```bash
 npx sidestep login                 # 1. sign in once (OAuth — opens your browser)
 npx sidestep init my-app && cd my-app   # 2. scaffold a full-stack project
-npx sidestep sandbox deploy ./xano/index.ts --static ./dist   # 3. ship it, live
+npx sidestep deploy ./xano/index.ts --static ./dist   # 3. ship it → live URL
 ```
 
 ```
-→ Deploying ./xano/index.ts → sandbox (merge)
-✓ Backend deployed to sandbox my-app
-    https://x8ki-letl.n7.xano.io                                  ← backend, live
-→ Deploying static frontend ./dist → workspace #9
+→ Deploying ./xano/index.ts → new ephemeral "my-app"
+✓ Ephemeral e4f2-9ab1 deployed
+! New ephemeral URL:
+    https://e4f2-9ab1.xano.io                                     ← backend, live
 ✓ Static host deployed
     https://my-app.xano.io                                        ← frontend, live
+    Expires in 1h 0m
 ```
 
 <div align="center">
 
 **Three commands from empty folder to a live full-stack app.** `init` scaffolds a
-typed backend and a Vite + React frontend; `deploy` ships the database, APIs, functions,
-triggers — **and** the compiled web app — in a single authenticated call. No export/import
-dance, no upload script, no CI glue between your API and your app. Your TypeScript is the
-source of truth, and one command puts it on real Xano infrastructure you can hit
-immediately.
+typed backend and a Vite + React frontend; `deploy` spins up an **ephemeral environment**
+and ships the database, APIs, functions, triggers — **and** the compiled web app — in a
+single authenticated call, then hands you a URL. Deploy again and it refreshes the same
+environment; edit your TypeScript (by hand or with an AI agent) and `deploy` again — you're
+iterating on real infrastructure in seconds. No export/import dance, no upload script, no CI
+glue between your API and your app.
 
 [Deploy it](#deploy-it-backend--frontend-one-command) ·
 [The model](#the-model-typescript-in-real-infrastructure-out) ·
@@ -55,13 +57,17 @@ gives you that backend **as code you own**:
   repo. Version it, review it in PRs, diff it, roll it back. No more clicking through a
   dashboard and hoping prod matches staging.
 
-- **🚀 Deploy is built in.** `sidestep sandbox deploy` compiles your code and ships it
-  straight to your live Xano sandbox over an authenticated connection. No export/import
-  dance, no upload script to maintain. Backend **and** static frontend in one command.
+- **🚀 Deploy is built in.** `sidestep deploy` compiles your code and ships it straight to
+  a live Xano **ephemeral environment** over an authenticated connection, then prints its
+  URL. No export/import dance, no upload script to maintain. Backend **and** static frontend
+  in one command. Use ephemerals for QA and dev; when Xano offers metered billing, deploy the
+  same bundle to a dedicated instance for the identical experience with a longer-lived URL.
 
-- **⚡ Fast, safe iteration.** The sandbox is disposable, so you can rebuild it as often
-  as you like. Deploys are identity-stable — re-running never duplicates objects, and
-  with a committed `xano.lock` renames stay renames instead of delete-and-recreate.
+- **⚡ Fast, safe iteration.** Ephemerals are disposable (they auto-expire, ~1h by default),
+  so you rebuild as often as you like — `deploy` figures out whether to refresh the one
+  you're iterating on or spin up a fresh one, and calls out the URL when it changes. Deploys
+  are identity-stable: re-running never duplicates objects, and with a committed `xano.lock`
+  renames stay renames instead of delete-and-recreate.
 
 - **🧩 The types flow to your frontend.** Import a `query()` def into your React/Angular
   app and get the endpoint path, HTTP verb, and a fully-typed request payload — with
@@ -82,34 +88,39 @@ gives you that backend **as code you own**:
 
 ## Deploy it: backend + frontend, one command
 
-The **sandbox** is SideStep's deploy target: a disposable Xano workspace attached to your
-account, meant to be written to constantly while you build. Most stacks make you deploy
-your API and your app through two separate pipelines. SideStep collapses that into **one
-command** — point `--static` at your built frontend and it archives and uploads it to the
-sandbox's edge-served static host, right after the backend import, in the same run:
+SideStep's primary deploy target is an **ephemeral environment**: a named, disposable Xano
+workspace that spins up on demand, auto-expires (~1h by default), and is meant to be written
+to constantly while you build. `sidestep deploy` create-or-refreshes one and prints its URL —
+run it again and it refreshes the same environment; if it expired, a fresh one is minted and
+the new URL is called out. (Prefer a single throwaway singleton? `--dest sandbox`.) Most
+stacks make you deploy your API and your app through two separate pipelines. SideStep
+collapses that into **one command** — point `--static` at your built frontend and it archives
+and uploads it to the edge-served static host, right after the backend import, in the same run:
 
 ```bash
 # Build once, then ship backend + frontend together. The deploy wires the
 # backend URL into the frontend for you — no need to know it before building.
 npm run build                                          # → ./dist
-npx sidestep sandbox deploy ./xano/index.ts --static ./dist
+npx sidestep deploy ./xano/index.ts --static ./dist
 ```
 
 ```
-→ Deploying ./xano/index.ts → sandbox (merge)
-✓ Backend deployed to sandbox sbx-ab12
-    https://x8ki-letl.n7.xano.io/tenant/sbx-ab12                      ← backend, live
-→ Deploying static frontend ./dist → workspace #9
+→ Deploying ./xano/index.ts → new ephemeral "my-app"
+✓ Ephemeral e4f2-9ab1 deployed
+! New ephemeral URL:
+    https://e4f2-9ab1.xano.io                                         ← backend, live
 ✓ Config injected into index.html: window.XANO_HOST                   ← backend URL, wired in
 ✓ Static host deployed
     https://my-app.xano.io                                            ← frontend, live
+    Expires in 1h 0m
 ```
 
 One authenticated call ships your database schema, your APIs, your functions and
 triggers, **and** your compiled web app. No separate frontend host to configure, no CI
-glue wiring the two together.
+glue wiring the two together. Manage your environments with `sidestep ephemeral
+<list|get|delete|export>`.
 
-> **Wiring the frontend to the backend.** The deploy bakes the sandbox's backend URL into
+> **Wiring the frontend to the backend.** The deploy bakes the environment's backend URL into
 > your build's `index.html` automatically, as a `window.XANO_HOST` global evaluated *before*
 > your app bundle. So read it at runtime with a build-time fallback and you never have to
 > know the URL ahead of time:

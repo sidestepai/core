@@ -506,6 +506,7 @@ const USAGE =
   "sidestep login [--origin <origin>] [--config <path>] [--global] [--port <n>] | " +
   "sidestep logout [--config <path>] [--global] | " +
   "sidestep deploy <file>|--bundle <path> [--dest <sandbox|ephemeral>] [--name <display>] [--workspace <id>] [--expires-hours <n>] [--static <dir>] [--static-host <name>] [--static-env KEY=VALUE] [--config <path>] [--global] | " +
+  "sidestep release <file>|--bundle <path> [--yes]  (coming soon — promotes to your instance workspace) | " +
   "sidestep ephemeral <list|get|delete|export> [<name>] [--global] [--workspace <id>] [--format <json|multidoc>] [--path <path>|-] [--yes] | " +
   "sidestep sandbox export [--format <json|multidoc>] [--path <path>|-] [--name <name>] | " +
   "sidestep sandbox details [--config <path>] [--global] | " +
@@ -607,6 +608,11 @@ export async function run(argv: string[]): Promise<void> {
     // Lazily imported like the other Node-only command modules.
     const { runEphemeralCommand } = await import("./ephemeral-command.js");
     return runEphemeralCommand(args);
+  }
+  if (command === "release") {
+    // Promote to the instance workspace. Fully plumbed but gated (see the module).
+    const { runReleaseCommand } = await import("./release-command.js");
+    return runReleaseCommand(args);
   }
   if (command === "sandbox") {
     if (args.subcommand === "deploy") {

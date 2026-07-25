@@ -27,15 +27,19 @@ export interface ImportResult {
 }
 
 /**
- * Multipart-POST the workspace archive to an env's `workspace/1/import`. The
- * filename must NOT end in `.enc.gz` (the server treats that as encrypted); a
+ * Multipart-POST the workspace archive to `{baseUrl}/api:meta/workspace/{id}/import`.
+ * The filename must NOT end in `.enc.gz` (the server treats that as encrypted); a
  * plain `.gz` name imports unencrypted with no password.
+ *
+ * `workspaceId` defaults to `1` — the fixed internal id of an ephemeral/sandbox
+ * env, which `deploy` targets. `release` (to a real instance workspace) passes
+ * the caller's actual workspace id and `baseUrl = auth.instance`.
  */
 export async function importWorkspaceArchive(
   auth: ResolvedAuth,
-  opts: { baseUrl: string; archive: Uint8Array },
+  opts: { baseUrl: string; archive: Uint8Array; workspaceId?: number },
 ): Promise<ImportResult> {
-  const url = `${opts.baseUrl.replace(/\/$/, "")}/api:meta/workspace/1/import`;
+  const url = `${opts.baseUrl.replace(/\/$/, "")}/api:meta/workspace/${opts.workspaceId ?? 1}/import`;
 
   const form = new FormData();
   // Copy into a fresh ArrayBuffer-backed Blob so the multipart body is exact.

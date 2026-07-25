@@ -8209,6 +8209,17 @@
       "description": "Deploy the compiled workspace to a live environment and print its URL. Default `--dest ephemeral` create-or-refreshes a named auto-expiring environment: a live one is refreshed (URL unchanged), a gone/expired one is recreated (the new URL is called out). `--dest sandbox` targets the singleton throwaway. Each deploy is a full replace. Prints a projected, secret-free summary as JSON on stdout when piped. Never writes SERVER identities back into xano.lock (the compile step still maintains it as `export` does)."
     },
     {
+      "command": "release",
+      "args": "<file> | --bundle <path>",
+      "flags": [
+        {
+          "flag": "--yes",
+          "description": "Skip the replace-confirmation (for CI). Only relevant once release is enabled."
+        }
+      ],
+      "description": "COMING SOON. Promotes your compiled workspace to your MAIN Xano instance workspace (the production target), vs. `deploy` which ships to a disposable ephemeral/sandbox. The target workspace is the one your OAuth token is scoped to — there is no override. Currently gated: it prints a 'coming soon' message and takes no action, pending a record-preserving import (a release must not wipe production table data the way a full replace would)."
+    },
+    {
       "command": "ephemeral list|get|delete|export",
       "args": "[<name>] [--global] [--workspace <id>] [--format <json|multidoc>] [--path <path>|-] [--yes]",
       "flags": [
