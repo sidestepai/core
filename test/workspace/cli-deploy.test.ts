@@ -200,6 +200,27 @@ describe("sidestep deploy", () => {
     expect(m.mock.calls[3]![0]).toBe("https://e4f2-9ab1.xano.io/api:meta/workspace/1/static_host/default/build");
   });
 
+  it("ephemeral --static preserves a /tenant/{name} base-URL prefix on the static build path", async () => {
+    // A dev/self-hosted ephemeral with no dedicated domain: its base URL is the
+    // instance origin + `/tenant/{name}`. The static path must be concatenated so
+    // the prefix survives — an absolute `new URL()` path would drop it and 404
+    // "Invalid workspace" against the parent instance's workspace 1.
+    const noDomain = { id: 7, name: "e4f2-9ab1", display: "example", state: "ok", ephemeral_expires_at: "2999-01-01 00:00:00+0000" };
+    const site = join(dir, "site");
+    mkdirSync(site, { recursive: true });
+    writeFileSync(join(site, "index.html"), "<head></head>");
+    const m = seq(
+      res(noDomain), // create
+      res(noDomain), // ready
+      res({ id: 1 }), // backend import
+      res({ dev: { host: "my-app.xano.io" } }), // static build
+    );
+    await run(["deploy", "--bundle", bundleFile(dir), "--config", authFile, "--workspace", "114", "--static", site]);
+    // both hit the tenant-prefixed base URL, prefix intact
+    expect(m.mock.calls[2]![0]).toBe(`${INSTANCE}/tenant/e4f2-9ab1/api:meta/workspace/1/import`);
+    expect(m.mock.calls[3]![0]).toBe(`${INSTANCE}/tenant/e4f2-9ab1/api:meta/workspace/1/static_host/default/build`);
+  });
+
   // ── sandbox dest ──────────────────────────────────────────────────────────
 
   it("--dest sandbox resolves sandbox/me and imports to the sandbox base URL", async () => {
