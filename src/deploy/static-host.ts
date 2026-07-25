@@ -29,7 +29,7 @@
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
-import { gzipSync } from "node:zlib";
+import { tarGz as sharedTarGz } from "../util/tar.js";
 
 const STATIC_TIMEOUT_MS = 120_000;
 /** Client-side archive cap — the static upload is a second attacker-influenced payload path. */
@@ -55,39 +55,13 @@ function collectFiles(dir: string): ArchiveEntry[] {
   return out;
 }
 
-/** Build one 512-byte USTAR header with a correct checksum (mtime pinned to 0 for determinism). */
-function tarHeader(name: string, size: number): Buffer {
-  if (Buffer.byteLength(name, "utf8") > 100) {
-    throw new Error(`static-host: path "${name}" exceeds the 100-byte tar name limit; shorten it or nest less deeply.`);
-  }
-  const h = Buffer.alloc(512, 0);
-  h.write(name, 0, "utf8"); // name (100)
-  h.write("0000644\0", 100, "ascii"); // mode 0644 (8)
-  h.write("0000000\0", 108, "ascii"); // uid (8)
-  h.write("0000000\0", 116, "ascii"); // gid (8)
-  h.write(size.toString(8).padStart(11, "0") + "\0", 124, "ascii"); // size (12)
-  h.write("00000000000\0", 136, "ascii"); // mtime 0 (12)
-  h.write("        ", 148, "ascii"); // checksum placeholder: 8 spaces
-  h.write("0", 156, "ascii"); // typeflag: regular file
-  h.write("ustar\0", 257, "ascii"); // magic (6)
-  h.write("00", 263, "ascii"); // version (2)
-  let sum = 0;
-  for (let i = 0; i < 512; i++) sum += h[i]!;
-  h.write(sum.toString(8).padStart(6, "0") + "\0 ", 148, "ascii"); // "NNNNNN\0 " (8)
-  return h;
-}
-
-/** Assemble a gzipped USTAR tarball from the collected files. Exported for tests. */
+/**
+ * Assemble a gzipped USTAR tarball from the collected files. Exported for tests.
+ * Adapts the static-host `{ path, data }` shape onto the shared {@link tarGz}
+ * writer (`{ name, data }`), which owns the ustar header/checksum math.
+ */
 export function tarGz(files: ArchiveEntry[]): Buffer {
-  const blocks: Buffer[] = [];
-  for (const f of files) {
-    blocks.push(tarHeader(f.path, f.data.length));
-    blocks.push(f.data);
-    const pad = (512 - (f.data.length % 512)) % 512;
-    if (pad > 0) blocks.push(Buffer.alloc(pad, 0));
-  }
-  blocks.push(Buffer.alloc(1024, 0)); // two trailing zero blocks
-  return gzipSync(Buffer.concat(blocks));
+  return sharedTarGz(files.map((f) => ({ name: f.path, data: f.data })));
 }
 
 export interface StaticHostRequest {

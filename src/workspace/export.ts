@@ -204,6 +204,36 @@ function assertUniqueGuids(payload: BundlePayload, lock?: LockFile): void {
   }
 }
 
+/**
+ * A signed `type:"content"` envelope — the shape each `content/<guid>-<page>.json`
+ * archive entry holds. Unlike a workspace {@link Bundle} (whose `payload` is the
+ * keyed object), a content payload is a plain array of table rows the engine
+ * inserts on import. Signed by the identical routine, so the engine accepts it.
+ */
+export interface ContentEnvelope {
+  app: string;
+  version: string;
+  type: "content";
+  payload: unknown[];
+  sig: string;
+}
+
+/**
+ * Wrap one page of seed rows as a signed `type:"content"` envelope. The rows are
+ * emitted verbatim (already coerced to their wire shape by the caller); the sig
+ * is computed over `{app,payload,type,version}` exactly as {@link buildBundle}
+ * signs a workspace bundle, so both ride the same byte-exact signature routine.
+ */
+export function buildContentEnvelope(rows: unknown[]): ContentEnvelope {
+  const unsigned = {
+    app: BUNDLE_APP,
+    version: BUNDLE_VERSION_JSON,
+    type: "content" as const,
+    payload: rows,
+  };
+  return { ...unsigned, sig: calcSignatureJson(unsigned) };
+}
+
 /** Assemble a signed `packageExport` bundle from encoded sections. */
 export function buildBundle(args: BuildBundleArgs): Bundle {
   const payload: BundlePayload = { partial: args.partial ?? false, workspace: args.workspace ?? {} };

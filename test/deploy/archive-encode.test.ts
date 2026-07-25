@@ -13,6 +13,20 @@ function firstTarEntry(tar: Buffer): { name: string; size: number; checksumValid
   return { name, size, checksumValid: sum === stored };
 }
 
+/** Walk every ustar entry → `{ name: contents }`, mirroring the server's reader. */
+function readAllEntries(tar: Buffer): Record<string, string> {
+  const files: Record<string, string> = {};
+  let off = 0;
+  while (off + 512 <= tar.length) {
+    const name = tar.toString("utf8", off, off + 100).replace(/\0.*$/, "");
+    if (name === "") break;
+    const size = parseInt(tar.toString("utf8", off + 124, off + 136).replace(/\0.*$/, "").trim() || "0", 8);
+    files[name] = tar.toString("utf8", off + 512, off + 512 + size);
+    off = off + 512 + Math.ceil(size / 512) * 512;
+  }
+  return files;
+}
+
 describe("encodeWorkspaceArchive", () => {
   const bundle = {
     app: "xano",
@@ -49,5 +63,33 @@ describe("encodeWorkspaceArchive", () => {
     const padded = Math.ceil(entry.size / 512) * 512;
     expect(tar.length).toBe(512 + padded + 1024);
     expect(decodeWorkspaceArchive(encodeWorkspaceArchive(json))).toEqual(big);
+  });
+
+  it("writes extra content/ entries after workspace.json, all readable", () => {
+    const extra = [
+      { name: "content/abc-1.json", content: '{"type":"content","payload":[{"id":1}]}' },
+      { name: "content/abc-2.json", content: '{"type":"content","payload":[{"id":2}]}' },
+    ];
+    const tar = gunzipSync(Buffer.from(encodeWorkspaceArchive(JSON.stringify(bundle), extra)));
+    const files = readAllEntries(tar);
+    // workspace.json is still the root entry the decoder resolves…
+    expect(firstTarEntry(tar).name).toBe("workspace.json");
+    expect(JSON.parse(files["workspace.json"]!)).toEqual(bundle);
+    // …and both content files ride alongside it, byte-for-byte.
+    expect(files["content/abc-1.json"]).toBe(extra[0]!.content);
+    expect(files["content/abc-2.json"]).toBe(extra[1]!.content);
+  });
+
+  it("still decodes workspace.json when content entries are present", () => {
+    const archive = encodeWorkspaceArchive(JSON.stringify(bundle), [
+      { name: "content/x-1.json", content: "{}" },
+    ]);
+    expect(decodeWorkspaceArchive(archive)).toEqual(bundle);
+  });
+
+  it("rejects an entry name too long for the ustar name field", () => {
+    expect(() =>
+      encodeWorkspaceArchive(JSON.stringify(bundle), [{ name: "content/" + "y".repeat(120) + ".json", content: "{}" }]),
+    ).toThrow(/too long for ustar/);
   });
 });

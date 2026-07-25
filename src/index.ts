@@ -334,6 +334,8 @@ export type {
   SchemaCols,
   RowOf,
   InferRow,
+  SeedRow,
+  SeedSource,
   IndexDef,
   IndexXdo,
   IndexType,

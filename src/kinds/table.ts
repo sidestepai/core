@@ -189,6 +189,33 @@ export type RowOf<
 export type InferRow<T> = T extends TableDef<string, infer Row> ? Row : never;
 
 /**
+ * A single seed row: a plain JSON record shipped in the deploy package and
+ * inserted on deploy. `Row` is the table's inferred read shape ({@link RowOf}),
+ * with the auto-injected system columns made optional — `id` and `created_at`
+ * carry engine defaults (auto-increment / `now`), so a seed row may omit them;
+ * supplying `id` pins it (the engine preserves it and resets the PK sequence).
+ * A raw-`ColumnDef[]` (unbranded) table falls back to an open record.
+ */
+export type SeedRow<Row = unknown> = [Row] extends [never]
+  ? Record<string, unknown>
+  : unknown extends Row
+    ? Record<string, unknown>
+    : Partial<Pick<Row & object, Extract<"id" | "created_at", keyof Row>>> &
+        Omit<Row & object, "id" | "created_at">;
+
+/**
+ * How a table's seed rows are supplied. Either the rows directly, or — the
+ * frontend-safe form — a **deferred source**: a thunk (optionally async, e.g.
+ * `() => import("./seed.json")`) resolved only in the Node deploy pipeline. A
+ * deferred source keeps large or sensitive seed data out of any frontend bundle
+ * that value-imports the table def, and is erased entirely under `import type`.
+ * Prefer the thunk form for anything beyond a handful of inline rows.
+ */
+export type SeedSource<Row = unknown> =
+  | ReadonlyArray<SeedRow<Row>>
+  | (() => ReadonlyArray<SeedRow<Row>> | Promise<ReadonlyArray<SeedRow<Row>>>);
+
+/**
  * @typeParam Cols - phantom column-name union, captured by {@link table} from a
  *   `FieldMap` schema so db statements can type their column-name fields against
  *   it. Defaults to `string` (a table authored with a raw `ColumnDef[]`, or a
@@ -249,6 +276,18 @@ export interface TableDef<Cols extends string = string, Row = unknown> {
   views?: ViewDef[];
   /** Workspace tags (stored `tag: [{tag}]`), e.g. `["xano:quick-start"]`. */
   tags?: string[];
+  /**
+   * Seed rows shipped in the deploy package and inserted on deploy (full-replace
+   * import → re-deploy re-seeds cleanly, no duplication). Off the table's
+   * persisted schema — it rides as a separate `content/` archive entry, resolved
+   * and validated **only in the Node deploy path**, never in the browser-safe
+   * bundle. See {@link SeedSource}; prefer a deferred thunk for large data.
+   *
+   * Typed loosely here (not against `Row`) so a `TableDef<_, ConcreteRow>` stays
+   * assignable to `TableDef<string, unknown>` — the {@link table} overload types
+   * the authoring input against the real row shape.
+   */
+  seed?: SeedSource;
 }
 
 export interface IndexXdo {
@@ -462,10 +501,12 @@ export function table<
   IdT extends "int" | "uuid" = "int",
   Sys extends boolean = true,
 >(
-  def: Omit<TableDef, "schema" | "idType" | "system"> & {
+  def: Omit<TableDef, "schema" | "idType" | "system" | "seed"> & {
     schema: S;
     idType?: IdT;
     system?: Sys;
+    /** Seed rows typed against this table's row shape (system columns optional). */
+    seed?: SeedSource<RowOf<S, IdT, Sys>>;
   },
 ): TableDef<SchemaCols<S>, RowOf<S, IdT, Sys>>;
 export function table(def: TableDef): TableDef;

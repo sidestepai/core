@@ -29,6 +29,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
 import { emit, serializeBundle } from "./emit.js";
+import { buildSeedContentFiles, type SeedContentFile } from "../workspace/seed.js";
 import { writeArtifact } from "./write.js";
 import { findUnresolvableFilters } from "../validate/filter-names.js";
 import type { FunctionDef } from "../function/define.js";
@@ -673,7 +674,15 @@ export async function run(argv: string[]): Promise<void> {
   }
 
   // export
-  const json = await exportBundleJson(args);
+  const { bundle: json, omittedSeedTables } = await compileBundle(args);
+  if (omittedSeedTables.length > 0) {
+    const names = omittedSeedTables.map((n) => `"${n}"`).join(", ");
+    info(
+      `Exported bundle omits seed rows for ${omittedSeedTables.length} table(s): ${names}. ` +
+        `Seed is applied only by \`sidestep deploy <entry>\` — deploying this bundle via ` +
+        `\`--bundle\` ships schema without seed data.`,
+    );
+  }
   if (out) {
     writeFileSync(out, json + "\n", "utf8");
     process.stdout.write(`Wrote ${out}\n`);
@@ -716,14 +725,40 @@ async function runCompile(args: ParsedArgs): Promise<void> {
   }
 }
 
+/** A compiled bundle plus any seed `content/` entries (empty unless requested). */
+export interface CompiledBundle {
+  bundle: string;
+  content: SeedContentFile[];
+  /**
+   * Names of tables that declared `seed` but whose rows were NOT built into
+   * `content` (i.e. `opts.seed` was false). Empty when `opts.seed` is true. Lets
+   * the `export` command warn that its artifact omits seed — so the CI pattern
+   * `export --out bundle.json` then `deploy --bundle bundle.json` doesn't drop
+   * seed silently (a `--bundle` deploy has no registry to resolve seed from).
+   */
+  omittedSeedTables: string[];
+}
+
 /**
- * Run the full `export` pipeline (lock seed → load → export → lock merge/write)
- * and return the serialized bundle JSON — WITHOUT writing it anywhere. `export`
- * writes it to `--out`/stdout; `push` streams it to the sandbox endpoint. The
- * lock is written to disk here as a side effect, exactly as `export` does, so
- * `push <file>` freezes identities identically to an `export`.
+ * Thin wrapper over {@link compileBundle} for the many callers that only need the
+ * bundle text (export, validate, sandbox-export). Seed content is not built here.
  */
 export async function exportBundleJson(args: ParsedArgs): Promise<string> {
+  return (await compileBundle(args)).bundle;
+}
+
+/**
+ * Compile an entry file to its `packageExport` bundle, running the full lock
+ * pipeline (seed → export → write). With `opts.seed`, also resolve + validate the
+ * tables' seed rows into signed `content/` archive entries — done HERE, inside the
+ * same lock-seeded context as the export, so a seed file's `dbo` guid matches the
+ * table's guid in `workspace.json`. Only the deploy path passes `seed:true`, so a
+ * plain `export`/`validate` never resolves seed sources.
+ */
+export async function compileBundle(
+  args: ParsedArgs,
+  opts: { seed?: boolean } = {},
+): Promise<CompiledBundle> {
   const file = args.file!;
   // Resolve the lock BEFORE importing the workspace module: references bake
   // guids the moment defs are evaluated, so seeding must come first. An invalid
@@ -783,7 +818,14 @@ export async function exportBundleJson(args: ParsedArgs): Promise<string> {
 
   checkFilterNames(bundle, args.strict);
 
-  return serializeBundle(bundle);
+  // Seed content rides in the same lock context as the export it accompanies, so
+  // `resolveRef("dbo", def)` inside buildSeedContentFiles yields the same guid the
+  // table emitted in the bundle. Built only when the deploy path asks for it;
+  // otherwise report which seeded tables were left out so `export` can warn.
+  const content = opts.seed ? await buildSeedContentFiles(def.tables()) : [];
+  const omittedSeedTables = opts.seed ? [] : def.tables().filter((t) => t.seed !== undefined).map((t) => t.name);
+
+  return { bundle: serializeBundle(bundle), content, omittedSeedTables };
 }
 
 /**
