@@ -174,15 +174,16 @@ export async function deployStaticHost(req: StaticHostRequest): Promise<StaticHo
   }
 
   const host = req.host ?? "default";
-  const url = new URL(
-    `/api:meta/workspace/${req.workspaceId}/static_host/${encodeURIComponent(host)}/build`,
-    req.baseUrl,
-  );
+  // String-concatenate (not `new URL(absolutePath, base)`) so a base URL carrying a
+  // `/tenant/{name}` path prefix survives — an absolute path discards it and the
+  // POST lands on the parent instance's workspace 1 (404 "Invalid workspace").
+  // Mirrors `import.js`, which targets the same tenant base URL.
+  const url = `${req.baseUrl.replace(/\/$/, "")}/api:meta/workspace/${req.workspaceId}/static_host/${encodeURIComponent(host)}/build`;
   const form = new FormData();
   form.append("name", "sidestep-deploy");
   form.append("file", new Blob([archive], { type: "application/gzip" }), "build.tar.gz");
 
-  const res = await fetch(url.href, {
+  const res = await fetch(url, {
     method: "POST",
     headers: { Authorization: `Bearer ${req.accessToken}` },
     body: form,
