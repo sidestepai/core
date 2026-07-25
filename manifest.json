@@ -56,7 +56,7 @@
       {
         "name": "c.now",
         "signature": "() => Value",
-        "description": "Current time as epoch-ms — the text(\"now\") |to_epoch_ms chain (Xano has no $now setting, so it lives on c.* not sys). It is a FILTERED value, so it can't be an inline where/cmp operand (rejected at export, issue #118) — hoist it into an s.set_var and do cutoff math there (cutoff = now - max_age), then compare against the var (issue #120)."
+        "description": "Current time as epoch-ms — the text(\"now\") |to_epoch_ms chain (Xano has no $now setting, so it lives on c.* not sys). It is a FILTERED value but is valid inline as a where/cmp operand (the #118 rejection no longer reproduces, #145). For cutoff math (cutoff = now - max_age) either compare inline or, for reuse/readability, hoist it into an s.set_var and compare against the var (issue #120)."
       },
       {
         "name": "obj",
