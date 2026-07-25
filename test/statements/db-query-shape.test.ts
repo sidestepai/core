@@ -303,12 +303,36 @@ describe("db.query (mvp:dbo_view) emit shape", () => {
     expect(right.filters[0].name).toBe("first_notempty");
   });
 
-  it("the documented workaround — a filtered value in a set_var, ref() in the operand — encodes fine (#118)", () => {
+  it("the set_var + ref() operand form (a readability option, not a requirement) encodes fine (#118)", () => {
     const enc = encodeStatement(dbQuery({ table: note, where: cmp(col("status"), "ilike", ref("pat")) }));
     const stmt = (
       enc.context as { search: { expression: { statement: { right: unknown } }[] } }
     ).search.expression[0]!.statement;
     expect(stmt.right).toEqual({ operand: "pat", tag: "var", filters: [] });
+  });
+
+  // #145: the reported trap was `c.now()` (a filtered value) used inline as a
+  // `where` operand — pitched as "compiles but fails at export (#120)". That no
+  // longer reproduces: it exports cleanly through the FULL workspace export
+  // (not just encodeStatement) and the `to_epoch_ms` filter survives. This locks
+  // that in at the export layer so the stale "hoist first" claim can't creep back.
+  it("c.now() inline as a where operand exports cleanly through full export() (#145)", async () => {
+    const { Xano, query, apiGroup } = await import("../../src/index.js");
+    const grp = apiGroup({ name: "g", canonical: "abc123" });
+    const q = query({
+      name: "recent",
+      verb: "GET",
+      apiGroup: grp,
+      stack: [dbQuery({ table: note, where: expr(col("created_at"), ">", c.now()), as: "rows" })],
+      response: ref("rows"),
+    });
+    const bundle = new Xano()
+      .registerApiGroups([grp])
+      .registerTables([note])
+      .registerQueries([q])
+      .export();
+    // Export did not throw, and the now-chain filter is present in the emitted bundle.
+    expect(JSON.stringify(bundle)).toContain("to_epoch_ms");
   });
 
   it("or() emits a group node; second child carries or:true", () => {

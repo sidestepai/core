@@ -33,10 +33,12 @@ import { buildSeedContentFiles, type SeedContentFile } from "../workspace/seed.j
 import { writeArtifact } from "./write.js";
 import { findUnresolvableFilters } from "../validate/filter-names.js";
 import type { FunctionDef } from "../function/define.js";
+import { pathSegment, type HttpVerb } from "../kinds/query.js";
 import { Xano } from "../workspace/xano.js";
 import {
   createLockContext,
   emptyLock,
+  lockKey,
   mergeObserved,
   serializeLock,
   validateLockModel,
@@ -525,6 +527,7 @@ const HELP_GROUPS: ReadonlyArray<{ title: string; rows: ReadonlyArray<readonly [
     rows: [
       ["compile <file>", "Type-check and compile a workspace to XanoScript"],
       ["export <file>", "Compile and write the deployable JSON bundle"],
+      ["paths <file>", "List each query's verb + resolved api:<canonical>/<name>"],
       ["init [dir]", "Scaffold a new sidestep project"],
     ],
   },
@@ -735,7 +738,7 @@ export async function run(argv: string[]): Promise<void> {
     const { runValidateCommand } = await import("./validate-command.js");
     return runValidateCommand(args);
   }
-  if (command !== "compile" && command !== "export") {
+  if (command !== "compile" && command !== "export" && command !== "paths" && command !== "routes") {
     throw new Error(`Unknown command "${command ?? ""}". ${HELP_HINT}`);
   }
   if (!args.file) {
@@ -744,6 +747,10 @@ export async function run(argv: string[]): Promise<void> {
 
   if (command === "compile") {
     return runCompile(args);
+  }
+
+  if (command === "paths" || command === "routes") {
+    return runPaths(args);
   }
 
   // export
@@ -795,6 +802,87 @@ async function runCompile(args: ParsedArgs): Promise<void> {
     process.stdout.write(`Wrote ${args.out}\n`);
   } else {
     process.stdout.write(emit(fn) + "\n");
+  }
+}
+
+/**
+ * `sidestep paths <entry>` (alias `routes`) — list every API query's HTTP verb
+ * and its resolved group-relative path in the `api:<canonical>/<name>` form, so
+ * writing a frontend client or curling a live env doesn't need a hand-rolled
+ * script (issue #145). Read-only: it seeds an existing `xano.lock` to resolve
+ * canonicals (the same source `getPath()` uses) but never mints or writes one —
+ * a group with no resolvable canonical is reported with the same fix `getPath()`
+ * points to. Reconstructs the path from the exported bundle (`payload.query[]`
+ * joined to `payload.app[]` by guid) rather than the `getPath()` handle, which
+ * the registry discards at `register()`.
+ */
+async function runPaths(args: ParsedArgs): Promise<void> {
+  const file = args.file!;
+  const lockPath = resolveLockPath(args, file);
+  // Read an existing lock to resolve canonicals READ-ONLY, mirroring
+  // getPath()/resolveCanonical (in-code canonical → locked-by-name → unresolved).
+  // Deliberately export WITHOUT a lock context: that path MINTS a fresh random
+  // canonical for any group the lock doesn't yet know (applyLock), which `paths`
+  // would then print as a resolved URL even though it's ephemeral and unpersisted
+  // — a token that would differ from the one a real `export --lock` freezes.
+  // `paths` never mints or writes. resetLockOverrides clears any stale seed a
+  // prior in-process command left, so reference guids bake consistently.
+  resetLockOverrides();
+  const lockModel = existsSync(lockPath) ? readLockFile(lockPath) : undefined;
+
+  const def = await loadDefault(file);
+  if (!Xano.isXano(def)) {
+    throw new Error(`Module "${file}" must default-export a Xano registry for \`paths\`.`);
+  }
+  const bundle = def.export();
+  const payload = bundle.payload as { query?: unknown[]; app?: unknown[] };
+  const queries = (payload.query ?? []) as Array<{ name: string; verb: HttpVerb; app?: { id?: string } }>;
+  const apps = (payload.app ?? []) as Array<{ name?: string; guid?: string; canonical?: string }>;
+
+  // guid → resolved canonical: an in-code `apiGroup({ canonical })` (already in
+  // the payload) wins; otherwise the lock's frozen token, keyed by group name.
+  // A group with neither stays unresolved (no minting).
+  const canonicalByGuid = new Map<string, string>();
+  for (const a of apps) {
+    if (typeof a.guid !== "string") continue;
+    const inCode = typeof a.canonical === "string" && a.canonical !== "" ? a.canonical : undefined;
+    const locked = typeof a.name === "string" ? lockModel?.objects[lockKey("app", a.name)]?.canonical : undefined;
+    const resolved = inCode ?? locked;
+    if (resolved) canonicalByGuid.set(a.guid, resolved);
+  }
+
+  if (queries.length === 0) {
+    info("No API queries registered in this workspace.");
+    return;
+  }
+
+  type Row = { verb: HttpVerb; name: string; canonical: string | undefined };
+  const rows: Row[] = queries.map((q) => ({
+    verb: q.verb, // already an uppercase HttpVerb in the bundle
+    // Match getPath(): the path segment drops any leading slash on the name.
+    name: pathSegment(q.name),
+    canonical: q.app?.id ? canonicalByGuid.get(q.app.id) : undefined,
+  }));
+  rows.sort((a, b) => (a.canonical ?? "").localeCompare(b.canonical ?? "") || a.name.localeCompare(b.name));
+
+  const unresolved = rows.filter((r) => !r.canonical);
+  const resolved = rows.filter((r) => r.canonical);
+  const verbWidth = Math.max(0, ...resolved.map((r) => r.verb.length));
+  for (const r of resolved) {
+    const path = `/api:${r.canonical}/${r.name}`;
+    // Requested output → stdout (a caller may pipe it). Verb-padded for scanning;
+    // the trailing `api:<canonical>/<name>` is the canonical string form.
+    process.stdout.write(`${r.verb.padEnd(verbWidth)}  ${path}  api:${r.canonical}/${r.name}\n`);
+  }
+
+  if (unresolved.length > 0) {
+    const names = unresolved.map((r) => `"${r.name}"`).join(", ");
+    throw new Error(
+      `paths: cannot resolve the api group's canonical URL token for ${unresolved.length} ` +
+        `query(ies): ${names}. Set an explicit \`apiGroup({ canonical })\`, or run ` +
+        `\`sidestep export --lock\` once (it mints a unique canonical and freezes it in ` +
+        `xano.lock) beside the entry, then re-run \`sidestep paths\`.`,
+    );
   }
 }
 

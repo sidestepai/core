@@ -178,6 +178,12 @@ defs and derives paths (\`getPath()\`) and request/response types
 (\`InferInput\` / \`InferResponse\`) from them. Never hand-type a URL or a request
 body — change a def and the frontend types follow.
 
+> To spot-check a def from Node (read \`getPath()\`/\`verb\`, log a value), run a real
+> file with \`tsx <file.ts>\` **from inside the project root** — not \`tsx -e\`, not
+> bare \`node file.ts\`, and not from another directory (they mis-resolve the
+> intra-workspace \`.js\` imports and the \`@sidestep/core\` specifier). Or use
+> \`sidestep paths xano/index.ts\` to list every endpoint's verb + path.
+
 ## Add-ons
 
 sidestep is composable with other \`@sidestep/*\` packages:

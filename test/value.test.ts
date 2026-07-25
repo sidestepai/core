@@ -68,7 +68,7 @@ describe("c.* constant constructors", () => {
     });
   });
 
-  it("c.now is a filtered value (must be hoisted before a where/cmp; issue #118)", () => {
+  it("c.now is a filtered value that is valid inline in a where/cmp (#118 fixed, #145)", () => {
     const v = c.now();
     expect(v.filters).toHaveLength(1);
     // Not col-branded — its footgun is the filter chain, not row-write misuse.

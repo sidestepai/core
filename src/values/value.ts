@@ -237,11 +237,13 @@ export const c = {
    * `c.*` (a current-time literal) rather than {@link sys} (which emits
    * `setting("$…")` and would reference a dead `$now` var).
    *
-   * It returns a **filtered** value, so — like any filter chain — it **cannot be
-   * an inline `where`/`cmp` operand** (`export()` rejects that; issue #118). Hoist
-   * it into a stack var first, then reference the var:
-   * `s.set_var({ name: "cutoff", value: withFilters(c.now(), fl.epochms_add_ms(c.int(-maxAgeMs))) })`
-   * and compare `col("created_at")` against `ref("cutoff")`. (issue #120)
+   * It returns a **filtered** value, which is valid inline as a `where`/`cmp`
+   * operand — filtered operands pass through in every condition/`where` surface
+   * (the old #118 rejection no longer reproduces; verified through full `export()`
+   * and live, #145). For readability/reuse when the same cutoff is reused, hoist
+   * it into a stack var — `s.set_var({ name: "cutoff", value: withFilters(c.now(),
+   * fl.epochms_add_ms(c.int(-maxAgeMs))) })` — and compare `col("created_at")`
+   * against `ref("cutoff")`. (issue #120)
    */
   now(): Value {
     return withFilters(val("now", "const"), filter("to_epoch_ms"));

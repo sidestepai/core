@@ -11,6 +11,7 @@ import {
 import {
   coreDep,
   renderPackageJson,
+  renderReadme,
   renderTsconfig,
   renderViteConfig,
   renderXanoIndex,
@@ -101,6 +102,15 @@ describe("templates (U2)", () => {
 
   it("vite config pins root to frontend", () => {
     expect(renderViteConfig()).toContain('root: "frontend"');
+  });
+
+  it("README carries the tsx-from-project-root spot-check note (#145)", () => {
+    const md = renderReadme({ appName: "grant-triage", coreVersion: "4.1.1" });
+    // The load-bearing kernel: run tsx <file.ts> from inside the project root.
+    expect(md).toMatch(/tsx <file\.ts>/);
+    expect(md).toMatch(/project root/);
+    // Cross-references the paths command as the ready-made alternative.
+    expect(md).toContain("sidestep paths");
   });
 
   it("xano/index.ts default-exports a workspace and surfaces add-ons + future packages", () => {

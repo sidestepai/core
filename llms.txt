@@ -1,4 +1,4 @@
-# sidestep v4.1.0
+# sidestep v4.1.1
 
 > TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.
 
@@ -440,7 +440,7 @@ surface — `s.conditional`/`s.while` `when` (incl. each `elif` branch), and
 - `c.null() => Value` — Null constant → tag "const:null".
 - `c.obj(o: Json) => Value` — Object constant (JSON string) → tag "const:obj". Plain JSON literals only — a nested tagged value (inp/ref/auth/c.*) is rejected; for a computed object response use a record of values, not c.obj (issue #42).
 - `c.array(a: Json[]) => Value` — Array constant (JSON string) → tag "const:array". Plain JSON literals only — a nested tagged value is rejected, same as c.obj (issue #42).
-- `c.now() => Value` — Current time as epoch-ms — the text("now") |to_epoch_ms chain (Xano has no $now setting, so it lives on c.* not sys). It is a FILTERED value, so it can't be an inline where/cmp operand (rejected at export, issue #118) — hoist it into an s.set_var and do cutoff math there (cutoff = now - max_age), then compare against the var (issue #120).
+- `c.now() => Value` — Current time as epoch-ms — the text("now") |to_epoch_ms chain (Xano has no $now setting, so it lives on c.* not sys). It is a FILTERED value but is valid inline as a where/cmp operand (the #118 rejection no longer reproduces, #145). For cutoff math (cutoff = now - max_age) either compare inline or, for reuse/readability, hoist it into an s.set_var and compare against the var (issue #120).
 - `obj(fields: Record<string, Value | nested>) => Value` — Dynamic object value → tag "const:expr2" (a XanoScript object-literal expression). The dynamic sibling of c.obj (issue #42): members may be inp/ref/auth/col/c.* values, nested records, or arrays. A value with filters, or a less-common tag (env/setting/output/…), is rejected. Use for e.g. s.ai.agent.run args.
 - `ref(name: string, opts?: { safe?: boolean }) => Value` — Reference a stack variable → tag "var". Pass { safe: true } for null-safe nested access — a dotted ref("owner.user_id", { safe: true }) compiles through the get filter so it resolves to null instead of raising "Unable to locate var" when the base is null (issue #47).
 - `inp(name: string) => Value` — Reference a function input → tag "input".
@@ -678,7 +678,8 @@ take one typed args object (field names match the engine) and their full field
 schema is listed per-namespace below. Specials (`[special]`) are hand-authored;
 their signatures are listed in **Specials — authored signatures** just below.
 Fields marked `value` take a `Value` (`c.*`/`ref`/`inp`); `comparison` takes an
-`expr(...)`.
+`expr(...)`. A `→ as: <type>` suffix names what the statement's `as:` output var
+holds (curated, not exhaustive — absence means read the `[output]` flag and prose).
 
 ### Specials — authored signatures
 
@@ -710,7 +711,7 @@ primary key `id`):
 - `s.db.edit({ table, fieldName?, fieldValue, row?, data?, as? })` — update by field match.
 - `s.db.patch({ table, fieldName?, fieldValue, data, as? })` — merge a partial (`data` is an object value).
 - `s.db.add_or_edit({ table, fieldName?, fieldValue, row?, data?, as? })` — upsert.
-- `s.db.query({ table, where?, additionalWhere?, bind?, sort?, paging?, external?, returnType?, distinct?, eval?, output?, lock?, addon?, as? })` — search; `bind: [{ table, as?, join?, where? }]` adds joins (`context.bind[]`, `join` default `"inner"`) — joined columns are addressable by dotted path in `where`/`sort`/`eval`; `as` defaults to the table name and two joins to the same table need distinct aliases; `distinct` (`"auto"` default | `"yes"` | `"no"`) rides `context.return.<list|stream>.distinct`. `eval: [{ name, as, filters? }]` adds computed columns (`context.eval[]`) — each `as` grafts onto the row as an `unknown` key in `InferResponse` (shadowing a column throws); `returnType` (`"list"` default | `"single"` | `"count"` | `"exists"` | `"stream"` | `"aggregate"`) drives `context.return.type` and the `InferResponse` shape — `count`→`number`, `exists`→`boolean`, `single`→`Row|null`, `stream`→`Row[]` (pageable, no envelope), `list`→`Row[]`/envelope, `aggregate`→rows keyed by the `aggregate.group`/`eval` aliases. `aggregate: { group?, eval?, sort?, paging? }` (with `returnType:"aggregate"`) builds `context.return.aggregate` — `group`/`eval` are `{ name, as, filters? }` (an aggregator like `sum`/`count` rides `filters`); write each `name` as a **bare** column (`"status"`) — it is alias-qualified to `"<table>.status"` on emit (the engine rejects a bare column in an aggregate: `Unsupported param format`), and an already-dotted `name` (a `bind`ed/joined column) passes through (byte-verified live #133); `where` is `expr(...)` / `expr[]` (ANDed) / raw `Value`. For the full operator set use `cmp(left, op, right, { ignoreEmpty? })` (`op`: `in`/`not in`/`like`/`ilike`/`between`/`contains`/`includes`/`overlaps`/`@>`/`~`/`search`/… plus the `expr` comparisons); compose nested boolean logic with `and(...)` / `or(...)` groups (also available on `addon()` `where`). A `where`/`cmp` operand must be a bare value (`col`/`inp`/`ref`/`auth`/`c.*`) — a **filtered** operand (`withFilters(...)` inline) is rejected at export (like `obj()`), since the engine can't resolve it inline and 500s at runtime; compute it in a prior `s.set_var` and reference the var. `sort` is `[{ sortBy: <col>, dir?: "asc"|"desc"|"rand" }]`; `paging` is `{ page?, per_page?, offset?, totals?, metadata?, search?, sort? }`. `where`/`additionalWhere`/`sort`/`paging`/`output` are all applied by the engine — the filter rides `context.search`, sort/paging ride `context.return.list` (#41/#34/#36). ⚠ Supplying `paging` with a page/per_page/offset field and metadata on (the default) wraps the result in a paging envelope `{ items: Row[], curPage, nextPage, prevPage, offset, perPage, itemsReceived }` (+ `itemsTotal`/`pageTotal` when `totals:true`) instead of a bare `Row[]`; `InferResponse` reflects that. Pass `metadata:false` to keep the bare array (#58). **Input-bound paging (#66):** `paging.page`/`per_page`/`offset` also accept a `Value` (e.g. `inp("page")`) — it rides `context.simpleExternal` while the static block stays the engine gate (`enabled:true`); `paging.search`/`sort` are `Value` dynamic overrides. A `search`/`sort`-only `paging` (no numeric field) does NOT paginate. `external: { value, permissions? }` is the classic whole-config blob (mutually exclusive with input-bound `paging` fields; forces the gate on). Read `nextPage` (`number|null`) as the typed has-next signal.
+- `s.db.query({ table, where?, additionalWhere?, bind?, sort?, paging?, external?, returnType?, distinct?, eval?, output?, lock?, addon?, as? })` — search; `bind: [{ table, as?, join?, where? }]` adds joins (`context.bind[]`, `join` default `"inner"`) — joined columns are addressable by dotted path in `where`/`sort`/`eval`; `as` defaults to the table name and two joins to the same table need distinct aliases; `distinct` (`"auto"` default | `"yes"` | `"no"`) rides `context.return.<list|stream>.distinct`. `eval: [{ name, as, filters? }]` adds computed columns (`context.eval[]`) — each `as` grafts onto the row as an `unknown` key in `InferResponse` (shadowing a column throws); `returnType` (`"list"` default | `"single"` | `"count"` | `"exists"` | `"stream"` | `"aggregate"`) drives `context.return.type` and the `InferResponse` shape — `count`→`number`, `exists`→`boolean`, `single`→`Row|null`, `stream`→`Row[]` (pageable, no envelope), `list`→`Row[]`/envelope, `aggregate`→rows keyed by the `aggregate.group`/`eval` aliases. `aggregate: { group?, eval?, sort?, paging? }` (with `returnType:"aggregate"`) builds `context.return.aggregate` — `group`/`eval` are `{ name, as, filters? }` (an aggregator like `sum`/`count` rides `filters`); write each `name` as a **bare** column (`"status"`) — it is alias-qualified to `"<table>.status"` on emit (the engine rejects a bare column in an aggregate: `Unsupported param format`), and an already-dotted `name` (a `bind`ed/joined column) passes through (byte-verified live #133); `where` is `expr(...)` / `expr[]` (ANDed) / raw `Value`. For the full operator set use `cmp(left, op, right, { ignoreEmpty? })` (`op`: `in`/`not in`/`like`/`ilike`/`between`/`contains`/`includes`/`overlaps`/`@>`/`~`/`search`/… plus the `expr` comparisons); compose nested boolean logic with `and(...)` / `or(...)` groups (also available on `addon()` `where`). A `where`/`cmp` operand may be a bare value (`col`/`inp`/`ref`/`auth`/`c.*`) OR a **filtered** value (`withFilters(...)` / `c.now()`) inline — filtered operands pass through in every condition/`where` surface (the old #118 rejection no longer reproduces; verified through full `export()`, round-trip, and live, #145). Hoisting into a prior `s.set_var` is a readability/reuse option, not a requirement. `sort` is `[{ sortBy: <col>, dir?: "asc"|"desc"|"rand" }]`; `paging` is `{ page?, per_page?, offset?, totals?, metadata?, search?, sort? }`. `where`/`additionalWhere`/`sort`/`paging`/`output` are all applied by the engine — the filter rides `context.search`, sort/paging ride `context.return.list` (#41/#34/#36). ⚠ Supplying `paging` with a page/per_page/offset field and metadata on (the default) wraps the result in a paging envelope `{ items: Row[], curPage, nextPage, prevPage, offset, perPage, itemsReceived }` (+ `itemsTotal`/`pageTotal` when `totals:true`) instead of a bare `Row[]`; `InferResponse` reflects that. Pass `metadata:false` to keep the bare array (#58). **Input-bound paging (#66):** `paging.page`/`per_page`/`offset` also accept a `Value` (e.g. `inp("page")`) — it rides `context.simpleExternal` while the static block stays the engine gate (`enabled:true`); `paging.search`/`sort` are `Value` dynamic overrides. A `search`/`sort`-only `paging` (no numeric field) does NOT paginate. `external: { value, permissions? }` is the classic whole-config blob (mutually exclusive with input-bound `paging` fields; forces the gate on). Read `nextPage` (`number|null`) as the typed has-next signal.
 - `s.db.truncate({ table, reset?, as? })` · `s.db.schema({ table, path, as? })`.
 - `s.db.direct_query({ sql, responseType?, args?, as? })` — `sql` is a **raw string** (not a `Value`); binds go in `args: Value[]`.
 - `s.db.transaction({ body })` — run a `Statement[]` atomically.
@@ -791,7 +792,7 @@ Auth & calls:
 ### array
 
 - `s.array.difference({ as?: string; expr?: value; value?: value; by?: value })`
-- `s.array.every({ expr?: value; as?: string; if?: comparison })` [output]
+- `s.array.every({ expr?: value; as?: string; if?: comparison })` [output] → as: boolean
 - `s.array.filter_count({ expr?: value; as?: string; if?: comparison })`
 - `s.array.filter({ expr?: value; as?: string; if?: comparison })`
 - `s.array.find_index({ expr?: value; as?: string; if?: comparison })`
@@ -848,24 +849,24 @@ Auth & calls:
 
 ### db
 
-- `s.db.add_or_edit` [special]
-- `s.db.add` [special]
+- `s.db.add_or_edit` [special] → as: InferRow<T> (upserts and never misses)
+- `s.db.add` [special] → as: InferRow<T> (the full inserted row incl. id/created_at)
 - `s.db.bulk.add` [special]
-- `s.db.bulk.delete` [special]
-- `s.db.bulk.patch` [special]
+- `s.db.bulk.delete` [special] → as: number (count of deleted rows)
+- `s.db.bulk.patch` [special] → as: InferRow<T>[]
 - `s.db.bulk.update` [special]
-- `s.db.del` [special]
+- `s.db.del` [special] → as: null (the engine deletes and returns no value; throws NotFound on a miss)
 - `s.db.direct_query` [special]
-- `s.db.edit` [special]
+- `s.db.edit` [special] → as: InferRow<T> (the full post-mutation row; throws NotFound on a miss)
 - `s.db.external.mssql.direct_query` [special]
 - `s.db.external.mysql.direct_query` [special]
 - `s.db.external.oracle.direct_query` [special]
 - `s.db.external.postgres.direct_query` [special]
 - `s.db.external.snowflake.direct_query` [special]
-- `s.db.get` [special]
-- `s.db.has` [special]
-- `s.db.patch` [special]
-- `s.db.query` [special]
+- `s.db.get` [special] → as: InferRow<T> | null (binds null on a miss, never throws)
+- `s.db.has` [special] → as: boolean
+- `s.db.patch` [special] → as: InferRow<T> (the full post-mutation row; throws NotFound on a miss)
+- `s.db.query` [special] → as: InferRow<T>[] (a paging envelope when metadata paging is on (#58))
 - `s.db.schema` [special]
 - `s.db.set_datasource({ value: value })`
 - `s.db.transaction` [special]
@@ -905,10 +906,10 @@ Auth & calls:
 
 ### math
 
-- `s.math.add({ name?: string; value: value })` [output]
-- `s.math.bitwise.and({ name?: string; value: value })` [output]
-- `s.math.bitwise.or({ name?: string; value: value })` [output]
-- `s.math.bitwise.xor({ name?: string; value: value })` [output]
+- `s.math.add({ name?: string; value: value })` [output] → as: number
+- `s.math.bitwise.and({ name?: string; value: value })` [output] → as: number
+- `s.math.bitwise.or({ name?: string; value: value })` [output] → as: number
+- `s.math.bitwise.xor({ name?: string; value: value })` [output] → as: number
 - `s.math.div({ name?: string; value: value })`
 - `s.math.mod({ name?: string; value: value })`
 - `s.math.mul({ name?: string; value: value })`
@@ -920,9 +921,9 @@ Auth & calls:
 
 ### object
 
-- `s.object.entries({ as?: string; value?: value })` [output]
-- `s.object.keys({ as?: string; value?: value })` [output]
-- `s.object.values({ as?: string; value?: value })` [output]
+- `s.object.entries({ as?: string; value?: value })` [output] → as: [string, unknown][]
+- `s.object.keys({ as?: string; value?: value })` [output] → as: string[]
+- `s.object.values({ as?: string; value?: value })` [output] → as: unknown[]
 
 ### redis
 
@@ -944,7 +945,7 @@ Auth & calls:
 
 ### security
 
-- `s.security.check_password({ as?: string; text_password?: value; hash_password?: value })` [output]
+- `s.security.check_password({ as?: string; text_password?: value; hash_password?: value })` [output] → as: boolean (true when the plaintext matches the stored hash. ⚠ input.password double-hashes — pass input.text() plaintext (#109))
 - `s.security.create_auth_token` [special]
 - `s.security.create_curve_key({ as?: string; curve?: value; format?: value })`
 - `s.security.create_password({ as?: string; character_count?: value; require_lowercase?: value; require_uppercase?: value; require_digit?: value; require_symbol?: value; symbol_whitelist?: value })`

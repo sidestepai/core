@@ -53,6 +53,16 @@ export interface ManifestStatement {
   declarative: boolean;
   /** Whether the statement emits an `output` envelope. Declarative only. */
   output?: boolean;
+  /**
+   * What the statement's `as:` output variable holds — so the manifest answers
+   * "what does this bind?" without falling back to prose. Curated (see
+   * `STATEMENT_RESULTS`); present only for statements whose result is stable and
+   * documented. Analogous to {@link ManifestFilter.result}, but structured: `name`
+   * is the binding field (always `as` today, carried explicitly so the descriptor
+   * is self-describing for machine consumers), `type` its value type, `note` an
+   * optional caveat.
+   */
+  result?: { name: string; type: string; note?: string };
   /** Field schema — present for declarative statements. */
   fields?: ManifestField[];
 }
@@ -194,6 +204,12 @@ const CLI_COMMANDS: readonly ManifestCliCommand[] = [
     description: "Compile the default-exported Xano registry into the aggregate workspace bundle.",
   },
   {
+    command: "paths",
+    args: "<file> [--lock=<path>]",
+    description:
+      "List every API query's HTTP verb and resolved group-relative path (api:<canonical>/<name>). Alias: `routes`. Read-only — seeds an existing xano.lock to resolve canonicals but never writes one; a group with no resolvable canonical is reported with the `export --lock` fix.",
+  },
+  {
     command: "deploy",
     args: "<file> | --bundle <path>",
     flags: [
@@ -326,7 +342,7 @@ const VALUE_CONSTRUCTORS: ReadonlyArray<ManifestValue> = [
   { name: "c.null", signature: "() => Value", description: 'Null constant → tag "const:null".' },
   { name: "c.obj", signature: "(o: Json) => Value", description: 'Object constant (JSON string) → tag "const:obj". Plain JSON literals only — a nested tagged value (inp/ref/auth/c.*) is rejected; for a computed object response use a record of values, not c.obj (issue #42).' },
   { name: "c.array", signature: "(a: Json[]) => Value", description: 'Array constant (JSON string) → tag "const:array". Plain JSON literals only — a nested tagged value is rejected, same as c.obj (issue #42).' },
-  { name: "c.now", signature: "() => Value", description: 'Current time as epoch-ms — the text("now") |to_epoch_ms chain (Xano has no $now setting, so it lives on c.* not sys). It is a FILTERED value, so it can\'t be an inline where/cmp operand (rejected at export, issue #118) — hoist it into an s.set_var and do cutoff math there (cutoff = now - max_age), then compare against the var (issue #120).' },
+  { name: "c.now", signature: "() => Value", description: 'Current time as epoch-ms — the text("now") |to_epoch_ms chain (Xano has no $now setting, so it lives on c.* not sys). It is a FILTERED value but is valid inline as a where/cmp operand (the #118 rejection no longer reproduces, #145). For cutoff math (cutoff = now - max_age) either compare inline or, for reuse/readability, hoist it into an s.set_var and compare against the var (issue #120).' },
   { name: "obj", signature: "(fields: Record<string, Value | nested>) => Value", description: 'Dynamic object value → tag "const:expr2" (a XanoScript object-literal expression). The dynamic sibling of c.obj (issue #42): members may be inp/ref/auth/col/c.* values, nested records, or arrays. A value with filters, or a less-common tag (env/setting/output/…), is rejected. Use for e.g. s.ai.agent.run args.' },
   { name: "ref", signature: "(name: string, opts?: { safe?: boolean }) => Value", description: 'Reference a stack variable → tag "var". Pass { safe: true } for null-safe nested access — a dotted ref("owner.user_id", { safe: true }) compiles through the get filter so it resolves to null instead of raising "Unable to locate var" when the base is null (issue #47).' },
   { name: "inp", signature: "(name: string) => Value", description: 'Reference a function input → tag "input".' },
@@ -411,6 +427,46 @@ export const OVERRIDDEN_SURFACES = new Set([
   "mvp:microservice_request",
 ]);
 
+/**
+ * What each statement's `as:` output var holds — the machine-readable companion
+ * to the curated db.* "Runtime behavior" prose (and grounded in the same
+ * `InferResponse` truth). Keyed by the public `surface`. Curated by design and
+ * NOT exhaustive: it covers the statements whose result is stable and verified
+ * (the db.* family, `security.check_password`, and the clearly-typed math/object/
+ * array-predicate ops). A statement absent from this map simply has no `result`
+ * in the manifest — read its `output` flag and the prose. `T` = the bound
+ * `table()`'s `InferRow`. Types trace to `src/responses/infer.ts`; the db.* and
+ * check_password shapes are verified against a live engine (#145).
+ */
+const STATEMENT_RESULTS: Record<string, { name: string; type: string; note?: string }> = {
+  // db.* — mirrors the curated "Runtime behavior" block and InferResponse (#105/#145).
+  "db.get": { name: "as", type: "InferRow<T> | null", note: "binds null on a miss, never throws" },
+  "db.add": { name: "as", type: "InferRow<T>", note: "the full inserted row incl. id/created_at" },
+  "db.edit": { name: "as", type: "InferRow<T>", note: "the full post-mutation row; throws NotFound on a miss" },
+  "db.patch": { name: "as", type: "InferRow<T>", note: "the full post-mutation row; throws NotFound on a miss" },
+  "db.add_or_edit": { name: "as", type: "InferRow<T>", note: "upserts and never misses" },
+  "db.del": { name: "as", type: "null", note: "the engine deletes and returns no value; throws NotFound on a miss" },
+  "db.has": { name: "as", type: "boolean" },
+  "db.query": { name: "as", type: "InferRow<T>[]", note: "a paging envelope when metadata paging is on (#58)" },
+  "db.bulk.patch": { name: "as", type: "InferRow<T>[]" },
+  "db.bulk.delete": { name: "as", type: "number", note: "count of deleted rows" },
+  // security.check_password binds a boolean (does the plaintext match the stored hash), #109/#145.
+  "security.check_password": {
+    name: "as",
+    type: "boolean",
+    note: "true when the plaintext matches the stored hash. ⚠ input.password double-hashes — pass input.text() plaintext (#109)",
+  },
+  // Clearly-typed declarative ops.
+  "array.every": { name: "as", type: "boolean" },
+  "math.add": { name: "as", type: "number" },
+  "math.bitwise.and": { name: "as", type: "number" },
+  "math.bitwise.or": { name: "as", type: "number" },
+  "math.bitwise.xor": { name: "as", type: "number" },
+  "object.keys": { name: "as", type: "string[]" },
+  "object.values": { name: "as", type: "unknown[]" },
+  "object.entries": { name: "as", type: "[string, unknown][]" },
+};
+
 function fieldsOf(spec: StatementSpec): ManifestField[] {
   return spec.rules.map((r) => {
     const f: ManifestField = {
@@ -445,6 +501,11 @@ export function buildManifest(opts: { version?: string } = {}): Manifest {
       // Overridden surfaces defer their signature to the hand-authored prose entry.
       if (!overridden) entry.fields = fieldsOf(spec);
     }
+    // Curated result descriptor — attaches to declarative AND special surfaces
+    // (the db.* family is `special`, so this must run independent of `spec`).
+    // `hasOwn` guards a surface name colliding with an inherited Object member,
+    // mirroring the FILTER_NOTES lookup below.
+    if (Object.hasOwn(STATEMENT_RESULTS, surface)) entry.result = STATEMENT_RESULTS[surface];
     return entry;
   });
 
@@ -1087,7 +1148,8 @@ export function renderLlmsTxt(m: Manifest): string {
     "schema is listed per-namespace below. Specials (`[special]`) are hand-authored;",
     "their signatures are listed in **Specials — authored signatures** just below.",
     "Fields marked `value` take a `Value` (`c.*`/`ref`/`inp`); `comparison` takes an",
-    "`expr(...)`.",
+    "`expr(...)`. A `→ as: <type>` suffix names what the statement's `as:` output var",
+    "holds (curated, not exhaustive — absence means read the `[output]` flag and prose).",
     "",
   );
 
@@ -1126,7 +1188,7 @@ export function renderLlmsTxt(m: Manifest): string {
     "- `s.db.edit({ table, fieldName?, fieldValue, row?, data?, as? })` — update by field match.",
     "- `s.db.patch({ table, fieldName?, fieldValue, data, as? })` — merge a partial (`data` is an object value).",
     "- `s.db.add_or_edit({ table, fieldName?, fieldValue, row?, data?, as? })` — upsert.",
-    "- `s.db.query({ table, where?, additionalWhere?, bind?, sort?, paging?, external?, returnType?, distinct?, eval?, output?, lock?, addon?, as? })` — search; `bind: [{ table, as?, join?, where? }]` adds joins (`context.bind[]`, `join` default `\"inner\"`) — joined columns are addressable by dotted path in `where`/`sort`/`eval`; `as` defaults to the table name and two joins to the same table need distinct aliases; `distinct` (`\"auto\"` default | `\"yes\"` | `\"no\"`) rides `context.return.<list|stream>.distinct`. `eval: [{ name, as, filters? }]` adds computed columns (`context.eval[]`) — each `as` grafts onto the row as an `unknown` key in `InferResponse` (shadowing a column throws); `returnType` (`\"list\"` default | `\"single\"` | `\"count\"` | `\"exists\"` | `\"stream\"` | `\"aggregate\"`) drives `context.return.type` and the `InferResponse` shape — `count`→`number`, `exists`→`boolean`, `single`→`Row|null`, `stream`→`Row[]` (pageable, no envelope), `list`→`Row[]`/envelope, `aggregate`→rows keyed by the `aggregate.group`/`eval` aliases. `aggregate: { group?, eval?, sort?, paging? }` (with `returnType:\"aggregate\"`) builds `context.return.aggregate` — `group`/`eval` are `{ name, as, filters? }` (an aggregator like `sum`/`count` rides `filters`); write each `name` as a **bare** column (`\"status\"`) — it is alias-qualified to `\"<table>.status\"` on emit (the engine rejects a bare column in an aggregate: `Unsupported param format`), and an already-dotted `name` (a `bind`ed/joined column) passes through (byte-verified live #133); `where` is `expr(...)` / `expr[]` (ANDed) / raw `Value`. For the full operator set use `cmp(left, op, right, { ignoreEmpty? })` (`op`: `in`/`not in`/`like`/`ilike`/`between`/`contains`/`includes`/`overlaps`/`@>`/`~`/`search`/… plus the `expr` comparisons); compose nested boolean logic with `and(...)` / `or(...)` groups (also available on `addon()` `where`). A `where`/`cmp` operand must be a bare value (`col`/`inp`/`ref`/`auth`/`c.*`) — a **filtered** operand (`withFilters(...)` inline) is rejected at export (like `obj()`), since the engine can't resolve it inline and 500s at runtime; compute it in a prior `s.set_var` and reference the var. `sort` is `[{ sortBy: <col>, dir?: \"asc\"|\"desc\"|\"rand\" }]`; `paging` is `{ page?, per_page?, offset?, totals?, metadata?, search?, sort? }`. `where`/`additionalWhere`/`sort`/`paging`/`output` are all applied by the engine — the filter rides `context.search`, sort/paging ride `context.return.list` (#41/#34/#36). ⚠ Supplying `paging` with a page/per_page/offset field and metadata on (the default) wraps the result in a paging envelope `{ items: Row[], curPage, nextPage, prevPage, offset, perPage, itemsReceived }` (+ `itemsTotal`/`pageTotal` when `totals:true`) instead of a bare `Row[]`; `InferResponse` reflects that. Pass `metadata:false` to keep the bare array (#58). **Input-bound paging (#66):** `paging.page`/`per_page`/`offset` also accept a `Value` (e.g. `inp(\"page\")`) — it rides `context.simpleExternal` while the static block stays the engine gate (`enabled:true`); `paging.search`/`sort` are `Value` dynamic overrides. A `search`/`sort`-only `paging` (no numeric field) does NOT paginate. `external: { value, permissions? }` is the classic whole-config blob (mutually exclusive with input-bound `paging` fields; forces the gate on). Read `nextPage` (`number|null`) as the typed has-next signal.",
+    "- `s.db.query({ table, where?, additionalWhere?, bind?, sort?, paging?, external?, returnType?, distinct?, eval?, output?, lock?, addon?, as? })` — search; `bind: [{ table, as?, join?, where? }]` adds joins (`context.bind[]`, `join` default `\"inner\"`) — joined columns are addressable by dotted path in `where`/`sort`/`eval`; `as` defaults to the table name and two joins to the same table need distinct aliases; `distinct` (`\"auto\"` default | `\"yes\"` | `\"no\"`) rides `context.return.<list|stream>.distinct`. `eval: [{ name, as, filters? }]` adds computed columns (`context.eval[]`) — each `as` grafts onto the row as an `unknown` key in `InferResponse` (shadowing a column throws); `returnType` (`\"list\"` default | `\"single\"` | `\"count\"` | `\"exists\"` | `\"stream\"` | `\"aggregate\"`) drives `context.return.type` and the `InferResponse` shape — `count`→`number`, `exists`→`boolean`, `single`→`Row|null`, `stream`→`Row[]` (pageable, no envelope), `list`→`Row[]`/envelope, `aggregate`→rows keyed by the `aggregate.group`/`eval` aliases. `aggregate: { group?, eval?, sort?, paging? }` (with `returnType:\"aggregate\"`) builds `context.return.aggregate` — `group`/`eval` are `{ name, as, filters? }` (an aggregator like `sum`/`count` rides `filters`); write each `name` as a **bare** column (`\"status\"`) — it is alias-qualified to `\"<table>.status\"` on emit (the engine rejects a bare column in an aggregate: `Unsupported param format`), and an already-dotted `name` (a `bind`ed/joined column) passes through (byte-verified live #133); `where` is `expr(...)` / `expr[]` (ANDed) / raw `Value`. For the full operator set use `cmp(left, op, right, { ignoreEmpty? })` (`op`: `in`/`not in`/`like`/`ilike`/`between`/`contains`/`includes`/`overlaps`/`@>`/`~`/`search`/… plus the `expr` comparisons); compose nested boolean logic with `and(...)` / `or(...)` groups (also available on `addon()` `where`). A `where`/`cmp` operand may be a bare value (`col`/`inp`/`ref`/`auth`/`c.*`) OR a **filtered** value (`withFilters(...)` / `c.now()`) inline — filtered operands pass through in every condition/`where` surface (the old #118 rejection no longer reproduces; verified through full `export()`, round-trip, and live, #145). Hoisting into a prior `s.set_var` is a readability/reuse option, not a requirement. `sort` is `[{ sortBy: <col>, dir?: \"asc\"|\"desc\"|\"rand\" }]`; `paging` is `{ page?, per_page?, offset?, totals?, metadata?, search?, sort? }`. `where`/`additionalWhere`/`sort`/`paging`/`output` are all applied by the engine — the filter rides `context.search`, sort/paging ride `context.return.list` (#41/#34/#36). ⚠ Supplying `paging` with a page/per_page/offset field and metadata on (the default) wraps the result in a paging envelope `{ items: Row[], curPage, nextPage, prevPage, offset, perPage, itemsReceived }` (+ `itemsTotal`/`pageTotal` when `totals:true`) instead of a bare `Row[]`; `InferResponse` reflects that. Pass `metadata:false` to keep the bare array (#58). **Input-bound paging (#66):** `paging.page`/`per_page`/`offset` also accept a `Value` (e.g. `inp(\"page\")`) — it rides `context.simpleExternal` while the static block stays the engine gate (`enabled:true`); `paging.search`/`sort` are `Value` dynamic overrides. A `search`/`sort`-only `paging` (no numeric field) does NOT paginate. `external: { value, permissions? }` is the classic whole-config blob (mutually exclusive with input-bound `paging` fields; forces the gate on). Read `nextPage` (`number|null`) as the typed has-next signal.",
     "- `s.db.truncate({ table, reset?, as? })` · `s.db.schema({ table, path, as? })`.",
     "- `s.db.direct_query({ sql, responseType?, args?, as? })` — `sql` is a **raw string** (not a `Value`); binds go in `args: Value[]`.",
     "- `s.db.transaction({ body })` — run a `Statement[]` atomically.",
@@ -1179,11 +1241,15 @@ export function renderLlmsTxt(m: Manifest): string {
       // field signature inline (defaults dropped except DEFAULT_KEEP); specials carry
       // no field schema in the listing — their real signature lives in the Specials
       // block / def-shapes / `.d.ts` — so they render as a terse discovery pointer.
+      // The `as:` output binding, when curated — `→ as: <type> (<note>)`.
+      const resultSuffix = s.result
+        ? ` → ${s.result.name}: ${s.result.type}${s.result.note ? ` (${s.result.note})` : ""}`
+        : "";
       if (s.fields) {
         const args = s.fields.map((f) => fieldLine(f, s.sPath)).join("; ");
-        lines.push(`- \`${call}({ ${args} })\`${flagSuffix}`);
+        lines.push(`- \`${call}({ ${args} })\`${flagSuffix}${resultSuffix}`);
       } else {
-        lines.push(`- \`${call}\`${flagSuffix}`);
+        lines.push(`- \`${call}\`${flagSuffix}${resultSuffix}`);
       }
     }
     lines.push("");
