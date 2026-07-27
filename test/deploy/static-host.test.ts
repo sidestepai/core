@@ -68,6 +68,36 @@ describe("deployStaticHost", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it("surfaces the build canonical from the response (top-level, dev-nested, or absent)", async () => {
+    const dir = tmpDirWith({ "index.html": "hi" });
+
+    // Top-level canonical wins.
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response('{"default_url":"https://d.xano.io","canonical":"cxyz123"}', { status: 200 }),
+    );
+    const top = await deployStaticHost({ dir, workspaceId: 1, baseUrl: AUTH.instance, accessToken: AUTH.access_token });
+    expect(top.canonical).toBe("cxyz123");
+
+    // Nested under the served env.
+    vi.restoreAllMocks();
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response('{"dev":{"host":"d.xano.io","canonical":"cdev456"}}', { status: 200 }),
+    );
+    const nested = await deployStaticHost({ dir, workspaceId: 1, baseUrl: AUTH.instance, accessToken: AUTH.access_token });
+    expect(nested.canonical).toBe("cdev456");
+
+    // Absent → undefined (the degrade case), and an empty string is treated as absent.
+    vi.restoreAllMocks();
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response('{"default_url":"https://d.xano.io","canonical":""}', { status: 200 }),
+    );
+    const none = await deployStaticHost({ dir, workspaceId: 1, baseUrl: AUTH.instance, accessToken: AUTH.access_token });
+    expect(none.canonical).toBeUndefined();
+    expect(none.url).toBe("https://d.xano.io"); // url extraction unchanged
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it("uses a custom host name in the build path when one is given", async () => {
     const dir = tmpDirWith({ "index.html": "hi" });
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response("{}", { status: 200 }));

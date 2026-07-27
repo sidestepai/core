@@ -77,7 +77,7 @@ export async function runReleaseCommand(args: ParsedArgs): Promise<void> {
   link(auth.instance);
 
   // With release, the static frontend goes to the SAME instance workspace.
-  const summary: { released: boolean; workspaceId: number; instance: string; static?: { url: string | undefined } } = {
+  const summary: { released: boolean; workspaceId: number; instance: string; static?: { url: string | undefined; verified?: boolean } } = {
     released: true,
     workspaceId,
     instance: auth.instance,
@@ -93,6 +93,7 @@ export async function runReleaseCommand(args: ParsedArgs): Promise<void> {
       env,
       explicit,
       args.staticHost,
+      args.noVerify,
     );
   }
 
