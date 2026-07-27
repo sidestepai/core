@@ -122,6 +122,7 @@ export const STATEMENT_SURFACES: ReadonlyArray<readonly [string, string]> = [
   ["object.values", "mvp:object_values"],
   ["placeholder", "mvp:placeholder"],
   ["precondition", "mvp:precondition"],
+  ["realtime.get_session", "mvp:get_session"],
   ["redis.count", "mvp:redis_countlist"],
   ["redis.decr", "mvp:redis_decr"],
   ["redis.del", "mvp:redis_del"],

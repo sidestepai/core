@@ -8,8 +8,8 @@
       "total": 24
     },
     "statements": {
-      "implemented": 214,
-      "total": 214
+      "implemented": 215,
+      "total": 215
     },
     "filters": {
       "typed": 129,
@@ -3009,6 +3009,22 @@
           "name": "payload",
           "type": "value",
           "optional": true
+        }
+      ]
+    },
+    {
+      "surface": "realtime.get_session",
+      "storedName": "mvp:get_session",
+      "sPath": "realtime.get_session",
+      "registered": true,
+      "declarative": true,
+      "output": false,
+      "fields": [
+        {
+          "name": "as",
+          "type": "string",
+          "optional": true,
+          "default": ""
         }
       ]
     },
