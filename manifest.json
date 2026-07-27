@@ -56,7 +56,7 @@
       {
         "name": "c.now",
         "signature": "() => Value",
-        "description": "Current time as epoch-ms — the text(\"now\") |to_epoch_ms chain (Xano has no $now setting, so it lives on c.* not sys). It is a FILTERED value but is valid inline as a where/cmp operand (the #118 rejection no longer reproduces, #145). For cutoff math (cutoff = now - max_age) either compare inline or, for reuse/readability, hoist it into an s.set_var and compare against the var (issue #120)."
+        "description": "Current time as epoch-ms — the text(\"now\") |to_epoch_ms chain. A FILTERED value, valid inline as a where/cmp operand. For cutoff math (cutoff = now - max_age) either compare inline or, for reuse/readability, hoist it into an s.set_var and compare against the var (issue #120)."
       },
       {
         "name": "obj",
@@ -86,7 +86,7 @@
       {
         "name": "env",
         "signature": "(name: string) => Value",
-        "description": "Read a WORKSPACE environment variable (set via workspaceConfig({ env }) or the dashboard) → `$env.NAME`. Compiles to tag \"setting\" with the plain name — a workspace env var IS a setting (the raw tag \"env\" does not resolve workspace vars). Same tag as the sys.* built-ins, which just use $-prefixed names — so env(\"remote_ip\") reads a user var named remote_ip, not the caller IP (use sys.remoteIp())."
+        "description": "Read a WORKSPACE environment variable (set via workspaceConfig({ env }) or the dashboard) → `$env.NAME`. Compiles to tag \"setting\" with the plain name. env(\"remote_ip\") reads a user var named remote_ip, not the caller IP — use sys.remoteIp() for that."
       },
       {
         "name": "setting",

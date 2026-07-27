@@ -12,11 +12,13 @@ import { measureCommittedLlms } from "../../scripts/measure-llms.js";
  *
  * Inspect the current footprint any time with `npm run measure:llms`.
  */
-// Set generously above the current footprint (~24.2k after the #145 statement
-// result-type bindings), below the pre-slim baseline (~26.8k). Headroom for
-// legitimate critical additions; raise it if a real Gotcha/Special/result binding
-// pushes past, never cut grounding to fit.
-const CEILING_TOKENS = 25_000;
+// Set generously above the current footprint (~24.5k after the no-opinion pass
+// removed self-justification prose), below the pre-slim baseline (~26.8k). Headroom
+// for legitimate critical additions; raise it if a real Gotcha/Special/result
+// binding pushes past, never cut grounding to fit. (Ratcheted down from 25k once
+// the self-justification cut locked in a lower floor — the inverse of that rule:
+// don't leave the tripwire slack after a real reduction.)
+const CEILING_TOKENS = 24_800;
 
 describe("llms.txt token budget", () => {
   it("stays under the bloat-tripwire ceiling", () => {
