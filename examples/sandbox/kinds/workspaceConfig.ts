@@ -22,4 +22,11 @@ export const wsConfig = workspaceConfig({
     function: true,
     trigger: "all",
   },
+  // Workspace environment variables — read at request time with `env("NAME")`.
+  // VALUES ARE SECRETS: source them from the deploy environment, don't commit
+  // literals or bundles containing real values. Deploy replaces the tenant's env.
+  env: {
+    STRIPE_KEY: process.env.STRIPE_KEY ?? "",
+    APP_BASE_URL: "https://my-app.example.com",
+  },
 });

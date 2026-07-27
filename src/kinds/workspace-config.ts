@@ -89,8 +89,31 @@ export interface WorkspaceConfigDef {
    * is not modeled; the engine falls through absent branch history to this tier.
    */
   history?: WorkspaceHistoryDef;
-  env?: Record<string, unknown>;
+  /**
+   * Workspace **environment variables** — the secrets/config a tenant reads at
+   * request time with `env("NAME")` (→ `$env.NAME`). Authored as an ergonomic
+   * name→value map; SideStep encodes it to the engine's persisted `env[]` array
+   * of `{ name, value, market_item }`. Order is preserved.
+   *
+   * VALUES ARE SECRETS. Prefer sourcing them from the deploy environment rather
+   * than committing literals — `env: { STRIPE_KEY: process.env.STRIPE_KEY! }` —
+   * and don't commit a compiled bundle that contains real values.
+   *
+   * Deploying replaces the tenant's env vars with this map (the workspace
+   * object is restored wholesale on import); omit the field to leave existing
+   * env untouched. This is the SETTER — the {@link env} value helper is the
+   * READER. Distinct from the built-in request-context vars (`sys.*`).
+   */
+  env?: Record<string, string>;
   settings?: Record<string, unknown>;
+}
+
+/** One persisted workspace env var (engine `env[]` element). */
+export interface WorkspaceEnvXdo {
+  name: string;
+  value: string;
+  /** Marketplace-provenance links; always empty for author-declared vars. */
+  market_item: never[];
 }
 
 export interface WorkspaceConfigXdo {
@@ -104,8 +127,17 @@ export interface WorkspaceConfigXdo {
   middleware?: WorkspaceMiddlewareXdo;
   /** Present only when the author sets `history` (author-provided subset). */
   history?: WorkspaceHistoryXdo;
-  env: Record<string, unknown>;
+  env: WorkspaceEnvXdo[];
   settings: Record<string, unknown>;
+}
+
+/**
+ * Encode the author's name→value env map into the engine's persisted `env[]`
+ * array, preserving insertion order. Each var carries an empty `market_item`
+ * (author-declared vars have no marketplace provenance).
+ */
+export function encodeWorkspaceEnv(env: Record<string, string>): WorkspaceEnvXdo[] {
+  return Object.entries(env).map(([name, value]) => ({ name, value, market_item: [] }));
 }
 
 /** Encode the author's per-host middleware into the flat 8-key stored map. */
@@ -135,7 +167,7 @@ export function encodeWorkspaceConfig(def: WorkspaceConfigDef): WorkspaceConfigX
       ? { middleware: encodeWorkspaceMiddleware(def.middleware) }
       : {}),
     ...(def.history !== undefined ? { history: buildWorkspaceHistory(def.history) } : {}),
-    env: def.env ?? {},
+    env: def.env ? encodeWorkspaceEnv(def.env) : [],
     settings: def.settings ?? {},
   };
 }

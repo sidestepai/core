@@ -349,18 +349,21 @@ export function auth(path = ""): Value {
 }
 
 /**
- * Reference a **user-defined environment variable** (`{tag:"env", value}`) — the
- * ones you set in the workspace dashboard, e.g. `env("STRIPE_KEY")` → `$env.STRIPE_KEY`.
+ * Read a **workspace environment variable** — the ones set via `workspaceConfig({ env })`
+ * or the workspace dashboard, e.g. `env("STRIPE_KEY")` → `$env.STRIPE_KEY`.
  *
- * **Not** for the built-in request/system variables (client IP, HTTP method, data
- * source, …). Those look like `$env.$remote_ip` in XanoScript but are a *different*
- * tag under the hood (`setting`, not `env`), so `env("remote_ip")` does **not** read
- * the caller's IP — it reads a user env var literally named `remote_ip` (almost always
- * unset → null). Use {@link sys} for those (`sys.remoteIp()`), or {@link setting} with
- * the exact `$`-prefixed name.
+ * Under the hood a workspace env var is a `{tag:"setting", value:"NAME"}` (the plain,
+ * non-`$` name) — `$env.NAME` in XanoScript is sugar for that setting. This is the SAME
+ * tag the built-in request/system vars use; those just carry a `$`-prefixed name
+ * (`$env.$remote_ip`). So `env("remote_ip")` reads a *user* var literally named
+ * `remote_ip` (usually unset → null), NOT the caller IP — use {@link sys} (`sys.remoteIp()`)
+ * or {@link setting} with the exact `$`-prefixed name for the built-ins.
+ *
+ * (`$env.NAME` is a setting, not the raw `tag:"env"` form — which does not resolve
+ * workspace vars — so this reads them as settings, matching the platform.)
  */
 export function env(name: string): Value {
-  return val(name, "env");
+  return val(name, "setting");
 }
 
 /**

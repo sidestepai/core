@@ -718,6 +718,34 @@ keep; omit the field to leave the workspace's existing history untouched. SideSt
 stored values + the inherit flag only; the engine computes the fallback. Branch-tier history is not
 modeled — SideStep does not touch branches.
 
+### Workspace environment variables
+
+Set a tenant's env vars through the workspace object. Author them as a name→value map; read them at
+request time with `env("NAME")` (→ `$env.NAME`):
+
+```ts
+workspaceConfig({
+  name: "my-app",
+  env: {
+    STRIPE_KEY: process.env.STRIPE_KEY!,          // sourced from the deploy environment
+    APP_BASE_URL: "https://my-app.example.com",   // a plain config value
+  },
+});
+
+// …read it back inside any stack:
+query({ name: "charge", verb: "POST", stack: [
+  s.http.request({ url: env("STRIPE_KEY") /* … */ }),
+] });
+```
+
+**Values are secrets.** Prefer sourcing them from the deploy environment (`process.env.X`) over
+committing literals, and don't commit a compiled bundle that contains real values. The
+`workspaceConfig({ env })` map is the **setter**; the `env(name)` value helper is the **reader**.
+Under the hood a workspace env var is a *setting* (`$env.NAME` compiles to `tag:"setting"` with the
+plain name) — the same tag the `sys.*` built-ins use, they just carry `$`-prefixed names
+(`sys.apiBaseUrl()` → `$env.$api_baseurl`). Deploying sets the vars you declare; omit the field to leave the
+workspace's existing env untouched.
+
 **Rate-limit recipe (the canonical middleware).** Build the per-user key with the filter chain
 (`"prefix" + auth("id")` doesn't exist):
 
@@ -1026,10 +1054,10 @@ substitutes into `direct_query` SQL — requires an **engine change** (tracked i
 
 **System / request variables (`sys.*`).** Xano exposes built-in request context — client IP,
 HTTP method, data source, and so on. In XanoScript these read as `$env.$remote_ip` — note the
-**second `$`**: they are *settings*, a different tag from the user-defined env vars `env()`
-reaches. That distinction is a silent footgun: `env("remote_ip")` does **not** read the caller's
-IP — it reads a user env var literally named `remote_ip` (almost always unset → null). `sys.*`
-spells the names and emits the correct form so you never type the `$`:
+**second `$`**: they are *settings* with a `$`-prefixed name, the same tag `env()` and `setting()`
+emit (a workspace env var is just a setting with a plain name). That prefix is the footgun:
+`env("remote_ip")` does **not** read the caller's IP — it reads a workspace env var literally named
+`remote_ip` (almost always unset → null). `sys.*` spells the `$`-prefixed names for you:
 
 | accessor | var | type | | accessor | var | type |
 |---|---|---|---|---|---|---|

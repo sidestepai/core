@@ -98,6 +98,24 @@ describe("U8 kinds on Xano", () => {
     expect(bundle.payload.addon).toHaveLength(1);
     expect(bundle.payload.workspace).toMatchObject({ name: "ws", description: "hi" });
   });
+
+  it("routes workspace env vars to the top-level payload.env (the import's read location), leaving workspace.env empty", () => {
+    const bundle = new Xano()
+      .registerWorkspace({ name: "ws", env: { STRIPE_KEY: "sk_1", APP_URL: "https://x" } })
+      .export();
+    // The engine merges env from payload.env, NOT the workspace object.
+    expect(bundle.payload.env).toEqual([
+      { name: "STRIPE_KEY", value: "sk_1", market_item: [] },
+      { name: "APP_URL", value: "https://x", market_item: [] },
+    ]);
+    expect((bundle.payload.workspace as { env: unknown[] }).env).toEqual([]);
+  });
+
+  it("keeps payload.env empty when no env vars are authored", () => {
+    const bundle = new Xano().registerWorkspace({ name: "ws" }).export();
+    expect(bundle.payload.env).toEqual([]);
+    expect((bundle.payload.workspace as { env: unknown[] }).env).toEqual([]);
+  });
 });
 
 describe("workspace-tier middleware", () => {
