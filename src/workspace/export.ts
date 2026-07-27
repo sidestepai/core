@@ -236,9 +236,22 @@ export function buildContentEnvelope(rows: unknown[]): ContentEnvelope {
 
 /** Assemble a signed `packageExport` bundle from encoded sections. */
 export function buildBundle(args: BuildBundleArgs): Bundle {
-  const payload: BundlePayload = { partial: args.partial ?? false, workspace: args.workspace ?? {} };
+  // The engine imports workspace env vars from the TOP-LEVEL `payload.env` array,
+  // not from the workspace object's own `env` field (which the import ignores —
+  // `Migrate::importWorkspace` merges `payload.env` into the tenant's env). Lift
+  // any authored env off the workspace object so it lands where the import reads
+  // it; leave `workspace.env` empty to avoid duplicating the values in the bundle.
+  const workspace: Record<string, unknown> = { ...(args.workspace ?? {}) };
+  const wsEnv = workspace.env;
+  const payload: BundlePayload = { partial: args.partial ?? false, workspace };
   for (const key of PAYLOAD_ARRAY_KEYS) {
     payload[key] = args.sections[key] ?? [];
+  }
+  // Only relocate when there are actual env vars — leave an unconfigured/empty
+  // workspace object untouched (don't inject an `env` key it never had).
+  if (Array.isArray(wsEnv) && wsEnv.length > 0) {
+    payload.env = wsEnv;
+    workspace.env = [];
   }
   assertUniqueGuids(payload, args.lock);
   const unsigned = {

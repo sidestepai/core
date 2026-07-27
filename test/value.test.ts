@@ -211,8 +211,10 @@ describe("references", () => {
 });
 
 describe("env vs setting vs sys (issue #110)", () => {
-  it("env produces an env tag (user-defined dashboard vars)", () => {
-    expect(env("STRIPE_KEY")).toEqual({ value: "STRIPE_KEY", tag: "env", filters: [] });
+  it("env reads a workspace env var as a setting (plain name) — $env.NAME is sugar for tag:setting", () => {
+    // Live-verified: workspaceConfig({ env }) sets the var, and env("NAME") reads it
+    // back only as a setting tag; the raw tag:"env" (OS getenv) never sees workspace vars.
+    expect(env("STRIPE_KEY")).toEqual({ value: "STRIPE_KEY", tag: "setting", filters: [] });
   });
 
   it("setting produces a setting tag with the raw name", () => {

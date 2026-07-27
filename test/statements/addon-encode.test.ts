@@ -80,13 +80,14 @@ describe("encodeAddons", () => {
     expect(a.input).toEqual([]);
   });
 
-  it("passes an input value's tag through unchanged (out -> output, env -> env)", () => {
+  it("passes an input value's tag through unchanged (out -> output, env -> setting)", () => {
     const a = encodeAddons([
       { addon: "transaction", as: "_book", input: { a: out("x"), b: env("K") } },
     ])[0]!;
     expect(a.input).toEqual([
       { name: "a", tag: "output", value: "x", filters: [] },
-      { name: "b", tag: "env", value: "K", filters: [] },
+      // env() reads a workspace env var, which is a setting ($env.K → tag:setting).
+      { name: "b", tag: "setting", value: "K", filters: [] },
     ]);
   });
 
