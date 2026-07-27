@@ -144,6 +144,13 @@ export interface ParsedArgs {
   force: boolean;
   /** `init --no-install`: skip the post-scaffold `npm install`. */
   noInstall: boolean;
+  /**
+   * `deploy --no-verify`: skip the post-deploy static-host liveness poll. The
+   * build still uploads; SideStep just doesn't wait to confirm the edge is
+   * serving *this* build via `X-Xano-Canonical`. Useful for fast iterative
+   * deploys or when the deployed URL isn't reachable from the CLI host.
+   */
+  noVerify: boolean;
 }
 
 /** Parse a `--port` value, rejecting NaN/out-of-range so `server.listen` never gets `NaN`. */
@@ -198,6 +205,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   const ai: string[] = [];
   let force = false;
   let noInstall = false;
+  let noVerify = false;
   const positionals: string[] = [];
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i]!;
@@ -300,6 +308,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
       force = true;
     } else if (arg === "--no-install") {
       noInstall = true;
+    } else if (arg === "--no-verify") {
+      noVerify = true;
     } else if (arg === "--profile" || arg.startsWith("--profile=")) {
       // Removed in the OAuth migration — fail loudly instead of letting the flag
       // (and its value) fall through into positionals and misparse as an entry file.
@@ -360,6 +370,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     ai,
     force,
     noInstall,
+    noVerify,
   };
 }
 

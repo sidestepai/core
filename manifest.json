@@ -8288,6 +8288,10 @@
           "description": "Repeatable. Bake extra PUBLIC config into the static build's index.html as `window.<KEY>` globals. Merged over the auto-seeded XANO_HOST; served verbatim, so never put secrets here."
         },
         {
+          "flag": "--no-verify",
+          "description": "Skip the post-deploy liveness poll. By default, after a --static upload the CLI polls the deployed URL until the edge is serving THIS build (matching its X-Xano-Canonical), so success means the frontend is actually live — not just that the build was accepted. An unconfirmed poll is a warning, never a failure. Use --no-verify for fast iterative deploys or when the URL isn't reachable from the CLI host."
+        },
+        {
           "flag": "--config <path>",
           "description": "Explicit token cache path (default: $XANO_CONFIG, then the shared ~/.sidestep/auth.json, falling back to ./.xano/auth.json when it exists)."
         },

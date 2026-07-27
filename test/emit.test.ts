@@ -120,6 +120,11 @@ describe("CLI", () => {
     expect(parseArgs(["sandbox", "deploy", "f.ts", "--static", "./dist"]).staticHost).toBeUndefined();
   });
 
+  it("parseArgs reads --no-verify (default false) for the static liveness poll", () => {
+    expect(parseArgs(["deploy", "f.ts", "--static", "./dist", "--no-verify"]).noVerify).toBe(true);
+    expect(parseArgs(["deploy", "f.ts", "--static", "./dist"]).noVerify).toBe(false);
+  });
+
   it("`version` (and --version / -v) prints the package.json version to stdout", async () => {
     const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
     const { version } = JSON.parse(readFileSync(pkgPath, "utf8")) as { version: string };

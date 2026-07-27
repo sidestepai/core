@@ -111,6 +111,7 @@ npx sidestep deploy ./xano/index.ts --static ./frontend/dist
 ✓ Config injected into index.html: window.XANO_HOST                   ← backend URL, wired in
 ✓ Static host deployed
     https://my-app.xano.io                                            ← frontend, live
+✓ Frontend is live                                                    ← edge confirmed serving THIS build
     Expires in 1h 0m
 ```
 
@@ -1252,8 +1253,9 @@ so a `--local` project keeps working without repeating the flag. `login` and `lo
 seeding), then create-or-refreshes the target environment and imports the compiled
 workspace into it as a full replace. `deploy --bundle <path>` skips the compile and uploads a
 bundle a previous `export` wrote (handy in CI). A **projected, secret-free summary** prints to stdout
-as JSON — `baseUrl` plus the workspace `id`/`name`, and the static URL when `--static` is
-used — while the human-readable progress (and the live URLs) echoes to stderr. The raw
+as JSON — `baseUrl` plus the workspace `id`/`name`, and the static URL (plus a `verified`
+boolean reporting whether the frontend was confirmed live) when `--static` is used — while the
+human-readable progress (and the live URLs) echoes to stderr. The raw
 workspace blob is deliberately never dumped: it carries per-tenant secrets that must not land
 in shell history or CI logs.
 
@@ -1273,6 +1275,18 @@ to its numeric id) and uploads the archive to
 auto-creates the `default` host and **auto-deploys to `dev`**, returning the live URL — so
 the static step is independent of the backend deploy (the backend still runs first because
 it's the primary action).
+
+**Liveness verification** — the build endpoint returning `200` only means the archive was
+*accepted*; the edge may still be starting a cold host (which `503`s for tens of seconds) or
+briefly routing the previous build. So after the upload the CLI polls the deployed URL until
+the static server reports it is serving **this** build — its `X-Xano-Canonical` response header
+matches the canonical returned for the build just pushed — then prints `Frontend is live`. It
+polls every second for the first 30s, then every two seconds out to 120s. An unconfirmed poll
+is a **warning, not a failure** (the build uploaded fine and usually comes online moments
+later; the exit code stays `0` and the summary records `"verified": false`). Verification is
+skipped when the response carries no canonical to compare against. Pass **`--no-verify`** to
+skip the wait entirely — useful for fast iterative deploys or when the deployed URL isn't
+reachable from the machine running the CLI.
 
 **Config injection** — before archiving, the deploy rewrites the build's root `index.html`,
 inserting an inline `<script>` at the top of `<head>` that assigns each config value to a

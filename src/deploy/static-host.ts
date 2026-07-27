@@ -92,6 +92,14 @@ export interface StaticHostRequest {
 export interface StaticHostResult {
   /** The deployed build's live URL, if the endpoint reports one. */
   url: string | undefined;
+  /**
+   * Canonical of the build this call just created — the token the static server
+   * stamps on `X-Xano-Canonical` for the build it is actually serving. Used to
+   * verify *this* build went live (see `verify-rollout.js`). `undefined` when the
+   * response doesn't carry one (older engine / unexpected shape), which the
+   * caller treats as "skip verification and report as before".
+   */
+  canonical: string | undefined;
   /** True when `env` was non-empty AND a root `index.html` received the config script. */
   envInjected: boolean;
   raw: string;
@@ -113,6 +121,21 @@ function pickUrl(parsed: Record<string, unknown>): string | undefined {
   if (direct !== undefined) return /^https?:\/\//.test(direct) ? direct : `https://${direct}`;
   const host = [dev?.custom, dev?.host].find((c): c is string => typeof c === "string" && c !== "");
   return host !== undefined ? `https://${host}` : undefined;
+}
+
+/**
+ * Pick the build's canonical out of the meta build response. The engine reports
+ * it as a top-level `canonical` on the build; older/nested shapes expose it under
+ * the served environment (`dev.canonical`) or the build sub-object
+ * (`build.canonical`) — the same shapes the reference frontend reads. Returns the
+ * first non-empty string, or `undefined` so the caller degrades to no-verify.
+ */
+function pickCanonical(parsed: Record<string, unknown>): string | undefined {
+  const dev = parsed.dev as { canonical?: unknown } | undefined;
+  const build = parsed.build as { canonical?: unknown } | undefined;
+  return [parsed.canonical, dev?.canonical, build?.canonical].find(
+    (c): c is string => typeof c === "string" && c !== "",
+  );
 }
 
 /**
@@ -199,5 +222,5 @@ export async function deployStaticHost(req: StaticHostRequest): Promise<StaticHo
   } catch {
     /* non-JSON — surface verbatim, url stays undefined */
   }
-  return { url: pickUrl(parsed), envInjected, raw: text };
+  return { url: pickUrl(parsed), canonical: pickCanonical(parsed), envInjected, raw: text };
 }

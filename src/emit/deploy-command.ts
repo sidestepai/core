@@ -58,7 +58,7 @@ interface DeploySummary {
   url: string | undefined;
   ephemeral?: { name: string; display: string | undefined; expiresAt: string | number | undefined };
   created?: boolean;
-  static?: { url: string | undefined };
+  static?: { url: string | undefined; verified?: boolean };
 }
 
 /**
@@ -161,7 +161,7 @@ export async function runDeployCommand(args: ParsedArgs): Promise<void> {
         ? { baseUrl: summary.url, workspaceId: 1, label: `ephemeral ${summary.ephemeral?.name ?? ""}`.trim() }
         : { baseUrl: auth.instance, workspaceId: await resolveScopedWorkspaceId(auth), label: undefined };
     try {
-      summary.static = await deployStaticTo(args.static, auth, target, env, explicit, args.staticHost);
+      summary.static = await deployStaticTo(args.static, auth, target, env, explicit, args.staticHost, args.noVerify);
     } catch (err) {
       warn("Backend deployed, but the static-host upload failed:");
       detail(err instanceof Error ? err.message : String(err));
@@ -284,6 +284,7 @@ export async function deployStaticTo(
   env: Record<string, string>,
   explicit: boolean,
   host?: string,
+  noVerify?: boolean,
 ): Promise<DeploySummary["static"]> {
   const { deployStaticHost } = await import("../deploy/static-host.js");
 
@@ -300,5 +301,27 @@ export async function deployStaticTo(
 
   success("Static host deployed");
   if (sh.url) link(sh.url);
-  return { url: sh.url };
+
+  // Confirm the edge is serving THIS build before calling it done. The build POST
+  // 200 only means the archive was ingested — a cold pod can still 503 and a
+  // redeploy can route the previous build for a window. Poll `X-Xano-Canonical`
+  // until it matches this build's canonical. Skipped (and reported as before)
+  // when opted out, when there's no URL to poll, or when the response carried no
+  // canonical to compare against (older engine / unexpected shape).
+  if (noVerify || sh.url === undefined || sh.canonical === undefined) {
+    return { url: sh.url };
+  }
+  const { verifyRollout } = await import("../deploy/verify-rollout.js");
+  step("Verifying the frontend is live…");
+  const { live } = await verifyRollout(sh.url, sh.canonical);
+  if (live) {
+    success("Frontend is live");
+  } else {
+    // Not a failure: the build uploaded fine, the edge just hasn't confirmed it
+    // in time (a slow cold pod usually serves moments later). Warn, record it in
+    // the summary, and leave the exit code untouched.
+    warn("Could not confirm the frontend is live within the wait window — the build uploaded and should come online shortly.");
+    detail(`Re-check by opening ${sh.url}, or skip this wait next time with --no-verify.`);
+  }
+  return { url: sh.url, verified: live };
 }

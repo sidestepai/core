@@ -159,6 +159,11 @@ which auto-creates the host and auto-deploys to `dev`. The static step is
 independent and idempotent: a static failure never rolls back the backend — it
 exits with a distinct code and a resumable message, and you retry just the static
 step by re-running `deploy --static ./dist`.
+After the upload the CLI VERIFIES THE FRONTEND IS LIVE: it polls the deployed URL until the
+edge serves THIS build (matching the `X-Xano-Canonical` header it stamps), so `Frontend is live`
+means the app is actually reachable — not just that the build was accepted (a cold host can 503
+for tens of seconds first). An unconfirmed poll is a WARNING, never a failure (the build still
+uploaded). Pass `--no-verify` to skip the wait for fast iterative deploys.
 The deploy WIRES THE BACKEND URL IN FOR YOU: before archiving, it inserts an inline
 `<script>` at the top of the build's root index.html `<head>` that assigns the sandbox
 backend URL to `window.XANO_HOST` (seeded from the backend deploy's own response), running
