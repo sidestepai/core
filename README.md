@@ -718,6 +718,33 @@ keep; omit the field to leave the workspace's existing history untouched. SideSt
 stored values + the inherit flag only; the engine computes the fallback. Branch-tier history is not
 modeled — SideStep does not touch branches.
 
+### Workspace environment variables
+
+Set a tenant's env vars through the workspace object. Author them as a name→value map; read them at
+request time with `env("NAME")` (→ `$env.NAME`):
+
+```ts
+workspaceConfig({
+  name: "my-app",
+  env: {
+    STRIPE_KEY: process.env.STRIPE_KEY!,          // sourced from the deploy environment
+    APP_BASE_URL: "https://my-app.example.com",   // a plain config value
+  },
+});
+
+// …read it back inside any stack:
+query({ name: "charge", verb: "POST", stack: [
+  s.http.request({ url: env("STRIPE_KEY") /* … */ }),
+] });
+```
+
+**Values are secrets.** Prefer sourcing them from the deploy environment (`process.env.X`) over
+committing literals, and don't commit a compiled bundle that contains real values. `env` is the
+**setter**; the `env(name)` value helper is the **reader** — distinct from the built-in
+request-context vars (`sys.*`, e.g. `sys.apiBaseUrl()`), which are a different tag entirely.
+Deploying **replaces** the tenant's env vars with the map you declare; omit the field to leave the
+workspace's existing env untouched.
+
 **Rate-limit recipe (the canonical middleware).** Build the per-user key with the filter chain
 (`"prefix" + auth("id")` doesn't exist):
 
