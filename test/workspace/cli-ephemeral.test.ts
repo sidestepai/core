@@ -57,11 +57,13 @@ describe("sidestep ephemeral", () => {
     vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     cwd = process.cwd();
     process.chdir(dir);
+    process.env.XANO_NO_BROWSER = "1"; // never spawn a browser under test
   });
   afterEach(() => {
     process.chdir(cwd);
     vi.restoreAllMocks();
     rmSync(dir, { recursive: true, force: true });
+    delete process.env.XANO_NO_BROWSER;
   });
 
   // ── list ──
@@ -169,5 +171,60 @@ describe("sidestep ephemeral", () => {
     await run(["ephemeral", "export", "e4f2", "--config", authFile, "--workspace", "114", "--format", "multidoc", "--path", out]);
     expect(existsSync(out)).toBe(true);
     expect(readFileSync(out, "utf8")).toMatch(/api foo/);
+  });
+
+  // ── impersonate ──
+  it("impersonate emits JSON with the token and dashboard URL (non-TTY)", async () => {
+    const m = seq(res(LIVE), res({ _ti: "tok" })); // GET tenant (gate), then mint
+    await run(["ephemeral", "impersonate", "e4f2", "--config", authFile, "--workspace", "114"]);
+    expect(m.mock.calls[1]![0]).toBe(`${INSTANCE}/api:meta/workspace/114/tenant/e4f2/impersonate`);
+    expect(JSON.parse(stdout.join(""))).toEqual({ _ti: "tok", url: `${INSTANCE}/impersonate?_ti=tok` });
+  });
+  it("impersonate --url-only prints just the URL and opens no browser (TTY)", async () => {
+    seq(res(LIVE), res({ _ti: "tok" }));
+    const prev = process.stdout.isTTY;
+    process.stdout.isTTY = true;
+    try {
+      await run(["ephemeral", "impersonate", "e4f2", "--config", authFile, "--workspace", "114", "--url-only"]);
+    } finally {
+      process.stdout.isTTY = prev;
+    }
+    expect(stdout.join("").trim()).toBe(`${INSTANCE}/impersonate?_ti=tok`);
+  });
+  it("impersonate in a TTY opens the browser and writes nothing to stdout", async () => {
+    seq(res(LIVE), res({ _ti: "tok" }));
+    const prev = process.stdout.isTTY;
+    process.stdout.isTTY = true;
+    try {
+      await run(["ephemeral", "impersonate", "e4f2", "--config", authFile, "--workspace", "114"]);
+    } finally {
+      process.stdout.isTTY = prev;
+    }
+    expect(stdout.join("")).toBe(""); // URL/status go to stderr; stdout stays clean
+  });
+  it("impersonate --guest requests a read-only session", async () => {
+    const m = seq(res(LIVE), res({ _ti: "tok" }));
+    await run(["ephemeral", "impersonate", "e4f2", "--config", authFile, "--workspace", "114", "--guest"]);
+    expect(String(m.mock.calls[1]![0])).toContain("guest_read_only=true");
+  });
+  it("impersonate on a swept tenant fails with the gone message and never mints", async () => {
+    const m = seq(res("nope", 404));
+    await expect(run(["ephemeral", "impersonate", "gone", "--config", authFile, "--workspace", "114"])).rejects.toThrow(
+      /expired or no longer exists/,
+    );
+    expect(m).toHaveBeenCalledTimes(1); // only the gate GET, never the impersonate route
+  });
+  it("impersonate on a gone tenant clears a matching local record", async () => {
+    writeState(dir, 114, "e4f2");
+    seq(res("nope", 404));
+    await expect(run(["ephemeral", "impersonate", "e4f2", "--config", authFile, "--workspace", "114"])).rejects.toThrow(
+      /cleared its local record/,
+    );
+    expect(JSON.parse(readFileSync(statePath(dir), "utf8")).environments["114"]).toBeUndefined();
+  });
+  it("impersonate without a name fails with an actionable message", async () => {
+    await expect(run(["ephemeral", "impersonate", "--config", authFile, "--workspace", "114"])).rejects.toThrow(
+      /needs a tenant name/,
+    );
   });
 });

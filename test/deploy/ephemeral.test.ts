@@ -5,6 +5,7 @@ import {
   listEphemeral,
   listAllEphemeral,
   deleteEphemeral,
+  impersonateEphemeral,
   waitUntilReady,
   isExpired,
   tenantBaseUrl,
@@ -101,6 +102,33 @@ describe("deleteEphemeral", () => {
   it("throws on a non-404 error", async () => {
     stub("boom", 500);
     await expect(deleteEphemeral(AUTH, { parentWorkspaceId: 114, name: "x" })).rejects.toThrow(/delete ephemeral failed \(500/);
+  });
+});
+
+describe("impersonateEphemeral", () => {
+  it("returns the one-time token, no query string by default", async () => {
+    const m = stub({ _ti: "tok-123" });
+    const out = await impersonateEphemeral(AUTH, { parentWorkspaceId: 114, name: "e4f2-9ab1" });
+    expect(out).toEqual({ _ti: "tok-123" });
+    expect(String(m.mock.calls[0]![0])).toBe("https://inst.example.com/api:meta/workspace/114/tenant/e4f2-9ab1/impersonate");
+  });
+  it("requests a read-only guest session", async () => {
+    const m = stub({ _ti: "tok-123" });
+    await impersonateEphemeral(AUTH, { parentWorkspaceId: 114, name: "e4f2-9ab1", guest: true });
+    expect(String(m.mock.calls[0]![0])).toContain("guest_read_only=true");
+  });
+  it("percent-encodes the tenant name in the path", async () => {
+    const m = stub({ _ti: "tok-123" });
+    await impersonateEphemeral(AUTH, { parentWorkspaceId: 114, name: "a b/c" });
+    expect(String(m.mock.calls[0]![0])).toContain("/tenant/a%20b%2Fc/impersonate");
+  });
+  it("throws when no token is returned", async () => {
+    stub({});
+    await expect(impersonateEphemeral(AUTH, { parentWorkspaceId: 114, name: "e4f2-9ab1" })).rejects.toThrow(/no one-time token/);
+  });
+  it("throws on a non-2xx error", async () => {
+    stub("boom", 500);
+    await expect(impersonateEphemeral(AUTH, { parentWorkspaceId: 114, name: "x" })).rejects.toThrow(/impersonate ephemeral failed \(500/);
   });
 });
 

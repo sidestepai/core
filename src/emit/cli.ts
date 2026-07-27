@@ -114,6 +114,10 @@ export interface ParsedArgs {
    * workspace on the instance, not just the token's parent workspace.
    */
   allWorkspaces: boolean;
+  /** `ephemeral impersonate --guest`/`-g`: mint a read-only guest session (browse only). */
+  guest: boolean;
+  /** `ephemeral impersonate --url-only`/`-u`: print the dashboard URL instead of opening a browser. */
+  urlOnly: boolean;
   /** `login --port <n>`: fixed loopback callback port (default: an ephemeral port). */
   port: number | undefined;
   /** `login --scope "<space list>"`: OAuth scopes to request (default: the built-in xano-cli set). */
@@ -192,6 +196,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let authFile: string | undefined;
   let useLocal = false;
   let allWorkspaces = false;
+  let guest = false;
+  let urlOnly = false;
   let port: number | undefined;
   let scope: string | undefined;
   let runtime = false;
@@ -263,6 +269,10 @@ export function parseArgs(argv: string[]): ParsedArgs {
       useLocal = true;
     } else if (arg === "--all-workspaces") {
       allWorkspaces = true;
+    } else if (arg === "--guest" || arg === "-g") {
+      guest = true;
+    } else if (arg === "--url-only" || arg === "-u") {
+      urlOnly = true;
     } else if (arg === "--port") {
       port = parsePort(rest[++i]);
     } else if (arg.startsWith("--port=")) {
@@ -357,6 +367,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
     authFile,
     local: useLocal,
     allWorkspaces,
+    guest,
+    urlOnly,
     port,
     scope,
     runtime,
@@ -553,7 +565,7 @@ const HELP_GROUPS: ReadonlyArray<{ title: string; rows: ReadonlyArray<readonly [
   {
     title: "Environments",
     rows: [
-      ["ephemeral", "Manage ephemeral envs — list, get, delete, export"],
+      ["ephemeral", "Manage ephemeral envs — list, get, delete, export, impersonate"],
       ["sandbox", "Export or inspect your throwaway sandbox"],
     ],
   },

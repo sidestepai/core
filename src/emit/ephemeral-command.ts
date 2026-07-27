@@ -25,9 +25,11 @@ import {
   listEphemeral,
   listAllEphemeral,
   deleteEphemeral,
+  impersonateEphemeral,
   isExpired,
   type EphemeralSummary,
 } from "../deploy/ephemeral.js";
+import { openBrowser } from "../auth/loopback.js";
 import { readEphemeralState, getEnvironment, clearEnvironment } from "../deploy/ephemeral-state.js";
 import { resolveScopedWorkspaceId } from "../deploy/workspace.js";
 import { decodeWorkspaceArchive } from "../validate/archive.js";
@@ -90,10 +92,12 @@ export async function runEphemeralCommand(args: ParsedArgs): Promise<void> {
       return runDelete(args);
     case "export":
       return runExport(args);
+    case "impersonate":
+      return runImpersonate(args);
     default:
       throw new Error(
         `Unknown ephemeral subcommand "${args.subcommand ?? ""}". ` +
-          `Expected \`list\`, \`get <name>\`, \`delete <name>\`, or \`export <name>\`.`,
+          `Expected \`list\`, \`get <name>\`, \`delete <name>\`, \`export <name>\`, or \`impersonate <name>\`.`,
       );
   }
 }
@@ -241,6 +245,42 @@ async function fetchEphemeralJson(auth: ResolvedAuth, summary: EphemeralSummary,
     detail(err instanceof Error ? err.message : String(err));
     throw goneError(name, false);
   }
+}
+
+// ── impersonate ───────────────────────────────────────────────────────────
+
+/**
+ * Mint a one-time impersonation token and open the ephemeral in the Xano
+ * builder. Gone/expired gate first (shared actionable message + local-record
+ * cleanup), then mint and route by output mode: piped → JSON `{ _ti, url }`;
+ * `--url-only` → the URL only; TTY → open the browser (printing the URL too, so
+ * a `XANO_NO_BROWSER`/headless run still surfaces it). `--guest` requests a
+ * read-only session.
+ */
+async function runImpersonate(args: ParsedArgs): Promise<void> {
+  const name = requireName(args, "impersonate");
+  const auth = await getAccessToken(args);
+  const parentWorkspaceId = await parentWorkspace(args, auth);
+  // Gone/expired gate — friendly message + clears the stale local record.
+  await resolveLive(auth, parentWorkspaceId, name);
+
+  const { _ti } = await impersonateEphemeral(auth, { parentWorkspaceId, name, guest: args.guest });
+  const url = new URL("/impersonate", auth.instance);
+  url.searchParams.set("_ti", _ti);
+  const dashboardUrl = url.href;
+
+  if (!process.stdout.isTTY) {
+    process.stdout.write(JSON.stringify({ _ti, url: dashboardUrl }, null, 2) + "\n");
+    return;
+  }
+  if (args.urlOnly) {
+    process.stdout.write(dashboardUrl + "\n");
+    return;
+  }
+  step("Opening the Xano builder…");
+  detail(dashboardUrl);
+  openBrowser(dashboardUrl);
+  success(`Impersonation session opened for ${name}${args.guest ? " (read-only guest)" : ""}`);
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────

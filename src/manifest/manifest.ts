@@ -237,13 +237,14 @@ const CLI_COMMANDS: readonly ManifestCliCommand[] = [
       "COMING SOON. Promotes your compiled workspace to your MAIN Xano instance workspace (the production target), vs. `deploy` which ships to a disposable ephemeral/sandbox. The target workspace is the one your OAuth token is scoped to — there is no override. Currently gated: it prints a 'coming soon' message and takes no action, pending a record-preserving import (a release must not wipe production table data the way a full replace would).",
   },
   {
-    command: "ephemeral list|get|delete|export",
-    args: "[<name>] [--all-workspaces] [--workspace <id>] [--format <json|multidoc>] [--path <path>|-] [--yes]",
+    command: "ephemeral list|get|delete|export|impersonate",
+    args: "[<name>] [--all-workspaces] [--workspace <id>] [--format <json|multidoc>] [--path <path>|-] [--guest] [--url-only] [--yes]",
     flags: [
       { flag: "list [--all-workspaces]", description: "List ephemeral tenants in the token's parent workspace, or across every workspace on the instance with --all-workspaces. Expired-but-unswept rows are marked." },
       { flag: "get <name>", description: "Show one ephemeral's base URL, state, and expiry (JSON when piped)." },
       { flag: "delete <name> [--yes]", description: "Destroy an ephemeral (confirm unless --yes/--force). Idempotent if already gone; clears the matching local record." },
       { flag: "export <name> [--format json|multidoc] [--path <p>|-]", description: "Export the ephemeral's workspace as the JSON bundle (default) or XanoScript multidoc (.xs), mirroring `sandbox export`." },
+      { flag: "impersonate <name> [--guest] [--url-only]", description: "Mint a one-time token and open the ephemeral in the builder. --guest = read-only session. --url-only prints the dashboard URL instead of opening a browser; when piped, output is JSON ({ _ti, url })." },
     ],
     description:
       "Manage the ephemeral environments `deploy` creates. get/export/delete resolve the tenant first: a swept (404) or past-expiry tenant yields one actionable 'run `sidestep deploy`' message (never touching the dead env), and clears its stale local record.",
