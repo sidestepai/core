@@ -85,7 +85,8 @@ const emptyObj = () => ({ value: "", tag: "const:obj", filters: [] });
  *     crypto_jws_encode2, generate_pass, check_pass, vault_sign_url, algolia_request.
  *
  *   DONE — live-captured via `sidestep validate --capture` (wired below): while,
- *     group, conditional, array_map, array_union, get_input, test_expect_to_throw,
+ *     group, conditional, array_map, array_union, get_input, get_session,
+ *     test_expect_to_throw,
  *     call_agent, cloud_job, cloud_job_await, cloud_job_status, db_bulk_add,
  *     db_bulk_patch, db_bulk_update, db_bulk_delete, db_external_query, api_call.
  *     (The openai agent_settings golden is asserted in test/kinds/agent.test.ts.)
@@ -381,6 +382,7 @@ const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
       ),
   },
   { fixture: "get_input", build: () => encodeStatement(getRawInput({ as: "x3" })) },
+  { fixture: "get_session", build: () => stmt("mvp:get_session", { as: "session" }) },
   {
     fixture: "test_expect_to_throw",
     build: () => encodeStatement(expectToThrow({ body: [setVar("x4", c.int(1))] })),

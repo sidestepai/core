@@ -1,0 +1,18 @@
+{
+  "as": "session",
+  "name": "mvp:get_session",
+  "_xsid": "f:00b21fb4-df33-45d4-a63d-ff3aea412a73",
+  "addon": [],
+  "input": [],
+  "mocks": {},
+  "output": {
+    "items": [],
+    "filters": [],
+    "customize": false
+  },
+  "context": {},
+  "runtime": null,
+  "disabled": false,
+  "description": "",
+  "settings_registry": null
+}
