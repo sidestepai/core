@@ -236,11 +236,11 @@ export function buildContentEnvelope(rows: unknown[]): ContentEnvelope {
 
 /** Assemble a signed `packageExport` bundle from encoded sections. */
 export function buildBundle(args: BuildBundleArgs): Bundle {
-  // The engine imports workspace env vars from the TOP-LEVEL `payload.env` array,
-  // not from the workspace object's own `env` field (which the import ignores —
-  // `Migrate::importWorkspace` merges `payload.env` into the tenant's env). Lift
-  // any authored env off the workspace object so it lands where the import reads
-  // it; leave `workspace.env` empty to avoid duplicating the values in the bundle.
+  // The import applies workspace env vars from the TOP-LEVEL `payload.env` array,
+  // not from the workspace object's own `env` field (which the import ignores).
+  // Lift any authored env off the workspace object so it lands where the import
+  // reads it; leave `workspace.env` empty to avoid duplicating values in the bundle.
+  // (Verified against a live engine round-trip — the offline shape check can't see this.)
   const workspace: Record<string, unknown> = { ...(args.workspace ?? {}) };
   const wsEnv = workspace.env;
   const payload: BundlePayload = { partial: args.partial ?? false, workspace };

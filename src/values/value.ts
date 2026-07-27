@@ -359,8 +359,8 @@ export function auth(path = ""): Value {
  * `remote_ip` (usually unset → null), NOT the caller IP — use {@link sys} (`sys.remoteIp()`)
  * or {@link setting} with the exact `$`-prefixed name for the built-ins.
  *
- * (The engine's raw `tag:"env"` maps to an instance OS `getenv()` lookup, which never
- * sees workspace env vars — hence this reads them as settings, matching the platform.)
+ * (`$env.NAME` is a setting, not the raw `tag:"env"` form — which does not resolve
+ * workspace vars — so this reads them as settings, matching the platform.)
  */
 export function env(name: string): Value {
   return val(name, "setting");
