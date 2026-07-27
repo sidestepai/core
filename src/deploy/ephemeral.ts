@@ -188,6 +188,32 @@ export async function deleteEphemeral(
   return { alreadyGone: false };
 }
 
+/** The one-time impersonation token — feeds the `?_ti=` dashboard URL, nothing else. */
+export interface ImpersonateToken {
+  _ti: string;
+}
+
+/**
+ * Mint a one-time impersonation token for an ephemeral tenant. Unlike the other
+ * transports this deliberately returns the raw token (not the secret-free
+ * summary): it's the whole point of the call and is surfaced in the dashboard
+ * URL. `guest` requests a read-only session (`?guest_read_only=true`).
+ */
+export async function impersonateEphemeral(
+  auth: ResolvedAuth,
+  opts: { parentWorkspaceId: number; name: string; guest?: boolean },
+): Promise<ImpersonateToken> {
+  const query = opts.guest ? "?guest_read_only=true" : "";
+  const path = `/api:meta/workspace/${opts.parentWorkspaceId}/tenant/${encodeURIComponent(opts.name)}/impersonate${query}`;
+  const data = (await readJson(await metaFetch(auth, path, { method: "GET" }), "impersonate ephemeral", path)) as {
+    _ti?: unknown;
+  };
+  if (typeof data._ti !== "string" || data._ti === "") {
+    throw new Error(`impersonate ephemeral: no one-time token (\`_ti\`) returned for "${opts.name}".`);
+  }
+  return { _ti: data._ti };
+}
+
 /**
  * Poll until the ephemeral reports `state === "ok"` (importable), bounded by
  * `timeoutMs`. A freshly created tenant may still be provisioning; importing

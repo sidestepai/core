@@ -6,7 +6,7 @@
  * schema definitions. The engine-only `output` flag is pinned from the
  * persisted golden fixtures (KTD-4). Regenerate with `npm run codegen`.
  *
- * Coverage: 154 declarative statements generated.
+ * Coverage: 155 declarative statements generated.
  * Deferred (see PENDING.md): 60.
  */
 import type { StatementSpec } from "../schema-dsl/interpret.js";
@@ -82,6 +82,7 @@ export const GENERATED_SPECS: StatementSpec[] = [
   {"name":"mvp:generate_pass","rules":[{"field":"as","type":"string","optional":true,"route":{"kind":"as"}},{"field":"character_count","type":"value","optional":true,"route":{"kind":"input","name":"character_count"}},{"field":"require_lowercase","type":"value","optional":true,"route":{"kind":"input","name":"require_lowercase"}},{"field":"require_uppercase","type":"value","optional":true,"route":{"kind":"input","name":"require_uppercase"}},{"field":"require_digit","type":"value","optional":true,"route":{"kind":"input","name":"require_digit"}},{"field":"require_symbol","type":"value","optional":true,"route":{"kind":"input","name":"require_symbol"}},{"field":"symbol_whitelist","type":"value","optional":true,"route":{"kind":"input","name":"symbol_whitelist"}}]},
   {"name":"mvp:get_all_input","rules":[{"field":"as","type":"string","optional":true,"default":"","route":{"kind":"as"}}]},
   {"name":"mvp:get_env","rules":[{"field":"as","type":"string","optional":true,"default":"","route":{"kind":"as"}}]},
+  {"name":"mvp:get_session","rules":[{"field":"as","type":"string","optional":true,"default":"","route":{"kind":"as"}}]},
   {"name":"mvp:get_vars","rules":[{"field":"as","type":"string","optional":true,"default":"","route":{"kind":"as"}}]},
   {"name":"mvp:google_cloud_storage_create_var_from_file_resource","rules":[{"field":"as","type":"string","optional":true,"route":{"kind":"as"}},{"field":"service_account","type":"value","optional":false,"route":{"kind":"input","name":"service_account"}},{"field":"bucket","type":"value","optional":false,"route":{"kind":"input","name":"bucket"}},{"field":"filePath","type":"value","optional":false,"route":{"kind":"input","name":"filePath"}}]},
   {"name":"mvp:google_cloud_storage_delete_file","rules":[{"field":"as","type":"string","optional":true,"route":{"kind":"as"}},{"field":"service_account","type":"value","optional":false,"route":{"kind":"input","name":"service_account"}},{"field":"bucket","type":"value","optional":false,"route":{"kind":"input","name":"bucket"}},{"field":"filePath","type":"value","optional":false,"route":{"kind":"input","name":"filePath"}}]},

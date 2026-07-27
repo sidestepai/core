@@ -8,8 +8,8 @@
       "total": 24
     },
     "statements": {
-      "implemented": 214,
-      "total": 214
+      "implemented": 215,
+      "total": 215
     },
     "filters": {
       "typed": 129,
@@ -56,7 +56,7 @@
       {
         "name": "c.now",
         "signature": "() => Value",
-        "description": "Current time as epoch-ms — the text(\"now\") |to_epoch_ms chain (Xano has no $now setting, so it lives on c.* not sys). It is a FILTERED value but is valid inline as a where/cmp operand (the #118 rejection no longer reproduces, #145). For cutoff math (cutoff = now - max_age) either compare inline or, for reuse/readability, hoist it into an s.set_var and compare against the var (issue #120)."
+        "description": "Current time as epoch-ms — the text(\"now\") |to_epoch_ms chain. A FILTERED value, valid inline as a where/cmp operand. For cutoff math (cutoff = now - max_age) either compare inline or, for reuse/readability, hoist it into an s.set_var and compare against the var (issue #120)."
       },
       {
         "name": "obj",
@@ -86,7 +86,7 @@
       {
         "name": "env",
         "signature": "(name: string) => Value",
-        "description": "Read a WORKSPACE environment variable (set via workspaceConfig({ env }) or the dashboard) → `$env.NAME`. Compiles to tag \"setting\" with the plain name — a workspace env var IS a setting (the raw tag \"env\" does not resolve workspace vars). Same tag as the sys.* built-ins, which just use $-prefixed names — so env(\"remote_ip\") reads a user var named remote_ip, not the caller IP (use sys.remoteIp())."
+        "description": "Read a WORKSPACE environment variable (set via workspaceConfig({ env }) or the dashboard) → `$env.NAME`. Compiles to tag \"setting\" with the plain name. env(\"remote_ip\") reads a user var named remote_ip, not the caller IP — use sys.remoteIp() for that."
       },
       {
         "name": "setting",
@@ -3009,6 +3009,22 @@
           "name": "payload",
           "type": "value",
           "optional": true
+        }
+      ]
+    },
+    {
+      "surface": "realtime.get_session",
+      "storedName": "mvp:get_session",
+      "sPath": "realtime.get_session",
+      "registered": true,
+      "declarative": true,
+      "output": false,
+      "fields": [
+        {
+          "name": "as",
+          "type": "string",
+          "optional": true,
+          "default": ""
         }
       ]
     },
@@ -8314,8 +8330,8 @@
       "description": "COMING SOON. Promotes your compiled workspace to your MAIN Xano instance workspace (the production target), vs. `deploy` which ships to a disposable ephemeral/sandbox. The target workspace is the one your OAuth token is scoped to — there is no override. Currently gated: it prints a 'coming soon' message and takes no action, pending a record-preserving import (a release must not wipe production table data the way a full replace would)."
     },
     {
-      "command": "ephemeral list|get|delete|export",
-      "args": "[<name>] [--all-workspaces] [--workspace <id>] [--format <json|multidoc>] [--path <path>|-] [--yes]",
+      "command": "ephemeral list|get|delete|export|impersonate",
+      "args": "[<name>] [--all-workspaces] [--workspace <id>] [--format <json|multidoc>] [--path <path>|-] [--guest] [--url-only] [--yes]",
       "flags": [
         {
           "flag": "list [--all-workspaces]",
@@ -8332,6 +8348,10 @@
         {
           "flag": "export <name> [--format json|multidoc] [--path <p>|-]",
           "description": "Export the ephemeral's workspace as the JSON bundle (default) or XanoScript multidoc (.xs), mirroring `sandbox export`."
+        },
+        {
+          "flag": "impersonate <name> [--guest] [--url-only]",
+          "description": "Mint a one-time token and open the ephemeral in the builder. --guest = read-only session. --url-only prints the dashboard URL instead of opening a browser; when piped, output is JSON ({ _ti, url })."
         }
       ],
       "description": "Manage the ephemeral environments `deploy` creates. get/export/delete resolve the tenant first: a swept (404) or past-expiry tenant yields one actionable 'run `sidestep deploy`' message (never touching the dead env), and clears its stale local record."

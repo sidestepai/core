@@ -235,6 +235,10 @@ export const generated = {
   },
   precondition: /** `mvp:precondition` — fields: expr, error_type, error, payload */
 (a: { expr?: Condition; error_type?: string; error?: Value; payload?: Value } = {}): Statement => fromSpec("mvp:precondition", a),
+  realtime: {
+    get_session: /** `mvp:get_session` — fields: as */
+(a: { as?: string } = {}): Statement => fromSpec("mvp:get_session", a),
+  },
   redis: {
     count: /** `mvp:redis_countlist` — fields: as, key */
 (a: { as?: string; key: Value }): Statement => fromSpec("mvp:redis_countlist", a),
