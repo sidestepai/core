@@ -86,7 +86,7 @@
       {
         "name": "env",
         "signature": "(name: string) => Value",
-        "description": "Reference a USER-DEFINED environment variable → tag \"env\". Not for built-in request/system vars — those are settings (see sys.*); env(\"remote_ip\") reads a user var named remote_ip, not the caller IP."
+        "description": "Read a WORKSPACE environment variable (set via workspaceConfig({ env }) or the dashboard) → `$env.NAME`. Compiles to tag \"setting\" with the plain name (a workspace env var IS a setting; the raw tag \"env\"/OS getenv never sees them). Same tag as the sys.* built-ins, which just use $-prefixed names — so env(\"remote_ip\") reads a user var named remote_ip, not the caller IP (use sys.remoteIp())."
       },
       {
         "name": "setting",
