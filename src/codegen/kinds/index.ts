@@ -864,6 +864,16 @@ function addonEntries(a: KindDecodeArgs): DefEntry[] {
   const unbound =
     !bindsTable && onlyBindingKeys && dboId === "" && (dbo!.as ?? "") === "";
   if (bindsTable || unbound) consumed.add("dbo");
+  if (unbound) {
+    // A broken object, not a stylistic one — an unbound addon returns nothing
+    // wherever it is attached. Reported so it is visible in the pull rather than
+    // shipping as a quiet `table: null` nobody reads.
+    a.ctx.problem(
+      "empty-source",
+      "addon is bound to no table (the engine's empty `dbo` binding) — it returns " +
+        "nothing wherever it is attached; bind a table in the source workspace",
+    );
+  }
 
   const where = decodeCondition(a.ctx, context.search);
   if (where) consumed.add("search");

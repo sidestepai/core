@@ -107,14 +107,19 @@ export interface AddonDef<Graft = unknown> {
   /**
    * Bind the addon to a table — auto-fills `context.dbo` with the table's guid.
    *
-   * `null` is an addon that is **explicitly unbound**: it stores the engine's
-   * empty `{as:"", id:""}` binding and returns nothing until a table is set. That
-   * is the state an addon lands in when the table it referenced is deleted — and
-   * also the state a freshly-created addon starts in, because the engine clears
-   * the id rather than recording a tombstone. The two are indistinguishable on
-   * the wire, so `null` means "unbound", not "was deleted".
+   * ⚠ **Do not author `null`.** It is a BROKEN state in Xano, not a neutral one:
+   * the addon stores the engine's empty `{as:"", id:""}` binding, is bound to no
+   * table, and returns nothing wherever it is attached. It exists on this type so
+   * `codegen` can represent a broken object faithfully rather than leak a raw
+   * `context.dbo` blob — a pulled `table: null` is a defect to fix in the pulled
+   * workspace, not a shape to copy.
    *
-   * Omitting `table` entirely is a third thing: no `dbo` is written at all.
+   * It is what an addon degrades to when the table it referenced is deleted, and
+   * also where a freshly-created one starts. The engine clears the id rather than
+   * recording a tombstone, so those two are the same bytes: `null` means
+   * "unbound", never "was deleted".
+   *
+   * Omitting `table` entirely is a third, distinct state: no `dbo` is written.
    */
   table?: ObjectRef | null;
   /** The addon's filter — the predicate binding it to the parent row, e.g. `expr(col("id"), "=", inp("user_id"))`. Same `where` surface as `s.db.query`; encodes `context.search`. */

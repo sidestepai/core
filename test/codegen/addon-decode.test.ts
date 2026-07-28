@@ -225,3 +225,28 @@ describe("addon decode — engine-default context members", () => {
     expect(source).toContain("future: true");
   });
 });
+
+describe("addon decode — an unbound addon is reported, not just emitted", () => {
+  it("reports the broken binding so it is visible in the pull", () => {
+    // `table: null` is a defect in the source workspace, not a style choice.
+    // Emitting it quietly would hide an addon that returns nothing.
+    const ws = workspace("w")
+      .registerTables([users])
+      .registerAddons([addon({ name: "broken", table: null })]);
+    const entries = decodeBundle(ws.export()).report.entries.filter(
+      (e) => e.category === "empty-source",
+    );
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.object).toBe("addon:broken");
+    expect(entries[0]!.detail).toContain("bound to no table");
+  });
+
+  it("stays silent for an addon that is properly bound", () => {
+    const ws = workspace("w")
+      .registerTables([users])
+      .registerAddons([addon({ name: "fine", table: users, output: ["id"] })]);
+    expect(
+      decodeBundle(ws.export()).report.entries.filter((e) => e.category === "empty-source"),
+    ).toEqual([]);
+  });
+});
