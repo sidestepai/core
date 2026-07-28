@@ -51,6 +51,49 @@ interface Placement {
   readonly dir: string;
 }
 
+/**
+ * Identifiers a generated file imports from the SDK, which an object symbol must
+ * therefore never take.
+ *
+ * A Xano workspace may legally hold a table named `table` or a function named
+ * `query`, and its symbol would otherwise shadow the factory the file imports to
+ * build it — `const table = table({…})` is a TDZ crash, not a type error, so it
+ * would ship. Reserving the names up front pushes the object to `table_table`,
+ * reusing the same disambiguation the cross-kind case already applies.
+ *
+ * Covers the factories, the barrel's `workspace`, and the value helpers a decoded
+ * expression can reach for.
+ */
+const RESERVED_SYMBOLS: readonly string[] = [
+  // factories (KIND_DECODERS[].factory) + the barrel's own import
+  "table",
+  "defineFunction",
+  "query",
+  "apiGroup",
+  "task",
+  "middleware",
+  "tool",
+  "mcpServer",
+  "agent",
+  "workspaceConfig",
+  "addon",
+  "workspace",
+  // value helpers emitted inside def literals
+  "s",
+  "c",
+  "ref",
+  "inp",
+  "obj",
+  "arr",
+  "input",
+  "expr",
+  "cmp",
+  "raw",
+];
+
+/** The kind slot reserved names occupy, so a real object never matches it. */
+const RESERVED_KIND = "\0core";
+
 /** Turn a Xano object name into a valid TypeScript identifier. */
 export function toSymbol(name: string): string {
   const cleaned = name.replace(/[^A-Za-z0-9_$]+/g, "_").replace(/^_+|_+$/g, "");
@@ -179,6 +222,7 @@ function candidates(refs: RefIndex, payload: Record<string, unknown>): Candidate
  */
 function assignSymbols(list: readonly Candidate[]): string[] {
   const used = new Map<string, string>();
+  for (const name of RESERVED_SYMBOLS) used.set(name, RESERVED_KIND);
   return list.map((candidate) => {
     const base = toSymbol(String(candidate.stored.name ?? ""));
     const kind = candidate.object.kind;
@@ -351,7 +395,8 @@ export function assembleProject(
       files.set(placement.path, file);
     }
     ctx.imports = file.imports;
-    file.imports.useType(CORE_MODULE, decoder.defType);
+    if (decoder.factory) file.imports.use(CORE_MODULE, decoder.factory);
+    else file.imports.useType(CORE_MODULE, decoder.defType);
 
     const expr = ctx.inObject(`${decoder.name}:${placement.object.name}`, () =>
       decodeObject(decoder, {
@@ -390,9 +435,16 @@ export function assembleProject(
         kind: "const",
         name: placement.symbol,
         exported: true,
-        // `satisfies` rather than a type annotation: the literal keeps its
-        // narrow inferred type while still being checked against the def.
-        value: { kind: "id", text: `${printExpr(expr)} satisfies ${decoder.defType}` },
+        // The factory both checks the literal and runs its `const` inference, so
+        // the generated symbol keeps the column/input/schema types a bare
+        // `satisfies` would widen away. Kinds with no factory keep `satisfies`,
+        // which still checks the literal without widening it.
+        value: {
+          kind: "id",
+          text: decoder.factory
+            ? `${decoder.factory}(${printExpr(expr)})`
+            : `${printExpr(expr)} satisfies ${decoder.defType}`,
+        },
       },
     );
   }
@@ -434,11 +486,17 @@ function barrel(
 
   if (workspaceStored.name !== undefined) {
     const decoder = KIND_DECODERS_BY_NAME.get("workspace")!;
-    imports.useType(CORE_MODULE, decoder.defType);
+    if (decoder.factory) imports.use(CORE_MODULE, decoder.factory);
+    else imports.useType(CORE_MODULE, decoder.defType);
     const expr = ctx.inObject("workspace", () =>
       decodeObject(decoder, { ctx, refs, stored: workspaceStored, resolve: {} }),
     );
-    lines.push(`  .registerWorkspace(${indent(printExpr(expr))} satisfies ${decoder.defType})`);
+    const literal = indent(printExpr(expr));
+    lines.push(
+      `  .registerWorkspace(${
+        decoder.factory ? `${decoder.factory}(${literal})` : `${literal} satisfies ${decoder.defType}`
+      })`,
+    );
   }
 
   for (const decoder of KIND_DECODERS) {

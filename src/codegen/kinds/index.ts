@@ -9,10 +9,19 @@
  * by construction here: it is derived from the encoder's own default, not from a
  * per-field judgement call, and the whole-workspace round trip proves it.
  *
- * These emit plain def object literals rather than `defineFunction(...)`-style
- * factory calls. The factories are validation plus identity and every
- * `register*` takes defs directly, so a literal is exact and minimal — the right
- * shape for the skeleton. Upgrading to factory calls is a readability change.
+ * Each kind names the `factory` its def literal is wrapped in — `table(…)`,
+ * `defineFunction(…)`, and so on. This is not cosmetic. The def *types* carry
+ * their parameters as phantom optional props, so a bare `{…} satisfies TableDef`
+ * binds `TableDef<string, unknown>` and every downstream inference degrades with
+ * it: `ColsOf` collapses to `string` (no column checking on `fieldName`/`output`/
+ * `sortBy`), `InferInput` loses a query's branded payload, and an agent's output
+ * schema stops typing `s.ai.agent.run`. The factories declare `const` parameters
+ * that recover all of it, and `examples/sandbox` already authors this way — so a
+ * factory call is both better-typed and the shape the docs teach.
+ *
+ * A kind with no `factory` falls back to `… satisfies <defType>`. That is the
+ * escape hatch for kinds whose factory takes a *different* shape than the def it
+ * returns and cannot be inverted faithfully.
  */
 import type { DecodeContext } from "../context.js";
 import { CORE_MODULE } from "../context.js";
@@ -47,8 +56,13 @@ export interface KindDecoder {
   readonly dir: string;
   /** The `Xano.register*` method the barrel calls. */
   readonly register: string;
-  /** The exported def type, imported `type`-only so the literal is checked. */
+  /** The exported def type, imported `type`-only when there is no {@link factory}. */
   readonly defType: string;
+  /**
+   * The exported factory the def literal is wrapped in, imported as a value.
+   * Omitted for kinds that still fall back to `satisfies` (see the module header).
+   */
+  readonly factory?: string;
   /** Build the def literal's entries. */
   decode(args: KindDecodeArgs): DefEntry[];
 }
@@ -198,10 +212,23 @@ function response(args: KindDecodeArgs): DefEntry | null {
   return expr ? ["response", expr] : null;
 }
 
-/** `stack: […]`, elided when empty. */
+/**
+ * `stack: […]`, elided when empty.
+ *
+ * Only kinds that carry a statement stack call this, so "no `run`" here means an
+ * object that should have had a body and did not. That is *not* an error — a
+ * workspace can legitimately hold an endpoint someone created and never filled
+ * in, and this decode is faithful. But the generated file is then a bare
+ * `{name, guid, verb, apiGroup}`, which looks exactly like a decoder that gave
+ * up, and the round trip is clean either way. Reporting it is the only thing
+ * that tells the two apart without going and reading the workspace.
+ */
 function stack(args: KindDecodeArgs): DefEntry | null {
   const run = args.stored.run;
-  if (!Array.isArray(run) || run.length === 0) return null;
+  if (!Array.isArray(run) || run.length === 0) {
+    args.ctx.problem("empty-source", "no statements in the source object — emitted without a `stack`");
+    return null;
+  }
   return ["stack", decodeStack(args.ctx, args.refs, run, args.resolve)];
 }
 
@@ -335,6 +362,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
     dir: "tables",
     register: "registerTables",
     defType: "TableDef",
+    factory: "table",
     decode: (a) =>
       compact([
         ...identity(a),
@@ -366,6 +394,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
     dir: "functions",
     register: "registerFunctions",
     defType: "FunctionDef",
+    factory: "defineFunction",
     decode: (a) =>
       compact([
         ...identity(a),
@@ -386,6 +415,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
     dir: "queries",
     register: "registerQueries",
     defType: "QueryDef",
+    factory: "query",
     decode: (a) =>
       compact([
         ...identity(a),
@@ -412,6 +442,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
     dir: "apiGroups",
     register: "registerApiGroups",
     defType: "ApiGroupDef",
+    factory: "apiGroup",
     decode: (a) =>
       compact([
         ...identity(a),
@@ -457,6 +488,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
     dir: "tasks",
     register: "registerTasks",
     defType: "TaskDef",
+    factory: "task",
     decode: (a) =>
       compact([
         ...identity(a),
@@ -477,6 +509,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
     dir: "middleware",
     register: "registerMiddleware",
     defType: "MiddlewareDef",
+    factory: "middleware",
     decode: (a) =>
       compact([
         ...identity(a),
@@ -497,6 +530,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
     dir: "addons",
     register: "registerAddons",
     defType: "AddonDef",
+    factory: "addon",
     decode: (a) => addonEntries(a),
   },
   {
@@ -505,6 +539,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
     dir: "ai",
     register: "registerTools",
     defType: "ToolDef",
+    factory: "tool",
     decode: (a) =>
       compact([
         ...identity(a),
@@ -527,6 +562,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
     dir: "ai",
     register: "registerMcpServers",
     defType: "McpServerDef",
+    factory: "mcpServer",
     decode: (a) => toolsetBaseEntries(a),
   },
   {
@@ -535,6 +571,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
     dir: "ai",
     register: "registerAgents",
     defType: "AgentDef",
+    factory: "agent",
     decode: (a) => [...toolsetBaseEntries(a), ...agentSettingsEntries(a)],
   },
   {
@@ -543,6 +580,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
     dir: ".",
     register: "registerWorkspace",
     defType: "WorkspaceConfigDef",
+    factory: "workspaceConfig",
     decode: (a) =>
       compact([
         // Workspace-config is a singleton whose guid the export path derives from

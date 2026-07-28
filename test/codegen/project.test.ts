@@ -215,7 +215,10 @@ describe("generated tree contents", () => {
   });
 
   it("says so plainly when nothing needed reporting", () => {
-    const clean = build({ functions: [fn("a", guid(1))] });
+    // Both functions carry a body on purpose: a stack-bearing object with an
+    // empty `run` is a legitimate `empty-source` report, so a body-less pair
+    // would make this assert the absence of a problem that genuinely exists.
+    const clean = build({ functions: [fn("a", guid(1), [guid(2)]), fn("b", guid(2), [guid(1)])] });
     expect(clean.report.entries).toEqual([]);
     expect(file(clean, "README.md")).toContain("Everything in the source bundle round-tripped cleanly.");
   });
@@ -227,5 +230,72 @@ describe("generated tree contents", () => {
     expect(readme).toContain(guid(9));
     // …and still carries the warnings.
     expect(readme).toContain("full replace");
+  });
+});
+
+describe("empty source objects", () => {
+  it("reports a body-less stack-bearing object instead of emitting a silent stub", () => {
+    // A workspace can legitimately hold an endpoint someone created and never
+    // filled in. The decode is faithful and the round trip is clean, so nothing
+    // else in the pipeline says a word — but the generated file is a bare
+    // identity stub, which is byte-for-byte what a failed decode looks like.
+    const project = build({ functions: [fn("empty", guid(1))] });
+    const entries = project.report.entries.filter((e) => e.category === "empty-source");
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.object).toBe("function:empty");
+    expect(entries[0]!.detail).toContain("no statements in the source object");
+  });
+
+  it("emits the stub itself, rather than dropping the object", () => {
+    // Reporting must not turn into skipping: the object still exists upstream,
+    // and a tree missing it would not round-trip.
+    const project = build({ functions: [fn("empty", guid(1))] });
+    const generated = file(project, "functions/empty.ts");
+    expect(generated).toContain("defineFunction({");
+    expect(generated).toContain('name: "empty"');
+    expect(generated).not.toContain("stack:");
+  });
+
+  it("stays silent for a kind that carries no stack at all", () => {
+    // Tables never call the stack inverse, so they must not be swept up by it.
+    const project = build({ tables: [table("t", guid(1))] });
+    expect(project.report.entries.filter((e) => e.category === "empty-source")).toEqual([]);
+  });
+
+  it("surfaces the count in the README and the CLI summary alike", () => {
+    const project = build({ functions: [fn("empty", guid(1))] });
+    expect(project.report.renderMarkdown()).toContain("[empty-source=1]");
+    expect(project.report.renderCli()).toContain("[empty-source=1]");
+  });
+});
+
+describe("factory emission", () => {
+  it("wraps each def in its factory rather than a `satisfies` annotation", () => {
+    const project = build({ functions: [fn("a", guid(1), [guid(2)]), fn("b", guid(2), [guid(1)])] });
+    const generated = file(project, "functions/a.ts");
+    expect(generated).toContain("defineFunction({");
+    expect(generated).not.toContain("satisfies");
+    // Value import, not a type-only one — an `import type` would be erased and
+    // the call would be a ReferenceError at load.
+    expect(generated).toMatch(/^import \{[^}]*\bdefineFunction\b[^}]*\} from "@sidestep\/core";$/m);
+    expect(generated).not.toContain("import type { FunctionDef }");
+  });
+
+  it("registers the workspace through its factory in the barrel", () => {
+    const project = build({ tables: [table("t", guid(1))] });
+    const barrel = file(project, "index.ts");
+    expect(barrel).toContain(".registerWorkspace(workspaceConfig({");
+    expect(barrel).not.toContain("satisfies");
+  });
+
+  it("never lets an object symbol shadow a factory it imports", () => {
+    // A table named `table` is legal in Xano. Emitting `const table = table({…})`
+    // is a temporal-dead-zone crash at import time, not a type error — so it
+    // would type-check, ship, and then explode on load.
+    const project = build({ tables: [table("table", guid(1))] });
+    const shared = file(project, "_shared.ts");
+    expect(shared).toContain('import { f, table } from "@sidestep/core"');
+    expect(shared).not.toMatch(/export const table = table\(/);
+    expect(shared).toMatch(/export const table_table = table\(/);
   });
 });

@@ -101,7 +101,12 @@ describe("kind decoders — every object round-trips, per kind", () => {
     // no such field, so emitting one would not even type-check.
     const barrel = project.files.find((f) => f.path === "index.ts")!.contents;
     const registration = barrel.slice(barrel.indexOf(".registerWorkspace("));
-    const literal = registration.slice(0, registration.indexOf("satisfies"));
+    // Bound the slice at the NEXT chained registrar, not at a marker inside the
+    // call — keying on `satisfies` silently widened this to the whole barrel the
+    // moment the emitter switched to `workspaceConfig(...)`.
+    const nextCall = registration.indexOf("\n  .register", 1);
+    const literal = nextCall === -1 ? registration : registration.slice(0, nextCall);
+    expect(literal).toContain("workspaceConfig({");
     // Match the def's OWN keys by indentation — a nested `{name, guid}`
     // middleware reference legitimately carries a guid and must not trip this.
     expect(literal.split("\n").filter((line) => /^ {4}guid:/.test(line))).toEqual([]);

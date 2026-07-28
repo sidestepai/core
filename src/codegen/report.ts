@@ -24,7 +24,15 @@ export type ReportCategory =
    * A secret or server-assigned value the SDK deliberately did not carry into
    * the generated tree. Informational — it does not mean anything went wrong.
    */
-  | "expected-omission";
+  | "expected-omission"
+  /**
+   * A body-bearing object arrived with no body, so its generated def is an
+   * identity stub. Informational: the decode was faithful — the object really is
+   * empty upstream. It is reported because the output is indistinguishable from
+   * a decode failure, and without a line here the only way to tell them apart is
+   * to go read the workspace.
+   */
+  | "empty-source";
 
 /**
  * Category display order and label — ordered by severity, so the entries that
@@ -38,6 +46,7 @@ const CATEGORY_LABELS: ReadonlyArray<readonly [ReportCategory, string]> = [
   ["unsupported-section", "Unsupported payload sections"],
   ["value-fallback", "Values emitted as annotated literals"],
   ["expected-omission", "Deliberately not carried into the tree"],
+  ["empty-source", "Objects that were already empty in the source"],
 ];
 
 /** One thing the decoder could not represent faithfully. */
