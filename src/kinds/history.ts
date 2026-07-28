@@ -37,7 +37,7 @@ export type ContainerPrefix = "query" | "tool" | "message";
  * containers default on; the realtime tier defaults **off** — message history
  * is a hot path, so the engine keeps it opt-in.
  */
-const CONTAINER_DEFAULT_ENABLED: Readonly<Record<ContainerPrefix, boolean>> = {
+export const CONTAINER_DEFAULT_ENABLED: Readonly<Record<ContainerPrefix, boolean>> = {
   query: true,
   tool: true,
   message: false,

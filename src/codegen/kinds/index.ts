@@ -32,6 +32,9 @@ import { decodeFieldMap, decodeResponse, deepEqual } from "../field.js";
 import { decodeStack } from "../statement.js";
 import { decodeCondition } from "../expression.js";
 import { isDefaultEnvelopeMember, isEmptyOutput } from "../../validate/normalize.js";
+// The encoder's own container-default table — imported, not mirrored. A decoder
+// copy that drifted would elide a customized tier as though it were the default.
+import { CONTAINER_DEFAULT_ENABLED } from "../../kinds/history.js";
 import type { ContainerPrefix } from "../../kinds/history.js";
 
 /** One `key: value` pair of a generated def literal. */
@@ -102,12 +105,6 @@ function tags(stored: StoredObject): DefEntry | null {
 /** Object types whose request-history default is OFF (mirrors `common.ts`). */
 const HISTORY_DEFAULT_OFF = new Set(["function", "middleware", "trigger", "message"]);
 
-/** Container tiers that are ON when nothing is authored (mirrors `history.ts`). */
-const CONTAINER_DEFAULT_ENABLED: Record<ContainerPrefix, boolean> = {
-  query: true,
-  tool: true,
-  message: false,
-};
 
 /**
  * `{inherit, enabled, limit}` → the scalar authoring surface, elided when it is

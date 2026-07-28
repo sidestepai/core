@@ -132,73 +132,62 @@ export interface RealtimeMessageXdo {
 }
 
 /**
- * Resolve the `(channel, server)` pair a message binds to. A channel handle
- * carries its own server; a bare path needs one supplied. An explicit `server`
- * alongside a handle must agree with the handle — silently preferring one would
- * bind the message to a channel that does not exist under the other.
+ * The channel path and server a message binds to, resolved once.
+ *
+ * A channel handle carries its own server; a bare path needs one supplied. An
+ * explicit `server` alongside a handle must AGREE with the handle — silently
+ * preferring one would bind the message to a channel that does not exist under
+ * the other. Both the encoder and the guid derivation read this, so the identity
+ * and the stored binding can never be composed from different hosts.
  */
-function resolveHost(def: RealtimeMessageDef): { channelId: string; serverId: string } {
+function resolveHost(def: RealtimeMessageDef): {
+  channel: Pick<RealtimeChannelDef, "name" | "server" | "guid">;
+  server: RealtimeServerRef;
+  serverName: string;
+} {
   const context = `realtimeMessage "${def.name}"`;
-  if (!def.channel) {
-    throw new Error(`${context}: \`channel\` is required.`);
-  }
-  const isHandle = typeof def.channel !== "string";
-  const handleServer = isHandle ? (def.channel as RealtimeChannelDef).server : undefined;
+  if (!def.channel) throw new Error(`${context}: \`channel\` is required.`);
 
-  if (!isHandle && def.server === undefined) {
+  const handle = typeof def.channel === "string" ? undefined : def.channel;
+  if (!handle && def.server === undefined) {
     throw new Error(
       `${context}: \`server\` is required when \`channel\` is a bare path — a channel path is ` +
         `unique only within its realtime server, so "${def.channel as string}" alone is ambiguous. ` +
         `Pass the \`realtimeChannel()\` handle instead and the server comes with it.`,
     );
   }
-  if (isHandle && def.server !== undefined) {
-    const fromHandle = realtimeServerRefName(context, handleServer!);
-    const fromDef = realtimeServerRefName(context, def.server);
-    if (fromHandle !== fromDef) {
+
+  const server = (def.server ?? handle!.server)!;
+  const serverName = realtimeServerRefName(context, server);
+  if (handle && def.server !== undefined) {
+    const fromHandle = realtimeServerRefName(context, handle.server);
+    if (fromHandle !== serverName) {
       throw new Error(
-        `${context}: \`server\` is "${fromDef}" but the channel handle belongs to "${fromHandle}". ` +
-          `Remove \`server\` (the handle already carries it) or bind the message to a channel on "${fromDef}".`,
+        `${context}: \`server\` is "${serverName}" but the channel handle belongs to "${fromHandle}". ` +
+          `Remove \`server\` (the handle already carries it) or bind the message to a channel on "${serverName}".`,
       );
     }
   }
 
-  const server = (def.server ?? handleServer)!;
-  const channelDef: Pick<RealtimeChannelDef, "name" | "server" | "guid"> = isHandle
-    ? (def.channel as RealtimeChannelDef)
-    : { name: def.channel as string, server };
-
   return {
-    channelId: realtimeChannelGuid(channelDef),
-    serverId: resolveRealtimeServerRef(context, server),
+    channel: handle ?? { name: def.channel as string, server },
+    server,
+    serverName,
   };
-}
-
-/** The `(server, channel path, name)` triple a message's own guid is composed from. */
-function messageSeed(def: RealtimeMessageDef): string {
-  const context = `realtimeMessage "${def.name}"`;
-  const isHandle = typeof def.channel !== "string";
-  const channelName = isHandle ? (def.channel as RealtimeChannelDef).name : (def.channel as string);
-  const server = def.server ?? (isHandle ? (def.channel as RealtimeChannelDef).server : undefined);
-  if (server === undefined) {
-    throw new Error(`${context}: \`server\` is required to derive a stable guid.`);
-  }
-  return realtimeMessageSeedName(
-    realtimeServerRefName(context, server),
-    channelName,
-    def.name,
-  );
 }
 
 /** The guid a message def resolves to — composed from its server, channel path, and name. */
 export function realtimeMessageGuid(def: RealtimeMessageDef): string {
   if (def.guid) return def.guid;
-  return deriveGuid("message", messageSeed(def));
+  const { channel, serverName } = resolveHost(def);
+  return deriveGuid("message", realtimeMessageSeedName(serverName, channel.name, def.name));
 }
 
 export function encodeRealtimeMessage(def: RealtimeMessageDef): RealtimeMessageXdo {
   if (!def.name) throw new Error("realtimeMessage: `name` is required.");
-  const { channelId, serverId } = resolveHost(def);
+  const host = resolveHost(def);
+  const channelId = realtimeChannelGuid(host.channel);
+  const serverId = resolveRealtimeServerRef(`realtimeMessage "${def.name}"`, host.server);
   return {
     name: def.name,
     description: def.description ?? "",

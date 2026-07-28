@@ -30,8 +30,7 @@ import {
   type ContainerHistoryBlock,
   type HistoryInput,
 } from "./history.js";
-import { lockKey } from "../lock/lock.js";
-import { getLockedCanonical } from "../lock/store.js";
+import { resolveCanonicalToken } from "./canonical.js";
 
 export interface RealtimeServerDef {
   name: string;
@@ -91,19 +90,7 @@ export function resolveRealtimeServerCanonical(
   def: { name: string; canonical?: string },
   override?: string,
 ): string {
-  if (override) return override;
-  if (typeof def.canonical === "string" && def.canonical !== "") return def.canonical;
-  const locked = getLockedCanonical(lockKey("realtime_server", def.name));
-  if (locked) return locked;
-  throw new Error(
-    `realtime server "${def.name}": cannot resolve the \`canonical\` URL token. ` +
-      `Set an explicit \`canonical\` in code, or run \`sidestep export --lock\` once (it ` +
-      `mints a unique canonical and freezes it in xano.lock) and seed that lock before ` +
-      `importing defs — the CLI does this automatically. As a last resort pass one ` +
-      `directly (e.g. \`getCanonical({ canonical: "..." })\`). (Minting here is unsafe — ` +
-      `canonicals must be unique per instance across all workspaces, so they are only ` +
-      `generated at locked export.)`,
-  );
+  return resolveCanonicalToken("realtime server", "realtime_server", "getCanonical", def, override);
 }
 
 export function encodeRealtimeServer(def: RealtimeServerDef): RealtimeServerXdo {
