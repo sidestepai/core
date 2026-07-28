@@ -21,6 +21,7 @@ import { normalize } from "../../src/validate/normalize.js";
 import { decodeBundle } from "../../src/codegen/index.js";
 import type { GeneratedProject } from "../../src/codegen/index.js";
 import type { Bundle } from "../../src/workspace/export.js";
+import { renderTsconfig } from "../../src/emit/init-templates.js";
 import sandbox from "../../examples/sandbox/index.js";
 
 /** Written inside the vite root so the generated tree resolves `@sidestep/core`. */
@@ -121,6 +122,55 @@ describe("walking skeleton — whole-workspace round trip", () => {
       ["tsc", "--noEmit", "-p", join(root, "tsconfig.check.json")],
       { cwd: repo, encoding: "utf8" },
     );
+    expect(result.stdout + result.stderr).toBe("");
+    expect(result.status).toBe(0);
+  }, 120_000);
+
+  // The project-mode variant. `sidestep … codegen` drops the generated tsconfig
+  // and relies on the scaffold's root one instead (KTD-2), which is a *different*
+  // config — no `verbatimModuleSyntax`, `types: ["node","vite/client"]`, and it
+  // spans `frontend/` too. The reasoning that dropping a stricter flag is safe is
+  // sound, but it is reasoning; this is the check.
+  it("type-checks under the scaffold's root tsconfig, with the tree under xano/", () => {
+    const root = join(OUT_ROOT, "project");
+    const repo = fileURLToPath(new URL("../../", import.meta.url));
+    rmSync(root, { recursive: true, force: true });
+    for (const file of project.files) {
+      // Exactly what the command writes: the generated tsconfig dropped, the
+      // decode report relocated, everything else prefixed.
+      if (file.path === "tsconfig.json") continue;
+      const path = join(root, "xano", file.path);
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, file.contents);
+    }
+
+    // The scaffold's own tsconfig, narrowed to the half this check is about:
+    // `frontend/` is not written here and its React types are not this repo's
+    // devDependencies, so including it would fail on the starter app rather than
+    // telling us anything about the pulled backend.
+    const scaffold = JSON.parse(renderTsconfig()) as {
+      compilerOptions: Record<string, unknown>;
+      include: string[];
+    };
+    writeFileSync(
+      join(root, "tsconfig.check.json"),
+      JSON.stringify({
+        compilerOptions: {
+          ...scaffold.compilerOptions,
+          typeRoots: [join(repo, "node_modules/@types")],
+          types: ["node"],
+          paths: {
+            "@sidestep/core": [join(repo, "src/index.ts")],
+            "@sidestep/core/codegen": [join(repo, "src/codegen-entry.ts")],
+          },
+        },
+        include: ["xano"],
+      }),
+    );
+    const result = spawnSync("npx", ["tsc", "--noEmit", "-p", join(root, "tsconfig.check.json")], {
+      cwd: repo,
+      encoding: "utf8",
+    });
     expect(result.stdout + result.stderr).toBe("");
     expect(result.status).toBe(0);
   }, 120_000);
