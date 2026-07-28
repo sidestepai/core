@@ -199,6 +199,15 @@ Inside, `xano/` is shaped like a hand-written backend: per-kind directories, a
 Object identities (`guid`) are preserved, so cross-references stay intact. A statement
 this SDK does not model yet round-trips verbatim rather than breaking the pull.
 
+Pulled objects are authored the same way you would write them by hand — `table({...})`,
+`query({...})`, `defineFunction({...})` — so the generated tree keeps its types. A pulled
+table's columns still check on `fieldName`/`output`/`sortBy`, `InferInput<typeof q>` still
+resolves a pulled query's payload, and a pulled agent still types `s.ai.agent.run`.
+
+`xano/README.md` also lists objects that were **already empty in the source** — an
+endpoint someone created and never filled in pulls as a def with no `stack`, which looks
+identical to a decode that gave up. The report is what tells the two apart.
+
 Then it checks its own work: the project it just wrote is loaded, exported, and diffed
 against the workspace it came from. A mismatch names the object and fails the command
 (`--no-verify` opts out). So "it compiled" and "it means the same thing" are separate
