@@ -1,4 +1,4 @@
-# sidestep v4.1.6
+# sidestep v4.1.7
 
 > TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.
 
@@ -136,18 +136,26 @@ live environment and prints its URL. `sidestep init` → `sidestep deploy` → U
   `--path -` streams to stdout. env/records/draft are unsupported (endpoint defaults).
 - `sidestep <workspace|sandbox> codegen <path>`, `sidestep ephemeral codegen
   <env> <path>`, `sidestep codegen <bundle.json> <path>` — the PULL direction:
-  decode a workspace back into readable SideStep TypeScript. All four read the
-  compressed bundle from `workspace/{id}/export` (the file form reads a bundle
-  already on disk, fully offline) and share one core. The tree is per-kind
-  directories + a `_shared.ts` for tables and cross-referenced objects + a barrel
-  `index.ts` + a `tsconfig.json` + a README. Object guids are preserved verbatim,
-  so references stay consistent; a statement the catalog cannot model round-trips
-  verbatim through `raw()` (`@sidestep/core/codegen`). After writing, the tree is
-  loaded, re-exported, and diffed against the source bundle — a mismatch names the
-  object and fails the command (`--no-verify` opts out). The tree is DISPOSABLE
-  (regenerating destroys hand edits; a non-empty target needs `--force`) and
-  SCHEMA-ONLY (no seed rows). Deploying it is a full replace, so send it only to
-  an ephemeral or sandbox env — never a workspace holding data you care about.
+  decode a workspace into a RUNNABLE project. All four read the compressed bundle
+  from `workspace/{id}/export` (the file form reads a bundle already on disk,
+  fully offline) and share one core. The output is the same scaffold `init`
+  writes — root package.json (dev/build/xano:export/xano:deploy), tsconfig, vite
+  config, frontend/ — with the decoded workspace filling `xano/`: per-kind
+  directories, a `_shared.ts` for tables and cross-referenced objects, a barrel
+  `xano/index.ts`, and `xano/README.md` carrying the decode report. So
+  `sidestep workspace codegen app && cd app && npm run build && npm run xano:deploy`
+  ships a pulled workspace to a live ephemeral URL. Object guids are preserved
+  verbatim, so references stay consistent; a statement the catalog cannot model
+  round-trips verbatim through `raw()` (`@sidestep/core/codegen`). After the
+  scaffold installs, the tree is loaded, re-exported, and diffed against the
+  source bundle — a mismatch names the object and fails the command
+  (`--no-verify` opts out; `--no-install` leaves it unverifiable). `xano/` is
+  DISPOSABLE (re-running rewrites it and needs no `--force`, since the tree
+  carries `xano/.sidestep-codegen.json`; the rest of the project is left alone)
+  and SCHEMA-ONLY (no seed rows). Workspace env var VALUES ride inline in
+  `xano/index.ts`, so treat a pulled tree as secret-bearing. Deploying it is a
+  full replace, so send it only to an ephemeral or sandbox env — never a
+  workspace holding data you care about.
 - `sidestep workspace <details|export|codegen>` — read the REAL workspace your
   token is scoped to (`details` shows which one, before you read it; `--workspace
   <id>` overrides). There is deliberately NO `workspace deploy` — SideStep never

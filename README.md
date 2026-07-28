@@ -175,29 +175,46 @@ XANO_REFRESH_TOKEN=… XANO_CLIENT_ID=… npx sidestep deploy --bundle ws.json
 
 `codegen` runs the loop the other way: it reads a workspace and writes it back out as
 readable SideStep source — real `s.db.query(...)`, `f.email()`, typed defs — not a JSON dump.
+And not a loose pile of files either: you get the same runnable project `sidestep init`
+scaffolds, with the pulled workspace filling `xano/`. So a pull deploys:
 
 ```bash
-sidestep workspace codegen ./xano      # your real workspace (the one your login is scoped to)
-sidestep sandbox codegen ./xano        # your sandbox
-sidestep ephemeral codegen pr-42 ./xano  # a named ephemeral (tenant first, path second)
-sidestep codegen ws.json ./xano        # a bundle already on disk — offline, no login
+sidestep workspace codegen my-app   # your real workspace (the one your login is scoped to)
+cd my-app
+npm run build
+npm run xano:deploy                 # → a live ephemeral URL
 ```
 
-You get a tree shaped like a hand-written project: per-kind directories, a `_shared.ts`
-for tables and anything referenced from more than one file, a barrel `index.ts` you can
-deploy straight away, and a `README.md` listing anything that did not translate cleanly.
+The other three sources are the same command with a different origin:
+
+```bash
+sidestep sandbox codegen my-app          # your sandbox
+sidestep ephemeral codegen pr-42 my-app  # a named ephemeral (tenant first, path second)
+sidestep codegen ws.json my-app          # a bundle already on disk — offline, no login
+```
+
+Inside, `xano/` is shaped like a hand-written backend: per-kind directories, a
+`_shared.ts` for tables and anything referenced from more than one file, a barrel
+`xano/index.ts`, and `xano/README.md` listing anything that did not translate cleanly.
 Object identities (`guid`) are preserved, so cross-references stay intact. A statement
 this SDK does not model yet round-trips verbatim rather than breaking the pull.
 
-Then it checks its own work: the tree it just wrote is loaded, exported, and diffed
+Then it checks its own work: the project it just wrote is loaded, exported, and diffed
 against the workspace it came from. A mismatch names the object and fails the command
 (`--no-verify` opts out). So "it compiled" and "it means the same thing" are separate
 claims, and you get both.
 
-> ⚠️ **The generated tree is a scratch surface, and there is no `sidestep workspace deploy`.**
-> Regenerating overwrites it (a non-empty directory needs `--force`), it carries schema
-> only — no table rows — and deploying it is a *full replace* of the target. Pull from
-> your real workspace, edit, and `deploy` to a disposable ephemeral or sandbox.
+Re-pulling is a real workflow: a second `codegen` into the same directory refreshes
+`xano/` and leaves the rest of the project — your `package.json`, your `frontend/` —
+exactly as you left it. No `--force` needed, because the tree carries a marker saying it
+was machine-written.
+
+> ⚠️ **`xano/` is a scratch surface, and there is no `sidestep workspace deploy`.**
+> Regenerating rewrites it (a directory that isn't a previous pull still needs `--force`),
+> it carries schema only — no table rows — and deploying it is a *full replace* of the
+> target. Pull from your real workspace, edit, and `deploy` to a disposable ephemeral or
+> sandbox. Workspace env var **values** ride inline in `xano/index.ts` (that is what a
+> deploy sends), so treat a pulled tree as secret-bearing before you commit it.
 
 ---
 
@@ -1224,10 +1241,10 @@ sidestep sandbox details                     # print the sandbox base URL + tena
 
 sidestep workspace details                   # which workspace your token is scoped to (instance, id, name, guid)
 sidestep workspace export --out ws.json      # your REAL workspace as a JSON bundle
-sidestep workspace codegen ./xano            # …or as readable SideStep TypeScript (the pull direction)
-sidestep sandbox codegen ./xano              # same, from your sandbox
-sidestep ephemeral codegen <tenant> ./xano   # same, from an ephemeral (tenant first, path second)
-sidestep codegen ws.json ./xano              # …or from a bundle already on disk (offline, no auth)
+sidestep workspace codegen my-app            # …or as a runnable project (the pull direction)
+sidestep sandbox codegen my-app              # same, from your sandbox
+sidestep ephemeral codegen <tenant> my-app   # same, from an ephemeral (tenant first, path second)
+sidestep codegen ws.json my-app              # …or from a bundle already on disk (offline, no auth)
 
 sidestep profile me                          # print the scoped user + instance base URL (pretty on a TTY, JSON when piped)
 sidestep logout                              # revoke the refresh token + clear the shared cache (--local for the project one)
