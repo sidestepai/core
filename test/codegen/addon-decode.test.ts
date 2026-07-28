@@ -125,13 +125,32 @@ describe("addon decode — surfaces that have no authoring form stay in `context
     expect(source).not.toContain("table: user");
   });
 
-  it("does not bind a table when the stored binding is empty", () => {
-    // An unbound addon stores `{as:"", id:""}`. Emitting `table:` for it would be
-    // a hard failure, not a readability loss — `resolveRef` rejects a target with
-    // neither a name nor a guid.
-    const { source } = build({ name: "unbound", context: { dbo: { as: "", id: "" } } });
+  it("reports an empty binding as `table: null` rather than a raw dbo blob", async () => {
+    // `{as:"", id:""}` is the engine's unbound binding — an addon whose table was
+    // deleted, or one that never had one. Those are the same bytes, so `null`
+    // means "unbound", not "was deleted".
+    const { bundle, source } = build({ name: "unbound", context: { dbo: { as: "", id: "" } } });
+    expect(source).toContain("table: null");
+    expect(source).not.toContain("context:");
+    expect(source).not.toContain("dbo");
+    const again = await regenerate(bundle, "unbound");
+    expect(normalize(again.payload.addon)).toEqual(normalize(bundle.payload.addon));
+  });
+
+  it("round-trips `table: null` authored directly", async () => {
+    const { bundle, source } = build({ name: "explicit_null", table: null });
+    expect(source).toContain("table: null");
+    const again = await regenerate(bundle, "explicit-null");
+    expect(normalize(again.payload.addon)).toEqual(normalize(bundle.payload.addon));
+    // The empty binding is what actually lands on the wire.
+    const stored = (bundle.payload.addon as Array<{ context?: { dbo?: unknown } }>)[0];
+    expect(stored!.context!.dbo).toEqual({ as: "", id: "" });
+  });
+
+  it("omits `table` entirely when the source wrote no `dbo` at all", () => {
+    // Distinct from `null`: no binding key was persisted, so none is authored.
+    const { source } = build({ name: "no_dbo", context: { bind: [{ name: "x" }] } });
     expect(source).not.toContain("table:");
-    expect(source).toContain("context:");
   });
 
   it("leaves `aggregate` in `context`, since its graft comes from group/eval", () => {

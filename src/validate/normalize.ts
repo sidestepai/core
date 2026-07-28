@@ -260,7 +260,7 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
  * "no output customization" state. Drop the key from both sides when empty;
  * keep it (and recurse) when it carries selected `items` or `customize:true`.
  */
-function isEmptyOutput(v: unknown): boolean {
+export function isEmptyOutput(v: unknown): boolean {
   if (v === null || typeof v !== "object" || Array.isArray(v)) return false;
   const o = v as { items?: unknown; customize?: unknown };
   const noItems = o.items === undefined || (Array.isArray(o.items) && o.items.length === 0);

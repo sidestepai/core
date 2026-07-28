@@ -104,8 +104,19 @@ export interface AddonDef<Graft = unknown> {
   description?: string;
   tags?: string[];
   input?: Record<string, InputDescriptor>;
-  /** Bind the addon to a table — auto-fills `context.dbo` with the table's guid. */
-  table?: ObjectRef;
+  /**
+   * Bind the addon to a table — auto-fills `context.dbo` with the table's guid.
+   *
+   * `null` is an addon that is **explicitly unbound**: it stores the engine's
+   * empty `{as:"", id:""}` binding and returns nothing until a table is set. That
+   * is the state an addon lands in when the table it referenced is deleted — and
+   * also the state a freshly-created addon starts in, because the engine clears
+   * the id rather than recording a tombstone. The two are indistinguishable on
+   * the wire, so `null` means "unbound", not "was deleted".
+   *
+   * Omitting `table` entirely is a third thing: no `dbo` is written at all.
+   */
+  table?: ObjectRef | null;
   /** The addon's filter — the predicate binding it to the parent row, e.g. `expr(col("id"), "=", inp("user_id"))`. Same `where` surface as `s.db.query`; encodes `context.search`. */
   where?: DbWhere;
   /** Sort the returned rows (`[{ sortBy, dir }]`). Same surface as `s.db.query`; encodes `context.sort`. */
@@ -142,7 +153,9 @@ export interface AddonXdo {
 function buildContext(def: AddonDef): Record<string, unknown> {
   const ctx: Record<string, unknown> = { ...(def.context ?? {}) };
   if (def.table !== undefined && ctx.dbo === undefined) {
-    ctx.dbo = { id: resolveRef("dbo", def.table) };
+    // `null` writes the engine's own empty binding rather than a resolved guid —
+    // `resolveRef` would reject a target with neither a name nor a guid.
+    ctx.dbo = def.table === null ? { as: "", id: "" } : { id: resolveRef("dbo", def.table) };
   }
   if (def.where !== undefined && ctx.search === undefined) {
     const search = encodeSearch(def.where);
@@ -177,8 +190,10 @@ function buildContext(def: AddonDef): Record<string, unknown> {
       // shape as db.query aggregate) so the graft type matches the emit. Names are
       // alias-qualified with the addon's table (the engine rejects bare columns in
       // an aggregate); an author-dotted (joined) name passes through.
+      // An unbound (`null`) table has no alias to qualify with, same as an absent
+      // one — fall back to whatever the raw context carries.
       const addonAlias =
-        def.table === undefined
+        def.table === undefined || def.table === null
           ? ((ctx.dbo as { as?: string } | undefined)?.as ?? "")
           : typeof def.table === "string"
             ? def.table
@@ -233,7 +248,7 @@ registerKind(addonKind);
 
 /** The authoring args for {@link addon}, generic over the table/output/cardinality/group/eval that drive the graft shape. */
 interface AddonArgs<
-  Tbl extends ObjectRef,
+  Tbl extends ObjectRef | null,
   Out extends readonly string[],
   Card extends AddonCardinality,
   Grp extends readonly DbEval[],
@@ -258,7 +273,7 @@ interface AddonArgs<
  */
 export function addon<
   const Out extends readonly string[] = readonly [],
-  Tbl extends ObjectRef = ObjectRef,
+  Tbl extends ObjectRef | null = ObjectRef,
   Card extends AddonCardinality = "list",
   const Grp extends readonly DbEval[] = readonly [],
   const Ev extends readonly DbEval[] = readonly [],

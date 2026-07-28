@@ -31,7 +31,7 @@ import { resolveReference } from "../ref-index.js";
 import { decodeFieldMap, decodeResponse, deepEqual } from "../field.js";
 import { decodeStack } from "../statement.js";
 import { decodeCondition } from "../expression.js";
-import { isDefaultEnvelopeMember } from "../../validate/normalize.js";
+import { isDefaultEnvelopeMember, isEmptyOutput } from "../../validate/normalize.js";
 
 /** One `key: value` pair of a generated def literal. */
 export type DefEntry = readonly [string, Expr];
@@ -852,11 +852,18 @@ function addonEntries(a: KindDecodeArgs): DefEntry[] {
   // and an empty `{as:"", id:""}` binds nothing at all (`resolveRef` rejects a
   // target with neither name nor guid, so emitting `table:` would be a hard
   // failure rather than a readability loss).
-  const bindsTable =
-    dboId !== "" &&
-    Object.keys(dbo!).every((key) => key === "id" || key === "as") &&
-    (dbo!.as ?? "") === "";
-  if (bindsTable) consumed.add("dbo");
+  const onlyBindingKeys =
+    dbo !== undefined && Object.keys(dbo).every((key) => key === "id" || key === "as");
+  const bindsTable = dboId !== "" && onlyBindingKeys && (dbo!.as ?? "") === "";
+  // An empty `{as:"", id:""}` is the engine's *unbound* binding — what an addon
+  // stores before a table is chosen, and what it falls back to when the table it
+  // referenced is deleted (the engine clears the id rather than leaving a
+  // tombstone, so those two are the same bytes). `table: null` says exactly that,
+  // and re-encodes to the same empty binding; the alternative was leaking the raw
+  // `context.dbo` blob, which documents nothing.
+  const unbound =
+    !bindsTable && onlyBindingKeys && dboId === "" && (dbo!.as ?? "") === "";
+  if (bindsTable || unbound) consumed.add("dbo");
 
   const where = decodeCondition(a.ctx, context.search);
   if (where) consumed.add("search");
@@ -894,15 +901,20 @@ function addonEntries(a: KindDecodeArgs): DefEntry[] {
           "table",
           resolveReference(a.ctx, a.refs, dboId, { ...a.resolve, unresolved: "object-ref" }),
         ] as DefEntry)
-      : null,
+      : unbound
+        ? (["table", lit(null)] as DefEntry)
+        : null,
     inputs(a),
     where ? (["where", where.expr] as DefEntry) : null,
     sort ? (["sort", sort] as DefEntry) : null,
     output
       ? (["output", output] as DefEntry)
-      : a.stored.output !== undefined
-        ? (["output", lit(a.stored.output)] as DefEntry)
-        : null,
+      : // `{items:[],customize:false}` is "no selection", which `buildOutput`
+        // rebuilds from an absent `output` — and `normalize` already elides on
+        // both sides, so dropping it cannot change the round trip.
+        a.stored.output === undefined || isEmptyOutput(a.stored.output)
+        ? null
+        : (["output", lit(a.stored.output)] as DefEntry),
     cardinality ? (["cardinality", lit(cardinality.value)] as DefEntry) : null,
     Object.keys(passthrough).length > 0 ? (["context", lit(passthrough)] as DefEntry) : null,
     tags(a.stored),
