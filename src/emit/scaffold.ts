@@ -23,7 +23,13 @@ import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { detail, step, success, warn } from "./ui.js";
-import { AI_PRESETS, presetFilePath, renderPreset, type AiPreset } from "./init-ai-presets.js";
+import {
+  AI_PRESETS,
+  presetFilePath,
+  renderPreset,
+  type AiPreset,
+  type GuidanceMode,
+} from "./init-ai-presets.js";
 
 /** The backend directory every scaffolded project keeps its sidestep source in. */
 export const XANO_DIR = "xano";
@@ -76,9 +82,15 @@ export interface ScaffoldOptions {
   readonly noInstall: boolean;
   /**
    * True for `codegen`: `xano/` is machine-written, so it may be refreshed in
-   * place and is cleared before a full (re)scaffold.
+   * place and is cleared before a full (re)scaffold. It also selects the
+   * AI-preset guidance that tells an agent so.
    */
   readonly regenerable: boolean;
+}
+
+/** The guidance an AI preset carries, keyed off whether `xano/` is regenerated. */
+function guidanceMode(regenerable: boolean): GuidanceMode {
+  return regenerable ? "generated" : "authored";
 }
 
 export interface ScaffoldResult {
@@ -253,7 +265,10 @@ export async function scaffoldProject(opts: ScaffoldOptions): Promise<ScaffoldRe
   const files: ScaffoldFile[] = [...opts.files];
   if (mode === "full") {
     for (const preset of opts.presets) {
-      files.push({ path: presetFilePath(preset), content: renderPreset(preset, opts.appName) });
+      files.push({
+        path: presetFilePath(preset),
+        content: renderPreset(preset, opts.appName, guidanceMode(regenerable)),
+      });
     }
     // A previous tree's files would survive an in-place overwrite and stay inside
     // the root tsconfig's `include`, so `npm run build` would typecheck orphans
