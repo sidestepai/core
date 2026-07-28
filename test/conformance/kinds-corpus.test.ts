@@ -55,6 +55,26 @@ const KIND_CORPUS: Array<{ kind: string; payloadKey: string; name: string; fixtu
   { kind: "addon", payloadKey: "addon", name: "ex_kind_author_addon", fixture: "addon/ex_kind_author_addon.json" },
 ];
 
+/**
+ * SCHEMA-DERIVED goldens — a weaker oracle, kept in its own table so no reader
+ * mistakes one for an engine-persisted fixture.
+ *
+ * Xano's workspace-archive export/import does not yet carry realtime sections,
+ * so there is no way to round-trip a realtime object through an engine and read
+ * back what it stored. These were minted from the encoders instead: they pin the
+ * wire shape against refactors, but they cannot catch the encoder and the engine
+ * disagreeing. See `test/fixtures/realtime/README.md` for the re-capture steps.
+ */
+const SCHEMA_DERIVED_CORPUS: Array<{ kind: string; payloadKey: string; name: string; fixture: string }> = [
+  { kind: "realtime server", payloadKey: "realtime_server", name: "ex_kind_chat_server", fixture: "realtime/realtime_server_chat.json" },
+  { kind: "channel (static)", payloadKey: "channel", name: "lobby", fixture: "realtime/channel_lobby.json" },
+  { kind: "channel (path params)", payloadKey: "channel", name: "rooms/{room_id}", fixture: "realtime/channel_rooms.json" },
+  { kind: "message", payloadKey: "message", name: "send", fixture: "realtime/message_send.json" },
+  { kind: "message (deliver_to)", payloadKey: "message", name: "typing", fixture: "realtime/message_typing.json" },
+  { kind: "trigger (realtime server)", payloadKey: "trigger", name: "ex_kind_trigger_on_chat_connect", fixture: "triggers/ex_kind_trigger_on_chat_connect.json" },
+  { kind: "trigger (channel)", payloadKey: "trigger", name: "ex_kind_trigger_on_room_join", fixture: "triggers/ex_kind_trigger_on_room_join.json" },
+];
+
 describe("conformance corpus — kind objects deep-equal their persisted fixture", () => {
   for (const { kind, payloadKey, name, fixture } of KIND_CORPUS) {
     it(`${kind} (${name}) conforms to its persisted golden`, () => {
@@ -63,4 +83,25 @@ describe("conformance corpus — kind objects deep-equal their persisted fixture
       expect(normalize(obj)).toEqual(normalize(loadFixture(fixture)));
     });
   }
+});
+
+describe("conformance corpus — realtime kinds match their SCHEMA-DERIVED golden", () => {
+  for (const { kind, payloadKey, name, fixture } of SCHEMA_DERIVED_CORPUS) {
+    it(`${kind} (${name}) matches its schema-derived golden`, () => {
+      const obj = compiled(payloadKey, name);
+      expect(obj, `compiled ${payloadKey} "${name}" not found in export`).toBeDefined();
+      expect(normalize(obj)).toEqual(normalize(loadFixture(fixture)));
+    });
+  }
+
+  it("covers every realtime kind and both lifecycle trigger types", () => {
+    // The guard that makes a forgotten golden fail loudly rather than silently
+    // shrinking coverage when a kind is added.
+    const covered = new Set(SCHEMA_DERIVED_CORPUS.map((r) => r.payloadKey));
+    expect([...covered].sort()).toEqual(["channel", "message", "realtime_server", "trigger"]);
+    const triggerTypes = SCHEMA_DERIVED_CORPUS.filter((r) => r.payloadKey === "trigger").map(
+      (r) => (compiled("trigger", r.name) as { obj_type?: string }).obj_type,
+    );
+    expect(triggerTypes.sort()).toEqual(["channel", "realtime_server"]);
+  });
 });

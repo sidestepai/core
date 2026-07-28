@@ -44,7 +44,8 @@ describe("manifest", () => {
   it("reports honest coverage", () => {
     expect(m.coverage.statements).toEqual({ implemented: TOTAL_STATEMENTS, total: TOTAL_STATEMENTS });
     // 15 = the 12 pre-realtime kinds + realtime_server/channel/message.
-    expect(m.coverage.objectKinds).toEqual({ implemented: 15, total: 24 });
+    // 30 = the engine catalog after the realtime family landed (was 24).
+    expect(m.coverage.objectKinds).toEqual({ implemented: 15, total: 30 });
   });
 
   it("every statement sPath resolves to a real callable leaf under s", () => {

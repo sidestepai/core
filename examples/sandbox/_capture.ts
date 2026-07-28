@@ -22,6 +22,15 @@ import { exampleMcpServer, assistant, askAssistant } from "./kinds/ai.js";
 import { nightlyCleanup } from "./kinds/task.js";
 import { rateLimit } from "./kinds/middleware.js";
 import { authorAddon } from "./kinds/addon.js";
+import {
+  chatServer,
+  lobbyChannel,
+  roomChannel,
+  sendMessage,
+  typingMessage,
+  onChatConnect,
+  onRoomJoin,
+} from "./kinds/realtime.js";
 
 // A query with a CUSTOMIZED (inherit:false) request-history block — the golden
 // source for byte-verifying authored history (the shipped examples all inherit).
@@ -42,10 +51,13 @@ export default workspace("sidestep-capture-kinds")
   .registerApiGroups(defs([api]))
   .registerTables(defs([users, posts, productTable, fieldTableRef]))
   .registerQueries(defs([getUserQuery, askAssistant, historyQuery]))
-  .registerTriggers(defs([onUserInsert, onMessage, onBranchLive]))
+  .registerTriggers(defs([onUserInsert, onMessage, onBranchLive, onChatConnect, onRoomJoin]))
   .registerTools(defs([searchTool]))
   .registerMcpServers(defs([exampleMcpServer]))
   .registerAgents(defs([assistant]))
   .registerTasks(defs([nightlyCleanup]))
   .registerMiddleware(defs([rateLimit]))
-  .registerAddons(defs([authorAddon]));
+  .registerAddons(defs([authorAddon]))
+  .registerRealtimeServers(defs([chatServer]))
+  .registerRealtimeChannels(defs([lobbyChannel, roomChannel]))
+  .registerRealtimeMessages(defs([sendMessage, typingMessage]));

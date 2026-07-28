@@ -28,7 +28,7 @@ import { FILTER_NAMES, FILTER_SPECS } from "../values/generated/filters.generate
 import { FIELD_METHODS } from "../fields/generated/field-methods.generated.js";
 
 /** Total engine object kinds. */
-export const TOTAL_OBJECT_KINDS = 24;
+export const TOTAL_OBJECT_KINDS = 30;
 
 /** A statement field, flattened from its generated spec rule. */
 export interface ManifestField {

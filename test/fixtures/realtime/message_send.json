@@ -1,0 +1,91 @@
+{
+  "name": "send",
+  "description": "Post a message to a room",
+  "active": true,
+  "channel": {
+    "id": "9bb29e80f77fab4de53acde9fbd3b925"
+  },
+  "server": {
+    "id": "ffbd76434e93bfccd084347fd40922bb"
+  },
+  "auth": false,
+  "deliver_to": "channel",
+  "input": [
+    {
+      "name": "body",
+      "type": "text",
+      "_xsid": "",
+      "nullable": false,
+      "default": "",
+      "merge": false,
+      "hidden": [],
+      "override": [],
+      "customize": {},
+      "required": true,
+      "values": [],
+      "mode": "",
+      "format": "",
+      "sensitive": false,
+      "list": {
+        "min": "",
+        "max": ""
+      },
+      "vector": {
+        "size": 3
+      },
+      "access": "public",
+      "style": {
+        "type": "single"
+      },
+      "children": [],
+      "methods": [],
+      "market_item": {
+        "id": 0,
+        "version": 0,
+        "guid": ""
+      },
+      "is_settings_registry": false,
+      "description": ""
+    }
+  ],
+  "output": [],
+  "middleware": {
+    "pre_customize": false,
+    "post_customize": false,
+    "pre": [],
+    "post": []
+  },
+  "run": [
+    {
+      "as": "",
+      "name": "mvp:debug_log",
+      "_xsid": "",
+      "addon": [],
+      "input": [],
+      "mocks": {},
+      "output": {
+        "items": [],
+        "filters": [],
+        "customize": false
+      },
+      "context": {
+        "value": "message received",
+        "tag": "const",
+        "filters": []
+      },
+      "runtime": null,
+      "disabled": false,
+      "description": "",
+      "settings_registry": null
+    }
+  ],
+  "result": [],
+  "history": {
+    "inherit": true,
+    "enabled": false,
+    "limit": 100
+  },
+  "disabled": false,
+  "tag": [],
+  "guid": "dfedc51c140eafb7b218f0d5c348aaf2"
+}

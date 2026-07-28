@@ -5,7 +5,7 @@
   "coverage": {
     "objectKinds": {
       "implemented": 15,
-      "total": 24
+      "total": 30
     },
     "statements": {
       "implemented": 215,

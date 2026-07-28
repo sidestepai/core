@@ -1,0 +1,71 @@
+{
+  "name": "rooms/{room_id}",
+  "description": "One channel per room",
+  "active": true,
+  "server": {
+    "id": "ffbd76434e93bfccd084347fd40922bb"
+  },
+  "input": [
+    {
+      "name": "room_id",
+      "type": "int",
+      "_xsid": "",
+      "nullable": false,
+      "default": "",
+      "merge": false,
+      "hidden": [],
+      "override": [],
+      "customize": {},
+      "required": false,
+      "values": [],
+      "mode": "",
+      "format": "",
+      "sensitive": false,
+      "list": {
+        "min": "",
+        "max": ""
+      },
+      "vector": {
+        "size": 3
+      },
+      "access": "public",
+      "style": {
+        "type": "single"
+      },
+      "children": [],
+      "methods": [],
+      "market_item": {
+        "id": 0,
+        "version": 0,
+        "guid": ""
+      },
+      "is_settings_registry": false,
+      "description": ""
+    }
+  ],
+  "anonymous_clients": false,
+  "presence": false,
+  "publish": {
+    "who": "authenticated",
+    "direct": false
+  },
+  "conversation": {
+    "enabled": true,
+    "limit": 50,
+    "ttl": 0
+  },
+  "delivery": {
+    "guarantee": "at_most_once",
+    "per_recipient": false
+  },
+  "rate_limit": {
+    "messages_per_minute": 0
+  },
+  "history": {
+    "inherit": true,
+    "message_enabled": false,
+    "message_limit": 100
+  },
+  "tag": [],
+  "guid": "9bb29e80f77fab4de53acde9fbd3b925"
+}
