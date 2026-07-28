@@ -47,6 +47,32 @@ export interface RealtimeInputs {
   payload: Value;
 }
 
+/** The connecting client, shared by both realtime lifecycle trigger types. */
+export type RealtimeClient = FieldAccessor<{
+  extras: unknown;
+  permissions: { dbo_id: number; row_id: string };
+}>;
+
+/** Realtime server lifecycle trigger inputs (connect / disconnect). */
+export interface RealtimeServerTriggerInputs {
+  /** The connection action (`"connect"` | `"disconnect"`). */
+  action: Value;
+  /** The realtime server being connected to. */
+  realtime_server: Value;
+  /** The connecting client — `permissions` gates its realtime row/table access. */
+  client: RealtimeClient;
+}
+
+/** Realtime channel lifecycle trigger inputs (join / leave). */
+export interface ChannelTriggerInputs {
+  /** The membership action (`"join"` | `"leave"`). */
+  action: Value;
+  /** The channel path the client addressed. */
+  channel: Value;
+  /** The joining client — `permissions` gates its realtime row/table access. */
+  client: RealtimeClient;
+}
+
 /** Toolset trigger inputs (MCP server / agent). */
 export interface ToolsetInputs {
   /** The toolset being connected to. */

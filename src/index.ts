@@ -284,6 +284,8 @@ export { functionKind, encodeFunction } from "./kinds/function.js";
 export {
   tableTrigger,
   realtimeTrigger,
+  realtimeServerTrigger,
+  channelTrigger,
   mcpServerTrigger,
   agentTrigger,
   workspaceTrigger,
@@ -298,12 +300,17 @@ export type {
   DatabaseActions,
   WorkspaceActions,
   RealtimeActions,
+  RealtimeServerActions,
+  ChannelActions,
   DatabaseInputs,
 } from "./kinds/trigger.js";
 // Typed input handles passed to a trigger's `stack`/`response` callback.
 export type {
   FieldAccessor,
   RealtimeInputs,
+  RealtimeClient,
+  RealtimeServerTriggerInputs,
+  ChannelTriggerInputs,
   ToolsetInputs,
   WorkspaceInputs,
   ErrorInputs,

@@ -348,12 +348,14 @@ const KIND_DESCRIPTORS: ReadonlyArray<Omit<ManifestKind, "registered">> = [
   {
     kind: "trigger",
     payloadKey: "trigger",
-    authorFactory: "{tableTrigger,realtimeTrigger,mcpServerTrigger,agentTrigger,workspaceTrigger,errorTrigger}",
-    description: "An event-driven handler fired by a DB write, realtime channel, MCP/agent connection, branch lifecycle, or error — inputs are implied by type and arrive on the `t` handle.",
+    authorFactory: "{tableTrigger,realtimeTrigger,realtimeServerTrigger,channelTrigger,mcpServerTrigger,agentTrigger,workspaceTrigger,errorTrigger}",
+    description: "An event-driven handler fired by a DB write, realtime server/channel lifecycle, MCP/agent connection, branch lifecycle, or error — inputs are implied by type and arrive on the `t` handle.",
     registerMethod: "registerTriggers",
     subKinds: [
       { authorFactory: "tableTrigger", objType: "database", description: "Fires when rows change on a bound table (insert/update/delete/truncate). The changed row is exposed as `t.new`/`t.old`, typed to the table when a `table()` handle is bound. Config-only (no response)." },
       { authorFactory: "realtimeTrigger", objType: "workspace_realtime_channel", description: "Fires on realtime channel activity (message/join); inspect the channel, connecting client, options, and payload via `t`. Response-bearing — defaults to echoing the payload." },
+      { authorFactory: "realtimeServerTrigger", objType: "realtime_server", description: "Fires when a client connects to or disconnects from a realtime server; inspect the connecting client and its permissions via `t`. Bind with `realtimeServer`. Response-bearing." },
+      { authorFactory: "channelTrigger", objType: "channel", description: "Fires when a client joins or leaves a channel; inspect the addressed channel path and the client via `t`. Bind with a `realtimeChannel()` handle (a bare path is ambiguous across servers). Response-bearing." },
       { authorFactory: "mcpServerTrigger", objType: "toolset", description: "Fires when an MCP client connects to a bound MCP server; gate or annotate the exposed tools via `t.toolset`/`t.tools`. Response-bearing." },
       { authorFactory: "agentTrigger", objType: "toolset", description: "Fires when a client connects to a bound agent; gate or annotate its toolset via `t.toolset`/`t.tools`. Response-bearing." },
       { authorFactory: "workspaceTrigger", objType: "workspace", description: "Fires on branch lifecycle events (branch new/merge/live); inspect the from/to branch and action via `t`. Config-only." },
