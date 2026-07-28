@@ -60,9 +60,13 @@ export class Xano {
       // rename / matches an existing workspace object); otherwise derive a
       // stable one from the display name. Guid type is the migrate type
       // (== payloadKey), e.g. table → "dbo".
+      // A kind whose identity is not `md5("<payloadKey>:<name>")` declares
+      // `guidOf` (the realtime family — a channel path is unique only per
+      // server, a message name only per channel, so the name alone would make
+      // two distinct objects share one guid and collapse onto one row).
       const explicit = (def as { guid?: string }).guid;
       if (obj.guid === undefined && typeof obj.name === "string") {
-        obj.guid = explicit ?? deriveGuid(kind.payloadKey, obj.name);
+        obj.guid = explicit ?? kind.guidOf?.(def) ?? deriveGuid(kind.payloadKey, obj.name);
       }
     }
     return encoded;

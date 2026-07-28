@@ -14,6 +14,14 @@ export interface ObjectKind<Def = any, Xdo = any> {
   payloadKey: string;
   /** Encode an authoring def into its flattened importable `xdo` envelope. */
   encode(def: Def): Xdo;
+  /**
+   * Derive this object's guid from its **def**, for kinds whose identity is not
+   * `md5("<payloadKey>:<name>")`. Only the realtime family needs it: a channel
+   * path is unique per server and a message name per channel, so their guids
+   * are composed from more than the name (see `refs/guid.ts`). Omit it and the
+   * registry falls back to the name derivation every other kind uses.
+   */
+  guidOf?(def: Def): string;
 }
 
 const kindRegistry = new Map<string, ObjectKind>();
