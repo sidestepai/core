@@ -17,8 +17,10 @@ import { measureCommittedLlms } from "../../scripts/measure-llms.js";
 // real Gotcha/Special/result binding pushes past, never cut grounding to fit.
 // (Raised from 24.8k when the codegen/pull command family landed — a whole new
 // CLI direction is exactly the "legitimate critical addition" this rule means.
+// Raised again from 25.2k when the realtime family landed: three new object
+// kinds plus two lifecycle trigger types are authoring-critical grounding.
 // Ratchet it back down after any real reduction, per the inverse rule.)
-const CEILING_TOKENS = 25_200;
+const CEILING_TOKENS = 25_800;
 
 describe("llms.txt token budget", () => {
   it("stays under the bloat-tripwire ceiling", () => {

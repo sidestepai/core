@@ -366,6 +366,9 @@ const KIND_DESCRIPTORS: ReadonlyArray<Omit<ManifestKind, "registered">> = [
   { kind: "task", payloadKey: "task", authorFactory: "task", description: "A scheduled background job (cron/interval) that runs a stack on a timer.", registerMethod: "registerTasks" },
   { kind: "middleware", payloadKey: "middleware", authorFactory: "middleware", description: "A reusable pre/post stack attached to a query/function/task/tool/API group to run before or after its own logic.", registerMethod: "registerMiddleware" },
   { kind: "addon", payloadKey: "addon", authorFactory: "addon", description: "A reusable read fragment that enriches a query result by joining related table data.", registerMethod: "registerAddons" },
+  { kind: "realtime_server", payloadKey: "realtime_server", authorFactory: "realtimeServer", description: "A realtime (websocket) server: the canonical-addressed container that owns realtime channels. Off until `enabled: true`.", registerMethod: "registerRealtimeServers" },
+  { kind: "channel", payloadKey: "channel", authorFactory: "realtimeChannel", description: "A realtime channel: a joinable path on a realtime server (`rooms/{room_id}`) with typed path params, join/publish policy, a client-visible conversation transcript, and delivery semantics. Owns message handlers.", registerMethod: "registerRealtimeChannels" },
+  { kind: "message", payloadKey: "message", authorFactory: "realtimeMessage", description: "A realtime message handler: a named message type on a channel with its own typed payload and stack — the realtime analogue of a query. Pass the `realtimeChannel()` handle as `channel` and the owning server comes with it.", registerMethod: "registerRealtimeMessages" },
   { kind: "workspace", payloadKey: "workspace", authorFactory: "workspaceConfig", description: "Workspace-level configuration such as default middleware chains and request-history defaults per host kind.", registerMethod: "registerWorkspace" },
 ];
 

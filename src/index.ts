@@ -348,6 +348,48 @@ export { query, queryKind, encodeQuery, toSearchParams } from "./kinds/query.js"
 export type { QueryDef, QueryHandle, QueryXdo, HttpVerb, SearchParamValue } from "./kinds/query.js";
 export { apiGroup, apiGroupKind, encodeApiGroup } from "./kinds/api-group.js";
 export type { ApiGroupDef, ApiGroupXdo, CorsConfig } from "./kinds/api-group.js";
+
+// --- realtime: realtime_server -> channel -> message ---
+export {
+  realtimeServer,
+  realtimeServerKind,
+  encodeRealtimeServer,
+  resolveRealtimeServerCanonical,
+} from "./kinds/realtime-server.js";
+export type {
+  RealtimeServerDef,
+  RealtimeServerXdo,
+  RealtimeServerHandle,
+} from "./kinds/realtime-server.js";
+export {
+  realtimeChannel,
+  realtimeChannelKind,
+  encodeRealtimeChannel,
+  realtimeChannelGuid,
+} from "./kinds/realtime-channel.js";
+export type {
+  RealtimeChannelDef,
+  RealtimeChannelXdo,
+  RealtimeServerRef,
+  ChannelPublishDef,
+  ChannelPublishWho,
+  ChannelConversationDef,
+  ChannelDeliveryDef,
+  ChannelDeliveryGuarantee,
+  ChannelRateLimitDef,
+} from "./kinds/realtime-channel.js";
+export {
+  realtimeMessage,
+  realtimeMessageKind,
+  encodeRealtimeMessage,
+  realtimeMessageGuid,
+} from "./kinds/realtime-message.js";
+export type {
+  RealtimeMessageDef,
+  RealtimeMessageXdo,
+  RealtimeChannelRef,
+  MessageDeliverTo,
+} from "./kinds/realtime-message.js";
 export { task, taskKind, encodeTask, encodeSchedule } from "./kinds/task.js";
 export type { TaskDef, TaskXdo, ScheduleDef } from "./kinds/task.js";
 export { middleware, middlewareKind, encodeMiddleware } from "./kinds/middleware.js";
