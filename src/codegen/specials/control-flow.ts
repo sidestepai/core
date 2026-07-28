@@ -1,0 +1,286 @@
+/**
+ * Control-flow, loop, and variable decoders.
+ *
+ * These are the recursive families: `conditional`, `switch`, `try_catch`, the
+ * three loops, `group`, `post_process`, and `expect.to_throw` all nest a `run[]`,
+ * and each one recurses through the *full* dispatch rather than a private path.
+ * That is what makes a `raw()` fallback work at depth — an unmodelled statement
+ * inside a loop inside a conditional still round-trips, and the enclosing
+ * statements stay readable around it.
+ */
+import type { TaggedValue } from "../../types/xdo.js";
+import { arr, lit, obj, type Expr } from "../print.js";
+import { decodeValue } from "../value.js";
+import { decodeCondition } from "../expression.js";
+import { getPath, prove, type SpecialArgs, type SpecialDecoder } from "./prove.js";
+
+/** Coerce a stored `{value, tag, filters}` block to a tagged value. */
+function toValue(raw: unknown): TaggedValue | null {
+  if (raw === null || typeof raw !== "object") return null;
+  const block = raw as { value?: unknown; tag?: unknown; filters?: unknown };
+  if (typeof block.tag !== "string" || block.value === undefined) return null;
+  return {
+    value: block.value as string,
+    tag: block.tag as TaggedValue["tag"],
+    filters: (Array.isArray(block.filters) ? block.filters : []) as TaggedValue["filters"],
+  };
+}
+
+/** Decode a nested `run[]` at a stored path, or an empty block when absent. */
+function nested(a: SpecialArgs, path: string): { exprs: Expr[]; statements: unknown[] } {
+  const run = getPath(a.stored.context, path);
+  return a.decodeStack(run);
+}
+
+/** `var $as { value }` — 78% of a typical workspace's statements. */
+const setVar: SpecialDecoder = (a) => {
+  const value = toValue(a.stored.context);
+  const as = (a.stored as { as?: unknown }).as;
+  if (!value || typeof as !== "string" || as === "") return null;
+  return prove(a.ctx, a.stored, "set_var", [as, value], [lit(as), decodeValue(a.ctx, value)]);
+};
+
+/** `update $name { value }` — reassignment of an existing stack variable. */
+const updateVar: SpecialDecoder = (a) => {
+  const context = (a.stored.context ?? {}) as Record<string, unknown>;
+  const value = toValue(context);
+  const name = context.name;
+  if (!value || typeof name !== "string") return null;
+  return prove(
+    a.ctx,
+    a.stored,
+    "update_var",
+    [name, value],
+    [lit(name), decodeValue(a.ctx, value)],
+  );
+};
+
+/** One `elif` branch of a conditional. */
+function decodeElifBranch(a: SpecialArgs, branch: unknown): { expr: Expr; runtime: unknown } | null {
+  const context = (branch as { context?: unknown }).context;
+  const when = decodeCondition(a.ctx, getPath(context, "expr"));
+  if (!when) return null;
+  const body = a.decodeStack(getPath(context, "if.run"));
+  return {
+    expr: obj([
+      ["when", when.expr],
+      ["then", arr(body.exprs)],
+    ]),
+    runtime: { when: when.runtime, then: body.statements },
+  };
+}
+
+/** `if (when) { then } [else if …] [else { … }]`. */
+const conditional: SpecialDecoder = (a) => {
+  const when = decodeCondition(a.ctx, getPath(a.stored.context, "expr"));
+  if (!when) return null;
+
+  const then = nested(a, "if.run");
+  const elseBody = nested(a, "else.run");
+  const elifStored = getPath(a.stored.context, "elif.run");
+  const elifBranches = Array.isArray(elifStored) ? elifStored : [];
+
+  const elif: Array<{ expr: Expr; runtime: unknown }> = [];
+  for (const branch of elifBranches) {
+    const decoded = decodeElifBranch(a, branch);
+    if (!decoded) return null;
+    elif.push(decoded);
+  }
+
+  const entries: Array<[string, Expr]> = [
+    ["when", when.expr],
+    ["then", arr(then.exprs)],
+  ];
+  const runtime: Record<string, unknown> = { when: when.runtime, then: then.statements };
+  // Branch order is load-bearing — `elif` is an ordered stack, and `else` only
+  // means anything after it.
+  if (elif.length > 0) {
+    entries.push(["elif", arr(elif.map((e) => e.expr))]);
+    runtime.elif = elif.map((e) => e.runtime);
+  }
+  if (elseBody.exprs.length > 0) {
+    entries.push(["else", arr(elseBody.exprs)]);
+    runtime.else = elseBody.statements;
+  }
+  return prove(a.ctx, a.stored, "conditional", [runtime], [obj(entries)]);
+};
+
+/** `switch (on) { case … default … }`. */
+const switchStatement: SpecialDecoder = (a) => {
+  const on = toValue(getPath(a.stored.context, "value"));
+  if (!on) return null;
+
+  const casesStored = getPath(a.stored.context, "elif.run");
+  const cases: Array<{ expr: Expr; runtime: unknown }> = [];
+  for (const stored of Array.isArray(casesStored) ? casesStored : []) {
+    const context = (stored as { context?: Record<string, unknown> }).context ?? {};
+    const when = toValue(context.value);
+    if (!when) return null;
+    const body = a.decodeStack(getPath(context, "if.run"));
+    const entries: Array<[string, Expr]> = [
+      ["when", decodeValue(a.ctx, when)],
+      ["body", arr(body.exprs)],
+    ];
+    const runtime: Record<string, unknown> = { when, body: body.statements };
+    // `break` is omitted from the stored shape entirely when unset, so its
+    // presence — not its value — is what must be carried back.
+    if (context.break !== undefined) {
+      entries.push(["break", lit(context.break)]);
+      runtime.break = context.break;
+    }
+    cases.push({ expr: obj(entries), runtime });
+  }
+
+  const defaultBody = nested(a, "else.run");
+  const entries: Array<[string, Expr]> = [
+    ["on", decodeValue(a.ctx, on)],
+    ["cases", arr(cases.map((c) => c.expr))],
+  ];
+  const runtime: Record<string, unknown> = { on, cases: cases.map((c) => c.runtime) };
+  if (defaultBody.exprs.length > 0) {
+    entries.push(["default", arr(defaultBody.exprs)]);
+    runtime.default = defaultBody.statements;
+  }
+  return prove(a.ctx, a.stored, "switch", [runtime], [obj(entries)]);
+};
+
+/** `try_catch { try … catch … finally … }` — engine `if`/`else`/`then`. */
+const tryCatch: SpecialDecoder = (a) => {
+  const tryBody = nested(a, "if.run");
+  const catchBody = nested(a, "else.run");
+  const finallyBody = nested(a, "then.run");
+
+  const entries: Array<[string, Expr]> = [["try", arr(tryBody.exprs)]];
+  const runtime: Record<string, unknown> = { try: tryBody.statements };
+  if (catchBody.exprs.length > 0) {
+    entries.push(["catch", arr(catchBody.exprs)]);
+    runtime.catch = catchBody.statements;
+  }
+  if (finallyBody.exprs.length > 0) {
+    entries.push(["finally", arr(finallyBody.exprs)]);
+    runtime.finally = finallyBody.statements;
+  }
+  return prove(a.ctx, a.stored, "try_catch", [runtime], [obj(entries)]);
+};
+
+/** A loop carrying `as` plus one value field (`cnt` for `for`, `list` for `foreach`). */
+function loopDecoder(path: string, storedField: string, defField: string): SpecialDecoder {
+  return (a) => {
+    const context = (a.stored.context ?? {}) as Record<string, unknown>;
+    const as = context.as;
+    const value = toValue(context[storedField]);
+    if (typeof as !== "string" || !value) return null;
+    const body = a.decodeStack(context.run);
+    return prove(
+      a.ctx,
+      a.stored,
+      path,
+      [{ as, [defField]: value, body: body.statements }],
+      [
+        obj([
+          ["as", lit(as)],
+          [defField, decodeValue(a.ctx, value)],
+          ["body", arr(body.exprs)],
+        ]),
+      ],
+    );
+  };
+}
+
+/** `while (when) { body }`. */
+const whileLoop: SpecialDecoder = (a) => {
+  const when = decodeCondition(a.ctx, getPath(a.stored.context, "expr"));
+  if (!when) return null;
+  const body = a.decodeStack(getPath(a.stored.context, "run"));
+  return prove(
+    a.ctx,
+    a.stored,
+    "while",
+    [{ when: when.runtime, body: body.statements }],
+    [
+      obj([
+        ["when", when.expr],
+        ["body", arr(body.exprs)],
+      ]),
+    ],
+  );
+};
+
+/** A statement whose only content is a nested stack, passed positionally. */
+function blockDecoder(path: string, runPath = "run"): SpecialDecoder {
+  return (a) => {
+    const body = a.decodeStack(getPath(a.stored.context, runPath));
+    return prove(a.ctx, a.stored, path, [body.statements], [arr(body.exprs)]);
+  };
+}
+
+/** A statement carrying a single value in `context` (`return`, `die`, `debug.log`). */
+function valueDecoder(path: string): SpecialDecoder {
+  return (a) => {
+    const value = toValue(a.stored.context);
+    if (!value) return null;
+    return prove(a.ctx, a.stored, path, [value], [decodeValue(a.ctx, value)]);
+  };
+}
+
+/** A statement with no arguments at all. */
+function nullaryDecoder(path: string): SpecialDecoder {
+  return (a) => prove(a.ctx, a.stored, path, [], []);
+}
+
+/** `expect.to_throw { body }` with an optional expected exception. */
+const expectToThrow: SpecialDecoder = (a) => {
+  const body = a.decodeStack(getPath(a.stored.context, "run"));
+  const exception = toValue(getPath(a.stored.context, "exception"));
+  const entries: Array<[string, Expr]> = [["body", arr(body.exprs)]];
+  const runtime: Record<string, unknown> = { body: body.statements };
+  if (exception) {
+    entries.push(["exception", decodeValue(a.ctx, exception)]);
+    runtime.exception = exception;
+  }
+  return prove(a.ctx, a.stored, "expect.to_throw", [runtime], [obj(entries)]);
+};
+
+/** `comment` — the text rides the envelope's `description`, not the context. */
+const comment: SpecialDecoder = (a) => {
+  const text = (a.stored as { description?: unknown }).description;
+  if (typeof text !== "string") return null;
+  return prove(
+    a.ctx,
+    a.stored,
+    "comment",
+    text === "" ? [] : [text],
+    text === "" ? [] : [lit(text)],
+  );
+};
+
+/** `placeholder <name>` — an unconfigured statement slot. */
+const placeholder: SpecialDecoder = (a) => {
+  const name = getPath(a.stored.context, "name");
+  if (typeof name !== "string") return null;
+  return prove(a.ctx, a.stored, "placeholder", [name], [lit(name)]);
+};
+
+/** Control-flow, loop, and variable decoders by stored name. */
+export const CONTROL_FLOW_DECODERS: ReadonlyMap<string, SpecialDecoder> = new Map<
+  string,
+  SpecialDecoder
+>([
+  ["mvp:set_var", setVar],
+  ["mvp:update_var", updateVar],
+  ["mvp:conditional", conditional],
+  ["mvp:switch", switchStatement],
+  ["mvp:try_catch", tryCatch],
+  ["mvp:for", loopDecoder("for", "cnt", "count")],
+  ["mvp:foreach", loopDecoder("foreach", "list", "list")],
+  ["mvp:while", whileLoop],
+  ["mvp:group", blockDecoder("group")],
+  ["mvp:post_process", blockDecoder("util.post_process")],
+  ["mvp:test_expect_to_throw", expectToThrow],
+  ["mvp:return", valueDecoder("return")],
+  ["mvp:foreach_break", nullaryDecoder("foreach_break")],
+  ["mvp:foreach_continue", nullaryDecoder("foreach_continue")],
+  ["mvp:foreach_remove", nullaryDecoder("foreach_remove")],
+  ["mvp:comment", comment],
+  ["mvp:placeholder", placeholder],
+]);

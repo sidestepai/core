@@ -1,0 +1,146 @@
+{
+  "app": "sidestep-codegen-engine-guids",
+  "version": "1.0.0",
+  "type": "packageExport",
+  "payload": {
+    "partial": false,
+    "workspace": { "name": "engine_guids" },
+    "dbo": [
+      {
+        "name": "users",
+        "guid": "9f3c81a04be27d6510aa4c8831ef25b7",
+        "description": "",
+        "auth": true,
+        "schema": [
+          { "name": "id", "type": "int", "required": false, "access": "public", "style": "single" },
+          {
+            "name": "email",
+            "type": "email",
+            "required": true,
+            "access": "public",
+            "style": "single"
+          }
+        ],
+        "index": []
+      },
+      {
+        "name": "posts",
+        "guid": "c47e0b92da61f38855b0d2e7194ac6f3",
+        "description": "",
+        "auth": false,
+        "schema": [
+          { "name": "id", "type": "int", "required": false, "access": "public", "style": "single" },
+          {
+            "name": "author_id",
+            "type": "int",
+            "required": false,
+            "access": "public",
+            "style": "single",
+            "tableref_id": "9f3c81a04be27d6510aa4c8831ef25b7"
+          }
+        ],
+        "index": []
+      }
+    ],
+    "function": [
+      {
+        "name": "load_author",
+        "guid": "2b6d05f1c8e94a37bb1f6d0c5a83e742",
+        "description": "",
+        "input": [],
+        "stack": [
+          {
+            "as": "author",
+            "name": "mvp:dbo_getby",
+            "_xsid": "",
+            "addon": [],
+            "input": [],
+            "mocks": {},
+            "output": { "items": [], "filters": [], "customize": false },
+            "context": {
+              "dbo_id": "9f3c81a04be27d6510aa4c8831ef25b7",
+              "field_name": { "value": "id", "tag": "const", "filters": [] },
+              "field_value": { "value": "author_id", "tag": "input", "filters": [] }
+            },
+            "runtime": null,
+            "disabled": false,
+            "description": "",
+            "settings_registry": null
+          }
+        ]
+      },
+      {
+        "name": "render_post",
+        "guid": "7ad3e6b04f1c25890de3ba7c61f4802d",
+        "description": "",
+        "input": [],
+        "stack": [
+          {
+            "as": "author",
+            "name": "mvp:function",
+            "_xsid": "",
+            "addon": [],
+            "input": [],
+            "mocks": {},
+            "output": { "items": [], "filters": [], "customize": false },
+            "context": { "function_id": "2b6d05f1c8e94a37bb1f6d0c5a83e742" },
+            "runtime": null,
+            "disabled": false,
+            "description": "",
+            "settings_registry": null
+          }
+        ]
+      }
+    ],
+    "toolset": [
+      {
+        "name": "support",
+        "guid": "e51c9a730b6d2f48ac07153bd8e69f21",
+        "type": "mcp",
+        "description": "",
+        "tool": []
+      },
+      {
+        "name": "support",
+        "guid": "48b207ec5f139da6c2e480b1573f9ac0",
+        "type": "agent",
+        "description": "",
+        "tool": []
+      }
+    ],
+    "tool": [
+      {
+        "name": "lookup_user",
+        "guid": "1d6f84b0937ea52c48bd0f371c9a5e26",
+        "description": "",
+        "input": [],
+        "stack": []
+      }
+    ],
+    "trigger": [
+      {
+        "name": "on_support_connect",
+        "guid": "83e5d1c04a92bf67015d3e8a6c471bf9",
+        "description": "",
+        "obj_type": "toolset",
+        "obj_id": "e51c9a730b6d2f48ac07153bd8e69f21",
+        "input": [],
+        "stack": []
+      }
+    ],
+    "query": [],
+    "middleware": [],
+    "addon": [],
+    "task": [],
+    "app": [],
+    "vault": [],
+    "market_item": [],
+    "run_install": [],
+    "action_package_install": [],
+    "env": [],
+    "workflow_test": [],
+    "service": [],
+    "branch": []
+  },
+  "sig": ""
+}

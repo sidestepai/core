@@ -41,7 +41,23 @@ function expectShape(fixtureName: string, built: ReturnType<typeof encodeStateme
 
 describe("db !map:dbo family — byte-shape vs transform-temp goldens", () => {
   it("db.get → dbo_getby", () => {
-    expectShape("db_get", encodeStatement(dbGet({ table: T, as: "test1", fieldValue: c.int(123) })));
+    // `lock` is authored explicitly here because the entry is `?=false` in the
+    // engine schema and is now emitted only when set — which is what this
+    // fixture's vintage recorded. Omitting it emits no entry at all (covered below).
+    expectShape(
+      "db_get",
+      encodeStatement(dbGet({ table: T, as: "test1", fieldValue: c.int(123), lock: false })),
+    );
+  });
+
+  it("db.get omits the `lock` entry entirely when it is not authored", () => {
+    // Matching Xano 1:1: its editor writes no `lock` entry for an unlocked read,
+    // so neither do we. The engine reads an absent `lock` as false.
+    const encoded = encodeStatement(dbGet({ table: T, as: "test1", fieldValue: c.int(123) }));
+    expect((encoded.input as Array<{ name: string }>).map((e) => e.name)).toEqual([
+      "field_name",
+      "field_value",
+    ]);
   });
 
   it("db.del → dbo_delby", () => {
@@ -60,7 +76,12 @@ describe("db !map:dbo family — byte-shape vs transform-temp goldens", () => {
   });
 
   it("db.truncate → dbo_truncate (empty as, reset false)", () => {
-    expectShape("db_truncate", encodeStatement(dbTruncate({ table: T, as: "" })));
+    // `reset?=false` — authored explicitly, for the same reason as `db.get`'s lock.
+    expectShape("db_truncate", encodeStatement(dbTruncate({ table: T, as: "", reset: false })));
+  });
+
+  it("db.truncate omits the `reset` entry entirely when it is not authored", () => {
+    expect(encodeStatement(dbTruncate({ table: T, as: "" })).input).toEqual([]);
   });
 
   it("db.schema → dbo_get_schema", () => {
@@ -111,7 +132,12 @@ describe("db !map:dbo family — byte-shape vs transform-temp goldens", () => {
     );
   });
 
-  it("db.add_or_edit → dbo_addoreditby (lean entries, context.dbo.as, no envelope)", () => {
+  it("db.add_or_edit → dbo_addoreditby (lean entries, opt-in tableAlias, no envelope)", () => {
+    // The fixture carries `context.dbo.as`, so the authoring call opts in with
+    // `tableAlias`. It used to be written unconditionally, which made
+    // add_or_edit the one db statement that forced a SQL table name on every
+    // caller — measured across four engine-authored workspaces, Xano writes the
+    // alias per statement (dbo_getby: 4 with, 9 without; dbo_add: 8 without).
     const fixture = loadFixture("statements/db_add_or_edit.json") as {
       context: { dbo: { id: unknown; as: unknown } };
     };
@@ -121,6 +147,7 @@ describe("db !map:dbo family — byte-shape vs transform-temp goldens", () => {
       dbAddOrEdit({
         table: T,
         as: "user12",
+        tableAlias: T.name,
         fieldValue: c.text(""),
         data: [
           { name: "created_at", value: c.text(""), ignore: true },
@@ -347,5 +374,41 @@ describe("db !map:dbo family — byte-shape vs transform-temp goldens", () => {
     const stack = (bundle.payload.function as Array<{ name: string; run: unknown[] }>)[0]!.run;
     const op = stack[0] as { context: { dbo: { id: string } } };
     expect(op.context.dbo.id).toBe(dbo.guid);
+  });
+});
+
+/**
+ * `context.dbo.as` supplies the table's name in the GENERATED SQL, replacing
+ * Xano's own generated name — it is not a cosmetic alias. So it is opt-in on
+ * every db statement, and a duplicate is a workspace-level conflict.
+ *
+ * Measured read-only across four engine-authored workspaces: Xano writes the
+ * alias per statement, not per statement type (`dbo_getby` 4 with / 9 without,
+ * `dbo_add` 8 without). `add_or_edit` used to write it unconditionally, making
+ * it the only db statement that forced a SQL name on every caller.
+ */
+describe("tableAlias — opt-in, and unique across the workspace", () => {
+  it("omits context.dbo.as from add_or_edit when no tableAlias is given", () => {
+    const built = encodeStatement(
+      dbAddOrEdit({ table: T, fieldValue: c.text("x"), data: [] }),
+    ) as { context: { dbo: Record<string, unknown> } };
+    expect(Object.hasOwn(built.context.dbo, "as")).toBe(false);
+    expect(built.context.dbo.id).toBe(deriveGuid("dbo", T.name));
+  });
+
+  it("writes context.dbo.as on add_or_edit only when tableAlias is set", () => {
+    const built = encodeStatement(
+      dbAddOrEdit({ table: T, fieldValue: c.text("x"), data: [], tableAlias: "u" }),
+    ) as { context: { dbo: Record<string, unknown> } };
+    expect(built.context.dbo.as).toBe("u");
+  });
+
+  it("emits an empty-string alias when asked, rather than treating it as unset", () => {
+    // Presence, not truthiness — `as: ""` is a shape the engine can store.
+    const built = encodeStatement(
+      dbAddOrEdit({ table: T, fieldValue: c.text("x"), data: [], tableAlias: "" }),
+    ) as { context: { dbo: Record<string, unknown> } };
+    expect(Object.hasOwn(built.context.dbo, "as")).toBe(true);
+    expect(built.context.dbo.as).toBe("");
   });
 });

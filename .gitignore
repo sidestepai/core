@@ -17,3 +17,4 @@ validate-out/
 # issue #106 probe debug output (allowlist itself is committed under vendor/)
 scripts/probe-results.json
 scripts/probe-field-methods-results.json
+test/.generated/

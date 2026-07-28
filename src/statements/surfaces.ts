@@ -7,6 +7,10 @@
  * Two surface-pairs share a stored name (so the catalog has fewer unique stored
  * names than surfaces): `function.run`/`service.function.run` → `mvp:function`, and
  * `util.get_raw_input`/`util.get_input` → `mvp:get_input`.
+ *
+ * `raw()` (from `@sidestep/core/codegen`) is deliberately **not** in this catalog
+ * and not under `s.`: it is a verbatim passthrough for stored statements the
+ * catalog cannot model, emitted by codegen, not authored by hand.
  */
 
 /** Every engine statement schema file → its stored `mvp:` name. */

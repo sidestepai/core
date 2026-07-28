@@ -8,6 +8,7 @@ import type { Value } from "../values/value.js";
 import { obj } from "../values/obj.js";
 import type { ObjInput } from "../values/obj.js";
 import type { Statement } from "../statements/statement.js";
+import { rawResponseItems } from "./raw-response.js";
 
 /**
  * A member of a record response — a {@link Value}, or a nested plain object
@@ -62,6 +63,10 @@ export function encodeResponse(response: ResponseDef | undefined): ResultItemXdo
   if (response === undefined) {
     return [];
   }
+  // Checked before `isValue`: a raw marker carries no `tag`, so it would
+  // otherwise fall through to the record branch and be encoded as named members.
+  const carried = rawResponseItems(response);
+  if (carried !== undefined) return carried;
   if (isValue(response)) {
     return [
       { filters: response.filters, name: "", tag: response.tag, value: response.value, _xsid: "", disabled: false },

@@ -6,7 +6,7 @@
     {
       "as": "user",
       "name": "mvp:dbo_getby",
-      "_xsid": "f:5e6e83ea-2a28-4a38-b55b-4173013338f4",
+      "_xsid": "f:5ac64881-940b-44e7-bfcc-81cdae61e9d4",
       "addon": [],
       "input": [
         {
@@ -22,15 +22,6 @@
           "tag": "input",
           "name": "field_value",
           "value": "id",
-          "expand": false,
-          "ignore": false,
-          "filters": [],
-          "children": []
-        },
-        {
-          "tag": "const:bool",
-          "name": "lock",
-          "value": "false",
           "expand": false,
           "ignore": false,
           "filters": [],
@@ -80,7 +71,7 @@
       "mode": "",
       "name": "id",
       "type": "int",
-      "_xsid": "i:912572e0-b22f-4c81-8bd4-4d06a3a68b32",
+      "_xsid": "i:f034b547-c3ea-493f-87bf-833a191ce84e",
       "merge": false,
       "style": {
         "type": "single"
@@ -114,7 +105,7 @@
     {
       "tag": "var",
       "name": "",
-      "_xsid": "r:adcb8df3-9236-4b10-83eb-7edd8230f910",
+      "_xsid": "r:e7e3fa35-fab7-4020-8d5f-8fdca2992c45",
       "value": "user",
       "filters": [],
       "disabled": false

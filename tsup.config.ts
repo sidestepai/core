@@ -4,6 +4,7 @@ export default defineConfig({
   entry: {
     index: "src/index.ts",
     node: "src/node.ts",
+    codegen: "src/codegen-entry.ts",
     cli: "src/emit/cli.ts",
     bin: "src/emit/bin.ts",
   },

@@ -32,6 +32,19 @@ export interface FieldOptions {
    * fine. A *function/endpoint input* default binds at runtime and has no limit.
    */
   default?: string | number | boolean;
+  /**
+   * Persist **no `default` key at all** for this field, rather than the empty
+   * `default: ""` every other field carries.
+   *
+   * Set on a table's `uuid` PRIMARY KEY, which is the one column the engine
+   * stores this way — its value is engine-generated, so there is nothing for a
+   * default to mean, and absent vs empty are different stored bytes. Applied
+   * automatically by `idType: "uuid"`; you rarely set it by hand.
+   *
+   * NOT a property of `uuid` in general: an ordinary (non-key) `uuid` column
+   * does carry `default: ""`. Mutually exclusive with {@link default}.
+   */
+  noDefault?: boolean;
   description?: string;
   /**
    * Methods/filters applied at bind time. Each entry is either a bare name
@@ -136,6 +149,29 @@ export function encodeMethods(methods: MethodSpec[] | undefined): MethodXdo[] {
   });
 }
 
+/**
+ * Marker carrying an already-persisted field envelope that {@link encodeField}
+ * must return **verbatim**, skipping the rebuild below. Set only by `rawField()`
+ * (see `raw-field.ts`), which is reachable from `@sidestep/core/codegen`.
+ *
+ * It rides on the field's `options`, so it survives the `{name, type,
+ * ...options}` spread `toNestedFields` uses — a raw field nested inside an
+ * object column short-circuits at its own depth.
+ */
+export const RAW_FIELD: unique symbol = Symbol.for("sidestep.field.rawEnvelope") as never;
+
+/**
+ * The `default` entry, or nothing when {@link FieldOptions.noDefault} is set.
+ *
+ * Spread into the field so the key is genuinely ABSENT rather than present-and-
+ * empty — only absence matches what the engine writes for a uuid primary key,
+ * and the two are different stored bytes.
+ */
+function defaultEntry(options: FieldOptions): { default?: string } {
+  if (options.noDefault === true) return {};
+  return { default: options.default !== undefined ? String(options.default) : "" };
+}
+
 /** Encode a named field (input or column) into its full stored `FieldXdo`. */
 export function encodeField(
   name: string,
@@ -143,12 +179,17 @@ export function encodeField(
   options: FieldOptions,
   ctx: FieldContext,
 ): FieldXdo {
+  // `rawField()` short-circuit: the envelope is already persisted, so the
+  // rebuild below would drop exactly the keys it exists to preserve.
+  const rawEnvelope = (options as Partial<Record<typeof RAW_FIELD, FieldXdo>>)?.[RAW_FIELD];
+  if (rawEnvelope !== undefined) return rawEnvelope;
+
   const field: FieldXdo = {
     name,
     type,
     _xsid: "",
     nullable: options.nullable ?? false,
-    default: options.default !== undefined ? String(options.default) : "",
+    ...defaultEntry(options),
     merge: false,
     hidden: [],
     override: [],

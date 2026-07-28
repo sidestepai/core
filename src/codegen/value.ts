@@ -1,0 +1,287 @@
+/**
+ * Value decoder — stored `{value, tag, filters}` → SideStep source expression.
+ *
+ * Every candidate expression is **proved before it is emitted**: the decoder
+ * builds the readable form by calling the real `c.*` / `ref` / `withFilters`
+ * constructors, then compares what they produced against the stored value. Only
+ * an exact match is emitted; anything else falls back to `rawValue(...)`, which
+ * is verbatim by construction. So a wrong guess degrades readability, never
+ * fidelity — and the same check absorbs the encoder's own guards (the issue #128
+ * regex-pattern throw, the `c.obj` nested-value rejection) without restating them.
+ *
+ * Structured decoding of `const:expr` / `const:expr2` trees is deliberately out of
+ * scope: those go to the literal fallback and are counted in the report, so the
+ * real fallback rate is visible before anyone builds an expression decoder.
+ */
+import type { FilterXdo, TaggedValue } from "../types/xdo.js";
+import { TAGS } from "../types/xdo.js";
+import { auth, c, col, env, inp, out, ref, setting, withFilters } from "../values/value.js";
+import type { Value } from "../values/value.js";
+import { FILTER_NAMES, fl } from "../values/generated/filters.generated.js";
+import { obj as objValue } from "../values/obj.js";
+import { parseObjExpr } from "./obj-expr.js";
+import { CODEGEN_MODULE, CORE_MODULE, type DecodeContext } from "./context.js";
+import { call, lit, obj, type Expr } from "./print.js";
+
+/** A proposed decoding: the source to emit, what it re-encodes to, and its imports. */
+interface Candidate {
+  readonly expr: Expr;
+  readonly value: Value;
+  /** Symbols the expression needs from `@sidestep/core`. */
+  readonly symbols: readonly string[];
+}
+
+/** Structural equality over stored JSON. Key order is irrelevant; presence is not. */
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    return a.every((item, i) => deepEqual(item, b[i]));
+  }
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+  const ak = Object.keys(a as object);
+  const bk = Object.keys(b as object);
+  if (ak.length !== bk.length) return false;
+  return ak.every(
+    (k) =>
+      Object.hasOwn(b as object, k) &&
+      deepEqual((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]),
+  );
+}
+
+/** Run a constructor, treating any encoder guard it trips as "not decodable". */
+function attempt<T>(fn: () => T): T | null {
+  try {
+    return fn();
+  } catch {
+    return null;
+  }
+}
+
+/** The pattern-piped regex filters — the ones whose piped value IS the pattern. */
+const REGEX_PATTERN_FILTERS = new Set([
+  "regex_test",
+  "regex_match",
+  "regex_match_all",
+  "regex_matches",
+  "regex_replace",
+  "regex_get_all_matches",
+  "regex_get_first_match",
+]);
+
+/** Split a `/body/flags` literal. Null when the value is not in that form. */
+function splitSlashRegex(value: string): { body: string; flags: string } | null {
+  const m = /^\/(.*)\/([a-zA-Z]*)$/s.exec(value);
+  return m ? { body: m[1]!, flags: m[2]! } : null;
+}
+
+/**
+ * Decode the un-filtered base of a value.
+ *
+ * `regexPiped` says the first filter in the chain treats this value as a regex
+ * pattern — which is the only context where `c.regex` is the right surface and,
+ * not coincidentally, the context where a bare `c.text` pattern is a live bug.
+ */
+function decodeBase(v: TaggedValue, regexPiped: boolean): Candidate | null {
+  const bare = { value: v.value, tag: v.tag, filters: [] };
+  const propose = (expr: Expr, built: Value | null, ...symbols: string[]): Candidate | null =>
+    built && deepEqual(built, bare) ? { expr, value: built, symbols } : null;
+
+  switch (v.tag) {
+    case "const": {
+      if (regexPiped) {
+        const parts = splitSlashRegex(v.value);
+        if (parts) {
+          const args = parts.flags ? [lit(parts.body), lit(parts.flags)] : [lit(parts.body)];
+          const built = attempt(() => c.regex(parts.body, parts.flags));
+          const candidate = propose(call("c.regex", ...args), built, "c");
+          if (candidate) return candidate;
+        }
+        // A bare pattern here is exactly what `withFilters` refuses to encode, so
+        // there is no readable form — the caller falls back and reports.
+        return null;
+      }
+      return propose(call("c.text", lit(v.value)), c.text(v.value), "c");
+    }
+    case "const:int": {
+      const n = Number(v.value);
+      return Number.isFinite(n) ? propose(call("c.int", lit(n)), c.int(n), "c") : null;
+    }
+    case "const:decimal": {
+      const n = Number(v.value);
+      return Number.isFinite(n) ? propose(call("c.decimal", lit(n)), c.decimal(n), "c") : null;
+    }
+    case "const:bool": {
+      const b = v.value === "true";
+      return propose(call("c.bool", lit(b)), c.bool(b), "c");
+    }
+    case "const:null":
+      return propose(call("c.null"), c.null(), "c");
+    case "const:array":
+    case "const:obj": {
+      const parsed = attempt(() => JSON.parse(v.value) as unknown);
+      if (parsed === null && v.value !== "null") return null;
+      const isArray = Array.isArray(parsed);
+      if (isArray !== (v.tag === "const:array")) return null;
+      const built = attempt(() =>
+        isArray ? c.array(parsed as never) : c.obj(parsed as never),
+      );
+      return propose(call(isArray ? "c.array" : "c.obj", lit(parsed)), built, "c");
+    }
+    case "var":
+      return propose(call("ref", lit(v.value)), ref(v.value), "ref");
+    case "input":
+      return propose(call("inp", lit(v.value)), inp(v.value), "inp");
+    case "auth":
+      return propose(call("auth", lit(v.value)), auth(v.value), "auth");
+    case "col":
+      return propose(call("col", lit(v.value)), col(v.value), "col");
+    case "output":
+      return propose(call("out", lit(v.value)), out(v.value), "out");
+    case "setting": {
+      // Built-in request/system vars carry a `$` prefix and are settings; a plain
+      // name is a workspace env var, whose idiomatic surface is `env(...)`. Both
+      // encode identically, so this is a readability split, not a semantic one.
+      const isEnvVar = !v.value.startsWith("$");
+      return isEnvVar
+        ? propose(call("env", lit(v.value)), env(v.value), "env")
+        : propose(call("setting", lit(v.value)), setting(v.value), "setting");
+    }
+    // `const:expr` is deliberately absent: `obj()` — the only authoring
+    // constructor for a dynamic object — always emits `const:expr2`, so an
+    // `obj({…})` call could never reproduce a `const:expr` tag. The engine
+    // normalizes expr2 → expr at evaluation time, but the stored bytes differ,
+    // and matching bytes is the contract. Such a value stays a `rawValue`.
+    case "const:expr2": {
+      // A dynamic object, stored as its rendered XanoScript expression string.
+      // `obj()` is the authoring constructor, so the inverse is a parse — scoped
+      // to exactly the grammar `obj()` emits (see `obj-expr.ts`).
+      //
+      // `propose` is the proof: it re-runs the real `obj()` over the parsed
+      // record and requires the re-rendered string to equal the stored one, so a
+      // parser that mis-reads an expression yields `null` and falls back to
+      // `rawValue` rather than emitting a plausible-but-different value.
+      const parsed = parseObjExpr(v.value);
+      if (!parsed) return null;
+      const built = attempt(() => objValue(parsed.built));
+      return propose(parsed.expr, built, ...parsed.symbols);
+    }
+    default:
+      // `env`, `response`, `trycatch`, `toolset` — engine-side tags with no
+      // authoring constructor.
+      return null;
+  }
+}
+
+/** `fl.<name>` when the name is a plain identifier, `fl["…"]` otherwise. */
+function filterCallee(name: string): string {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? `fl.${name}` : `fl[${JSON.stringify(name)}]`;
+}
+
+/**
+ * The verbatim form of one filter: the stored object, passed straight to
+ * `withFilters` (which accepts a `FilterXdo` as well as an `fl.*` result).
+ *
+ * The escape hatch for a filter the catalog cannot rebuild exactly — most often
+ * one the engine stored WITHOUT `disabled`, since `filter()` always writes it.
+ * Degrading the single filter keeps the rest of the value readable
+ * (`withFilters(ref("answers"), {…})`) instead of collapsing the whole thing to
+ * `rawValue`, which is what happened before.
+ */
+function literalFilter(stored: FilterXdo): Candidate {
+  return {
+    expr: lit(stored),
+    value: { value: "", tag: "const", filters: [] },
+    symbols: [],
+  };
+}
+
+/** Decode one stored filter to its `fl.*` call, or to a verbatim literal. */
+function decodeFilter(stored: FilterXdo): Candidate | null {
+  const known = (FILTER_NAMES as readonly string[]).includes(stored.name);
+  // `filter()` hard-codes `disabled: false`, so a filter stored without that key
+  // — or with it true — has no `fl.*` form and rides through verbatim instead.
+  if (!known || stored.disabled !== false || !Array.isArray(stored.arg)) {
+    return literalFilter(stored);
+  }
+
+  const args: Expr[] = [];
+  const symbols = new Set<string>(["fl"]);
+  const built: Value[] = [];
+  for (const arg of stored.arg) {
+    const candidate = decodeValueCandidate(arg);
+    if (!candidate) return literalFilter(stored);
+    args.push(candidate.expr);
+    built.push(candidate.value);
+    for (const symbol of candidate.symbols) symbols.add(symbol);
+  }
+
+  const factory = (fl as Record<string, (...a: Value[]) => FilterXdo>)[stored.name];
+  const encoded = factory ? attempt(() => factory(...built)) : null;
+  if (!encoded || !deepEqual(encoded, stored)) return literalFilter(stored);
+  return {
+    expr: call(filterCallee(stored.name), ...args),
+    // A filter is not a value; the caller only reads `expr`/`symbols` here.
+    value: { value: "", tag: "const", filters: [] },
+    symbols: [...symbols],
+  };
+}
+
+/** Build the readable form of a value, or null when none is provably exact. */
+function decodeValueCandidate(v: TaggedValue): Candidate | null {
+  const filters = Array.isArray(v.filters) ? v.filters : [];
+  const first = filters[0];
+  const base = decodeBase(v, first !== undefined && REGEX_PATTERN_FILTERS.has(first.name));
+  if (!base) return null;
+  if (filters.length === 0) return base;
+
+  const symbols = new Set<string>([...base.symbols, "withFilters"]);
+  const filterExprs: Expr[] = [];
+  const builtFilters: FilterXdo[] = [];
+  for (const stored of filters) {
+    const decoded = decodeFilter(stored);
+    if (!decoded) return null;
+    filterExprs.push(decoded.expr);
+    builtFilters.push(stored);
+    for (const symbol of decoded.symbols) symbols.add(symbol);
+  }
+
+  // `withFilters` can refuse the chain outright (the regex-pattern guard); when it
+  // does, there is no source form that both compiles and re-encodes to this value.
+  const built = attempt(() => withFilters(base.value, ...builtFilters));
+  if (!built || !deepEqual(built, v)) return null;
+  return {
+    expr: call("withFilters", base.expr, ...filterExprs),
+    value: built,
+    symbols: [...symbols],
+  };
+}
+
+/** The verbatim `rawValue({…})` form, exact for any stored value. */
+function fallbackExpr(v: TaggedValue): Expr {
+  const entries: Array<[string, Expr]> = [
+    ["value", lit(v.value)],
+    ["tag", lit(v.tag)],
+  ];
+  if (Array.isArray(v.filters) && v.filters.length > 0) entries.push(["filters", lit(v.filters)]);
+  return call("rawValue", obj(entries));
+}
+
+/**
+ * Decode a stored value to a source expression, recording the imports it needs
+ * and reporting anything that had to fall back to a verbatim literal.
+ */
+export function decodeValue(ctx: DecodeContext, v: TaggedValue): Expr {
+  const candidate = decodeValueCandidate(v);
+  if (candidate) {
+    for (const symbol of candidate.symbols) ctx.use(CORE_MODULE, symbol);
+    return candidate.expr;
+  }
+  ctx.use(CODEGEN_MODULE, "rawValue");
+  const known = (TAGS as readonly string[]).includes(v.tag);
+  ctx.problem(
+    "value-fallback",
+    `${known ? "tag" : "unknown tag"} ${v.tag} has no idiomatic form; emitted verbatim`,
+  );
+  return fallbackExpr(v);
+}

@@ -171,6 +171,36 @@ XANO_REFRESH_TOKEN=… XANO_CLIENT_ID=… npx sidestep deploy --bundle ws.json
 
 ---
 
+## Already have a Xano workspace? Pull it into TypeScript
+
+`codegen` runs the loop the other way: it reads a workspace and writes it back out as
+readable SideStep source — real `s.db.query(...)`, `f.email()`, typed defs — not a JSON dump.
+
+```bash
+sidestep workspace codegen ./xano      # your real workspace (the one your login is scoped to)
+sidestep sandbox codegen ./xano        # your sandbox
+sidestep ephemeral codegen pr-42 ./xano  # a named ephemeral (tenant first, path second)
+sidestep codegen ws.json ./xano        # a bundle already on disk — offline, no login
+```
+
+You get a tree shaped like a hand-written project: per-kind directories, a `_shared.ts`
+for tables and anything referenced from more than one file, a barrel `index.ts` you can
+deploy straight away, and a `README.md` listing anything that did not translate cleanly.
+Object identities (`guid`) are preserved, so cross-references stay intact. A statement
+this SDK does not model yet round-trips verbatim rather than breaking the pull.
+
+Then it checks its own work: the tree it just wrote is loaded, exported, and diffed
+against the workspace it came from. A mismatch names the object and fails the command
+(`--no-verify` opts out). So "it compiled" and "it means the same thing" are separate
+claims, and you get both.
+
+> ⚠️ **The generated tree is a scratch surface, and there is no `sidestep workspace deploy`.**
+> Regenerating overwrites it (a non-empty directory needs `--force`), it carries schema
+> only — no table rows — and deploying it is a *full replace* of the target. Pull from
+> your real workspace, edit, and `deploy` to a disposable ephemeral or sandbox.
+
+---
+
 ## The model: TypeScript in, real infrastructure out
 
 You author declarative def-objects, register them on one `Xano` instance, and SideStep
@@ -654,6 +684,14 @@ the workspace's existing (e.g. UI-configured) middleware untouched. But once you
 `{host}_{phase}` map is emitted — any host/phase you don't list is emitted empty, which **clears**
 that tier on deploy (the workspace tier has no per-key customize flag, so empty means "none").
 Declare every workspace-level chain you want to keep.
+
+**The same wholesale rule applies to `datasources`.** `workspaceConfig` also carries
+`defaults` (e.g. `{ db_primary_key: "uuid" }`), `use_custom_names`, `datasources`, and
+`datasource_live`. Each is emitted **only when you set it**, so omitting one leaves the
+tenant's existing value untouched — but once you set `datasources`, the full list is emitted
+and any datasource you don't list is dropped. Secrets and instance-assigned values (crypto
+material, integration keys, `domain_prefix`, usage counters) are never emitted; `codegen`
+reports them as deliberate omissions rather than round-trip failures.
 
 SideStep emits each tier's lists + the customize flags; it does not compute the fallback (the
 engine does). A `resultStrategy: "replace"` middleware attached `post` rewrites the response at
@@ -1183,6 +1221,14 @@ sidestep sandbox export                      # export the DEPLOYED sandbox works
 sidestep sandbox export --format multidoc --name backend               # …or the deployed sandbox as XanoScript → backend.xs
 sidestep sandbox export --format multidoc --path -                     # …stream the multidoc to stdout (deploy first)
 sidestep sandbox details                     # print the sandbox base URL + tenant details (pretty on a TTY, JSON when piped)
+
+sidestep workspace details                   # which workspace your token is scoped to (instance, id, name, guid)
+sidestep workspace export --out ws.json      # your REAL workspace as a JSON bundle
+sidestep workspace codegen ./xano            # …or as readable SideStep TypeScript (the pull direction)
+sidestep sandbox codegen ./xano              # same, from your sandbox
+sidestep ephemeral codegen <tenant> ./xano   # same, from an ephemeral (tenant first, path second)
+sidestep codegen ws.json ./xano              # …or from a bundle already on disk (offline, no auth)
+
 sidestep profile me                          # print the scoped user + instance base URL (pretty on a TTY, JSON when piped)
 sidestep logout                              # revoke the refresh token + clear the shared cache (--local for the project one)
 sidestep version                             # print the installed @sidestep/core version

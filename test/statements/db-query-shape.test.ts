@@ -113,8 +113,20 @@ describe("db.query (mvp:dbo_view) emit shape", () => {
     expect(enc.context).not.toHaveProperty("paging");
   });
 
-  it("no paging → return.list.paging disabled", () => {
+  it("a query that configures nothing emits a bare return, as Xano's editor does", () => {
+    // `mvp_return`'s `list` sub-block is optional, and the engine's own editor
+    // writes `{type:"list"}` for a query with no sort/paging/distinct. Emitting
+    // the block filled with defaults is behaviourally identical but is not the
+    // shape a pulled workspace carries — and round-tripping one is the point.
     const enc = encodeStatement(dbQuery({ table: note }));
+    expect((enc.context as { return: unknown }).return).toEqual({ type: "list" });
+  });
+
+  it("keeps the full list block whenever paging is authored at all", () => {
+    // The block is the engine's gate for simpleExternal (#66) and for the
+    // search/sort-only no-truncation rule (#41), so passing `paging` — even
+    // all-default — must not drop it.
+    const enc = encodeStatement(dbQuery({ table: note, paging: {} }));
     const paging = (enc.context as { return: { list: { paging: { enabled: boolean } } } })
       .return.list.paging;
     expect(paging.enabled).toBe(false);
@@ -422,8 +434,10 @@ describe("db.query (mvp:dbo_view) emit shape", () => {
   it("distinct rides return.list.distinct (default auto)", () => {
     const yes = ret(encodeStatement(dbQuery({ table: note, distinct: "yes" })));
     expect((yes as { list: { distinct: string } }).list.distinct).toBe("yes");
+    // `auto` is the engine default, so a query that sets nothing omits the whole
+    // block rather than restating it — same meaning, Xano's own shape.
     const auto = ret(encodeStatement(dbQuery({ table: note })));
-    expect((auto as { list: { distinct: string } }).list.distinct).toBe("auto");
+    expect(auto).toEqual({ type: "list" });
   });
 
   it("distinct on a stream query rides return.stream.distinct", () => {

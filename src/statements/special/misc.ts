@@ -17,14 +17,14 @@
  *   (1) array_map — the scalar `transform_value` path is byte-exact; the
  *       object-literal form (engine `transform_object` + `output_type:"object"`)
  *       is still UNSUPPORTED here (a feature gap, not a verification gap).
- *   (2) create_auth — input order (dbtable/extras/expiration/id) + empty context
- *       CONFIRMED by the schema transform; only the `dbtable` const tag is unverified.
+ *   (2) create_auth — input order is `id/dbtable/extras/expiration`, read from the
+ *       engine's own input schema; `extras`/`expiration` are `?=` optionals and
+ *       are omitted when unset. Only the `dbtable` const tag is unverified.
  *   (3) realtime_event — context.{channel,data,auth.{dbo_id,row_id}} CONFIRMED by
  *       the schema transform (auth_table via !map:dbo:constant → table guid).
  */
 import type { Statement, AsShapeBrand } from "../statement.js";
 import { encodeStatement, registerStatement } from "../statement.js";
-import { c } from "../../values/value.js";
 import type { Value } from "../../values/value.js";
 import { resolveRef } from "../../refs/guid.js";
 import type { ObjectRef } from "../../refs/guid.js";
@@ -109,18 +109,24 @@ export interface GetRawInputArgs {
 
 /**
  * `util.get_raw_input` / `util.get_input` — capture the raw request body
- * (`mvp:get_input`). Stored shape from the engine's get-raw-input format: empty context, and
- * TWO always-present `input[]` entries — `encoding` (default `"json"`) and
- * `exclude_middleware_modification` (note the full stored name; default `false`).
+ * (`mvp:get_input`). Empty context, and up to two `input[]` entries — `encoding`
+ * (`?=json`) and `exclude_middleware_modification` (note the full stored name;
+ * `?=false`). Both are optional in the engine schema and are written only when
+ * authored, matching what Xano's editor stores.
  */
 export function getRawInput(a: GetRawInputArgs = {}): Statement {
   return {
     name: "mvp:get_input",
     context: {},
     as: a.as ?? "",
+    // Both entries are `?=` optionals in the engine schema (`encoding?=json`,
+    // `exclude_middleware_modification?=false`) and Xano's editor writes neither
+    // for a plain body capture — so they are emitted only when authored.
     input: [
-      { name: "encoding", ...vf(a.encoding ?? c.text("json")) },
-      { name: "exclude_middleware_modification", ...vf(a.excludeMiddleware ?? c.bool(false)) },
+      ...(a.encoding === undefined ? [] : [{ name: "encoding", ...vf(a.encoding) }]),
+      ...(a.excludeMiddleware === undefined
+        ? []
+        : [{ name: "exclude_middleware_modification", ...vf(a.excludeMiddleware) }]),
     ],
   };
 }
@@ -187,11 +193,15 @@ export function createAuthToken<const As extends string = "">(
     name: "mvp:create_auth",
     context: {},
     as: a.as ?? "",
+    // Entry order and optionality come straight from the engine's own input
+    // schema — `id`, `dbtable`, `extras?={}`, `expiration?=86400`. The SDK
+    // previously wrote a different order with both optionals always present;
+    // Xano's editor writes this shape, so this is what a pulled workspace has.
     input: [
-      { name: "dbtable", value: resolveRef("dbo", a.table), tag: "const", filters: [] },
-      { name: "extras", ...vf(a.extras ?? c.obj({})) },
-      { name: "expiration", ...vf(a.expiration ?? c.int(86400)) },
       { name: "id", ...vf(a.id) },
+      { name: "dbtable", value: resolveRef("dbo", a.table), tag: "const", filters: [] },
+      ...(a.extras === undefined ? [] : [{ name: "extras", ...vf(a.extras) }]),
+      ...(a.expiration === undefined ? [] : [{ name: "expiration", ...vf(a.expiration) }]),
     ],
   } as unknown as Statement & AsShapeBrand<As, string>;
 }

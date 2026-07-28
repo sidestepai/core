@@ -105,6 +105,14 @@ function descriptor(type: string, options: FieldOptions): FieldDescriptor {
         `valid on text/int/decimal/enum/bool/email/json/date/timestamp.`,
     );
   }
+  // The two say opposite things about the same key, and silently honouring one
+  // would emit bytes the author did not ask for.
+  if (options.noDefault === true && options.default !== undefined) {
+    throw new Error(
+      `f: \`noDefault\` and \`default\` are mutually exclusive on "${type}" fields — ` +
+        `\`noDefault\` omits the key entirely, so there is no value to set.`,
+    );
+  }
   return { type, options };
 }
 

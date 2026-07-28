@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { encodeTable, encodeColumn, encodeIndex, tableColumns, tableIndexes, tableKind } from "../../src/kinds/table.js";
+import { decodeBundle } from "../../src/codegen/index.js";
 import { Xano } from "../../src/workspace/xano.js";
+import { table } from "../../src/kinds/table.js";
+import { f } from "../../src/fields/catalog.js";
+import { encodeTable, encodeColumn, encodeIndex, tableColumns, tableIndexes, tableKind } from "../../src/kinds/table.js";
 import "../../src/kinds/workspace-config.js"; // side-effect: register the "workspace" kind
 import { normalize, loadFixture } from "../conformance/harness.js";
 
@@ -218,7 +221,34 @@ describe("table kind", () => {
 
   it("auto-injects a uuid `id` when idType is 'uuid'", () => {
     const id = tableColumns({ schema: [], idType: "uuid" }).find((c) => c.name === "id");
-    expect(id).toEqual({ name: "id", type: "uuid", required: true });
+    expect(id).toMatchObject({ name: "id", type: "uuid", required: true });
+  });
+
+  it("encodes a uuid primary key with NO `default` key at all", () => {
+    // The engine persists no `default` for a uuid primary key — its value is
+    // engine-generated, so there is nothing for an author default to mean, and
+    // absent vs empty are different stored bytes. Writing `default: ""` here
+    // produced a shape the engine never writes, so the column could not
+    // round-trip through any catalog call and fell back to `rawField()`.
+    const encoded = encodeTable({ name: "t", schema: [], idType: "uuid" });
+    const id = encoded.schema.find((c) => c.name === "id")!;
+    expect(Object.hasOwn(id, "default")).toBe(false);
+  });
+
+  it("still encodes an int primary key WITH `default`", () => {
+    // The rule is specific to uuid keys — an int key carries `default: ""`.
+    const encoded = encodeTable({ name: "t", schema: [] });
+    const id = encoded.schema.find((c) => c.name === "id")!;
+    expect(id.default).toBe("");
+  });
+
+  it("still encodes an ordinary (non-key) uuid column WITH `default`", () => {
+    // Guards against widening this to "uuid columns have no default": a
+    // persisted engine record in the corpus carries a non-key uuid column with
+    // `default: ""`, so only the primary key differs.
+    const encoded = encodeTable({ name: "t", schema: [{ name: "ref", type: "uuid" }] });
+    const ref = encoded.schema.find((c) => c.name === "ref")!;
+    expect(ref.default).toBe("");
   });
 
   it("respects an author-declared `id` over idType", () => {
@@ -240,5 +270,44 @@ describe("table kind", () => {
   it("defaults use_xdo to false in the encoded table", () => {
     expect(encodeTable({ name: "post", schema: [] }).use_xdo).toBe(false);
     expect(encodeTable({ name: "post", schema: [], useXdo: true }).use_xdo).toBe(true);
+  });
+});
+
+/**
+ * A uuid PRIMARY KEY is the one column the engine persists with no `default`
+ * key at all — its value is engine-generated, so there is nothing for a default
+ * to mean, and absent vs empty are different stored bytes.
+ *
+ * Measured read-only across four engine-authored workspaces (114 columns): the
+ * single uuid primary key stores no `default`, while a persisted engine record
+ * in the fixture corpus carries an ordinary NON-key uuid column WITH
+ * `default: ""`. So the rule is the key, not the type — these tests pin both
+ * halves so it cannot be widened by accident.
+ */
+describe("uuid primary key — no `default` key persisted", () => {
+  it("round-trips a uuid-key table through encode → decode → encode", () => {
+    // The actual 1:1 claim. Before this, encodeField wrote `default: ""` here,
+    // which no real Xano workspace does.
+    const ws = new Xano()
+      .registerWorkspace({ name: "w" })
+      .registerTables([table({ name: "u", idType: "uuid", schema: { email: f.email() } })]);
+    const bundle = ws.export() as unknown as { payload: { dbo: Array<Record<string, unknown>> } };
+    const id = (bundle.payload.dbo[0]!.schema as Array<Record<string, unknown>>).find(
+      (c) => c.name === "id",
+    )!;
+    expect(Object.hasOwn(id, "default")).toBe(false);
+
+    const project = decodeBundle(bundle as never);
+    // No fallback: the column comes back as a readable catalog call, not a
+    // descriptor literal or a rawField() passthrough.
+    expect(project.report.renderCli()).toBe("");
+    const shared = project.files.find((x) => x.path === "_shared.ts")!.contents;
+    expect(shared).toContain("noDefault: true");
+    expect(shared).not.toContain("rawField");
+  });
+
+  it("rejects `noDefault` together with `default`", () => {
+    // On a type where `default` is otherwise legal, so this guard is what fires.
+    expect(() => f.text({ noDefault: true, default: "x" })).toThrow(/mutually exclusive/);
   });
 });

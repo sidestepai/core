@@ -6,6 +6,14 @@
  *                                            `Xano` registry (U12)
  *   sidestep lock <rename|prune|adopt> …     — xano.lock maintenance (see
  *                                            lock-commands.ts)
+ *   sidestep <workspace|sandbox> codegen <path>
+ *   sidestep ephemeral codegen <env> <path>
+ *   sidestep codegen <bundle.json> <path>    — decode a workspace back into
+ *                                            readable SideStep TypeScript (see
+ *                                            codegen-command.ts). The pull half
+ *                                            of the loop; the push half is
+ *                                            `deploy`, which targets a
+ *                                            DISPOSABLE env only.
  *
  * Dynamically imports the module's default export. A `.ts`/`.mts`/`.cts` entry
  * is loaded through `tsx` (the `tsImport` API) when it's installed, so you can
@@ -167,7 +175,7 @@ function parsePort(raw: string | undefined): number {
 }
 
 /** Nouns that take a verb as a second token (`sidestep <noun> <verb> …`). */
-const NOUN_COMMANDS = new Set(["sandbox", "profile", "ephemeral"]);
+const NOUN_COMMANDS = new Set(["sandbox", "profile", "ephemeral", "workspace"]);
 
 export function parseArgs(argv: string[]): ParsedArgs {
   const [command, ...afterCommand] = argv;
@@ -563,10 +571,20 @@ const HELP_GROUPS: ReadonlyArray<{ title: string; rows: ReadonlyArray<readonly [
     ],
   },
   {
+    title: "Pull",
+    rows: [
+      ["workspace codegen <path>", "Your real workspace → readable SideStep TypeScript"],
+      ["sandbox codegen <path>", "Your sandbox → readable SideStep TypeScript"],
+      ["ephemeral codegen <env> <path>", "An ephemeral env → readable SideStep TypeScript"],
+      ["codegen <bundle> <path>", "A bundle JSON file → readable SideStep TypeScript (offline)"],
+    ],
+  },
+  {
     title: "Environments",
     rows: [
-      ["ephemeral", "Manage ephemeral envs — list, get, delete, export, impersonate"],
-      ["sandbox", "Export or inspect your throwaway sandbox"],
+      ["workspace", "Read your real workspace — details, export, codegen"],
+      ["ephemeral", "Manage ephemeral envs — list, get, delete, export, codegen, impersonate"],
+      ["sandbox", "Export, inspect, or codegen your throwaway sandbox"],
     ],
   },
   {
@@ -732,16 +750,25 @@ export async function run(argv: string[]): Promise<void> {
       const { runSandboxExportCommand } = await import("./sandbox-export-command.js");
       return runSandboxExportCommand(args);
     }
+    if (args.subcommand === "codegen") {
+      const { runCodegenCommand } = await import("./codegen-command.js");
+      return runCodegenCommand(args, { kind: "sandbox" });
+    }
     throw new Error(
       `Unknown sandbox subcommand "${args.subcommand ?? ""}". ` +
-        `Did you mean \`sidestep sandbox export\` or \`sidestep sandbox details\`? (Deploy moved to \`sidestep deploy --dest sandbox\`.) ${HELP_HINT}`,
+        `Expected \`export\`, \`codegen <path>\`, or \`details\`. (Deploy moved to \`sidestep deploy --dest sandbox\`.) ${HELP_HINT}`,
     );
   }
   if (command === "workspace") {
-    throw new Error(
-      `\`sidestep workspace deploy\` was removed — use \`sidestep deploy\` ` +
-        `(\`--dest ephemeral\` by default, or \`--dest sandbox\`). ${HELP_HINT}`,
-    );
+    // Read-only by design: pull from the real workspace, deploy to a disposable
+    // one. See the module header for why there is no `workspace deploy`.
+    const { runWorkspaceCommand } = await import("./workspace-command.js");
+    return runWorkspaceCommand(args);
+  }
+  if (command === "codegen") {
+    // The offline form: decode a bundle already on disk, no auth, no network.
+    const { runCodegenCommand } = await import("./codegen-command.js");
+    return runCodegenCommand(args, { kind: "file" });
   }
   if (command === "profile") {
     if (args.subcommand !== "me") {

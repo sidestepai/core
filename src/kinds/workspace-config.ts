@@ -46,6 +46,27 @@ export interface WorkspaceMiddlewareXdo {
   tool_post: StackItemXdo[];
 }
 
+/**
+ * One non-live datasource defined on the workspace. `label` is the datasource
+ * name queries target; `color` is the editor's tint for it.
+ */
+export interface WorkspaceDatasourceDef {
+  label: string;
+  color?: string;
+}
+
+/** Editor presentation for the `live` datasource, which has no `datasources[]` entry. */
+export interface WorkspaceDatasourceLiveDef {
+  color?: string;
+  show_banner?: boolean;
+}
+
+/** Workspace-wide defaults applied when creating new objects. */
+export interface WorkspaceDefaultsDef {
+  /** Primary-key type new tables get when they don't declare one. */
+  db_primary_key?: "int" | "uuid";
+}
+
 export interface WorkspaceConfigDef {
   name: string;
   description?: string;
@@ -106,6 +127,24 @@ export interface WorkspaceConfigDef {
    */
   env?: Record<string, string>;
   settings?: Record<string, unknown>;
+  /**
+   * Allow tables to carry custom SQL names distinct from their workspace names.
+   * Emitted only when set — omit to leave the tenant's current setting alone.
+   */
+  use_custom_names?: boolean;
+  /**
+   * Workspace-wide defaults for newly created objects. Emitted only when set,
+   * so omitting it leaves the tenant's configured defaults untouched.
+   */
+  defaults?: WorkspaceDefaultsDef;
+  /**
+   * The workspace's non-live datasources. WHOLESALE, not partial: once set, the
+   * full list is emitted and any datasource you don't list is dropped from the
+   * tenant. Omit the field to leave the existing datasources alone.
+   */
+  datasources?: WorkspaceDatasourceDef[];
+  /** Editor presentation for the `live` datasource. Emitted only when set. */
+  datasource_live?: WorkspaceDatasourceLiveDef;
 }
 
 /** One persisted workspace env var (engine `env[]` element). */
@@ -129,6 +168,17 @@ export interface WorkspaceConfigXdo {
   history?: WorkspaceHistoryXdo;
   env: WorkspaceEnvXdo[];
   settings: Record<string, unknown>;
+  /**
+   * The four blocks below are `?=`-optional in the engine's workspace schema and
+   * are emitted **by presence only** — written when the author sets them, absent
+   * when they don't. Comparing against a default instead would make the lean
+   * shape Xano's own editor persists and the explicit shape an author asks for
+   * collapse to the same bytes, and only one of them would round-trip.
+   */
+  use_custom_names?: boolean;
+  defaults?: WorkspaceDefaultsDef;
+  datasources?: WorkspaceDatasourceDef[];
+  datasource_live?: WorkspaceDatasourceLiveDef;
 }
 
 /**
@@ -169,6 +219,15 @@ export function encodeWorkspaceConfig(def: WorkspaceConfigDef): WorkspaceConfigX
     ...(def.history !== undefined ? { history: buildWorkspaceHistory(def.history) } : {}),
     env: def.env ? encodeWorkspaceEnv(def.env) : [],
     settings: def.settings ?? {},
+    // Presence-preserving: each key is written only when the author set it, and
+    // each nested optional likewise, so a pulled workspace re-exports to its own
+    // bytes whether or not the engine happened to store the `?=` default.
+    ...(def.use_custom_names !== undefined ? { use_custom_names: def.use_custom_names } : {}),
+    ...(def.defaults !== undefined ? { defaults: { ...def.defaults } } : {}),
+    ...(def.datasources !== undefined
+      ? { datasources: def.datasources.map((d) => ({ ...d })) }
+      : {}),
+    ...(def.datasource_live !== undefined ? { datasource_live: { ...def.datasource_live } } : {}),
   };
 }
 

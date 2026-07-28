@@ -3,7 +3,7 @@
     {
       "as": "rows",
       "name": "mvp:dbo_view",
-      "_xsid": "f:26c42f54-03a7-44bf-986d-1481ac4fc4d1",
+      "_xsid": "f:53b04bb3-cb8c-43ce-8820-7a3be686dfba",
       "addon": [],
       "input": [],
       "mocks": {},
@@ -17,18 +17,6 @@
           "id": "9ab739e80990643f17d26ae07bb76835"
         },
         "return": {
-          "list": {
-            "sort": [],
-            "paging": {
-              "page": 1,
-              "offset": 0,
-              "totals": false,
-              "enabled": false,
-              "metadata": true,
-              "per_page": 25
-            },
-            "distinct": "auto"
-          },
           "type": "list"
         }
       },
@@ -52,7 +40,7 @@
       "mode": "",
       "name": "query",
       "type": "text",
-      "_xsid": "i:a3356ab9-e1ec-4289-9e78-d8707d646c7d",
+      "_xsid": "i:85963fcb-e705-4382-8c21-4609efd1bdb3",
       "merge": false,
       "style": {
         "type": "single"
@@ -89,7 +77,7 @@
     {
       "tag": "var",
       "name": "",
-      "_xsid": "r:13e5e1bc-3717-48f3-831b-4244b551e716",
+      "_xsid": "r:000a659c-1c11-4201-b29f-f378b1ff7ada",
       "value": "rows",
       "filters": [],
       "disabled": false

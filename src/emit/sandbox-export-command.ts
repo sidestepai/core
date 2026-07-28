@@ -27,7 +27,7 @@ import { join, resolve } from "node:path";
 import type { ParsedArgs } from "./cli.js";
 import { getAccessToken, type ResolvedAuth } from "../auth/token.js";
 import { sandboxBaseUrl } from "./sandbox-details-command.js";
-import { decodeWorkspaceArchive } from "../validate/archive.js";
+import { exportWorkspaceBundle, type ExportedBundle } from "../deploy/workspace-export.js";
 import { success, step } from "./ui.js";
 
 /** Bound each sandbox call — the multidoc body and workspace archive can both be large. */
@@ -129,9 +129,12 @@ async function getJson(url: string, auth: ResolvedAuth, label: string): Promise<
  * local package:
  *   1. `sandbox/me` → the tenant (its base URL is the tenant-scoped meta origin).
  *   2. the tenant's `workspace` list → the sandbox's single workspace id.
- *   3. `workspace/{id}/export` → the gzipped archive, decoded to the bundle JSON.
+ *   3. `workspace/{id}/export` → the gzipped archive, decoded to the bundle.
+ *
+ * Returns the parsed bundle so `sandbox codegen` can decode it directly rather
+ * than round-tripping it through JSON text.
  */
-async function fetchSandboxWorkspaceJson(auth: ResolvedAuth): Promise<string> {
+export async function fetchSandboxBundle(auth: ResolvedAuth): Promise<ExportedBundle> {
   const tenant = (await getJson(`${auth.instance}${SANDBOX_ME_PATH}`, auth, "sandbox/me")) as Record<string, unknown>;
   // The tenant is served under its own base (a `/tenant/<name>` path or its own
   // domain); APPEND routes to it so that path prefix survives.
@@ -142,22 +145,20 @@ async function fetchSandboxWorkspaceJson(auth: ResolvedAuth): Promise<string> {
   const workspaceId = workspaces.find((w) => typeof w.id === "number")?.id as number | undefined;
   if (workspaceId === undefined) {
     throw new Error(
-      `Your sandbox has no workspace to export yet. Run \`sidestep sandbox deploy\` first, then export.`,
+      `Your sandbox has no workspace to export yet. Run \`sidestep deploy --dest sandbox\` first, then export.`,
     );
   }
 
-  const res = await fetch(`${base}/api:meta/workspace/${workspaceId}/export`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${auth.access_token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ branch: "", password: "" }),
-    signal: AbortSignal.timeout(SANDBOX_TIMEOUT_MS),
+  return exportWorkspaceBundle(auth, {
+    base,
+    workspaceId,
+    label: "sandbox export (workspace export)",
   });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`sandbox export (workspace export) failed (${res.status} ${res.statusText}):\n${text}`);
-  }
-  const bundle = decodeWorkspaceArchive(new Uint8Array(await res.arrayBuffer()));
-  return JSON.stringify(bundle, null, 2);
+}
+
+/** The sandbox workspace as pretty-printed bundle JSON. */
+async function fetchSandboxWorkspaceJson(auth: ResolvedAuth): Promise<string> {
+  return JSON.stringify(await fetchSandboxBundle(auth), null, 2);
 }
 
 /**
