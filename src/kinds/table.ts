@@ -340,7 +340,11 @@ function toColumns(schema: SchemaDef): ColumnDef[] {
  */
 function systemColumns(idType: TableDef["idType"] = "int"): ColumnDef[] {
   return [
-    { name: "id", type: idType, required: true },
+    // A uuid primary key persists NO `default` key — the engine stores it that
+    // way because the value is engine-generated. An `int` key and an ordinary
+    // (non-key) uuid column both carry `default: ""`, so this is specific to the
+    // uuid key. See {@link FieldOptions.noDefault}.
+    { name: "id", type: idType, required: true, ...(idType === "uuid" ? { noDefault: true } : {}) },
     { name: "created_at", type: "epochms", default: "now", access: "private" },
   ];
 }

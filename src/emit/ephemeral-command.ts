@@ -32,7 +32,7 @@ import {
 import { openBrowser } from "../auth/loopback.js";
 import { readEphemeralState, getEnvironment, clearEnvironment } from "../deploy/ephemeral-state.js";
 import { resolveScopedWorkspaceId } from "../deploy/workspace.js";
-import { decodeWorkspaceArchive } from "../validate/archive.js";
+import { exportWorkspaceBundle, type ExportedBundle } from "../deploy/workspace-export.js";
 import { resolveOutputTarget } from "./sandbox-export-command.js";
 import { step, success, warn, detail, info, formatFields, formatExpiration, stdoutStyle, style } from "./ui.js";
 
@@ -45,7 +45,7 @@ const TIMEOUT_MS = 120_000;
  * 1 404s ("Invalid workspace") wherever the primary workspace isn't id 1 (mirrors
  * `deploy`'s `resolveParentWorkspaceId`).
  */
-async function parentWorkspace(args: ParsedArgs, auth: ResolvedAuth): Promise<number> {
+export async function parentWorkspace(args: ParsedArgs, auth: ResolvedAuth): Promise<number> {
   return args.workspace ?? (await resolveScopedWorkspaceId(auth));
 }
 
@@ -62,7 +62,7 @@ function goneError(name: string, clearedState: boolean): Error {
  * gate. Returns the live summary, or throws the actionable message after clearing
  * any matching local record. Never touches the env base URL for a dead tenant.
  */
-async function resolveLive(
+export async function resolveLive(
   auth: ResolvedAuth,
   parentWorkspaceId: number,
   name: string,
@@ -94,10 +94,16 @@ export async function runEphemeralCommand(args: ParsedArgs): Promise<void> {
       return runExport(args);
     case "impersonate":
       return runImpersonate(args);
+    case "codegen": {
+      // Lazily imported so the codegen layer is not pulled in by `list`/`get`.
+      const { runCodegenCommand } = await import("./codegen-command.js");
+      return runCodegenCommand(args, { kind: "ephemeral" });
+    }
     default:
       throw new Error(
         `Unknown ephemeral subcommand "${args.subcommand ?? ""}". ` +
-          `Expected \`list\`, \`get <name>\`, \`delete <name>\`, \`export <name>\`, or \`impersonate <name>\`.`,
+          `Expected \`list\`, \`get <name>\`, \`delete <name>\`, \`export <name>\`, ` +
+          `\`codegen <name> <path>\`, or \`impersonate <name>\`.`,
       );
   }
 }
@@ -218,26 +224,23 @@ async function fetchEphemeralMultidoc(auth: ResolvedAuth, parentWorkspaceId: num
 }
 
 /**
- * Export the ephemeral's workspace as the JSON bundle: the env workspace id is
- * always 1, so `POST {base_url}/api:meta/workspace/1/export` → decode archive.
+ * Export the ephemeral's workspace as a bundle: the env workspace id is always 1,
+ * so the shared workspace-export call runs against the env's own base URL.
  * Guards the base-URL call so an env that dies after the existence gate surfaces
  * the same expired/gone message rather than a raw transport error.
  */
-async function fetchEphemeralJson(auth: ResolvedAuth, summary: EphemeralSummary, name: string): Promise<string> {
+export async function fetchEphemeralBundle(
+  auth: ResolvedAuth,
+  summary: EphemeralSummary,
+  name: string,
+): Promise<ExportedBundle> {
   if (summary.url === undefined) throw goneError(name, false);
   try {
-    const res = await fetch(`${summary.url.replace(/\/$/, "")}/api:meta/workspace/1/export`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${auth.access_token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ branch: "", password: "" }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+    return await exportWorkspaceBundle(auth, {
+      base: summary.url,
+      workspaceId: 1,
+      label: "ephemeral export (workspace export)",
     });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`ephemeral export (workspace export) failed (${res.status} ${res.statusText}):\n${text}`);
-    }
-    const bundle = decodeWorkspaceArchive(new Uint8Array(await res.arrayBuffer()));
-    return JSON.stringify(bundle, null, 2);
   } catch (err) {
     // The env can vanish between the existence gate and this call — map a dead
     // host to the same actionable message rather than a raw DNS/connection error.
@@ -245,6 +248,11 @@ async function fetchEphemeralJson(auth: ResolvedAuth, summary: EphemeralSummary,
     detail(err instanceof Error ? err.message : String(err));
     throw goneError(name, false);
   }
+}
+
+/** The ephemeral's workspace as pretty-printed bundle JSON. */
+async function fetchEphemeralJson(auth: ResolvedAuth, summary: EphemeralSummary, name: string): Promise<string> {
+  return JSON.stringify(await fetchEphemeralBundle(auth, summary, name), null, 2);
 }
 
 // ── impersonate ───────────────────────────────────────────────────────────

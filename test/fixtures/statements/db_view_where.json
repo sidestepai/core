@@ -1,40 +1,44 @@
 {
-  "_derived_from": "DERIVED, not a captured golden. Shape source: cloud-client extensions/MVP/includes/xano/xs/type/mvp/{Context,Search,Expression,Statement,ReturnSection,Sort}.php + statement/mvp/View.php + helper/MVP.php::convertContextToConfig. Behavior verified by the live cross-user repro (issue #41). See docs/plans/2026-07-19-003-fix-db-query-where-sort-operational-plan.md.",
+  "_derived_from": "DERIVED, not a captured golden. Shape source: cloud-client extensions/MVP/includes/xano/xs/type/mvp/{Context,Search,Expression,Statement,ReturnSection,Sort}.php + statement/mvp/View.php + helper/MVP.php::convertContextToConfig. Behavior verified by the live cross-user repro (issue #41). See docs/plans/2026-07-19-003-fix-db-query-where-sort-operational-plan.md. UPDATED 2026-07-28: the `list` sub-block is OPTIONAL in mvp_return (xs/type/mvp/ReturnSection.php), and the engine's editor writes a bare {type:\"list\"} for a query configuring no sort/paging/distinct \u2014 confirmed against a real pulled workspace. The previously-modeled filled block was behaviourally identical but not the shape Xano stores.",
   "name": "mvp:dbo_view",
   "as": "rows",
   "input": [],
   "addon": [],
-  "output": { "customize": false, "filters": [], "items": [] },
+  "output": {
+    "customize": false,
+    "filters": [],
+    "items": []
+  },
   "context": {
-    "dbo": { "id": "PLACEHOLDER" },
+    "dbo": {
+      "id": "PLACEHOLDER"
+    },
     "search": {
       "expression": [
         {
           "type": "statement",
           "or": false,
-          "group": { "expression": [] },
+          "group": {
+            "expression": []
+          },
           "statement": {
             "op": "=",
-            "left": { "operand": "user_id", "tag": "col", "filters": [] },
-            "right": { "operand": "id", "tag": "auth", "filters": [] }
+            "left": {
+              "operand": "user_id",
+              "tag": "col",
+              "filters": []
+            },
+            "right": {
+              "operand": "id",
+              "tag": "auth",
+              "filters": []
+            }
           }
         }
       ]
     },
     "return": {
-      "type": "list",
-      "list": {
-        "distinct": "auto",
-        "sort": [],
-        "paging": {
-          "enabled": false,
-          "page": 1,
-          "offset": 0,
-          "per_page": 25,
-          "metadata": true,
-          "totals": false
-        }
-      }
+      "type": "list"
     }
   }
 }

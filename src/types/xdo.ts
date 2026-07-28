@@ -78,7 +78,11 @@ export interface FieldXdo {
   _xsid: string;
   description?: string;
   nullable: boolean;
-  default: string;
+  /**
+   * Absent for types that persist no default (`uuid`) — the engine drops the
+   * key rather than storing it empty, and the two are different stored bytes.
+   */
+  default?: string;
   merge: boolean;
   hidden: unknown[];
   override: unknown[];

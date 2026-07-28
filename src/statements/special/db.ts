@@ -377,18 +377,47 @@ function assertNoAddonShadow(table: ObjectRef, addons?: readonly AddonSpec[]): v
   }
 }
 
-/** Assemble a `!map:dbo` statement: table ref → `context.dbo.id` guid + rich envelope. */
+/**
+ * The `context.dbo` binding: the table's guid, plus the SQL alias when one is set.
+ *
+ * `as` is a **SQL alias**, not the table's SQL name. The engine derives the real
+ * table name from the table itself (its own SQL-name setting) and then appends
+ * ` as <alias>` to it, producing the ordinary `FROM users as u` — the alias never
+ * replaces the name. It is also dropped when it equals the table name, so an
+ * alias that merely restates the name is a no-op.
+ *
+ * Because it is a per-statement alias, duplicates across the workspace are
+ * normal SQL and are not an error — two unrelated queries may each alias their
+ * table `u`. Alias collisions matter only among the joins of a single statement,
+ * where the engine keys the `join` block by alias name; the addon path already
+ * guards that (see {@link assertNoAddonShadow}).
+ *
+ * Xano does **not** write `as` uniformly. Measured read-only across four
+ * engine-authored workspaces: `dbo_getby` appears 4 times with it and 9 times
+ * without, and `dbo_add` 8 times without it entirely. So it is per-statement
+ * data, not a function of the table — emitting it unconditionally would diverge
+ * from the majority exactly as omitting it diverges from the rest. It is
+ * authored instead, and absent unless asked for.
+ */
+function dboBinding(table: ObjectRef, tableAlias?: string): Record<string, unknown> {
+  const dbo: Record<string, unknown> = { id: resolveRef("dbo", table) };
+  if (tableAlias !== undefined) dbo.as = tableAlias;
+  return dbo;
+}
+
+/** Assemble a `!map:dbo` statement: table ref → `context.dbo` + rich envelope. */
 function dboStatement(
   name: string,
   table: ObjectRef,
   as: string | undefined,
   input: RichInput[],
   opts: EnvelopeOpts = {},
+  tableAlias?: string,
 ): Statement {
   assertNoAddonShadow(table, opts.addon);
   return {
     name,
-    context: { dbo: { id: resolveRef("dbo", table) } },
+    context: { dbo: dboBinding(table, tableAlias) },
     as: as ?? "",
     input,
     ...envelope(opts),
@@ -401,6 +430,13 @@ export interface DbGetArgs<
   Cols extends readonly ColsOf<T>[] = readonly ColsOf<T>[],
   A extends readonly AddonSpec[] = readonly AddonSpec[],
 > {
+  /**
+   * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
+   * Absent unless set — Xano writes it on some statements and not others, so it
+   * is authored rather than derived (see {@link dboBinding}).
+   */
+  tableAlias?: string;
+
   /** The target table (def handle or name). */
   table: T;
   /** The lookup field (defaults to the primary key `id`). */
@@ -453,13 +489,24 @@ export function dbGet<
     [
       entry("field_name", c.text(args.fieldName ?? "id")),
       entry("field_value", args.fieldValue),
-      entry("lock", c.bool(args.lock ?? false)),
+      // `lock?=false` in the engine schema, and Xano's own editor omits the entry
+      // when it is not set. Writing it unconditionally is a divergence, not a
+      // clarification — so it is written only when the author asks for a lock.
+      ...(args.lock === undefined ? [] : [entry("lock", c.bool(args.lock))]),
     ],
     { output: args.output, addon: args.addon },
+    args.tableAlias,
   ) as DbResult<As, WithAddons<RowShapeOf<T, Cols>, A> | null>;
 }
 
 export interface DbDelArgs<T extends ObjectRef = ObjectRef> {
+  /**
+   * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
+   * Absent unless set — Xano writes it on some statements and not others, so it
+   * is authored rather than derived (see {@link dboBinding}).
+   */
+  tableAlias?: string;
+
   table: T;
   fieldName?: ColsOf<T>;
   fieldValue: Value;
@@ -479,13 +526,24 @@ export interface DbDelArgs<T extends ObjectRef = ObjectRef> {
  * `return $inst->toArray()` and so bind the full row.)
  */
 export function dbDel<T extends ObjectRef>(args: DbDelArgs<T>): Statement {
-  return dboStatement("mvp:dbo_delby", args.table, args.as, [
-    entry("field_name", c.text(args.fieldName ?? "id")),
-    entry("field_value", args.fieldValue),
-  ]);
+  return dboStatement(
+    "mvp:dbo_delby",
+    args.table,
+    args.as,
+    [entry("field_name", c.text(args.fieldName ?? "id")), entry("field_value", args.fieldValue)],
+    {},
+    args.tableAlias,
+  );
 }
 
 export interface DbHasArgs<T extends ObjectRef = ObjectRef, As extends string = string> {
+  /**
+   * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
+   * Absent unless set — Xano writes it on some statements and not others, so it
+   * is authored rather than derived (see {@link dboBinding}).
+   */
+  tableAlias?: string;
+
   table: T;
   fieldName?: ColsOf<T>;
   fieldValue: Value;
@@ -500,10 +558,14 @@ export interface DbHasArgs<T extends ObjectRef = ObjectRef, As extends string = 
 export function dbHas<T extends ObjectRef, const As extends string = "">(
   args: DbHasArgs<T, As>,
 ): DbResult<As, boolean> {
-  return dboStatement("mvp:dbo_hasby", args.table, args.as, [
-    entry("field_name", c.text(args.fieldName ?? "id")),
-    entry("field_value", args.fieldValue),
-  ]) as DbResult<As, boolean>;
+  return dboStatement(
+    "mvp:dbo_hasby",
+    args.table,
+    args.as,
+    [entry("field_name", c.text(args.fieldName ?? "id")), entry("field_value", args.fieldValue)],
+    {},
+    args.tableAlias,
+  ) as DbResult<As, boolean>;
 }
 
 export interface DbPatchArgs<
@@ -511,6 +573,13 @@ export interface DbPatchArgs<
   As extends string = string,
   A extends readonly AddonSpec[] = readonly AddonSpec[],
 > {
+  /**
+   * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
+   * Absent unless set — Xano writes it on some statements and not others, so it
+   * is authored rather than derived (see {@link dboBinding}).
+   */
+  tableAlias?: string;
+
   table: T;
   fieldName?: ColsOf<T>;
   fieldValue: Value;
@@ -544,10 +613,18 @@ export function dbPatch<
       entry("item", args.data),
     ],
     { addon: args.addon },
+    args.tableAlias,
   ) as DbResult<As, WithAddons<FullRowShapeOf<T>, A>>;
 }
 
 export interface DbTruncateArgs {
+  /**
+   * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
+   * Absent unless set — Xano writes it on some statements and not others, so it
+   * is authored rather than derived (see {@link dboBinding}).
+   */
+  tableAlias?: string;
+
   table: ObjectRef;
   /** Reset auto-increment counters. */
   reset?: boolean;
@@ -556,9 +633,15 @@ export interface DbTruncateArgs {
 
 /** `db.truncate <table>` — empty a table (`mvp:dbo_truncate`). */
 export function dbTruncate(args: DbTruncateArgs): Statement {
-  return dboStatement("mvp:dbo_truncate", args.table, args.as, [
-    entry("reset", c.bool(args.reset ?? false)),
-  ]);
+  // `reset?=false` — omitted when unset, matching the engine schema and editor.
+  return dboStatement(
+    "mvp:dbo_truncate",
+    args.table,
+    args.as,
+    args.reset === undefined ? [] : [entry("reset", c.bool(args.reset))],
+    {},
+    args.tableAlias,
+  );
 }
 
 /** One field of a row write: a column name, its value, and whether to skip it. */
@@ -675,6 +758,13 @@ export interface DbAddArgs<
   As extends string = string,
   A extends readonly AddonSpec[] = readonly AddonSpec[],
 > {
+  /**
+   * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
+   * Absent unless set — Xano writes it on some statements and not others, so it
+   * is authored rather than derived (see {@link dboBinding}).
+   */
+  tableAlias?: string;
+
   table: T;
   /** The row to insert as explicit entries (exact control over each field + `ignore`). */
   data?: DbField[];
@@ -705,6 +795,7 @@ export function dbAdd<
     args.as,
     rowEntries(data),
     { addon: args.addon },
+    args.tableAlias,
   ) as DbResult<As, WithAddons<FullRowShapeOf<T>, A>>;
 }
 
@@ -713,6 +804,13 @@ export interface DbEditArgs<
   As extends string = string,
   A extends readonly AddonSpec[] = readonly AddonSpec[],
 > {
+  /**
+   * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
+   * Absent unless set — Xano writes it on some statements and not others, so it
+   * is authored rather than derived (see {@link dboBinding}).
+   */
+  tableAlias?: string;
+
   table: T;
   fieldName?: ColsOf<T>;
   fieldValue: Value;
@@ -787,6 +885,12 @@ export interface DbAddOrEditArgs<T extends ObjectRef = ObjectRef, As extends str
   /** Capture the upserted row into this stack variable. Captured literally so
    * `InferResponse` can trace a `ref` back to this statement. */
   as?: As;
+  /**
+   * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
+   * Absent unless set — Xano writes it on some statements and not others, so it
+   * is authored rather than derived (see {@link dboBinding}).
+   */
+  tableAlias?: string;
 }
 
 /** `db.add_or_edit <table>` — upsert a record by a field match (`mvp:dbo_addoreditby`).
@@ -795,7 +899,6 @@ export interface DbAddOrEditArgs<T extends ObjectRef = ObjectRef, As extends str
 export function dbAddOrEdit<T extends ObjectRef, const As extends string = "">(
   args: DbAddOrEditArgs<T, As>,
 ): DbResult<As, FullRowShapeOf<T>> {
-  const tableName = typeof args.table === "string" ? args.table : args.table.name;
   const data = args.row !== undefined ? expandRow(args.table, args.row, "edit") : (args.data ?? []);
   const input: Array<LeanInput & { ignore?: boolean }> = [
     leanInput("field_name", c.text(args.fieldName ?? "id")),
@@ -804,13 +907,20 @@ export function dbAddOrEdit<T extends ObjectRef, const As extends string = "">(
   ];
   return {
     name: "mvp:dbo_addoreditby",
-    context: { dbo: { id: resolveRef("dbo", args.table), as: tableName } },
+    context: { dbo: dboBinding(args.table, args.tableAlias) },
     as: args.as ?? "",
     input,
   } as DbResult<As, FullRowShapeOf<T>>;
 }
 
 export interface DbSchemaArgs {
+  /**
+   * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
+   * Absent unless set — Xano writes it on some statements and not others, so it
+   * is authored rather than derived (see {@link dboBinding}).
+   */
+  tableAlias?: string;
+
   table: ObjectRef;
   /** Dot-path into the schema to read. */
   path: Value;
@@ -819,7 +929,14 @@ export interface DbSchemaArgs {
 
 /** `db.schema <table>` — read a table's schema (`mvp:dbo_get_schema`). */
 export function dbSchema(args: DbSchemaArgs): Statement {
-  return dboStatement("mvp:dbo_get_schema", args.table, args.as, [entry("path", args.path)]);
+  return dboStatement(
+    "mvp:dbo_get_schema",
+    args.table,
+    args.as,
+    [entry("path", args.path)],
+    {},
+    args.tableAlias,
+  );
 }
 
 /**
@@ -878,6 +995,13 @@ export function dbDirectQuery(args: DbDirectQueryArgs): Statement {
 // ---------------------------------------------------------------------------
 
 export interface DbBulkAddArgs {
+  /**
+   * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
+   * Absent unless set — Xano writes it on some statements and not others, so it
+   * is authored rather than derived (see {@link dboBinding}).
+   */
+  tableAlias?: string;
+
   table: ObjectRef;
   /** The rows to insert (an array value). */
   items: Value;
@@ -897,19 +1021,30 @@ function bulkStatement(
   table: ObjectRef,
   as: string | undefined,
   input: LeanInput[],
+  tableAlias?: string,
 ): Statement {
-  return { name, context: { dbo: { id: resolveRef("dbo", table) } }, as: as ?? "", input };
+  return { name, context: { dbo: dboBinding(table, tableAlias) }, as: as ?? "", input };
 }
 
 /** `db.bulk.add <table>` — insert many rows (`mvp:dbo_bulkadd`). */
 export function dbBulkAdd(args: DbBulkAddArgs): Statement {
+  // `allow_id_field?=false` — omitted when unset (engine schema + editor).
   return bulkStatement("mvp:dbo_bulkadd", args.table, args.as, [
-    leanInput("allow_id_field", c.bool(args.allowIdField ?? false)),
+    ...(args.allowIdField === undefined
+      ? []
+      : [leanInput("allow_id_field", c.bool(args.allowIdField))]),
     leanInput("items", args.items),
-  ]);
+  ], args.tableAlias);
 }
 
 export interface DbBulkDeleteArgs<As extends string = string> {
+  /**
+   * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
+   * Absent unless set — Xano writes it on some statements and not others, so it
+   * is authored rather than derived (see {@link dboBinding}).
+   */
+  tableAlias?: string;
+
   table: ObjectRef;
   /**
    * Filter selecting which rows to delete — the same `where` surface as
@@ -939,7 +1074,7 @@ export interface DbBulkDeleteArgs<As extends string = string> {
 export function dbBulkDelete<const As extends string = "">(
   args: DbBulkDeleteArgs<As>,
 ): DbResult<As, number> {
-  const context: Record<string, unknown> = { dbo: { id: resolveRef("dbo", args.table) } };
+  const context: Record<string, unknown> = { dbo: dboBinding(args.table, args.tableAlias) };
   const search = encodeSearch(args.where);
   if (search !== undefined) context.search = search;
   // Double-cast is compiler-forced, not sloppiness: this literal's `context`
@@ -953,6 +1088,13 @@ export function dbBulkDelete<const As extends string = "">(
 }
 
 export interface DbBulkWriteArgs<T extends ObjectRef = ObjectRef, As extends string = string> {
+  /**
+   * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
+   * Absent unless set — Xano writes it on some statements and not others, so it
+   * is authored rather than derived (see {@link dboBinding}).
+   */
+  tableAlias?: string;
+
   table: T;
   /** The rows to write (an array value), each carrying its key. */
   items: Value;
@@ -967,9 +1109,13 @@ export interface DbBulkWriteArgs<T extends ObjectRef = ObjectRef, As extends str
 export function dbBulkPatch<T extends ObjectRef, const As extends string = "">(
   args: DbBulkWriteArgs<T, As>,
 ): DbResult<As, FullRowShapeOf<T>[]> {
-  return bulkStatement("mvp:dbo_bulkpatch", args.table, args.as, [
-    leanInput("items", args.items),
-  ]) as DbResult<As, FullRowShapeOf<T>[]>;
+  return bulkStatement(
+    "mvp:dbo_bulkpatch",
+    args.table,
+    args.as,
+    [leanInput("items", args.items)],
+    args.tableAlias,
+  ) as DbResult<As, FullRowShapeOf<T>[]>;
 }
 
 /**
@@ -982,7 +1128,13 @@ export function dbBulkPatch<T extends ObjectRef, const As extends string = "">(
  * `bulk.patch` (row list) and `bulk.delete` (count) carry a static output schema.
  */
 export function dbBulkUpdate(args: DbBulkWriteArgs): Statement {
-  return bulkStatement("mvp:dbo_bulkupdate", args.table, args.as, [leanInput("items", args.items)]);
+  return bulkStatement(
+    "mvp:dbo_bulkupdate",
+    args.table,
+    args.as,
+    [leanInput("items", args.items)],
+    args.tableAlias,
+  );
 }
 
 /**
@@ -1220,6 +1372,17 @@ function encodeReturn(
     metadata: paging?.metadata ?? true,
     totals: paging?.totals ?? false,
   };
+  // The whole `list` sub-block is optional in `mvp_return`, and Xano's editor
+  // writes a bare `{type:"list"}` for a query that configures none of it. Emitting
+  // the block filled with engine defaults is behaviourally identical but is not
+  // the shape a pulled workspace carries — so it is written only when the author
+  // configured something inside it.
+  // An explicit `paging` argument counts as configured even when every field
+  // sits at its default: the block is the engine's gate for the `simpleExternal`
+  // overrides (#66) and for the "search/sort-only paging must not truncate"
+  // behaviour (#41), so an author who passed `paging` keeps the full block.
+  const configured = enabled || paging !== undefined || sortEls.length > 0 || distinct !== "auto";
+  if (!configured) return { type: "list" };
   return { type: "list", list: { distinct, sort: sortEls, paging: pagingObj } };
 }
 
@@ -1233,6 +1396,13 @@ export interface DbQueryArgs<
   E extends readonly DbEval[] = readonly DbEval[],
   AG extends DbAggregate = DbAggregate,
 > {
+  /**
+   * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
+   * Absent unless set — Xano writes it on some statements and not others, so it
+   * is authored rather than derived (see {@link dboBinding}).
+   */
+  tableAlias?: string;
+
   table: T;
   /**
    * The engine's `context.return.type`. `"list"` (default) returns a row array
@@ -1335,8 +1505,9 @@ export function dbQuery<
   const returnType: DbReturnType = args.returnType ?? "list";
   // The primary table alias (the default `dbo.as`) — used to qualify aggregate
   // group/eval column names, which the engine requires as `<alias>.<column>`.
-  const primaryAlias = typeof args.table === "string" ? args.table : args.table.name;
-  const context: Record<string, unknown> = { dbo: { id: resolveRef("dbo", args.table) } };
+  const primaryAlias =
+    args.tableAlias ?? (typeof args.table === "string" ? args.table : args.table.name);
+  const context: Record<string, unknown> = { dbo: dboBinding(args.table, args.tableAlias) };
   const search = encodeSearch(args.where, args.additionalWhere);
   if (search !== undefined) context.search = search;
   const binds = encodeBind(args.bind);

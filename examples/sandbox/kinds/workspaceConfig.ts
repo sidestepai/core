@@ -29,4 +29,12 @@ export const wsConfig = workspaceConfig({
     STRIPE_KEY: process.env.STRIPE_KEY ?? "",
     APP_BASE_URL: "https://my-app.example.com",
   },
+  // Defaults applied to newly created objects.
+  defaults: { db_primary_key: "int" },
+  // Let tables carry SQL names distinct from their workspace names.
+  use_custom_names: false,
+  // Non-live datasources. WHOLESALE: deploying replaces the tenant's list, so
+  // declare every datasource you want to keep.
+  datasources: [{ label: "test", color: "#fff3cd" }],
+  datasource_live: { color: "#008000", show_banner: false },
 });

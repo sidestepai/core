@@ -48,6 +48,17 @@ export interface Statement {
   disabled?: boolean;
 }
 
+/**
+ * Marker carrying an already-persisted envelope that `encodeStatement` must
+ * return **verbatim**, skipping the registry check and the whole canonical
+ * rebuild below. Set only by `raw()` (see `special/raw.ts`), which is reachable
+ * from `@sidestep/core/codegen` and deliberately not from the `s` namespace.
+ *
+ * `Symbol.for` rather than a fresh `Symbol` so a decode tree compiled against a
+ * duplicate copy of the package still short-circuits.
+ */
+export const RAW_ENVELOPE: unique symbol = Symbol.for("sidestep.statement.rawEnvelope") as never;
+
 /** Registry of known statement names → factory (for catalog extensibility). */
 const registry = new Map<string, (...args: any[]) => Statement>();
 
@@ -105,6 +116,12 @@ function fullInputEntry(raw: unknown): Record<string, unknown> {
  * stored placeholder) so the key is present for comparison.
  */
 export function encodeStatement(stmt: Statement): StackItemXdo {
+  // `raw()` short-circuit: the envelope is already persisted, so returning it
+  // untouched is the whole point — the rebuild below would drop any key outside
+  // the canonical shape, which is exactly what raw() exists to preserve.
+  const rawEnvelope = (stmt as Partial<Record<typeof RAW_ENVELOPE, StackItemXdo>>)[RAW_ENVELOPE];
+  if (rawEnvelope !== undefined) return rawEnvelope;
+
   if (!isRegisteredStatement(stmt.name)) {
     throw new Error(
       `Cannot encode unregistered statement "${stmt.name}". ` +

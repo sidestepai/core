@@ -358,7 +358,7 @@ const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
   },
   // `!class` misc specials proven byte-exact against live captures (U5): the
   // array map/union field remaps (collection/transform_value; left/right),
-  // get_input's default input pair, and expect.to_throw's nested run[].
+  // get_input's optional input pair, and expect.to_throw's nested run[].
   {
     fixture: "array_map",
     build: () =>
@@ -381,7 +381,15 @@ const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
         }),
       ),
   },
-  { fixture: "get_input", build: () => encodeStatement(getRawInput({ as: "x3" })) },
+  {
+    // Both entries are `?=` optionals now emitted only when authored, and this
+    // capture recorded them present — so it authors them explicitly.
+    fixture: "get_input",
+    build: () =>
+      encodeStatement(
+        getRawInput({ as: "x3", encoding: c.text("json"), excludeMiddleware: c.bool(false) }),
+      ),
+  },
   { fixture: "get_session", build: () => stmt("mvp:get_session", { as: "session" }) },
   {
     fixture: "test_expect_to_throw",
@@ -412,7 +420,12 @@ const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
   // query's {code,response_type,connection_string_flex,arg} with NO context.parser.
   {
     fixture: "db_bulk_add",
-    build: () => encodeStatement(dbBulkAdd({ table: capUsers, items: capRows(), as: "r1" })),
+    // `allow_id_field?=false` is authored explicitly: the entry is now emitted
+    // only when set, and this capture recorded it present.
+    build: () =>
+      encodeStatement(
+        dbBulkAdd({ table: capUsers, items: capRows(), as: "r1", allowIdField: false }),
+      ),
   },
   {
     fixture: "db_bulk_patch",

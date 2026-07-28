@@ -191,7 +191,7 @@ describe("sidestep sandbox export", () => {
     mockSandboxJsonFetch({ workspaces: [] });
     await expect(
       runSandboxExportCommand(parseArgs(["sandbox", "export", "--config", authFile, "--path", "-"])),
-    ).rejects.toThrow(/no workspace to export yet.*sandbox deploy/is);
+    ).rejects.toThrow(/no workspace to export yet.*deploy --dest sandbox/is);
   });
 
   it("multidoc writes the fetched .xs body to --name", async () => {
@@ -266,7 +266,7 @@ describe("parseArgs / CLI dispatch for sandbox export", () => {
     }
   });
 
-  it("run() rejects an unknown sandbox subcommand, listing export", async () => {
-    await expect(run(["sandbox", "bogus"])).rejects.toThrow(/sandbox export/);
+  it("run() rejects an unknown sandbox subcommand, listing the ones that exist", async () => {
+    await expect(run(["sandbox", "bogus"])).rejects.toThrow(/export.*codegen.*details/s);
   });
 });

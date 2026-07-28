@@ -13,4 +13,13 @@ describe("package exports map", () => {
   it("exposes ./package.json so the conventional version probe resolves", () => {
     expect(pkg.exports["./package.json"]).toBe("./package.json");
   });
+
+  // Generated code imports `raw()` from `@sidestep/core/codegen` (KTD-10). Without
+  // this subpath every generated tree fails to resolve at type-check and runtime.
+  it("exposes ./codegen for generated source trees", () => {
+    expect(pkg.exports["./codegen"]).toEqual({
+      types: "./dist/codegen.d.ts",
+      import: "./dist/codegen.js",
+    });
+  });
 });

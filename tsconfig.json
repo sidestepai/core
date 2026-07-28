@@ -18,7 +18,16 @@
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
     "outDir": "dist",
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+    // A test that statically imports `examples/sandbox` pulls those files into
+    // the program, and their `@sidestep/core` specifiers would otherwise
+    // self-resolve to the built `dist/` (stale, and missing non-exported types).
+    // Mirrors the mappings in `examples/sandbox/tsconfig.json` and vitest.config.ts.
+    "paths": {
+      "@sidestep/core": ["./src/index.ts"],
+      "@sidestep/core/node": ["./src/node.ts"],
+      "@sidestep/core/codegen": ["./src/codegen-entry.ts"]
+    }
   },
   "include": ["src", "test"],
   "exclude": ["dist", "node_modules", "examples"]

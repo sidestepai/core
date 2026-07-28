@@ -244,8 +244,14 @@ describe("sidestep deploy", () => {
   it("`sandbox deploy` points at `deploy --dest sandbox`", async () => {
     await expect(run(["sandbox", "deploy", bundleFile(dir)])).rejects.toThrow(/deploy --dest sandbox/);
   });
-  it("`push` and `workspace deploy` point at `deploy`", async () => {
+  it("`push` points at `deploy`", async () => {
     await expect(run(["push"])).rejects.toThrow(/use `sidestep deploy`/);
-    await expect(run(["workspace", "deploy"])).rejects.toThrow(/use `sidestep deploy`/);
+  });
+  it("`workspace deploy` explains why it does not exist, not merely that it moved", async () => {
+    // `workspace` is a real (read-only) noun now. Its deploy verb is refused
+    // because the import path is a full replace of the target workspace — the
+    // reason matters more than the redirect.
+    await expect(run(["workspace", "deploy"])).rejects.toThrow(/FULL REPLACE/);
+    await expect(run(["workspace", "deploy"])).rejects.toThrow(/use `sidestep deploy`/i);
   });
 });

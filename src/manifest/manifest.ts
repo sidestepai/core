@@ -244,6 +244,7 @@ const CLI_COMMANDS: readonly ManifestCliCommand[] = [
       { flag: "get <name>", description: "Show one ephemeral's base URL, state, and expiry (JSON when piped)." },
       { flag: "delete <name> [--yes]", description: "Destroy an ephemeral (confirm unless --yes/--force). Idempotent if already gone; clears the matching local record." },
       { flag: "export <name> [--format json|multidoc] [--path <p>|-]", description: "Export the ephemeral's workspace as the JSON bundle (default) or XanoScript multidoc (.xs), mirroring `sandbox export`." },
+      { flag: "codegen <name> <path>", description: "Pull the ephemeral's workspace and write it as readable SideStep TypeScript into <path>. Note the positional order: tenant first, output path second." },
       { flag: "impersonate <name> [--guest] [--url-only]", description: "Mint a one-time token and open the ephemeral in the builder. --guest = read-only session. --url-only prints the dashboard URL instead of opening a browser; when piped, output is JSON ({ _ti, url })." },
     ],
     description:
@@ -260,6 +261,36 @@ const CLI_COMMANDS: readonly ManifestCliCommand[] = [
     ],
     description:
       "Export the workspace CURRENTLY DEPLOYED to your sandbox — as the JSON bundle (default) or the XanoScript multidoc (.xs). Both are pure OAuth meta calls against the sandbox: no local file, no compile step, so a bare `sandbox export` just works (run `sidestep deploy --dest sandbox` first). To compile a LOCAL workspace to JSON instead, use `sidestep export <file>`. env/records/draft are unsupported (endpoint defaults).",
+  },
+  {
+    command: "workspace details|export|codegen",
+    args: "[<path>] [--workspace <id>] [--path <path>|-] [--name <name>] [--force] [--no-verify]",
+    flags: [
+      { flag: "details", description: "Show which workspace your OAuth token is scoped to — instance, numeric id, name, guid. Read it before `export`/`codegen` to confirm what they will read." },
+      { flag: "export [--path <p>|-] [--name <n>]", description: "Write the workspace bundle JSON (the same packageExport shape `deploy` sends). JSON only — the multidoc route is a sandbox/tenant surface." },
+      { flag: "codegen <path>", description: "Decode the workspace into a tree of readable SideStep TypeScript at <path>, then verify it re-exports identically." },
+      { flag: "--workspace <id>", description: "Override the scoped workspace id (for an account with access to several). Default: the id the token consented to — never a hard-coded 1." },
+    ],
+    description:
+      "Read the REAL workspace your OAuth token is scoped to, via `workspace/{id}/export` (the compressed bundle). Deliberately read-only: there is no `workspace deploy`, because the only import path is a FULL REPLACE of the target workspace. The loop is pull from here, edit, then `deploy` to a disposable ephemeral/sandbox env.",
+  },
+  {
+    command: "codegen",
+    args: "<bundle.json> <path> [--force] [--no-verify]",
+    flags: [
+      { flag: "<bundle.json>", description: "A bundle already on disk (from `sidestep export` or any `<env> export`). Pure and OFFLINE — no auth, no network." },
+      { flag: "<path>", description: "Output directory. Created if absent; a non-empty one is refused unless --force." },
+      { flag: "--force", description: "Write into a non-empty directory. The tree has no merge story, so anything edited in place there is lost." },
+      { flag: "--no-verify", description: "Skip the post-write round-trip check. On by default; skipping it leaves the tree unchecked." },
+    ],
+    description:
+      "Decode a Xano bundle into a tree of readable SideStep TypeScript: per-kind directories, a `_shared.ts` for tables and cross-referenced objects, a barrel `index.ts`, a `tsconfig.json`, and a README carrying the report. Guids are preserved verbatim so references stay consistent. A statement the catalog cannot model round-trips verbatim through `raw()` from `@sidestep/core/codegen`. After writing, the tree is loaded, re-exported, and diffed against the source bundle — a mismatch names the object and FAILS. The tree is disposable and schema-only (no seed rows); deploying it is a full replace, so send it only to an ephemeral/sandbox env. The live variants are `workspace codegen`, `sandbox codegen`, and `ephemeral codegen`.",
+  },
+  {
+    command: "sandbox codegen",
+    args: "<path> [--force] [--no-verify]",
+    description:
+      "Pull the workspace CURRENTLY DEPLOYED to your sandbox and write it as readable SideStep TypeScript at <path>. Same core as `sidestep codegen <bundle.json>`; only the source differs. See `codegen` for the flags and the disposable/full-replace boundaries.",
   },
   {
     command: "sandbox details",
@@ -752,6 +783,24 @@ export function renderLlmsTxt(m: Manifest): string {
     "  LOCAL workspace to JSON instead, use `sidestep export <file>`. Output defaults to",
     "  `./sandbox.<ext>`; `--name` overrides the basename, `--path` the location, and",
     "  `--path -` streams to stdout. env/records/draft are unsupported (endpoint defaults).",
+    "- `sidestep <workspace|sandbox> codegen <path>`, `sidestep ephemeral codegen",
+    "  <env> <path>`, `sidestep codegen <bundle.json> <path>` — the PULL direction:",
+    "  decode a workspace back into readable SideStep TypeScript. All four read the",
+    "  compressed bundle from `workspace/{id}/export` (the file form reads a bundle",
+    "  already on disk, fully offline) and share one core. The tree is per-kind",
+    "  directories + a `_shared.ts` for tables and cross-referenced objects + a barrel",
+    "  `index.ts` + a `tsconfig.json` + a README. Object guids are preserved verbatim,",
+    "  so references stay consistent; a statement the catalog cannot model round-trips",
+    "  verbatim through `raw()` (`@sidestep/core/codegen`). After writing, the tree is",
+    "  loaded, re-exported, and diffed against the source bundle — a mismatch names the",
+    "  object and fails the command (`--no-verify` opts out). The tree is DISPOSABLE",
+    "  (regenerating destroys hand edits; a non-empty target needs `--force`) and",
+    "  SCHEMA-ONLY (no seed rows). Deploying it is a full replace, so send it only to",
+    "  an ephemeral or sandbox env — never a workspace holding data you care about.",
+    "- `sidestep workspace <details|export|codegen>` — read the REAL workspace your",
+    "  token is scoped to (`details` shows which one, before you read it; `--workspace",
+    "  <id>` overrides). There is deliberately NO `workspace deploy` — SideStep never",
+    "  writes back to your real workspace.",
     "- `sidestep sandbox details` — prints the sandbox tenant as JSON, headlined by",
     "  its public `baseUrl` (GET `/api:meta/sandbox/me`). An agent reads `baseUrl` to",
     "  point the frontend at the deployed backend WITHOUT re-running a deploy just to",
