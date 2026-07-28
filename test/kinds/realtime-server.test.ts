@@ -12,7 +12,6 @@ describe("realtimeServer", () => {
     expect(encodeRealtimeServer({ name: "chat" })).toEqual({
       name: "chat",
       description: "",
-      docs: "",
       canonical: "",
       // A realtime server is OFF until explicitly enabled — unlike most
       // `enabled` fields in the SDK.
@@ -31,14 +30,12 @@ describe("realtimeServer", () => {
       encodeRealtimeServer({
         name: "chat",
         description: "team chat",
-        docs: "see the handbook",
         enabled: true,
         canonical: "abc123",
         tags: ["realtime", "chat"],
       }),
     ).toMatchObject({
       description: "team chat",
-      docs: "see the handbook",
       enabled: true,
       canonical: "abc123",
       tag: [{ tag: "realtime" }, { tag: "chat" }],

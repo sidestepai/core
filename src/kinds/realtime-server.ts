@@ -38,7 +38,6 @@ export interface RealtimeServerDef {
   /** Explicit Xano `guid` (this object's identity). Defaults to a guid derived from `name`; set it to keep identity across a rename or to match an existing object. */
   guid?: string;
   description?: string;
-  docs?: string;
   /**
    * Whether the server accepts connections. Defaults to **false** — a realtime
    * server is off until explicitly enabled.
@@ -63,10 +62,15 @@ export interface RealtimeServerDef {
   tags?: string[];
 }
 
+/**
+ * The stored envelope. Note there is deliberately no `docs` key: unlike
+ * `app`/`query`/`toolset`, the realtime objects do not persist one — the
+ * XanoScript kind accepts `docs` but the stored record has no such field, so
+ * emitting it would add a key the engine never wrote.
+ */
 export interface RealtimeServerXdo {
   name: string;
   description: string;
-  docs: string;
   canonical: string;
   enabled: boolean;
   history: ContainerHistoryBlock<"message">;
@@ -107,7 +111,6 @@ export function encodeRealtimeServer(def: RealtimeServerDef): RealtimeServerXdo 
   return {
     name: def.name,
     description: def.description ?? "",
-    docs: def.docs ?? "",
     canonical: def.canonical ?? "",
     enabled: def.enabled ?? false,
     history: encodeContainerHistory("message", def.history),
