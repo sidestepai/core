@@ -334,6 +334,163 @@ Keep the client bundle lean (**split route metadata from stack-heavy authoring**
 `;
 }
 
+/** Where a codegen'd tree came from, for the marker and the README. */
+export interface CodegenOrigin {
+  /** Which command form produced the tree. */
+  readonly source: "workspace" | "sandbox" | "ephemeral" | "file";
+  /** The workspace id, tenant name, or bundle path — whatever identifies the source. */
+  readonly origin: string;
+}
+
+/** A human phrase for an origin, used in both the README and the CLI summary. */
+export function describeOrigin(o: CodegenOrigin): string {
+  switch (o.source) {
+    case "workspace":
+      return `workspace ${o.origin}`;
+    case "sandbox":
+      return "the sandbox workspace";
+    case "ephemeral":
+      return `ephemeral "${o.origin}"`;
+    case "file":
+      return `the bundle at ${o.origin}`;
+  }
+}
+
+/**
+ * The provenance marker a codegen'd project carries.
+ *
+ * Two jobs: it records where the tree came from, and its presence is what lets a
+ * re-run refresh `xano/` without `--force` (see `scaffold.ts`). It lives inside
+ * `xano/` so the delete-and-rewrite branch is self-cleaning — no marker is ever
+ * left pointing at a directory that no longer matches it.
+ */
+export function renderCodegenMarker(
+  { coreVersion }: TemplateVars,
+  origin: CodegenOrigin,
+  generatedAt: string,
+): string {
+  return (
+    JSON.stringify(
+      {
+        source: origin.source,
+        origin: origin.origin,
+        coreVersion,
+        generatedAt,
+        note: "Written by `sidestep … codegen`. Its presence lets a re-run refresh xano/ in place.",
+      },
+      null,
+      2,
+    ) + "\n"
+  );
+}
+
+/**
+ * The root README for a pulled project.
+ *
+ * `init`'s README addresses someone about to author a backend; this one
+ * addresses someone who already has one and just pulled it. The warnings are
+ * unconditional and rescoped: it is **`xano/`** that regenerating destroys, not
+ * the project around it.
+ */
+export function renderCodegenReadme(
+  { appName }: TemplateVars,
+  origin: CodegenOrigin,
+  envNames: readonly string[],
+): string {
+  const secrets =
+    envNames.length === 0
+      ? ""
+      : `
+## Heads up: this tree contains your workspace env var values
+
+The pull carried ${envNames.length} workspace env var${envNames.length === 1 ? "" : "s"} —
+${envNames.map((n) => `\`${n}\``).join(", ")} — **with their values**, inline in
+[\`xano/index.ts\`](xano/index.ts), because that is what a deploy has to send. If any of them
+is a secret, do not commit \`xano/\` as-is: add it to \`.gitignore\`, or replace the values
+before committing.
+`;
+
+  return `# ${appName}
+
+A [sidestep](https://www.npmjs.com/package/@sidestep/core) project pulled from
+${describeOrigin(origin)}. The Xano backend lives in [\`xano/\`](xano/) as readable
+TypeScript; the React + Vite frontend under [\`frontend/\`](frontend/) is a starter —
+the pull carries a backend, not a UI.
+
+## Deploy it
+
+\`\`\`bash
+sidestep login          # once, to authenticate against your Xano account
+npm run build           # typecheck the backend + build the static frontend
+npm run xano:deploy     # ship both to a live ephemeral environment
+\`\`\`
+
+## Read this before deploying
+
+- **\`xano/\` is disposable.** Re-running \`sidestep … codegen\` on this directory
+  rewrites it wholesale — no merge, no diff, no preservation of hand edits. The rest of
+  the project (this README, \`package.json\`, \`frontend/\`) is yours and is left alone.
+- **Deploying is a full replace.** The import path clears the target workspace and
+  re-imports. Send this only to an **ephemeral or sandbox** environment — never to a
+  workspace holding data you care about. That is why \`npm run xano:deploy\` targets an
+  ephemeral env and there is no deploy-to-your-real-workspace command.
+- **This is schema only.** Table rows are not carried, and neither are payload sections
+  this SDK models no kind for. A deploy recreates the structure, not the data.
+
+[\`xano/README.md\`](xano/README.md) is the authoritative record of what did and did not
+translate cleanly on this pull. Read it before trusting the tree.
+${secrets}
+## Working on it
+
+\`\`\`bash
+npm run dev            # run the starter frontend
+npm run typecheck      # the whole project, both halves
+npm run xano:export    # compile the backend to workspace.json (don't commit it)
+npx sidestep paths xano/index.ts   # list every endpoint's verb + path
+\`\`\`
+
+[\`frontend/src/lib/api.ts\`](frontend/src/lib/api.ts) shows the one contract: derive
+request paths and types from the query defs in \`xano/\` rather than hand-typing a URL.
+`;
+}
+
+/** The landing page for a pulled project — it has a backend already, not a blank one. */
+export function renderCodegenAppTsx({ appName }: TemplateVars, origin: CodegenOrigin): string {
+  return `export default function App() {
+  return (
+    <main className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-6 p-8">
+      <h1 className="text-3xl font-bold tracking-tight">${appName}</h1>
+      <p className="text-lg text-gray-600">
+        This project was pulled from ${describeOrigin(origin)}. The backend lives in{" "}
+        <code className="rounded bg-gray-100 px-1.5 py-0.5">xano/</code> as readable
+        TypeScript; this frontend is a starter.
+      </p>
+      <ol className="list-inside list-decimal space-y-2 text-gray-700">
+        <li>
+          Read{" "}
+          <code className="rounded bg-gray-100 px-1.5 py-0.5">xano/README.md</code> — what
+          did and did not translate cleanly on the pull.
+        </li>
+        <li>
+          List the endpoints:{" "}
+          <code className="rounded bg-gray-100 px-1.5 py-0.5">
+            npx sidestep paths xano/index.ts
+          </code>
+          , then wire them up in{" "}
+          <code className="rounded bg-gray-100 px-1.5 py-0.5">frontend/src/lib/api.ts</code>.
+        </li>
+        <li>
+          Ship it:{" "}
+          <code className="rounded bg-gray-100 px-1.5 py-0.5">npm run xano:deploy</code>{" "}
+          (a full replace of an ephemeral env).
+        </li>
+      </ol>
+    </main>
+  );
+}
+`;
+}
+
 export function renderMainTsx(): string {
   return `import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";

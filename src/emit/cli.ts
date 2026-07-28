@@ -8,11 +8,12 @@
  *                                            lock-commands.ts)
  *   sidestep <workspace|sandbox> codegen <path>
  *   sidestep ephemeral codegen <env> <path>
- *   sidestep codegen <bundle.json> <path>    — decode a workspace back into
- *                                            readable SideStep TypeScript (see
- *                                            codegen-command.ts). The pull half
- *                                            of the loop; the push half is
- *                                            `deploy`, which targets a
+ *   sidestep codegen <bundle.json> <path>    — decode a workspace into a runnable
+ *                                            SideStep project: the `init`
+ *                                            scaffold with `xano/` filled from
+ *                                            the pull (see codegen-command.ts).
+ *                                            The pull half of the loop; the push
+ *                                            half is `deploy`, which targets a
  *                                            DISPOSABLE env only.
  *
  * Dynamically imports the module's default export. A `.ts`/`.mts`/`.cts` entry
@@ -144,17 +145,17 @@ export interface ParsedArgs {
   format: "json" | "multidoc" | undefined;
   /** `sandbox export --path <p>`: output location (`-` for stdout; a dir or a full file path). */
   path: string | undefined;
-  /** `sandbox export --name <n>`: output basename override (default `sandbox`). Also the `init` app name (default: target dir basename). */
+  /** `sandbox export --name <n>`: output basename override (default `sandbox`). Also the `init`/`codegen` app name (default: target dir basename). */
   name: string | undefined;
   /**
-   * `init --ai <preset>` (repeatable, comma-separated): AI-assistant instruction
+   * `init`/`codegen` `--ai <preset>` (repeatable, comma-separated): AI-assistant instruction
    * files to scaffold (`claude`/`codex`/`cursor`/`none`). Empty = prompt in a TTY,
    * else write none. Validated in the init command, not at parse time.
    */
   ai: string[];
-  /** `init --force`: scaffold into a non-empty target directory (overwrite our own files). */
+  /** `init`/`codegen` `--force`: scaffold into a non-empty target directory (overwrite our own files). */
   force: boolean;
-  /** `init --no-install`: skip the post-scaffold `npm install`. */
+  /** `init`/`codegen` `--no-install`: skip the post-scaffold `npm install`. For `codegen` this also means the round trip cannot be verified, since loading the tree needs its dependencies. */
   noInstall: boolean;
   /**
    * `deploy --no-verify`: skip the post-deploy static-host liveness poll. The
@@ -573,10 +574,10 @@ const HELP_GROUPS: ReadonlyArray<{ title: string; rows: ReadonlyArray<readonly [
   {
     title: "Pull",
     rows: [
-      ["workspace codegen <path>", "Your real workspace → readable SideStep TypeScript"],
-      ["sandbox codegen <path>", "Your sandbox → readable SideStep TypeScript"],
-      ["ephemeral codegen <env> <path>", "An ephemeral env → readable SideStep TypeScript"],
-      ["codegen <bundle> <path>", "A bundle JSON file → readable SideStep TypeScript (offline)"],
+      ["workspace codegen <path>", "Your real workspace → a runnable SideStep project"],
+      ["sandbox codegen <path>", "Your sandbox → a runnable SideStep project"],
+      ["ephemeral codegen <env> <path>", "An ephemeral env → a runnable SideStep project"],
+      ["codegen <bundle> <path>", "A bundle JSON file → a runnable SideStep project (offline)"],
     ],
   },
   {
