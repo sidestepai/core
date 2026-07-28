@@ -144,7 +144,7 @@ const DEFAULT_CONTEXT_SIMPLE_EXTERNAL = {
  * makes the two generations compare equal while still comparing any non-default
  * value (e.g. `disabled:true`, a populated `settings_registry`, `as:"user"`).
  */
-function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
+export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
   switch (key) {
     case "mocks":
       return isEmptyObject(v);

@@ -170,3 +170,39 @@ describe("addon decode — cardinality", () => {
     expect(source).not.toContain("cardinality:");
   });
 });
+
+describe("addon decode — engine-default context members", () => {
+  it("drops the default envelope the engine writes even when nothing is customized", async () => {
+    // An unbound addon persists the whole bind/eval/lock/return/external/
+    // simpleExternal envelope at its defaults — ~60 lines that say nothing. They
+    // are keyed off `normalize`'s own oracle, which already elides them on BOTH
+    // sides of the comparison, so dropping them cannot change the round trip.
+    const { bundle, source } = build({
+      name: "bare",
+      context: {
+        dbo: { as: "", id: "" },
+        bind: [],
+        eval: [],
+        sort: [],
+        future: false,
+        lock: { tag: "const:bool", value: "", filters: [] },
+        search: { expression: [] },
+      },
+    });
+    for (const noise of ["bind:", "eval:", "future:", "lock:", "search:"]) {
+      expect(source, `${noise} is an engine default and should not be emitted`).not.toContain(noise);
+    }
+    const again = await regenerate(bundle, "bare");
+    expect(normalize(again.payload.addon)).toEqual(normalize(bundle.payload.addon));
+  });
+
+  it("keeps a context member that was genuinely customized", () => {
+    const { source } = build({
+      name: "custom",
+      table: users,
+      context: { bind: [{ name: "x" }], future: true },
+    });
+    expect(source).toContain("bind:");
+    expect(source).toContain("future: true");
+  });
+});

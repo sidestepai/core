@@ -31,6 +31,7 @@ import { resolveReference } from "../ref-index.js";
 import { decodeFieldMap, decodeResponse, deepEqual } from "../field.js";
 import { decodeStack } from "../statement.js";
 import { decodeCondition } from "../expression.js";
+import { isDefaultEnvelopeMember } from "../../validate/normalize.js";
 
 /** One `key: value` pair of a generated def literal. */
 export type DefEntry = readonly [string, Expr];
@@ -872,8 +873,17 @@ function addonEntries(a: KindDecodeArgs): DefEntry[] {
   // first and only auto-fills what it does not already carry, so a rich engine
   // context (bind/eval/lock/future) survives untouched — whereas hoisting those
   // keys would silently drop every one the authoring surface cannot declare.
+  //
+  // Members sitting at their engine default are dropped, which is what makes an
+  // unbound addon readable at all: the engine writes the whole
+  // bind/eval/lock/return/external/simpleExternal envelope even when nothing is
+  // customized. Safe by construction, and deliberately keyed on `normalize`'s own
+  // oracle rather than a second list — it already elides these on BOTH sides of
+  // the round-trip comparison, so a dropped member cannot change the verdict.
   const passthrough = Object.fromEntries(
-    Object.entries(context).filter(([key]) => !consumed.has(key)),
+    Object.entries(context).filter(
+      ([key, value]) => !consumed.has(key) && !isDefaultEnvelopeMember(key, value),
+    ),
   );
 
   return compact([
