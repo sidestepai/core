@@ -504,6 +504,7 @@ xano/
 ├── tables/      user.ts            export default table({...})
 ├── triggers/    on-insert.ts       export default tableTrigger({...})
 ├── ai/          assistant.ts       export default agent({...}) / mcpServer({...})
+├── realtime/    chat.ts            export default realtimeServer({...}) / realtimeChannel({...})
 └── index.ts     workspace("my-app").registerTables([...]).registerFunctions([...])…
 ```
 
@@ -527,18 +528,22 @@ method. Payload keys use the engine's singular names.
 | `table({ schema, index, ... })` | `registerTables` | `dbo` |
 | `query({ verb, apiGroup, ... })` | `registerQueries` | `query` |
 | `apiGroup({ canonical, cors, ... })` | `registerApiGroups` | `app` |
-| `{tableTrigger,realtimeTrigger,mcpServerTrigger,agentTrigger,workspaceTrigger,errorTrigger}(...)` | `registerTriggers` | `trigger` |
+| `{tableTrigger,realtimeTrigger,realtimeServerTrigger,channelTrigger,mcpServerTrigger,agentTrigger,workspaceTrigger,errorTrigger}(...)` | `registerTriggers` | `trigger` |
 | `tool({...})` | `registerTools` | `tool` |
 | `mcpServer({...})` | `registerMcpServers` | `toolset` |
 | `agent({ llm, ... })` | `registerAgents` | `toolset` |
 | `task({ schedule, ... })` | `registerTasks` | `task` |
 | `middleware({ resultStrategy, ... })` | `registerMiddleware` | `middleware` |
 | `addon({...})` | `registerAddons` | `addon` |
+| `realtimeServer({ enabled, ... })` | `registerRealtimeServers` | `realtime_server` |
+| `realtimeChannel({ server, ... })` | `registerRealtimeChannels` | `channel` |
+| `realtimeMessage({ channel, stack, ... })` | `registerRealtimeMessages` | `message` |
 | `workspaceConfig({...})` | `registerWorkspace` | `workspace` |
 
-**Triggers** — six first-class root factories that share one envelope discriminated by
-`obj_type` + a per-type `meta`: `tableTrigger` (db), `realtimeTrigger`, `mcpServerTrigger`,
-`agentTrigger`, `workspaceTrigger`, `errorTrigger`. **A trigger's `stack` is a callback — `stack: (t) => [...]`,
+**Triggers** — eight first-class root factories that share one envelope discriminated by
+`obj_type` + a per-type `meta`: `tableTrigger` (db), `realtimeTrigger`, `realtimeServerTrigger`
+(connect/disconnect), `channelTrigger` (join/leave), `mcpServerTrigger`, `agentTrigger`,
+`workspaceTrigger`, `errorTrigger`. **A trigger's `stack` is a callback — `stack: (t) => [...]`,
 not the plain `stack: []` array the other kinds use.** A trigger's inputs are **implied by type**
 (fixed by Xano, not editable) and injected automatically — so triggers take no `input` field, and
 the typed stack handle `t` is the only way to reference them (`response: (t) => ...` on
@@ -565,7 +570,7 @@ realtimeTrigger({
 });
 ```
 
-Per-type inputs: **table** `new`/`old`/`action`/`datasource`; **realtime** `action`/`channel`/`client`/`options`/`payload`; **mcpServer**/**agent** `toolset`/`tools`; **workspace** `to_branch`/`from_branch`/`action`; **error** `event`/`id`/`signature`/`error`/`caller`/`statement`/`actor`/`count`/`first_seen`/`last_seen`/`fixed_at`.
+Per-type inputs: **table** `new`/`old`/`action`/`datasource`; **realtime** `action`/`channel`/`client`/`options`/`payload`; **realtimeServer** `action`/`realtime_server`/`client`; **channel** `action`/`channel`/`client`; **mcpServer**/**agent** `toolset`/`tools`; **workspace** `to_branch`/`from_branch`/`action`; **error** `event`/`id`/`signature`/`error`/`caller`/`statement`/`actor`/`count`/`first_seen`/`last_seen`/`fixed_at`.
 
 **MCP servers & agents** — two first-class root primitives. Both persist under the
 `toolset` payload key (obj_type=`toolset`), so an `mcpServer` and an `agent` **sharing a
@@ -859,6 +864,65 @@ request inputs. Read them with `s.util.get_all_input({ as: "payload" })` — but
 `ref("payload.<field>")` (the un-nested path is the usual cause of a `Unable to locate var` 500).
 To key a public limit off a submitted field: `get_all_input({ as: "payload" })`, then
 `withFilters(c.text("rl:apply:"), fl.concat(ref("payload.vars.candidate_email")))`.
+
+</details>
+
+<details>
+<summary><b>Realtime (websockets)</b></summary>
+
+Xano's realtime layer is three nested kinds — the only three-level containment chain in the
+SDK, and the realtime counterpart to `apiGroup -> query` and `mcpServer -> tool`:
+
+```
+realtimeServer   the canonical-addressed container (a websocket server). Off until enabled.
+  └─ realtimeChannel   a joinable PATH with typed path params, join/publish policy, transcript
+       └─ realtimeMessage   a named message type with its own payload schema and stack
+```
+
+```ts
+import { realtimeServer, realtimeChannel, realtimeMessage, input, s } from "@sidestep/core";
+
+const chat = realtimeServer({ name: "chat", enabled: true });
+
+const rooms = realtimeChannel({
+  name: "rooms/{room_id}",        // a {param} segment makes the channel dynamic
+  server: chat,
+  input: { room_id: input.int() }, // types the PATH param, bound at join
+  publish: { who: "authenticated" },
+  conversation: { enabled: true, limit: 50 }, // replay the last 50 on rejoin
+});
+
+const send = realtimeMessage({
+  name: "send",
+  channel: rooms,                  // the handle carries the server too
+  input: { body: input.text({ required: true }) }, // types the PAYLOAD
+  deliverTo: "channel",            // channel | sender | others | explicit
+  stack: [/* the same statement stack every other kind uses */],
+});
+```
+
+**Pass handles, not names.** A channel path is unique only *within* its server, and a message
+name only within its channel. A `realtimeChannel()` handle carries its server, so a message
+given one resolves both bindings. A message given a bare channel *path* must also be given a
+`server` — it throws rather than guessing, because the path alone is ambiguous.
+
+**Two different `input` maps.** A channel's `input` types the PATH parameters
+(`rooms/42` → `room_id = 42`); a message's `input` types the message PAYLOAD. Both reach the
+stack. They are different schemas for different things.
+
+**`conversation` vs `history`.** `conversation` is the client-visible transcript — a rejoining
+client is sent the retained messages. `history` is execution history for the debugger, and it is
+the one container tier in the SDK that defaults **off**: message history is a hot path.
+
+**Lifecycle triggers.** `realtimeServerTrigger({ realtimeServer })` fires on connect/disconnect;
+`channelTrigger({ channel })` fires on join/leave. Both are response-bearing and take the usual
+callback stack.
+
+**Two current limits, stated plainly.** Xano's workspace-archive import does not yet carry
+realtime sections, so realtime objects in a deployed bundle are inert until that lands — everything
+here authors, encodes, and round-trips today. And `deliverTo: "explicit"` hands recipient choice to
+the stack, but the engine's realtime send statements are not yet exposed here, so it currently
+delivers to nobody; prefer another value until they ship.
 
 </details>
 
@@ -1498,7 +1562,7 @@ the real Xano engine golden fixtures, and a coverage report prints on every test
 
 | Surface | Coverage |
 |---|---|
-| Object kinds | **12 / 24** — `function`, `table`, `query`, `api_group`, all 6 `trigger`s, `tool`, `mcp_server`, `agent`, `task`, `middleware`, `addon`, `workspace` |
+| Object kinds | **15 / 30** — `function`, `table`, `query`, `api_group`, all 8 `trigger`s, `tool`, `mcp_server`, `agent`, `task`, `middleware`, `addon`, `realtime_server`, `channel`, `message`, `workspace` |
 | Statements (via `s`) | **214 / 214 (100%)** — every engine statement surface has a factory |
 
 The statement catalog is generated from the engine's own schema YAMLs (`npm run codegen`),
@@ -1512,6 +1576,10 @@ vendored.
 runtime (SideStep only compiles), and generating engine-side numeric ids/timestamps.
 (Object guids and canonicals *are* handled — deterministically derived or frozen via
 `xano.lock`.)
+
+**Realtime caveat** — the three realtime kinds author, encode, and round-trip today, but their
+goldens are derived from the schema rather than captured from an engine, and the workspace-archive
+import does not yet carry realtime sections. See the Realtime section above.
 
 **Deferred (by design)** — folder auto-discovery, round-trip/decompile (bundle → TS), and
 the `workflow_test` / `service` / `vault` / `branch` payload sections. `InferResponse`

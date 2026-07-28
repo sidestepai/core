@@ -16,7 +16,7 @@ code, and (2) give agents concrete, verified usage examples to learn from.
 | Value filters (`fl.*`) | 345 | `filters/**` |
 | Field types (`f.*`) | 24 | `fields/**` |
 | Value constructors (`c.*`, `ref`, `inp`, `col`, `auth`, `expr`, …) | 17 | `values/**` |
-| Object kinds (`table`, `query`, `trigger`, `agent`, …) | 11 | `kinds/**` |
+| Object kinds (`table`, `query`, `trigger`, `agent`, `realtimeChannel`, …) | 12 | `kinds/**` |
 
 ## Conventions
 
