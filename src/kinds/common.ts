@@ -33,8 +33,12 @@ export interface HistoryBlock {
  * i.e. query/task/tool default ON, function/middleware/trigger default OFF —
  * confirmed against the live xdo corpus (query 44/44 `true`, function 4/4 `false`,
  * tool `true`).
+ *
+ * `message` (realtime) is off for a different reason than the rest: it is not a
+ * legacy carve-out but a hot-path decision — its stored default is `false` at
+ * every tier, object and container alike.
  */
-const HISTORY_DEFAULT_OFF = new Set(["function", "middleware", "trigger"]);
+const HISTORY_DEFAULT_OFF = new Set(["function", "middleware", "trigger", "message"]);
 
 /** The default `history` block for an object kind (keyed by its payload/object type). */
 export function defaultHistory(objType: string, override?: Partial<HistoryBlock>): HistoryBlock {

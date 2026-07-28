@@ -1,0 +1,237 @@
+/**
+ * Realtime message (`message`) — the invocable unit of the realtime layer, and
+ * the bottom of `realtime_server -> channel -> message`. It is the realtime
+ * analogue of a query: `run[]` is the SAME stack type queries, functions, tasks
+ * and tools use, so input validation, middleware, history and the debugger all
+ * behave identically.
+ *
+ * A channel owns N named message types, each with its own validated payload and
+ * its own stack — rather than one handler switching on a convention field.
+ *
+ * `input` here types the message PAYLOAD. The owning channel's `input` types the
+ * channel PATH parameters (`rooms/{room_id}`). Both reach the stack.
+ *
+ * A message names BOTH its channel and its server: a channel path is unique only
+ * within a server, so the path alone cannot be resolved. Passing a
+ * `realtimeChannel()` handle supplies both.
+ */
+import type { ResultItemXdo, StackItemXdo, InputXdo } from "../types/xdo.js";
+import { encodeStatement } from "../statements/statement.js";
+import type { Statement } from "../statements/statement.js";
+import { encodeResponse } from "../responses/response.js";
+import type { ResponseDef } from "../responses/response.js";
+import { encodeInput } from "../inputs/input.js";
+import type { InputDescriptor } from "../inputs/input.js";
+import { registerKind } from "./kind.js";
+import type { ObjectKind } from "./kind.js";
+import { encodeTags } from "./common.js";
+import type { MiddlewareBlock } from "./common.js";
+import { encodeHistory, type HistoryInput } from "./history.js";
+import { buildMiddlewareBlock } from "./middleware-attach.js";
+import type { MiddlewareAttach } from "./middleware-attach.js";
+import { resolveAuthRef } from "../refs/auth.js";
+import type { AuthRef } from "../refs/auth.js";
+import { deriveGuid, realtimeMessageSeedName } from "../refs/guid.js";
+import {
+  realtimeChannelGuid,
+  realtimeServerRefName,
+  resolveRealtimeServerRef,
+  type RealtimeChannelDef,
+  type RealtimeServerRef,
+} from "./realtime-channel.js";
+
+/**
+ * A reference to the owning channel: a `realtimeChannel()` handle (which also
+ * carries the server), or a bare channel path — in which case `server` must be
+ * given alongside it.
+ */
+export type RealtimeChannelRef = string | RealtimeChannelDef;
+
+/**
+ * Who receives this handler's response:
+ *  - `channel`  — everyone in the channel (the default)
+ *  - `sender`   — only the sender (request/response over a socket)
+ *  - `others`   — the channel minus the sender
+ *  - `explicit` — nobody implicitly; the stack chooses the recipients
+ */
+export type MessageDeliverTo = "channel" | "sender" | "others" | "explicit";
+
+export interface RealtimeMessageDef<
+  I extends Record<string, InputDescriptor> = Record<string, InputDescriptor>,
+> {
+  /** The message type as addressed by clients, e.g. `"place_bid"`. */
+  name: string;
+  /** Explicit Xano `guid` (this object's identity). Defaults to a guid derived from `<server>|<channel>|<name>`. */
+  guid?: string;
+  /**
+   * The owning channel — a `realtimeChannel()` handle (preferred: it carries the
+   * server too), or a bare channel path alongside an explicit `server`.
+   */
+  channel: RealtimeChannelRef;
+  /**
+   * The owning realtime server. Required only when `channel` is a bare path; a
+   * channel handle already names its server, and an explicit value here must
+   * not contradict it.
+   */
+  server?: RealtimeServerRef;
+  description?: string;
+  /** Whether this message type is dispatchable. Defaults to `true`. */
+  active?: boolean;
+  /**
+   * Auth for THIS message type, independent of the channel's join policy — a
+   * channel may admit anonymous clients while a specific message still requires
+   * a token. Name an auth **table** (a `table({ auth: true })` def or its name)
+   * and it resolves to that table's guid; `false`/omitted means no auth.
+   */
+  auth?: AuthRef;
+  /**
+   * Who receives this handler's response. Defaults to `"channel"`.
+   *
+   * `"explicit"` hands recipient choice to the stack. The engine's realtime send
+   * statements are not yet exposed in this SDK, so `"explicit"` currently
+   * delivers to nobody — prefer another value until they land.
+   */
+  deliverTo?: MessageDeliverTo;
+  /** The message PAYLOAD schema. Distinct from the channel's path parameters. */
+  input?: I;
+  /** Pre/post middleware wrapping `stack` — the same block a query carries. */
+  middleware?: MiddlewareAttach;
+  stack?: Statement[];
+  response?: ResponseDef;
+  /**
+   * Request-history capture. Omit to inherit (channel → server → workspace).
+   * Defaults **off** — message history is a hot path. A scalar: `false` off,
+   * `true` on at default depth, a number = capture depth, `"all"` unlimited.
+   */
+  history?: HistoryInput;
+  /** Soft-delete flag mirroring a query's. Defaults to `false`; prefer `active` to switch a message off. */
+  disabled?: boolean;
+  /** Workspace tags (stored `tag: [{tag}]`). */
+  tags?: string[];
+}
+
+export interface RealtimeMessageXdo {
+  name: string;
+  description: string;
+  active: boolean;
+  /** The owning channel — `id` carries the resolved guid. */
+  channel: { id: number | string };
+  /** The owning server — `id` carries the resolved guid. */
+  server: { id: number | string };
+  /** `false` (no auth), the auth table's guid, or a raw numeric `dbo.id`. */
+  auth: false | number | string;
+  deliver_to: MessageDeliverTo;
+  input: InputXdo[];
+  output: unknown[];
+  middleware: MiddlewareBlock;
+  run: StackItemXdo[];
+  result: ResultItemXdo[];
+  history: { inherit: boolean; enabled: boolean; limit: number };
+  disabled: boolean;
+  tag: Array<{ tag: string }>;
+}
+
+/**
+ * Resolve the `(channel, server)` pair a message binds to. A channel handle
+ * carries its own server; a bare path needs one supplied. An explicit `server`
+ * alongside a handle must agree with the handle — silently preferring one would
+ * bind the message to a channel that does not exist under the other.
+ */
+function resolveHost(def: RealtimeMessageDef): { channelId: string; serverId: string } {
+  const context = `realtimeMessage "${def.name}"`;
+  if (!def.channel) {
+    throw new Error(`${context}: \`channel\` is required.`);
+  }
+  const isHandle = typeof def.channel !== "string";
+  const handleServer = isHandle ? (def.channel as RealtimeChannelDef).server : undefined;
+
+  if (!isHandle && def.server === undefined) {
+    throw new Error(
+      `${context}: \`server\` is required when \`channel\` is a bare path — a channel path is ` +
+        `unique only within its realtime server, so "${def.channel as string}" alone is ambiguous. ` +
+        `Pass the \`realtimeChannel()\` handle instead and the server comes with it.`,
+    );
+  }
+  if (isHandle && def.server !== undefined) {
+    const fromHandle = realtimeServerRefName(context, handleServer!);
+    const fromDef = realtimeServerRefName(context, def.server);
+    if (fromHandle !== fromDef) {
+      throw new Error(
+        `${context}: \`server\` is "${fromDef}" but the channel handle belongs to "${fromHandle}". ` +
+          `Remove \`server\` (the handle already carries it) or bind the message to a channel on "${fromDef}".`,
+      );
+    }
+  }
+
+  const server = (def.server ?? handleServer)!;
+  const channelDef: Pick<RealtimeChannelDef, "name" | "server" | "guid"> = isHandle
+    ? (def.channel as RealtimeChannelDef)
+    : { name: def.channel as string, server };
+
+  return {
+    channelId: realtimeChannelGuid(channelDef),
+    serverId: resolveRealtimeServerRef(context, server),
+  };
+}
+
+/** The `(server, channel path, name)` triple a message's own guid is composed from. */
+function messageSeed(def: RealtimeMessageDef): string {
+  const context = `realtimeMessage "${def.name}"`;
+  const isHandle = typeof def.channel !== "string";
+  const channelName = isHandle ? (def.channel as RealtimeChannelDef).name : (def.channel as string);
+  const server = def.server ?? (isHandle ? (def.channel as RealtimeChannelDef).server : undefined);
+  if (server === undefined) {
+    throw new Error(`${context}: \`server\` is required to derive a stable guid.`);
+  }
+  return realtimeMessageSeedName(
+    realtimeServerRefName(context, server),
+    channelName,
+    def.name,
+  );
+}
+
+/** The guid a message def resolves to — composed from its server, channel path, and name. */
+export function realtimeMessageGuid(def: RealtimeMessageDef): string {
+  if (def.guid) return def.guid;
+  return deriveGuid("message", messageSeed(def));
+}
+
+export function encodeRealtimeMessage(def: RealtimeMessageDef): RealtimeMessageXdo {
+  if (!def.name) throw new Error("realtimeMessage: `name` is required.");
+  const { channelId, serverId } = resolveHost(def);
+  return {
+    name: def.name,
+    description: def.description ?? "",
+    active: def.active ?? true,
+    channel: { id: channelId },
+    server: { id: serverId },
+    auth: resolveAuthRef("realtimeMessage", def.name, def.auth),
+    deliver_to: def.deliverTo ?? "channel",
+    input: Object.entries(def.input ?? {}).map(([name, d]) => encodeInput(name, d)),
+    output: [],
+    middleware: buildMiddlewareBlock(def.middleware),
+    run: (def.stack ?? []).map(encodeStatement),
+    result: encodeResponse(def.response),
+    history: encodeHistory("message", def.history),
+    disabled: def.disabled ?? false,
+    tag: encodeTags(def.tags),
+  };
+}
+
+export const realtimeMessageKind: ObjectKind<RealtimeMessageDef, RealtimeMessageXdo> = {
+  name: "message",
+  payloadKey: "message",
+  encode: encodeRealtimeMessage,
+  guidOf: (def) => realtimeMessageGuid(def),
+};
+registerKind(realtimeMessageKind);
+
+/**
+ * Author a realtime message handler — a named message type on a channel, with
+ * its own validated payload and its own stack.
+ */
+export function realtimeMessage<const I extends Record<string, InputDescriptor>>(
+  def: RealtimeMessageDef<I>,
+): RealtimeMessageDef<I> {
+  return def;
+}
