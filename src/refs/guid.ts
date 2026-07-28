@@ -59,9 +59,69 @@ export const REFERENCEABLE_KIND_PAYLOAD_KEYS: Readonly<Record<string, string>> =
   addon: "addon",
   table: "dbo",
   api_group: "app",
+  // Realtime: `realtime_server` -> `channel` -> `message`. Kind names match the
+  // engine's object types (the authoring factories carry the `realtime` prefix
+  // instead). Channel and message names are NOT workspace-unique, so their
+  // seeds are composed — see {@link realtimeChannelSeedName}.
+  realtime_server: "realtime_server",
+  channel: "channel",
+  message: "message",
 };
 
 export const REFERENCEABLE_KINDS = new Set(Object.keys(REFERENCEABLE_KIND_PAYLOAD_KEYS));
+
+/**
+ * Separator joining the components of a composite guid seed. Chosen because the
+ * engine's own charset rules exclude it from both a channel path
+ * (`alphaOk digitOk ok("/_-{}")`) and a message name (`alphaOk digitOk ok("_-")`),
+ * so a seed can never be ambiguous between its parts. A realtime server name is
+ * free-form text, so it is the one component that must be checked.
+ */
+const SEED_SEP = "|";
+
+function seedPart(kind: string, label: string, value: string): string {
+  if (!value) {
+    throw new Error(`realtime ${kind} identity: \`${label}\` is required to derive a stable guid.`);
+  }
+  if (value.includes(SEED_SEP)) {
+    throw new Error(
+      `realtime ${kind} identity: \`${label}\` must not contain "${SEED_SEP}" (got "${value}") — ` +
+        `it separates the components of the guid seed, so a name carrying it could collide with a different object.`,
+    );
+  }
+  return value;
+}
+
+/**
+ * The seed *name* for a channel's guid: `<server>|<path>`.
+ *
+ * A channel path is unique only within its server, so the server has to be part
+ * of the identity — otherwise two servers each owning a `rooms` channel would
+ * derive one guid and the engine (which upserts by guid) would collapse them
+ * onto a single row. Pass the result to `deriveGuid("channel", …)`.
+ */
+export function realtimeChannelSeedName(server: string, path: string): string {
+  return [seedPart("channel", "server", server), seedPart("channel", "path", path)].join(SEED_SEP);
+}
+
+/**
+ * The seed *name* for a message's guid: `<server>|<channelPath>|<name>`.
+ *
+ * A message name is unique only within its channel, and its channel only within
+ * its server — so all three components are load-bearing. Pass the result to
+ * `deriveGuid("message", …)`.
+ */
+export function realtimeMessageSeedName(
+  server: string,
+  channelPath: string,
+  name: string,
+): string {
+  return [
+    seedPart("message", "server", server),
+    seedPart("message", "channel", channelPath),
+    seedPart("message", "name", name),
+  ].join(SEED_SEP);
+}
 
 /**
  * A reference to another workspace object: its def handle, or a bare name.

@@ -57,10 +57,12 @@ export const LOCK_PAYLOAD_KEYS = new Set(Object.values(REFERENCEABLE_KIND_PAYLOA
 
 /**
  * Payload keys whose objects carry a mintable `canonical` (the public URL
- * token) — api groups and toolsets. Workspace canonicals live under the fixed
- * keys instead. Entries for any other kind must not carry a canonical.
+ * token) — api groups, toolsets, and realtime servers. Workspace canonicals
+ * live under the fixed keys instead. Entries for any other kind must not carry
+ * a canonical. A channel and a message are addressed *through* their server's
+ * canonical, so neither carries one of its own.
  */
-export const CANONICAL_PAYLOAD_KEYS = new Set(["app", "toolset"]);
+export const CANONICAL_PAYLOAD_KEYS = new Set(["app", "toolset", "realtime_server"]);
 
 /**
  * Kind-name aliases accepted at the CLI boundary (`sidestep lock rename table …`),
