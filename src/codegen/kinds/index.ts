@@ -32,6 +32,7 @@ import { decodeFieldMap, decodeResponse, deepEqual } from "../field.js";
 import { decodeStack } from "../statement.js";
 import { decodeCondition } from "../expression.js";
 import { isDefaultEnvelopeMember, isEmptyOutput } from "../../validate/normalize.js";
+import type { ContainerPrefix } from "../../kinds/history.js";
 
 /** One `key: value` pair of a generated def literal. */
 export type DefEntry = readonly [string, Expr];
@@ -99,7 +100,14 @@ function tags(stored: StoredObject): DefEntry | null {
 }
 
 /** Object types whose request-history default is OFF (mirrors `common.ts`). */
-const HISTORY_DEFAULT_OFF = new Set(["function", "middleware", "trigger"]);
+const HISTORY_DEFAULT_OFF = new Set(["function", "middleware", "trigger", "message"]);
+
+/** Container tiers that are ON when nothing is authored (mirrors `history.ts`). */
+const CONTAINER_DEFAULT_ENABLED: Record<ContainerPrefix, boolean> = {
+  query: true,
+  tool: true,
+  message: false,
+};
 
 /**
  * `{inherit, enabled, limit}` → the scalar authoring surface, elided when it is
@@ -135,18 +143,23 @@ function history(args: KindDecodeArgs, objType: string): DefEntry | null {
   return ["history", lit(scalar)];
 }
 
-/** `history:` for a container-tier kind (`app` uses `query_*`, toolsets `tool_*`). */
-function containerHistory(args: KindDecodeArgs, prefix: "query" | "tool"): DefEntry | null {
+/**
+ * `history:` for a container-tier kind — `app` uses `query_*`, toolsets `tool_*`,
+ * and a realtime server / channel `message_*`.
+ */
+function containerHistory(args: KindDecodeArgs, prefix: ContainerPrefix): DefEntry | null {
   const block = args.stored.history as Record<string, unknown> | undefined;
   if (block === undefined) return null;
+  const enabledDefault = CONTAINER_DEFAULT_ENABLED[prefix];
   const normalized = {
     inherit: block.inherit,
     enabled: block[`${prefix}_enabled`],
     limit: block[`${prefix}_limit`],
   };
-  // Both container tiers default ON, so the inherit default is the same shape.
-  if (deepEqual(normalized, { inherit: true, enabled: true, limit: 100 })) return null;
-  const scalar = historyScalar("query", normalized);
+  if (deepEqual(normalized, { inherit: true, enabled: enabledDefault, limit: 100 })) return null;
+  // `historyScalar` keys the inherit default off the object type, so pass one
+  // whose default matches this tier's.
+  const scalar = historyScalar(enabledDefault ? "query" : "message", normalized);
   if (scalar === null) return null;
   if (scalar === undefined) {
     args.ctx.problem(
@@ -460,6 +473,85 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
       ]),
   },
   {
+    name: "realtime_server",
+    payloadKey: "realtime_server",
+    dir: "realtimeServers",
+    register: "registerRealtimeServers",
+    defType: "RealtimeServerDef",
+    factory: "realtimeServer",
+    decode: (a) =>
+      compact([
+        ...identity(a),
+        plain(a.stored, "description", ""),
+        plain(a.stored, "canonical", ""),
+        // A realtime server is OFF by default, so `enabled: true` is the
+        // authored state worth carrying.
+        plain(a.stored, "enabled", false),
+        containerHistory(a, "message"),
+        tags(a.stored),
+      ]),
+  },
+  {
+    name: "channel",
+    payloadKey: "channel",
+    dir: "realtimeChannels",
+    register: "registerRealtimeChannels",
+    defType: "RealtimeChannelDef",
+    factory: "realtimeChannel",
+    decode: (a) =>
+      compact([
+        ...identity(a),
+        realtimeHostBinding(a, "server", "server"),
+        plain(a.stored, "description", ""),
+        plain(a.stored, "active", true),
+        inputs(a),
+        plain(a.stored, "anonymous_clients", false, "anonymousClients"),
+        plain(a.stored, "presence", false),
+        // Nested blocks elide as WHOLES — a per-member comparison would fill a
+        // generated file with `publish: { direct: false }` noise for a channel
+        // that only set `who`.
+        nested(a, "publish", { who: "nobody", direct: false }),
+        nested(a, "conversation", { enabled: false, limit: 0, ttl: 0 }),
+        nested(a, "delivery", { guarantee: "at_most_once", per_recipient: false }, {
+          per_recipient: "perRecipient",
+        }),
+        nested(a, "rate_limit", { messages_per_minute: 0 }, {
+          messages_per_minute: "messagesPerMinute",
+        }, "rateLimit"),
+        containerHistory(a, "message"),
+        tags(a.stored),
+      ]),
+  },
+  {
+    name: "message",
+    payloadKey: "message",
+    dir: "realtimeMessages",
+    register: "registerRealtimeMessages",
+    defType: "RealtimeMessageDef",
+    factory: "realtimeMessage",
+    decode: (a) =>
+      compact([
+        ...identity(a),
+        // A channel handle carries its server, so the encoder can take both from
+        // one reference — but a DECODED message has only two guids and no way to
+        // know they agree, so both are emitted. `server` alongside a resolved
+        // channel handle is accepted by the encoder as long as they match.
+        realtimeHostBinding(a, "channel", "channel"),
+        realtimeHostBinding(a, "server", "server"),
+        plain(a.stored, "description", ""),
+        plain(a.stored, "active", true),
+        authRef(a, a.stored.auth),
+        plain(a.stored, "deliver_to", "channel", "deliverTo"),
+        plain(a.stored, "disabled", false),
+        middleware(a),
+        tags(a.stored),
+        history(a, "message"),
+        inputs(a),
+        response(a),
+        stack(a),
+      ]),
+  },
+  {
     name: "trigger",
     payloadKey: "trigger",
     dir: "triggers",
@@ -630,6 +722,53 @@ function authRef(a: KindDecodeArgs, stored: unknown): DefEntry | null {
     "auth",
     resolveReference(a.ctx, a.refs, stored, { ...a.resolve, unresolved: "object-ref" }),
   ];
+}
+
+/**
+ * A realtime parent binding (`server.id` / `channel.id`): a guid reference back
+ * to the parent's handle, or the numeric escape hatch. Unlike a query's api
+ * group these are required, so a `0`/absent id is dropped rather than silently
+ * emitting `0` — the resulting def then fails its own encoder check loudly.
+ */
+function realtimeHostBinding(
+  a: KindDecodeArgs,
+  storedKey: string,
+  defKey: string,
+): DefEntry | null {
+  const id = (a.stored[storedKey] as { id?: unknown } | undefined)?.id;
+  if (id === undefined || id === 0 || id === "") return null;
+  if (typeof id === "number") return [defKey, lit(id)];
+  return [
+    defKey,
+    resolveReference(a.ctx, a.refs, String(id), { ...a.resolve, unresolved: "object-ref" }),
+  ];
+}
+
+/**
+ * A nested config block that elides as a WHOLE when every member is at its
+ * engine default, and otherwise emits only its non-default members.
+ *
+ * Whole-block elision is what keeps generated channels readable: comparing
+ * member-by-member would emit `publish: { direct: false }` for a channel that
+ * only ever set `who`. `rename` maps stored snake_case members to their
+ * authoring names; `defKey` renames the block itself.
+ */
+function nested(
+  a: KindDecodeArgs,
+  storedKey: string,
+  defaults: Record<string, unknown>,
+  rename: Record<string, string> = {},
+  defKey = storedKey,
+): DefEntry | null {
+  const block = a.stored[storedKey] as Record<string, unknown> | undefined;
+  if (block === undefined || deepEqual(block, defaults)) return null;
+  const entries: DefEntry[] = [];
+  for (const [key, fallback] of Object.entries(defaults)) {
+    const value = block[key];
+    if (value === undefined || deepEqual(value, fallback)) continue;
+    entries.push([rename[key] ?? key, lit(value)]);
+  }
+  return entries.length > 0 ? [defKey, obj(entries)] : null;
 }
 
 /** A query's api-group binding: a guid reference, or the numeric escape hatch. */
