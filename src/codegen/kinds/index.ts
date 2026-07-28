@@ -771,21 +771,109 @@ function workspaceEnv(a: KindDecodeArgs): DefEntry | null {
   ];
 }
 
-/** An addon's def entries — its `context` block carries the table binding. */
+/** Cardinalities `buildContext` can rebuild from `cardinality:` alone. */
+const LIFTABLE_CARDINALITY = new Set(["single", "count", "exists"]);
+
+/**
+ * `context.return` → `cardinality:`, plus whether the block is fully expressed.
+ *
+ * `"list"` is the engine default and `buildContext` omits it, so it is never
+ * emitted. `"aggregate"` is deliberately excluded: its graft type is derived from
+ * `group`/`eval`, which this inverse does not recover, so lifting it would type
+ * one shape while the passthrough encodes another.
+ */
+function addonCardinality(block: unknown): { value: string; whole: boolean } | null {
+  if (block === null || typeof block !== "object") return null;
+  const type = (block as { type?: unknown }).type;
+  if (typeof type !== "string" || !LIFTABLE_CARDINALITY.has(type)) return null;
+  // A bare `{type}` is exactly what `buildContext` writes, so it can be dropped.
+  // The engine writes the full envelope, which has to ride through `context` —
+  // stating `cardinality` alongside it is still correct (an explicit `return`
+  // wins on encode, and `buildContext` only rejects a *conflicting* type), and
+  // it is what gives the generated addon its graft type.
+  return { value: type, whole: Object.keys(block as object).length === 1 };
+}
+
+/** `[{sortBy, orderBy}]` → the authoring `[{sortBy, dir?}]` form (mirrors `db.query`'s). */
+function addonSort(list: unknown): Expr | null {
+  if (!Array.isArray(list) || list.length === 0) return null;
+  const rows: Expr[] = [];
+  for (const raw of list) {
+    const sortBy = (raw as { sortBy?: unknown }).sortBy;
+    const orderBy = (raw as { orderBy?: unknown }).orderBy;
+    if (typeof sortBy !== "string") return null;
+    const cells: Array<[string, Expr]> = [["sortBy", lit(sortBy)]];
+    // `asc` is the encoder's default, so stating it would be noise.
+    if (typeof orderBy === "string" && orderBy !== "asc") cells.push(["dir", lit(orderBy)]);
+    rows.push(obj(cells));
+  }
+  return arr(rows);
+}
+
+/** `{customize:true, items:[{name}]}` → the `["id","name"]` column list. */
+function addonOutput(stored: unknown): Expr | null {
+  if (stored === null || typeof stored !== "object") return null;
+  const block = stored as { customize?: unknown; items?: unknown };
+  if (block.customize !== true || !Array.isArray(block.items)) return null;
+  const names: string[] = [];
+  for (const item of block.items) {
+    const name = (item as { name?: unknown; children?: unknown }).name;
+    // A nested selection has no column-list form; `children: []` is the engine's
+    // filler and `normalize` drops it, so only a populated one disqualifies.
+    const children = (item as { children?: unknown }).children;
+    if (typeof name !== "string") return null;
+    if (Array.isArray(children) && children.length > 0) return null;
+    names.push(name);
+  }
+  return lit(names);
+}
+
+/**
+ * An addon's def entries — the inverse of `buildContext`.
+ *
+ * An addon persists as one `context` blob, and passing it through verbatim was
+ * exact but unreadable: a pulled addon arrived as sixty lines of engine defaults
+ * with the table binding buried as a guid. Each authoring surface it can rebuild
+ * (`table`, `where`, `sort`, `cardinality`, `output`) is lifted back out, and
+ * whatever is left still rides through `context` so nothing is lost. A lifted key
+ * is removed from that passthrough — `buildContext` lets an explicit `context`
+ * win, so leaving both would silently ignore the readable one.
+ */
 function addonEntries(a: KindDecodeArgs): DefEntry[] {
   const context = (a.stored.context ?? {}) as Record<string, unknown>;
   const dbo = context.dbo as Record<string, unknown> | undefined;
   const dboId = typeof dbo?.id === "string" ? dbo.id : "";
+  const consumed = new Set<string>();
 
-  // `table:` is the readable form, but `buildContext` only generates the binding
-  // when it is exactly `{id}` — so anything richer (an `as` alias, or the empty
-  // `{as:"", id:""}` a table-less addon stores) has to ride through `context`
-  // verbatim instead. Emitting `table: {name:"", guid:""}` for an empty binding
-  // is not a readability loss, it is a hard failure: `resolveRef` rejects a
-  // target with neither.
-  const bindsTable = dboId !== "" && Object.keys(dbo!).length === 1;
+  // The engine persists `{as, id}`; `buildContext` writes `{id}` alone. Both are
+  // the same bytes once `normalize` drops the empty alias, so bind on either —
+  // but a *populated* alias has no `table:` form and must ride through `context`,
+  // and an empty `{as:"", id:""}` binds nothing at all (`resolveRef` rejects a
+  // target with neither name nor guid, so emitting `table:` would be a hard
+  // failure rather than a readability loss).
+  const bindsTable =
+    dboId !== "" &&
+    Object.keys(dbo!).every((key) => key === "id" || key === "as") &&
+    (dbo!.as ?? "") === "";
+  if (bindsTable) consumed.add("dbo");
+
+  const where = decodeCondition(a.ctx, context.search);
+  if (where) consumed.add("search");
+
+  const sort = addonSort(context.sort);
+  if (sort) consumed.add("sort");
+
+  const cardinality = addonCardinality(context.return);
+  if (cardinality?.whole) consumed.add("return");
+
+  const output = addonOutput(a.stored.output);
+
+  // Whatever no authoring surface claimed. `buildContext` spreads `def.context`
+  // first and only auto-fills what it does not already carry, so a rich engine
+  // context (bind/eval/lock/future) survives untouched — whereas hoisting those
+  // keys would silently drop every one the authoring surface cannot declare.
   const passthrough = Object.fromEntries(
-    Object.entries(context).filter(([key]) => !(bindsTable && key === "dbo")),
+    Object.entries(context).filter(([key]) => !consumed.has(key)),
   );
 
   return compact([
@@ -797,15 +885,17 @@ function addonEntries(a: KindDecodeArgs): DefEntry[] {
           resolveReference(a.ctx, a.refs, dboId, { ...a.resolve, unresolved: "object-ref" }),
         ] as DefEntry)
       : null,
-    // The whole remaining context, as one block. `buildContext` spreads
-    // `def.context` first and only auto-fills what it does not already carry, so
-    // a rich engine context (bind/eval/lock/return/future) survives untouched —
-    // whereas hoisting those keys to the top level would silently drop every one
-    // the authoring surface does not declare.
-    Object.keys(passthrough).length > 0 ? (["context", lit(passthrough)] as DefEntry) : null,
-    a.stored.output !== undefined ? (["output", lit(a.stored.output)] as DefEntry) : null,
-    tags(a.stored),
     inputs(a),
+    where ? (["where", where.expr] as DefEntry) : null,
+    sort ? (["sort", sort] as DefEntry) : null,
+    output
+      ? (["output", output] as DefEntry)
+      : a.stored.output !== undefined
+        ? (["output", lit(a.stored.output)] as DefEntry)
+        : null,
+    cardinality ? (["cardinality", lit(cardinality.value)] as DefEntry) : null,
+    Object.keys(passthrough).length > 0 ? (["context", lit(passthrough)] as DefEntry) : null,
+    tags(a.stored),
   ]);
 }
 

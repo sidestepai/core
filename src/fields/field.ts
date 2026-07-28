@@ -135,11 +135,26 @@ export type ReadonlyMethods<T, N extends string> = Omit<T, "methods"> & {
   methods?: readonly MethodArg<N>[];
 };
 
-/** Normalize a `MethodSpec` into `{ name, arg }`, parsing the colon form. */
+/**
+ * Normalize a `MethodSpec` into `{ name, arg }`, parsing the colon form.
+ *
+ * A numeric-looking segment becomes a number, because that is what the engine
+ * persists: a UI-authored `min` on a password column stores `arg: [8]`, not
+ * `["8"]`. Without the coercion `"min:8"` and the equivalent `{name:"min",
+ * arg:[8]}` encode to different bytes, which makes the colon form unusable as
+ * the decoded shorthand for any method that takes a number — i.e. most of them.
+ *
+ * An arg that is genuinely the string `"8"` still has the explicit object form.
+ */
 function parseMethod(spec: MethodSpec): { name: string; arg: Array<string | number> } {
   if (typeof spec !== "string") return { name: spec.name, arg: spec.arg ?? [] };
   const [name = spec, ...arg] = spec.split(":");
-  return { name, arg };
+  return { name, arg: arg.map((part) => (isNumericArg(part) ? Number(part) : part)) };
+}
+
+/** Whether a colon-form segment round-trips through `Number` unchanged. */
+function isNumericArg(part: string): boolean {
+  return part !== "" && String(Number(part)) === part;
 }
 
 export function encodeMethods(methods: MethodSpec[] | undefined): MethodXdo[] {

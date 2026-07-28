@@ -122,6 +122,26 @@ function unrepresentableKeys(stored: FieldXdo, context: FieldContext): string[] 
     .map(([key]) => key);
 }
 
+/**
+ * `"min:8"` for a method whose args survive the colon round trip, else null.
+ *
+ * Self-checking rather than rule-based: the candidate string is parsed back with
+ * the encoder's own splitter and compared to the stored args, so this cannot
+ * drift from `parseMethod` no matter how either side changes.
+ */
+function colonForm(name: string, args: readonly (string | number)[]): string | null {
+  if (name.includes(":")) return null;
+  if (args.length === 0) return name;
+  if (!args.every((a) => typeof a === "number" || typeof a === "string")) return null;
+  const candidate = [name, ...args].join(":");
+  const [reName = candidate, ...reArgs] = candidate.split(":");
+  if (reName !== name || reArgs.length !== args.length) return null;
+  const recovered = reArgs.map((part) =>
+    part !== "" && String(Number(part)) === part ? Number(part) : part,
+  );
+  return recovered.every((value, i) => value === args[i]) ? candidate : null;
+}
+
 /** Recover authoring `methods` from the stored list, or null when not expressible. */
 function recoverMethods(stored: readonly MethodXdo[]): MethodSpec[] | null {
   const out: MethodSpec[] = [];
@@ -129,9 +149,13 @@ function recoverMethods(stored: readonly MethodXdo[]): MethodSpec[] | null {
     // `encodeMethods` always writes `disabled: false`; a disabled method has no form.
     if (method.disabled !== false) return null;
     const args = method.arg ?? [];
-    // The bare-string form carries no args; anything else needs the explicit object,
-    // because the colon form would stringify a numeric arg on the way back.
-    out.push(args.length === 0 ? method.name : { name: method.name, arg: [...args] });
+    // Prefer the colon shorthand (`"min:8"`) — it is what an author writes, and
+    // the object form turns a three-rule password column into fifteen lines.
+    // It is only emitted when re-parsing it yields the stored args exactly, so
+    // an arg that cannot survive the trip (an embedded `:`, a string that looks
+    // like a number) falls back to the explicit form rather than drifting.
+    const shorthand = colonForm(method.name, args);
+    out.push(shorthand ?? { name: method.name, arg: [...args] });
   }
   return out;
 }

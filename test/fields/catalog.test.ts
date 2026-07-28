@@ -261,9 +261,18 @@ describe("system-index auto-injection", () => {
 });
 
 describe("filter methods with arguments", () => {
-  it("parses colon-form filter args (min:8 → arg:['8'])", () => {
+  it("parses colon-form filter args, recovering numbers (min:10 → arg:[10])", () => {
+    // A numeric arg encodes as a NUMBER, matching what the engine persists for a
+    // UI-authored rule (`min` on a password column stores `arg: [8]`). The colon
+    // form previously stringified it, which made `"min:10"` and the equivalent
+    // `{name:"min", arg:[10]}` encode to different bytes.
     const score = encodeColumn({ name: "score", type: "int", methods: ["min:10"] });
-    expect(score.methods).toEqual([{ name: "min", disabled: false, arg: ["10"] }]);
+    expect(score.methods).toEqual([{ name: "min", disabled: false, arg: [10] }]);
+  });
+
+  it("keeps a genuinely-textual arg a string", () => {
+    const slug = encodeColumn({ name: "slug", type: "text", methods: [{ name: "min", arg: ["10"] }] });
+    expect(slug.methods).toEqual([{ name: "min", disabled: false, arg: ["10"] }]);
   });
 });
 
