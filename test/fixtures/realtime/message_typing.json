@@ -1,31 +1,34 @@
 {
-  "name": "typing",
-  "description": "Ephemeral typing indicator",
-  "active": true,
-  "channel": {
-    "id": "9bb29e80f77fab4de53acde9fbd3b925"
-  },
-  "server": {
-    "id": "ffbd76434e93bfccd084347fd40922bb"
-  },
-  "auth": false,
-  "deliver_to": "others",
-  "input": [],
-  "output": [],
-  "middleware": {
-    "pre_customize": false,
-    "post_customize": false,
-    "pre": [],
-    "post": []
-  },
   "run": [],
+  "tag": [],
+  "auth": false,
+  "guid": "npewBzOg02wRRGLv_3dU4tbgXx8",
+  "name": "typing",
+  "input": [],
+  "active": true,
+  "branch": {
+    "id": 0
+  },
+  "output": [],
   "result": [],
+  "server": {
+    "id": "MWT3En76DWAq0PJaXBsodu2nA9E"
+  },
+  "channel": {
+    "id": "twLNeRZEeAbpwze-Nuz83XIHvrU"
+  },
   "history": {
-    "inherit": true,
+    "limit": 100,
     "enabled": false,
-    "limit": 100
+    "inherit": true
   },
   "disabled": false,
-  "tag": [],
-  "guid": "55c316092217c707a00da8f5731b0567"
+  "deliver_to": "others",
+  "middleware": {
+    "pre": [],
+    "post": [],
+    "pre_customize": false,
+    "post_customize": false
+  },
+  "description": "Ephemeral typing indicator"
 }

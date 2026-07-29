@@ -550,7 +550,7 @@ method. Payload keys use the engine's singular names.
 | `table({ schema, index, ... })` | `registerTables` | `dbo` |
 | `query({ verb, apiGroup, ... })` | `registerQueries` | `query` |
 | `apiGroup({ canonical, cors, ... })` | `registerApiGroups` | `app` |
-| `{tableTrigger,realtimeTrigger,realtimeServerTrigger,realtimeChannelTrigger,mcpServerTrigger,agentTrigger,workspaceTrigger,errorTrigger}(...)` | `registerTriggers` | `trigger` |
+| `{tableTrigger,realtimeServerTrigger,realtimeChannelTrigger,mcpServerTrigger,agentTrigger,workspaceTrigger,errorTrigger}(...)` | `registerTriggers` | `trigger` |
 | `tool({...})` | `registerTools` | `tool` |
 | `mcpServer({...})` | `registerMcpServers` | `toolset` |
 | `agent({ llm, ... })` | `registerAgents` | `toolset` |
@@ -562,10 +562,10 @@ method. Payload keys use the engine's singular names.
 | `realtimeMessage({ channel, ... })` | `registerRealtimeMessages` | `message` |
 | `workspaceConfig({...})` | `registerWorkspace` | `workspace` |
 
-**Triggers** — eight first-class root factories that share one envelope discriminated by
-`obj_type` + a per-type `meta`: `tableTrigger` (db), `realtimeTrigger`,
-`realtimeServerTrigger`, `realtimeChannelTrigger`, `mcpServerTrigger`,
-`agentTrigger`, `workspaceTrigger`, `errorTrigger`. **A trigger's `stack` is a callback — `stack: (t) => [...]`,
+**Triggers** — seven first-class root factories that share one envelope discriminated by
+`obj_type` + a per-type `meta`: `tableTrigger` (db), `realtimeServerTrigger`,
+`realtimeChannelTrigger`, `mcpServerTrigger`, `agentTrigger`, `workspaceTrigger`,
+`errorTrigger`. **A trigger's `stack` is a callback — `stack: (t) => [...]`,
 not the plain `stack: []` array the other kinds use.** A trigger's inputs are **implied by type**
 (fixed by Xano, not editable) and injected automatically — so triggers take no `input` field, and
 the typed stack handle `t` is the only way to reference them (`response: (t) => ...` on
@@ -583,16 +583,16 @@ tableTrigger({
   ],
 });
 
-// Realtime trigger — response-bearing; response defaults to the payload passthrough.
-realtimeTrigger({
-  name: "on-message",
-  objId: channelId,
-  actions: { message: true },
-  response: (t) => t.payload,
+// Realtime channel trigger — response-bearing; a handle binds it unambiguously.
+realtimeChannelTrigger({
+  name: "on-room-join",
+  channel: room,
+  actions: { join: true },          // gating: the return admits or denies the join
+  stack: (t) => [s.debug.log({ value: t.client("permissions.dbo_id") })],
 });
 ```
 
-Per-type inputs: **table** `new`/`old`/`action`/`datasource`; **realtime** `action`/`channel`/`client`/`options`/`payload`; **realtimeServer** `action`/`realtime_server`/`client`; **realtimeChannel** `action`/`channel`/`client`; **mcpServer**/**agent** `toolset`/`tools`; **workspace** `to_branch`/`from_branch`/`action`; **error** `event`/`id`/`signature`/`error`/`caller`/`statement`/`actor`/`count`/`first_seen`/`last_seen`/`fixed_at`.
+Per-type inputs: **table** `new`/`old`/`action`/`datasource`; **realtimeServer** `action`/`realtime_server`/`client`; **realtimeChannel** `action`/`channel`/`client`; **mcpServer**/**agent** `toolset`/`tools`; **workspace** `to_branch`/`from_branch`/`action`; **error** `event`/`id`/`signature`/`error`/`caller`/`statement`/`actor`/`count`/`first_seen`/`last_seen`/`fixed_at`.
 
 **Realtime** — the websocket family, and the only three-level containment chain in the
 SDK: `realtimeServer` owns `realtimeChannel`s, which own `realtimeMessage` handlers (a
@@ -602,7 +602,15 @@ message is the realtime analogue of a query — its own typed payload and stack)
 are what make the binding unambiguous. A channel's `input` types its **path** params
 (`rooms/{room_id}`); a message's `input` types the message **payload**. A server is off
 until `enabled: true`. Lifecycle events are triggers: `realtimeServerTrigger` (client
-connect/disconnect) and `realtimeChannelTrigger` (join/leave).
+connect/disconnect) and `realtimeChannelTrigger` (join/leave/deliver). Those actions do
+not share a posture, and the posture decides what your stack should return: `connect` and
+`join` **gate** (the return admits or denies, fail-closed), `disconnect` and `leave` are
+**observational** (the return is ignored), and `deliver` gates **per recipient** — it runs
+once for each client a message is about to reach, and its return rewrites that recipient's
+copy of the payload, drops the message for that recipient, or passes the original through.
+That makes `deliver` the per-viewer redaction tool ("hide the author's address from
+everyone but the author") and also the most expensive action of the five: a stack per
+recipient per message.
 
 ```ts
 const chat = realtimeServer({ name: "chat", enabled: true });
@@ -627,8 +635,15 @@ realtimeMessage({
 realtimeChannelTrigger({
   name: "on-room-join",
   channel: room,                     // a handle — a bare path is ambiguous
-  actions: { join: true },
+  actions: { join: true },           // gating: the return admits or denies the join
   stack: (t) => [s.debug.log({ value: t.channel })],
+});
+
+realtimeChannelTrigger({
+  name: "on-room-deliver",
+  channel: room,
+  actions: { deliver: true },        // runs once PER RECIPIENT, not per event
+  stack: (t) => [s.debug.log({ value: t.action })],
 });
 ```
 
@@ -670,6 +685,26 @@ Server frames arrive as `action: join` (the ack, carrying bound `params`), `mess
 `conversation: true`, so history is distinguishable from live traffic), and `error`
 (`payload.message`, plus `payload.code`/`retry_after` when rate limited). An `error` is a
 per-frame refusal, not a disconnect.
+
+**The superseded realtime layer.** Xano has had two realtime generations, and they reuse
+the same words — "realtime", "channel" — for different objects. Everything above is the
+current one. Two superseded surfaces are still supported, because `sidestep codegen` has to
+be able to bring back a workspace that holds them:
+
+- `realtimeTrigger({ objId, actions: { message?, join? } })` — a trigger against the old
+  workspace-global realtime config. Its `join` action is now
+  `realtimeChannelTrigger({ actions: { join: true } })`; its `message` action is now a
+  `realtimeMessage()` handler, because a message is an authored unit rather than a trigger
+  action.
+- `s.api.realtime_event({ channel, data, ... })` — publishes to the old layer. It is **not**
+  a way to publish to a `realtimeChannel()`, and there is no current-layer send statement
+  yet: to move a payload out over the current layer, return it from a `realtimeMessage()`
+  handler and let its `deliverTo` decide who receives it.
+
+Both are **absent from the `## Object kinds` and `## Statements` catalogs in `llms.txt`** and
+named only under `## Legacy` — the same treatment `c.expressionLegacy` gets. The point is
+that an agent recognizes them in pulled code without ever reaching for one, and never
+mistakes a name match for the two generations being the same object.
 
 **MCP servers & agents** — two first-class root primitives. Both persist under the
 `toolset` payload key (obj_type=`toolset`), so an `mcpServer` and an `agent` **sharing a

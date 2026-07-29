@@ -65,6 +65,12 @@ export interface ManifestStatement {
   result?: { name: string; type: string; note?: string };
   /** Field schema — present for declarative statements. */
   fields?: ManifestField[];
+  /**
+   * An older paradigm the SDK still SUPPORTS but no longer wants authored — same
+   * contract as {@link ManifestValue.legacy}: withheld from the per-namespace
+   * catalog an agent picks from, and named-only in the `## Legacy` index.
+   */
+  legacy?: boolean;
 }
 
 /**
@@ -83,6 +89,16 @@ export interface ManifestSubKind {
   description: string;
   /** Built and registered, but withheld from the published catalog — see {@link ManifestKind.unpublished}. */
   unpublished?: boolean;
+  /**
+   * An older paradigm the SDK still SUPPORTS but no longer wants authored — same
+   * contract as {@link ManifestValue.legacy}: withheld from the sub-kind catalog
+   * and the trigger prose, and named-only in the `## Legacy` index.
+   *
+   * Distinct from `unpublished`, which withholds a factory that is not ready.
+   * A legacy factory is fully ready and fully supported; it is the *paradigm*
+   * that has been superseded.
+   */
+  legacy?: boolean;
 }
 
 /** One top-level object kind. */
@@ -370,12 +386,12 @@ export const KIND_DESCRIPTORS: ReadonlyArray<Omit<ManifestKind, "registered">> =
   {
     kind: "trigger",
     payloadKey: "trigger",
-    authorFactory: "{tableTrigger,realtimeTrigger,realtimeServerTrigger,realtimeChannelTrigger,mcpServerTrigger,agentTrigger,workspaceTrigger,errorTrigger}",
-    description: "An event-driven handler fired by a DB write, realtime channel, MCP/agent connection, branch lifecycle, or error — inputs are implied by type and arrive on the `t` handle.",
+    authorFactory: "{tableTrigger,realtimeServerTrigger,realtimeChannelTrigger,mcpServerTrigger,agentTrigger,workspaceTrigger,errorTrigger}",
+    description: "An event-driven handler fired by a DB write, a realtime server connection or channel join/leave/deliver, an MCP/agent connection, a branch lifecycle event, or an error — inputs are implied by type and arrive on the `t` handle.",
     registerMethod: "registerTriggers",
     subKinds: [
       { authorFactory: "tableTrigger", objType: "database", description: "Fires when rows change on a bound table (insert/update/delete/truncate). The changed row is exposed as `t.new`/`t.old`, typed to the table when a `table()` handle is bound. Config-only (no response)." },
-      { authorFactory: "realtimeTrigger", objType: "workspace_realtime_channel", description: "Fires on realtime channel activity (message/join); inspect the channel, connecting client, options, and payload via `t`. Response-bearing — defaults to echoing the payload." },
+      { authorFactory: "realtimeTrigger", objType: "workspace_realtime_channel", legacy: true, description: "the SUPERSEDED realtime trigger, against the workspace-global realtime layer — a different object from the current `channel`, despite the similar name. For a join hook use `realtimeChannelTrigger({ actions: { join: true } })`; for message handling use a `realtimeMessage()` handler, which is the current equivalent of its `message` action (a message is an authored unit now, not a trigger action)." },
       { authorFactory: "realtimeServerTrigger", objType: "realtime_server", description: "Fires when a client connects to or disconnects from a realtime server; inspect the connecting client and its permissions via `t`. Bind with `realtimeServer`. Response-bearing." },
       { authorFactory: "realtimeChannelTrigger", objType: "channel", description: "Fires when a client joins or leaves a channel; inspect the addressed channel path and the client via `t`. Bind with a `realtimeChannel()` handle (a bare path is ambiguous across servers). Response-bearing." },
       { authorFactory: "mcpServerTrigger", objType: "toolset", description: "Fires when an MCP client connects to a bound MCP server; gate or annotate the exposed tools via `t.toolset`/`t.tools`. Response-bearing." },
@@ -485,6 +501,27 @@ const SPECS_BY_NAME = new Map(GENERATED_SPECS.map((s) => [s.name, s]));
  * `(…) [special]` and defers to the typed entry — as it already does for the
  * hand-authored call family. The `[output]` flag is preserved.
  */
+/**
+ * Statement surfaces whose PARADIGM has been superseded, keyed by surface name to
+ * the "use this instead" line the `## Legacy` index renders.
+ *
+ * Still registered, still authorable, still decoded out of a real workspace — so an
+ * agent reading pulled code has to recognize them. They are withheld from the
+ * per-namespace catalog and named-only in the legacy index, which is the same
+ * split legacy VALUE constructors get: hiding one entirely is worse than useless,
+ * because an agent that has never heard of it will "fix" what it does not
+ * recognize.
+ *
+ * The realtime pair is the whole reason this exists at the statement level. The
+ * two realtime layers use overlapping vocabulary — "channel", "realtime" — for
+ * different objects, so an agent that sees both surfaces in one catalog will mix
+ * them, and a mixed workspace fails at runtime rather than at compile.
+ */
+export const LEGACY_SURFACES: Readonly<Record<string, string>> = {
+  "api.realtime_event":
+    "publishes to the SUPERSEDED workspace-global realtime layer, NOT to a `realtimeChannel()`. There is no current-layer send statement yet, so this is not a stand-in for one: to move a payload out over the current layer, return it from a `realtimeMessage()` handler (its `deliverTo` decides who receives it).",
+};
+
 export const OVERRIDDEN_SURFACES = new Set([
   "mvp:api_request",
   "mvp:streaming_api_request",
@@ -576,6 +613,7 @@ export function buildManifest(opts: { version?: string } = {}): Manifest {
     // `hasOwn` guards a surface name colliding with an inherited Object member,
     // mirroring the FILTER_NOTES lookup below.
     if (Object.hasOwn(STATEMENT_RESULTS, surface)) entry.result = STATEMENT_RESULTS[surface];
+    if (Object.hasOwn(LEGACY_SURFACES, surface)) entry.legacy = true;
     return entry;
   });
 
@@ -1087,6 +1125,8 @@ export function renderLlmsTxt(m: Manifest): string {
       // each reads as a first-class primitive (they share one payload key +
       // register method, discriminated by `obj_type`).
       for (const sub of k.subKinds) {
+        // Legacy sub-kinds are withheld here and named in `## Legacy` instead.
+        if (sub.legacy) continue;
         lines.push(
           `- ${k.kind} (${sub.objType}): \`${sub.authorFactory}\` → \`Xano.${k.registerMethod}\` → payload \`${k.payloadKey}\` — ${sub.description}`,
         );
@@ -1147,15 +1187,14 @@ export function renderLlmsTxt(m: Manifest): string {
     "not editable) and arrive through the typed **stack handle** `t` — you can't",
     "reference them without it. (Response-bearing types take `response: (t) =>",
     "ResponseDef` too.) `t` exposes exactly that trigger type's inputs; a wrong",
-    "name is a compile error, not a runtime surprise. The eight trigger types are",
-    "distinct root factories (not a namespace): `{tableTrigger, realtimeTrigger,",
-    "realtimeServerTrigger, realtimeChannelTrigger, mcpServerTrigger, agentTrigger,",
-    "workspaceTrigger, errorTrigger}({ name, guid?, description?, active?, tags?, ... })`.",
+    "name is a compile error, not a runtime surprise. The seven trigger types are",
+    "distinct root factories (not a namespace): `{tableTrigger, realtimeServerTrigger,",
+    "realtimeChannelTrigger, mcpServerTrigger, agentTrigger, workspaceTrigger,",
+    "errorTrigger}({ name, guid?, description?, active?, tags?, ... })`.",
     "",
     "- `tableTrigger({ name, table?, datasources?, actions?: {insert?,update?,delete?,truncate?}, stack })` — database/table trigger. `t.new` / `t.old` are the row **after** / **before** the change; `t.action` (`insert|update|delete|truncate`), `t.datasource`. Bind `table` to a `table()` handle and `t.new(\"col\")` / `t.old(\"col\")` are typed to that row (misspelled column = compile error). Nullability follows the enabled actions: insert → `old` is null, delete → `new` is null, update → both, truncate → neither. Config-only (no response).",
-    "- `realtimeTrigger({ name, objId, actions?: {message?,join?}, stack?, response? })` — realtime channel. Inputs: `t.action` (`message|join`), `t.channel`, `t.client` (`t.client(\"permissions.dbo_id\")`), `t.options`, `t.payload`. Response-bearing; `response` defaults to the `payload` passthrough.",
     "- `realtimeServerTrigger({ name, realtimeServer, actions?: {connect?,disconnect?}, stack?, response? })` — realtime SERVER lifecycle (a client connecting to / disconnecting from the server, not a message). Inputs: `t.action` (`connect|disconnect`), `t.realtime_server`, `t.client`. Bind `realtimeServer` to a `realtimeServer()` handle (or its name). Response-bearing.",
-    "- `realtimeChannelTrigger({ name, channel, actions?: {join?,leave?}, stack?, response? })` — realtime CHANNEL lifecycle (join/leave). Inputs: `t.action` (`join|leave`), `t.channel`, `t.client`. Bind `channel` to a `realtimeChannel()` handle — a bare path is NOT accepted (it is unique only within its server). Response-bearing.",
+    "- `realtimeChannelTrigger({ name, channel, actions?: {join?,leave?,deliver?}, stack?, response? })` — realtime CHANNEL lifecycle. Inputs: `t.action` (`join|leave|deliver`), `t.channel`, `t.client`. Bind `channel` to a `realtimeChannel()` handle — a bare path is NOT accepted (it is unique only within its server). The three actions have DIFFERENT postures, and the posture decides what the stack should return: `join` GATES the join (return admits/denies, fail-closed), `leave` is OBSERVATIONAL (return ignored), `deliver` GATES delivery PER RECIPIENT — it runs once per client the message is about to reach and its return rewrites that recipient's payload, drops the message for that recipient, or passes the original through. `deliver` is the per-viewer redaction tool and the most expensive action here (a stack per recipient per message).",
     "- `mcpServerTrigger(...)` / `agentTrigger({ name, objId, stack?, response? })` — toolset connection. Inputs: `t.toolset` (`t.toolset(\"name\")`), `t.tools`. Response-bearing; the default stack copies `toolset`/`tools` into vars and returns them.",
     "- `workspaceTrigger({ name, actions?: {branch_live?,branch_merge?,branch_new?}, stack? })` — branch lifecycle. Inputs: `t.to_branch`, `t.from_branch`, `t.action`. Config-only.",
     "- `errorTrigger({ name, stack? })` — error-signature trigger. Inputs: `t.event` (`new|regression|fixed`), `t.id`, `t.signature`, `t.error` (`t.error(\"code\")`/`t.error(\"message\")`), `t.caller`, `t.statement`, `t.actor`, `t.count`, `t.first_seen`, `t.last_seen`, `t.fixed_at`. Config-only.",
@@ -1361,9 +1400,11 @@ export function renderLlmsTxt(m: Manifest): string {
     "",
   );
 
-  // Group by top-level namespace segment for readability.
+  // Group by top-level namespace segment for readability. Legacy surfaces are
+  // withheld here and named in the `## Legacy` index instead.
   const groups = new Map<string, ManifestStatement[]>();
   for (const s of m.statements) {
+    if (s.legacy) continue;
     const ns = s.sPath.includes(".") ? s.sPath.slice(0, s.sPath.indexOf(".")) : "(top-level)";
     (groups.get(ns) ?? groups.set(ns, []).get(ns)!).push(s);
   }
@@ -1398,8 +1439,16 @@ export function renderLlmsTxt(m: Manifest): string {
   // still decodes out of a real workspace, so an agent reading pulled code has
   // to be able to recognize it — but nothing here should ever be chosen for new
   // code, so it carries no signature, no options, and no example to copy.
+  //
+  // Three surfaces feed it — values, statements, and trigger factories — because
+  // a superseded paradigm does not confine itself to one layer of the SDK. The
+  // realtime pair is the case that forced the generalization: the same paradigm
+  // shows up as a trigger factory AND as a statement, and naming only one of them
+  // leaves the other looking current.
   const legacyValues = m.values.constructors.filter((v) => v.legacy);
-  if (legacyValues.length > 0) {
+  const legacyStatements = m.statements.filter((s) => s.legacy);
+  const legacyFactories = m.objectKinds.flatMap((k) => (k.subKinds ?? []).filter((sub) => sub.legacy));
+  if (legacyValues.length + legacyStatements.length + legacyFactories.length > 0) {
     lines.push(
       "## Legacy",
       "",
@@ -1407,8 +1456,16 @@ export function renderLlmsTxt(m: Manifest): string {
       "workspace. **Do not author these.** They are listed by name only so you recognize them",
       "in pulled code rather than \"fixing\" them; each line names what to use instead.",
       "",
+      "Names overlap across the split deliberately — the engine reused words like",
+      "\"realtime\" and \"channel\" for both generations. A name matching is NOT evidence that",
+      "two things are the same object; check which list it came from.",
+      "",
     );
     for (const v of legacyValues) lines.push(`- \`${v.name}\` — ${v.description}`);
+    for (const f of legacyFactories) lines.push(`- \`${f.authorFactory}()\` — ${f.description}`);
+    for (const s of legacyStatements) {
+      lines.push(`- \`s.${s.sPath}\` — ${LEGACY_SURFACES[s.surface]}`);
+    }
     lines.push("");
   }
 

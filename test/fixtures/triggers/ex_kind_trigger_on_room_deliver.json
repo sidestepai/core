@@ -1,5 +1,5 @@
 {
-  "name": "ex_kind_trigger_on_room_join",
+  "name": "ex_kind_trigger_on_room_deliver",
   "active": true,
   "description": "",
   "obj_id": "9bb29e80f77fab4de53acde9fbd3b925",
@@ -11,11 +11,16 @@
   },
   "output": [],
   "meta": {
-    "channel": {
+    "database": {
+      "datasource": [],
+      "search": {
+        "expression": []
+      },
       "action": {
-        "join": true,
-        "leave": false,
-        "deliver": false
+        "delete": false,
+        "insert": false,
+        "truncate": false,
+        "update": false
       }
     },
     "toolset": {
@@ -23,23 +28,17 @@
         "connection": false
       }
     },
-    "database": {
-      "action": {
-        "delete": false,
-        "insert": false,
-        "update": false,
-        "truncate": false
-      },
-      "search": {
-        "expression": []
-      },
-      "datasource": []
-    },
     "workspace": {
       "action": {
-        "branch_new": false,
         "branch_live": false,
-        "branch_merge": false
+        "branch_merge": false,
+        "branch_new": false
+      }
+    },
+    "workspace_realtime_channel": {
+      "action": {
+        "message": false,
+        "join": false
       }
     },
     "realtime_server": {
@@ -48,10 +47,11 @@
         "disconnect": false
       }
     },
-    "workspace_realtime_channel": {
+    "channel": {
       "action": {
         "join": false,
-        "message": false
+        "leave": false,
+        "deliver": true
       }
     }
   },
@@ -330,7 +330,7 @@
         "customize": false
       },
       "context": {
-        "value": "channel",
+        "value": "action",
         "tag": "input",
         "filters": []
       },
@@ -341,5 +341,5 @@
     }
   ],
   "result": [],
-  "guid": "2495edcf4e1b595c455142d0c6cd1588"
+  "guid": "23e77071a39a8b6115a8e90861ca1743"
 }

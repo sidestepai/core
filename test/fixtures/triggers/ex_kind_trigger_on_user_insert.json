@@ -26,6 +26,13 @@
   "tag": [],
   "guid": "f27c0e50deaa10ffdd0871e8be202a1e",
   "meta": {
+    "channel": {
+      "action": {
+        "join": false,
+        "leave": false,
+        "deliver": false
+      }
+    },
     "toolset": {
       "action": {
         "connection": false
@@ -48,6 +55,12 @@
         "branch_new": false,
         "branch_live": false,
         "branch_merge": false
+      }
+    },
+    "realtime_server": {
+      "action": {
+        "connect": false,
+        "disconnect": false
       }
     },
     "workspace_realtime_channel": {

@@ -116,6 +116,19 @@
         "message": true,
         "join": false
       }
+    },
+    "realtime_server": {
+      "action": {
+        "connect": false,
+        "disconnect": false
+      }
+    },
+    "channel": {
+      "action": {
+        "join": false,
+        "leave": false,
+        "deliver": false
+      }
     }
   },
   "market_item": {

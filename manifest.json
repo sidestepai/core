@@ -184,8 +184,8 @@
     {
       "kind": "trigger",
       "payloadKey": "trigger",
-      "authorFactory": "{tableTrigger,realtimeTrigger,realtimeServerTrigger,realtimeChannelTrigger,mcpServerTrigger,agentTrigger,workspaceTrigger,errorTrigger}",
-      "description": "An event-driven handler fired by a DB write, realtime channel, MCP/agent connection, branch lifecycle, or error — inputs are implied by type and arrive on the `t` handle.",
+      "authorFactory": "{tableTrigger,realtimeServerTrigger,realtimeChannelTrigger,mcpServerTrigger,agentTrigger,workspaceTrigger,errorTrigger}",
+      "description": "An event-driven handler fired by a DB write, a realtime server connection or channel join/leave/deliver, an MCP/agent connection, a branch lifecycle event, or an error — inputs are implied by type and arrive on the `t` handle.",
       "registerMethod": "registerTriggers",
       "subKinds": [
         {
@@ -196,7 +196,8 @@
         {
           "authorFactory": "realtimeTrigger",
           "objType": "workspace_realtime_channel",
-          "description": "Fires on realtime channel activity (message/join); inspect the channel, connecting client, options, and payload via `t`. Response-bearing — defaults to echoing the payload."
+          "legacy": true,
+          "description": "the SUPERSEDED realtime trigger, against the workspace-global realtime layer — a different object from the current `channel`, despite the similar name. For a join hook use `realtimeChannelTrigger({ actions: { join: true } })`; for message handling use a `realtimeMessage()` handler, which is the current equivalent of its `message` action (a message is an authored unit now, not a trigger action)."
         },
         {
           "authorFactory": "realtimeServerTrigger",
@@ -650,7 +651,8 @@
       "storedName": "mvp:realtime_event",
       "sPath": "api.realtime_event",
       "registered": true,
-      "declarative": false
+      "declarative": false,
+      "legacy": true
     },
     {
       "surface": "api.request",

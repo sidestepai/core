@@ -66,15 +66,34 @@ export interface RealtimeActions {
   message?: boolean;
   join?: boolean;
 }
-/** Realtime SERVER lifecycle actions (obj_type=realtime_server). */
+/**
+ * Realtime SERVER lifecycle actions (obj_type=realtime_server).
+ *
+ * `connect` GATES the connection — the stack's return admits or denies it, and it
+ * is fail-closed. `disconnect` is OBSERVATIONAL: its return is ignored.
+ */
 export interface RealtimeServerActions {
   connect?: boolean;
   disconnect?: boolean;
 }
-/** Realtime CHANNEL lifecycle actions (obj_type=channel). */
+/**
+ * Realtime CHANNEL lifecycle actions (obj_type=channel). Independent booleans,
+ * not a mode — one trigger may carry any combination.
+ *
+ * The three do NOT share a posture, and the difference decides what a stack
+ * should return:
+ *  - `join` GATES the join (return admits or denies; fail-closed).
+ *  - `leave` is OBSERVATIONAL (return ignored).
+ *  - `deliver` GATES delivery PER RECIPIENT — it runs once for each client the
+ *    message is about to reach, and its return rewrites the payload for that one
+ *    recipient, drops the message for that recipient, or passes the original
+ *    through untouched. It is the heaviest of the three by a wide margin: a
+ *    channel with a `deliver` trigger runs a stack per recipient per message.
+ */
 export interface RealtimeChannelActions {
   join?: boolean;
   leave?: boolean;
+  deliver?: boolean;
 }
 
 // --- Database handle typing (U4) ---
@@ -115,6 +134,12 @@ function baseMeta() {
     toolset: { action: { connection: false } },
     workspace: { action: { branch_live: false, branch_merge: false, branch_new: false } },
     workspace_realtime_channel: { action: { message: false, join: false } },
+    // The two realtime lifecycle groups. Every trigger type carries the WHOLE
+    // skeleton with only its own group's flags set — verified against a live
+    // engine capture, which emits all six groups for a table trigger, a workspace
+    // trigger, and both realtime lifecycle triggers alike.
+    realtime_server: { action: { connect: false, disconnect: false } },
+    channel: { action: { join: false, leave: false, deliver: false } },
   };
 }
 
@@ -249,7 +274,23 @@ export function tableTrigger<
   };
 }
 
-/** Realtime channel trigger (obj_type=workspace_realtime_channel). Response-bearing. */
+/**
+ * LEGACY realtime trigger (obj_type=workspace_realtime_channel). Response-bearing.
+ *
+ * @deprecated Superseded. This fires against Xano's older workspace-global realtime
+ * config, which is a DIFFERENT object from the current `channel` despite the shared
+ * vocabulary — the two generations coexist and mixing them fails at runtime rather
+ * than at compile.
+ *
+ * It is still exported and still supported because `sidestep codegen` has to bring
+ * back a workspace that holds one. Do not author it in new code:
+ *  - its `join` action is now `realtimeChannelTrigger({ actions: { join: true } })`
+ *  - its `message` action is now a `realtimeMessage()` handler, because a message is
+ *    an authored unit with its own typed payload and stack rather than a trigger
+ *    action
+ *
+ * Withheld from the `llms.txt` object-kind catalog and named only under `## Legacy`.
+ */
 export function realtimeTrigger(
   args: CommonArgs & {
     actions?: RealtimeActions;
@@ -287,9 +328,10 @@ export function realtimeTrigger(
  * name); it resolves to the server's guid at export, so the binding survives a
  * `--reset` deploy. A raw numeric `objId` stays the escape hatch.
  *
- * Its `meta` carries only its own action group — unlike the four-group skeleton
- * the pre-realtime trigger types emit. That is the engine's stored shape for
- * this type, verified against its own record, not an omission.
+ * Like every other trigger type, its `meta` carries the WHOLE six-group skeleton
+ * with only its own group's flags set. An earlier version of this comment claimed
+ * the realtime types stored a single-group `meta`; a live engine capture disproved
+ * it — the engine emits all six groups for every type.
  */
 export function realtimeServerTrigger(
   args: CommonArgs & {
@@ -300,6 +342,11 @@ export function realtimeServerTrigger(
   },
 ): TriggerDef {
   const t = buildTriggerHandle("realtime_server") as unknown as RealtimeServerTriggerInputs;
+  const serverMeta = baseMeta();
+  serverMeta.realtime_server.action = {
+    connect: args.actions?.connect ?? false,
+    disconnect: args.actions?.disconnect ?? false,
+  };
   return {
     name: args.name,
     guid: args.guid,
@@ -312,14 +359,7 @@ export function realtimeServerTrigger(
         : args.objId,
     objType: "realtime_server",
     hasResult: true,
-    meta: {
-      realtime_server: {
-        action: {
-          connect: args.actions?.connect ?? false,
-          disconnect: args.actions?.disconnect ?? false,
-        },
-      },
-    },
+    meta: serverMeta,
     stack: args.stack?.(t) ?? [],
     response: args.response?.(t),
   };
@@ -327,11 +367,17 @@ export function realtimeServerTrigger(
 
 /**
  * Realtime channel lifecycle trigger (obj_type=channel) — fires when a client
- * joins or leaves a channel. Response-bearing.
+ * joins or leaves a channel, or when a message is about to be delivered to one.
+ * Response-bearing.
  *
  * Bind the target with `channel` (a `realtimeChannel()` handle, which also
  * carries its server) — a bare channel path is NOT accepted here, because a
  * path is unique only within a server and would bind ambiguously.
+ *
+ * The three actions have three different postures — see
+ * {@link RealtimeChannelActions}. `deliver` is the one worth reading about before
+ * enabling: it runs once per RECIPIENT per message, and its return decides that
+ * recipient's copy of the payload.
  */
 export function realtimeChannelTrigger(
   args: CommonArgs & {
@@ -342,6 +388,12 @@ export function realtimeChannelTrigger(
   },
 ): TriggerDef {
   const t = buildTriggerHandle("channel") as unknown as RealtimeChannelTriggerInputs;
+  const channelMeta = baseMeta();
+  channelMeta.channel.action = {
+    join: args.actions?.join ?? false,
+    leave: args.actions?.leave ?? false,
+    deliver: args.actions?.deliver ?? false,
+  };
   return {
     name: args.name,
     guid: args.guid,
@@ -351,14 +403,7 @@ export function realtimeChannelTrigger(
     objId: args.channel !== undefined ? realtimeChannelGuid(args.channel) : args.objId,
     objType: "channel",
     hasResult: true,
-    meta: {
-      channel: {
-        action: {
-          join: args.actions?.join ?? false,
-          leave: args.actions?.leave ?? false,
-        },
-      },
-    },
+    meta: channelMeta,
     stack: args.stack?.(t) ?? [],
     response: args.response?.(t),
   };

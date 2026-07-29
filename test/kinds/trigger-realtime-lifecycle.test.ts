@@ -15,15 +15,42 @@ import { input } from "../../src/inputs/input.js";
 const chat = realtimeServer({ name: "chat" });
 const rooms = realtimeChannel({ name: "rooms/{room_id}", server: chat, input: { room_id: input.int() } });
 
+/**
+ * The six meta groups the engine emits for EVERY trigger type, with only the
+ * owning type's flags set. A live capture disproved the earlier belief that the
+ * realtime types store a single-group `meta`.
+ */
+const META_GROUPS = [
+  "channel",
+  "database",
+  "realtime_server",
+  "toolset",
+  "workspace",
+  "workspace_realtime_channel",
+];
+
+/** Assert the full skeleton is present and only `group` carries a true flag. */
+function expectSkeleton(meta: unknown, group: string, action: Record<string, boolean>): void {
+  const m = meta as Record<string, { action?: Record<string, boolean> }>;
+  expect(Object.keys(m).sort()).toEqual([...META_GROUPS].sort());
+  expect(m[group]!.action).toEqual(action);
+  // Every OTHER group must be inert — a stray true flag would make the trigger
+  // fire for an event it was never bound to.
+  for (const g of META_GROUPS) {
+    if (g === group) continue;
+    for (const [k, v] of Object.entries(m[g]!.action ?? {})) {
+      expect(v, `${g}.action.${k} must stay false`).toBe(false);
+    }
+  }
+}
+
 describe("realtimeServerTrigger", () => {
   it("encodes its own obj_type, action meta, and implied inputs", () => {
     const t = encodeTrigger(
       realtimeServerTrigger({ name: "on_connect", realtimeServer: chat, actions: { connect: true } }),
     );
     expect(t.obj_type).toBe("realtime_server");
-    expect(t.meta).toEqual({
-      realtime_server: { action: { connect: true, disconnect: false } },
-    });
+    expectSkeleton(t.meta, "realtime_server", { connect: true, disconnect: false });
     expect(t.input.map((i) => i.name)).toEqual(["action", "realtime_server", "client"]);
     expect(t.result).toEqual([]);
   });
@@ -41,9 +68,7 @@ describe("realtimeServerTrigger", () => {
 
   it("encodes both actions off when none are given", () => {
     const t = encodeTrigger(realtimeServerTrigger({ name: "t", realtimeServer: chat }));
-    expect(t.meta).toEqual({
-      realtime_server: { action: { connect: false, disconnect: false } },
-    });
+    expectSkeleton(t.meta, "realtime_server", { connect: false, disconnect: false });
   });
 
   it("binds the host by guid, from a handle or a bare name identically", () => {
@@ -83,14 +108,68 @@ describe("realtimeChannelTrigger", () => {
       realtimeChannelTrigger({ name: "on_join", channel: rooms, actions: { join: true, leave: true } }),
     );
     expect(t.obj_type).toBe("channel");
-    expect(t.meta).toEqual({ channel: { action: { join: true, leave: true } } });
+    expectSkeleton(t.meta, "channel", { join: true, leave: true, deliver: false });
     expect(t.input.map((i) => i.name)).toEqual(["action", "channel", "client"]);
   });
 
-  it("carries the join/leave action enum", () => {
+  it("carries the join/leave/deliver action enum", () => {
+    // All three actions the engine declares, regardless of which a given trigger
+    // enables: the enum says what `action` can hold at runtime, `meta` says which
+    // ones fire.
     const t = encodeTrigger(realtimeChannelTrigger({ name: "t", channel: rooms }));
     const action = t.input[0] as { values?: string[] };
-    expect(action.values).toEqual(["join", "leave"]);
+    expect(action.values).toEqual(["join", "leave", "deliver"]);
+  });
+
+  it("encodes the deliver action, alone and alongside the other two", () => {
+    expectSkeleton(
+      encodeTrigger(realtimeChannelTrigger({ name: "t", channel: rooms, actions: { deliver: true } })).meta,
+      "channel",
+      { join: false, leave: false, deliver: true },
+    );
+
+    // Independent booleans, not a mode — all three may fire from one trigger.
+    expectSkeleton(
+      encodeTrigger(
+        realtimeChannelTrigger({
+          name: "t",
+          channel: rooms,
+          actions: { join: true, leave: true, deliver: true },
+        }),
+      ).meta,
+      "channel",
+      { join: true, leave: true, deliver: true },
+    );
+  });
+
+  it("gives a deliver-only trigger the SAME stored inputs as a join one", () => {
+    // Engine-verified against a live capture. `deliver` runs per recipient and its
+    // stack rewrites the payload, so a `payload` entry and a recipient identity were
+    // the natural things to expect — the engine declares neither. They arrive at
+    // runtime under reserved keys that never enter the stored input array, so their
+    // absence here is the engine's shape, not a gap.
+    const deliver = encodeTrigger(
+      realtimeChannelTrigger({ name: "d", channel: rooms, actions: { deliver: true } }),
+    );
+    const join = encodeTrigger(
+      realtimeChannelTrigger({ name: "j", channel: rooms, actions: { join: true } }),
+    );
+    expect(deliver.input).toEqual(join.input);
+    expect(deliver.input.map((i) => i.name)).toEqual(["action", "channel", "client"]);
+    expect((deliver.input[0] as { values?: string[] }).values).toEqual([
+      "join",
+      "leave",
+      "deliver",
+    ]);
+  });
+
+  it("still requires a channel HANDLE for a deliver-only trigger", () => {
+    // A bare path is unique only within its server, so it cannot bind — the
+    // deliver action does not create an exception to that.
+    expect(() =>
+      // @ts-expect-error — a bare path is deliberately not assignable
+      realtimeChannelTrigger({ name: "t", channel: "rooms/{room_id}", actions: { deliver: true } }),
+    ).toThrow();
   });
 
   it("binds the host to the channel's composite guid", () => {
@@ -110,9 +189,11 @@ describe("realtimeChannelTrigger", () => {
     );
   });
 
-  it("encodes both actions off when none are given", () => {
-    expect(encodeTrigger(realtimeChannelTrigger({ name: "t", channel: rooms })).meta).toEqual({
-      channel: { action: { join: false, leave: false } },
+  it("encodes all three actions off when none are given", () => {
+    expectSkeleton(encodeTrigger(realtimeChannelTrigger({ name: "t", channel: rooms })).meta, "channel", {
+      join: false,
+      leave: false,
+      deliver: false,
     });
   });
 });

@@ -1,65 +1,9 @@
 {
-  "name": "send",
-  "description": "Post a message to a room",
-  "active": true,
-  "channel": {
-    "id": "9bb29e80f77fab4de53acde9fbd3b925"
-  },
-  "server": {
-    "id": "ffbd76434e93bfccd084347fd40922bb"
-  },
-  "auth": false,
-  "deliver_to": "channel",
-  "input": [
-    {
-      "name": "body",
-      "type": "text",
-      "_xsid": "",
-      "nullable": false,
-      "default": "",
-      "merge": false,
-      "hidden": [],
-      "override": [],
-      "customize": {},
-      "required": true,
-      "values": [],
-      "mode": "",
-      "format": "",
-      "sensitive": false,
-      "list": {
-        "min": "",
-        "max": ""
-      },
-      "vector": {
-        "size": 3
-      },
-      "access": "public",
-      "style": {
-        "type": "single"
-      },
-      "children": [],
-      "methods": [],
-      "market_item": {
-        "id": 0,
-        "version": 0,
-        "guid": ""
-      },
-      "is_settings_registry": false,
-      "description": ""
-    }
-  ],
-  "output": [],
-  "middleware": {
-    "pre_customize": false,
-    "post_customize": false,
-    "pre": [],
-    "post": []
-  },
   "run": [
     {
       "as": "",
       "name": "mvp:debug_log",
-      "_xsid": "",
+      "_xsid": "f:666b7adc-52b4-4a6c-90b3-6b86ce1038fd",
       "addon": [],
       "input": [],
       "mocks": {},
@@ -69,8 +13,8 @@
         "customize": false
       },
       "context": {
-        "value": "message received",
         "tag": "const",
+        "value": "message received",
         "filters": []
       },
       "runtime": null,
@@ -79,13 +23,72 @@
       "settings_registry": null
     }
   ],
+  "tag": [],
+  "auth": false,
+  "guid": "JBRBlrvophGGK57U2Nf4McmZ1Rc",
+  "name": "send",
+  "input": [
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "body",
+      "type": "text",
+      "_xsid": "i:81bec163-febb-4aad-bd17-409cd265d576",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": true,
+      "customize": {},
+      "sensitive": false,
+      "description": "",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    }
+  ],
+  "active": true,
+  "branch": {
+    "id": 0
+  },
+  "output": [],
   "result": [],
+  "server": {
+    "id": "MWT3En76DWAq0PJaXBsodu2nA9E"
+  },
+  "channel": {
+    "id": "twLNeRZEeAbpwze-Nuz83XIHvrU"
+  },
   "history": {
-    "inherit": true,
+    "limit": 100,
     "enabled": false,
-    "limit": 100
+    "inherit": true
   },
   "disabled": false,
-  "tag": [],
-  "guid": "dfedc51c140eafb7b218f0d5c348aaf2"
+  "deliver_to": "channel",
+  "middleware": {
+    "pre": [],
+    "post": [],
+    "pre_customize": false,
+    "post_customize": false
+  },
+  "description": "Post a message to a room"
 }
