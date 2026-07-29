@@ -1120,6 +1120,7 @@ enrich / lean envelope).
 
 **Values** — `c.int/text/bool/decimal/null/obj/array`, `c.now()` (current time as
 epoch-ms — the engine-native constant; valid inline in a `where`/`cmp`),
+`c.expression("…")` (a raw Xano Expression Engine expression — **not validated**, see below),
 `ref(var)`, `inp(input)`,
 `col(name)`, plus context refs `auth(path?)`, `env(name)`, `setting(name)`, `sys.*()`
 (built-in request/system vars — see below), `out(name)`
@@ -1139,6 +1140,34 @@ resolve to the stored value inside a `db.edit` `row` (it evaluates to `null`, so
 s.db.get({ table, fieldValue: inp("id"), as: "current" }),
 s.db.edit({ table, fieldValue: inp("id"), row: { clicks: withFilters(ref("current.clicks"), fl.add(c.int(1))) } }),
 ```
+
+**Raw expressions (`c.expression`)** — the Xano Expression Engine, as a string carried
+through verbatim to `tag:"const:expr2"` (what the expression editor writes):
+
+```ts
+s.set_var("greeting", c.expression('"Hello, " ~ $input.first_name')),
+s.set_var("total", c.expression("$input.qty * $input.unit_price")),
+```
+
+⚠️ **The string is NOT validated.** SideStep does not parse it, does not type-check it,
+and cannot tell a working expression from a typo. Nothing inside it participates in
+`InferResponse`, so a var referenced in the string is invisible to the type system — a
+rename that updates every typed `ref()` will not touch it. A malformed expression fails at
+**runtime**; one that is merely wrong (`$var.tota1`) returns a wrong answer rather than an
+error. Play at your own risk until validation exists.
+
+Reach for the typed surfaces first — `ref`/`inp`/`col` for references, `withFilters(...,
+fl.*)` for transforms, and `obj({...})` for a dynamic object (it *builds* a checked
+expression for you). Use `c.expression` only for syntax those cannot express: `~` string
+concatenation, inline arithmetic, conditionals. It is **not** the `expr()` condition
+builder — `expr(col("id"), "=", inp("id"))` builds a comparison for a `where`, while this
+builds a value from raw source.
+
+`c.expressionLegacy(...)` is the same passthrough for the older `const:expr` form. It
+exists so `sidestep codegen` can bring back a workspace that still holds one — **do not
+author it**. It is deliberately absent from the `## Values` catalog in `llms.txt` and named
+only under `## Legacy`, so an agent recognizes it in pulled code without ever picking it
+for new code.
 
 Note this read-modify-write is **not atomic** — concurrent writers can lose an increment;
 there's no dedicated atomic-increment statement, and one can't be synthesized in the SDK

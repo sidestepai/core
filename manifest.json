@@ -54,6 +54,17 @@
         "description": "Array constant (JSON string) → tag \"const:array\". Plain JSON literals only — a nested tagged value is rejected, same as c.obj (issue #42)."
       },
       {
+        "name": "c.expression",
+        "signature": "(source: string) => Value",
+        "description": "Xano Expression Engine source, passed through VERBATIM → tag \"const:expr2\". The string IS the expression: c.expression('\"Hi, \" ~ $input.name'), c.expression(\"$var.price * $var.qty\"). ⚠️ NOT VALIDATED — never parsed or type-checked, invisible to InferResponse, and untouched by a rename that updates every typed ref(); a typo surfaces at runtime or as a wrong answer. Use it ONLY for syntax the typed surfaces cannot express (~ concatenation, inline arithmetic, conditionals) — prefer ref/inp/col, withFilters+fl.*, and obj() (which BUILDS a checked expression). Not the expr() condition builder."
+      },
+      {
+        "name": "c.expressionLegacy",
+        "signature": "(source: string) => Value",
+        "legacy": true,
+        "description": "the older `const:expr` expression form, emitted by codegen for workspaces that still hold one — author `c.expression` instead."
+      },
+      {
         "name": "c.now",
         "signature": "() => Value",
         "description": "Current time as epoch-ms — the engine-native const:epochms constant (no filter). Valid inline as a where/cmp operand. For cutoff math (cutoff = now - max_age) either compare inline or, for reuse/readability, hoist it into an s.set_var and compare against the var (issue #120)."
