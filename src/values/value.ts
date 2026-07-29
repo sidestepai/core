@@ -232,21 +232,21 @@ export const c = {
     return val(`/${escapeRegexSlashes(body)}/${raw}`, "const");
   },
   /**
-   * Current time as an **epoch-milliseconds** value — the runtime-verified chain
-   * `text("now") |to_epoch_ms`. Xano has no `$now` *setting*, so this lives on
+   * Current time as an **epoch-milliseconds** value — the engine's native
+   * `const:epochms` constant. Xano has no `$now` *setting*, so this lives on
    * `c.*` (a current-time literal) rather than {@link sys} (which emits
    * `setting("$…")` and would reference a dead `$now` var).
    *
-   * It returns a **filtered** value, which is valid inline as a `where`/`cmp`
-   * operand — filtered operands pass through in every condition/`where` surface
-   * (the old #118 rejection no longer reproduces; verified through full `export()`
-   * and live, #145). For readability/reuse when the same cutoff is reused, hoist
-   * it into a stack var — `s.set_var({ name: "cutoff", value: withFilters(c.now(),
-   * fl.epochms_add_ms(c.int(-maxAgeMs))) })` — and compare `col("created_at")`
-   * against `ref("cutoff")`. (issue #120)
+   * Emits `{tag:"const:epochms", value:"now"}` — an UNFILTERED value, valid
+   * inline as a `where`/`cmp` operand. It previously emitted the equivalent
+   * `text("now") |to_epoch_ms` chain; both evaluate to the same epoch-ms number
+   * on a live engine, and both persist verbatim, but the native tag is what the
+   * editor writes and needs no filter to get there. Chain math onto it as usual:
+   * `withFilters(c.now(), fl.epochms_add_ms(c.int(-maxAgeMs)))`. (issues #120,
+   * #145)
    */
   now(): Value {
-    return withFilters(val("now", "const"), filter("to_epoch_ms"));
+    return val("now", "const:epochms");
   },
   /**
    * Object constant → JSON-string value with `tag:"const:obj"`. Takes **plain

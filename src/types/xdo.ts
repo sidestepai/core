@@ -23,6 +23,10 @@ export const TAGS = [
   "const:array",
   "const:obj",
   "const:null",
+  // The engine's native epoch-milliseconds constant (`value:"now"`) — what
+  // `c.now()` emits. Distinct from `const` + a `to_epoch_ms` filter: both
+  // evaluate to the same number (live-verified), but this one needs no filter.
+  "const:epochms",
   "const:expr",
   "const:expr2",
   "var",

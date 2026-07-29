@@ -15,6 +15,7 @@ import { rawValue } from "../../src/values/raw-value.js";
 import { DecodeContext } from "../../src/codegen/context.js";
 import { printExpr } from "../../src/codegen/print.js";
 import { decodeValue } from "../../src/codegen/value.js";
+import { normalize } from "../../src/validate/normalize.js";
 
 /** Decode a stored value to source text, keeping the context for import/report checks. */
 function decodeToSource(v: TaggedValue, ctx = new DecodeContext()): { source: string; ctx: DecodeContext } {
@@ -40,11 +41,19 @@ function evaluate(source: string): TaggedValue {
   return fn(c, ref, inp, col, auth, env, setting, out, withFilters, fl, rawValue) as TaggedValue;
 }
 
-/** Decode → print → evaluate → compare. Returns the emitted source for inspection. */
+/**
+ * Decode → print → evaluate → compare. Returns the emitted source for inspection.
+ *
+ * Compared under `normalize` — the round-trip contract's own comparator, and the
+ * same one the decoder proves each candidate against. Byte equality would be a
+ * stricter claim than the SDK makes anywhere else, and it is not one a real
+ * workspace can satisfy: an older-vintage value stores a numeric `value` or a
+ * filter without `disabled`, and the SDK canonicalizes both forward on re-export.
+ */
 function roundTrip(v: TaggedValue, ctx = new DecodeContext()): string {
   const { source } = decodeToSource(v, ctx);
   const reencoded = evaluate(source);
-  expect({ ...reencoded }, `source: ${source}`).toEqual({ ...v });
+  expect(normalize({ ...reencoded }), `source: ${source}`).toEqual(normalize({ ...v }));
   return source;
 }
 
@@ -57,6 +66,7 @@ const PER_TAG: Record<string, TaggedValue> = {
   "const:array": { value: "[1,2,3]", tag: "const:array", filters: [] },
   "const:obj": { value: '{"a":1}', tag: "const:obj", filters: [] },
   "const:null": { value: "null", tag: "const:null", filters: [] },
+  "const:epochms": { value: "now", tag: "const:epochms", filters: [] },
   "const:expr": { value: '{"op":"+","l":1,"r":2}', tag: "const:expr", filters: [] },
   "const:expr2": { value: "1 + 2", tag: "const:expr2", filters: [] },
   var: { value: "user", tag: "var", filters: [] },
@@ -143,8 +153,8 @@ describe("decodeValue — filter chains", () => {
     roundTrip(withFilters(ref("total"), fl.add(withFilters(inp("qty"), fl.mul(c.int(2))))));
   });
 
-  it("decodes c.now()'s filtered form exactly", () => {
-    roundTrip(c.now());
+  it("decodes c.now() back to c.now(), not to a rawValue", () => {
+    expect(roundTrip(c.now())).toBe("c.now()");
   });
 
   it("degrades only the filter for a disabled one, which fl.* cannot express", () => {
@@ -173,10 +183,13 @@ describe("decodeValue — filter chains", () => {
     expect(source).not.toContain("rawValue");
   });
 
-  it("degrades only the filter when the engine stored no `disabled` key", () => {
+  it("decodes a chain whose filters were stored without `disabled`", () => {
     // The real-workspace shape: Xano's editor omits `disabled` at its default
-    // (`disabled?=false`), while `filter()` always writes it. Before, this
-    // collapsed the whole value — including a perfectly good `ref()` — to rawValue.
+    // (`disabled?=false`), while `filter()` always writes it. An absent key IS
+    // that default, so the whole chain decodes to `fl.*` calls and re-exports
+    // the current form — it does not degrade to a verbatim filter literal, and
+    // it certainly does not collapse the value (including a perfectly good
+    // `ref()`) to `rawValue`.
     const stored = {
       value: "answers",
       tag: "var",
@@ -186,8 +199,20 @@ describe("decodeValue — filter chains", () => {
       ],
     } as unknown as TaggedValue;
     const source = roundTrip(stored);
-    expect(source).toContain('ref("answers")');
-    expect(source).not.toContain("rawValue");
+    expect(source).toBe('withFilters(ref("answers"), fl.array_shuffle(), fl.first())');
+  });
+
+  it("still degrades a filter the engine stored as disabled", () => {
+    // `disabled: true` is a real, authored state with no `fl.*` form — the
+    // tolerance above is for an ABSENT key, not for a truthy one.
+    const stored = {
+      value: "answers",
+      tag: "var",
+      filters: [{ name: "first", disabled: true, arg: [] }],
+    } as unknown as TaggedValue;
+    const { source } = decodeToSource(stored);
+    expect(source).toContain("disabled: true");
+    expect(source).not.toContain("fl.first()");
   });
 });
 

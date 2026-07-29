@@ -22,6 +22,7 @@ import { obj as objValue } from "../values/obj.js";
 import { parseObjExpr } from "./obj-expr.js";
 import { CODEGEN_MODULE, CORE_MODULE, type DecodeContext } from "./context.js";
 import { call, lit, obj, type Expr } from "./print.js";
+import { normalize } from "../validate/normalize.js";
 
 /** A proposed decoding: the source to emit, what it re-encodes to, and its imports. */
 interface Candidate {
@@ -58,6 +59,26 @@ function attempt<T>(fn: () => T): T | null {
   }
 }
 
+/**
+ * Value/filter equality under the round-trip contract's own comparator.
+ *
+ * The proof this decoder rests on is "the constructor reproduces what was
+ * stored" — and what counts as reproduced is `normalize`, the same oracle
+ * `sidestep validate` and codegen verification use. Comparing raw instead made
+ * the decoder stricter than the contract, and two generational artifacts it
+ * already absorbs were enough to send an otherwise-decodable value to
+ * `rawValue()`:
+ *
+ * - a numeric `value` (`{value: 12, tag:"const:int"}`) where the SDK writes the
+ *   string form — the single most common shape in the wild;
+ * - a filter stored without `disabled`, which `filter()` always writes. That one
+ *   is doubly costly: it also fails the whole-chain check below, so ONE
+ *   old-vintage filter dragged its entire value down with it.
+ */
+function sameValue(a: unknown, b: unknown): boolean {
+  return deepEqual(normalize(a), normalize(b));
+}
+
 /** The pattern-piped regex filters — the ones whose piped value IS the pattern. */
 const REGEX_PATTERN_FILTERS = new Set([
   "regex_test",
@@ -85,7 +106,7 @@ function splitSlashRegex(value: string): { body: string; flags: string } | null 
 function decodeBase(v: TaggedValue, regexPiped: boolean): Candidate | null {
   const bare = { value: v.value, tag: v.tag, filters: [] };
   const propose = (expr: Expr, built: Value | null, ...symbols: string[]): Candidate | null =>
-    built && deepEqual(built, bare) ? { expr, value: built, symbols } : null;
+    built && sameValue(built, bare) ? { expr, value: built, symbols } : null;
 
   switch (v.tag) {
     case "const": {
@@ -117,6 +138,12 @@ function decodeBase(v: TaggedValue, regexPiped: boolean): Candidate | null {
     }
     case "const:null":
       return propose(call("c.null"), c.null(), "c");
+    // The engine's native current-time constant. `c.now()` is the only authoring
+    // form, and it only reproduces `value:"now"` — every occurrence in a real
+    // workspace is exactly that, and any other value falls through to `rawValue`
+    // rather than being decoded as a "now" it is not.
+    case "const:epochms":
+      return propose(call("c.now"), c.now(), "c");
     case "const:array":
     case "const:obj": {
       const parsed = attempt(() => JSON.parse(v.value) as unknown);
@@ -201,7 +228,7 @@ function decodeFilter(stored: FilterXdo): Candidate | null {
   const known = (FILTER_NAMES as readonly string[]).includes(stored.name);
   // `filter()` hard-codes `disabled: false`, so a filter stored without that key
   // — or with it true — has no `fl.*` form and rides through verbatim instead.
-  if (!known || stored.disabled !== false || !Array.isArray(stored.arg)) {
+  if (!known || (stored.disabled ?? false) !== false || !Array.isArray(stored.arg)) {
     return literalFilter(stored);
   }
 
@@ -218,7 +245,7 @@ function decodeFilter(stored: FilterXdo): Candidate | null {
 
   const factory = (fl as Record<string, (...a: Value[]) => FilterXdo>)[stored.name];
   const encoded = factory ? attempt(() => factory(...built)) : null;
-  if (!encoded || !deepEqual(encoded, stored)) return literalFilter(stored);
+  if (!encoded || !sameValue(encoded, stored)) return literalFilter(stored);
   return {
     expr: call(filterCallee(stored.name), ...args),
     // A filter is not a value; the caller only reads `expr`/`symbols` here.
@@ -249,7 +276,7 @@ function decodeValueCandidate(v: TaggedValue): Candidate | null {
   // `withFilters` can refuse the chain outright (the regex-pattern guard); when it
   // does, there is no source form that both compiles and re-encodes to this value.
   const built = attempt(() => withFilters(base.value, ...builtFilters));
-  if (!built || !deepEqual(built, v)) return null;
+  if (!built || !sameValue(built, v)) return null;
   return {
     expr: call("withFilters", base.expr, ...filterExprs),
     value: built,

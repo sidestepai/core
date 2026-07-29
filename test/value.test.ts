@@ -60,18 +60,17 @@ describe("c.* constant constructors", () => {
     expect(() => c.regex("foo", "/")).toThrow(/flags must be letters/);
   });
 
-  it("c.now emits the runtime-verified text('now') |to_epoch_ms chain (issue #120)", () => {
-    expect(c.now()).toEqual({
-      value: "now",
-      tag: "const",
-      filters: [{ name: "to_epoch_ms", disabled: false, arg: [] }],
-    });
+  it("c.now emits the engine's native const:epochms constant (issues #120, #145)", () => {
+    // Live-verified: this and the older `text("now") |to_epoch_ms` chain return
+    // the same epoch-ms number, and the engine persists each verbatim. The
+    // native tag is what the editor writes and needs no filter to get there.
+    expect(c.now()).toEqual({ value: "now", tag: "const:epochms", filters: [] });
   });
 
-  it("c.now is a filtered value that is valid inline in a where/cmp (#118 fixed, #145)", () => {
+  it("c.now is an unfiltered value, valid inline in a where/cmp (#118 fixed, #145)", () => {
     const v = c.now();
-    expect(v.filters).toHaveLength(1);
-    // Not col-branded — its footgun is the filter chain, not row-write misuse.
+    expect(v.filters).toHaveLength(0);
+    // Not col-branded — it is a constant, not a row-write target.
     expect("__col" in v).toBe(false);
     expectTypeOf(c.now()).toMatchTypeOf<Value>();
   });
