@@ -145,6 +145,17 @@ const CATALOG: Record<TriggerInputObjType, () => Record<string, InputDescriptor>
   // The action enum carries all THREE actions the engine declares for this type,
   // regardless of which ones a given trigger enables: the enum describes what
   // `action` can hold at runtime, and the per-trigger selection lives in `meta`.
+  //
+  // VERIFIED AGAINST A LIVE CAPTURE: a `deliver`-only trigger stores exactly this
+  // input array — the same three entries as a join/leave one, and the same enum
+  // values in the same order. That was the open question worth not guessing,
+  // because `deliver` runs per recipient and its stack rewrites the payload, so a
+  // `payload` entry and a recipient identity were the natural things to expect.
+  //
+  // They are NOT declared, and that is the engine's shape rather than a gap here: a
+  // deliver stack receives the payload and the recipient at RUNTIME under reserved
+  // keys that never enter the stored input array. SideStep mirrors the stored array,
+  // so they are correspondingly absent from the typed `t` handle.
   channel: () => ({
     action: input.enum(["join", "leave", "deliver"], { required: true }),
     channel: input.text({ required: true }),

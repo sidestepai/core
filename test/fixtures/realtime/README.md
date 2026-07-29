@@ -1,47 +1,60 @@
-# Realtime fixtures — schema-derived, NOT engine-captured
+# Realtime fixtures — engine-captured
 
-Every other fixture directory here holds JSON a **real Xano engine persisted**,
-sourced via `sidestep validate --capture`. These do not. They were minted from
-SideStep's own encoders against the realtime object schemas.
+These five were **captured from a real Xano engine** and live in the main
+`KIND_CORPUS`, alongside every other engine-persisted golden. They used to be
+schema-derived — minted from SideStep's own encoders, and therefore self-consistent by
+construction — because the workspace archive did not carry realtime sections and no
+round-trip existed. It does now, so they were captured and promoted.
 
-That distinction is the whole point of this file, so it is worth stating plainly:
+## What the first capture found
 
-- **What these goldens prove.** That the realtime encoders are stable — a
-  refactor that changes a stored key, a default, or a nested block shape fails
-  loudly instead of silently changing the wire format.
-- **What they do NOT prove.** That the engine agrees. A schema-derived golden
-  compared against the encoder that produced it is self-consistent by
-  construction. If an encoder has a field wrong, the golden has it wrong too and
-  the test still passes.
+All five objects — the server, both channels, both messages — matched their
+schema-derived predecessor **exactly** under `normalize()`. The encoders were already
+right; the promotion changed the goldens from a restatement of that belief into
+evidence for it.
 
-They were minted rather than captured because the workspace archive did not carry
-realtime sections at the time, so there was no way to round-trip a realtime object
-through an engine and read back what it stored.
+The capture was not uneventful, though. It found a real bug one level up, in the
+lifecycle **triggers**: the engine stores a uniform six-group `meta` skeleton on every
+trigger type, and SideStep emitted only the owning group for realtime triggers (plus a
+four-group skeleton, missing both realtime groups, for every other type). A comment in
+`src/kinds/trigger.ts` had asserted the single-group shape was "verified against its
+own record" — it was inferred, not verified. That is precisely the failure mode a
+schema-derived golden cannot catch, and the reason this promotion was worth doing.
 
-**That is no longer true.** The archive carries all three realtime objects and both
-lifecycle trigger types now, so the round-trip below is possible today — these
-goldens are stale, not blocked. The only thing standing between this file and its
-deletion is a capture run.
+## The two lifecycle triggers are still schema-derived
 
-## Re-capture and promote
+`triggers/ex_kind_trigger_on_chat_connect.json` and
+`triggers/ex_kind_trigger_on_room_join.json` stay in the annex table in
+`test/conformance/kinds-corpus.test.ts` — for a specific reason, not as a pending
+chore:
 
-Re-capture these against a real engine and delete this file:
+`normalize()` deliberately **preserves** a trigger's guid-string `obj_id`, because
+that is what proves the trigger points at the right object. The ephemeral-environment
+capture path **re-mints every guid** in the engine's own format
+(`4bKT1A5av3h7xDOrCYgQp2ex2lY`) instead of preserving the md5 SideStep derives
+(`md5("dbo:users")`), so a golden captured there would pin a guid the compiled side
+can never produce — and the corpus would fail on a difference that is not a defect.
 
-1. Ensure the realtime objects are registered in `examples/sandbox/_capture.ts`
-   (they already are: `chatServer`, `lobbyChannel`, `roomChannel`, `sendMessage`,
-   `typingMessage`, and the three lifecycle triggers — `onChatConnect`,
-   `onRoomJoin`, `onRoomDeliver`).
-2. Run the capture against a disposable instance, per the `xano-fixtures` skill.
-3. Replace these files with the captured JSON and move their rows in
-   `test/conformance/kinds-corpus.test.ts` from the schema-derived block into the
-   main `KIND_CORPUS` table.
-4. Expect real diffs on the first capture — that is the check finally doing the
-   job it cannot do today. Treat each one as the usual fork: a missing
-   `normalize()` strip rule, or a genuine encoder bug. Do NOT widen `normalize()`
-   to make a diff disappear without deciding which of the two it is — a strip rule
-   that hides an encoder bug reproduces exactly the blindness this promotion is
-   removing.
+Capturing those two needs an import path that preserves supplied guids. Their `meta`
+is engine-verified regardless; it came from the live capture.
+
+## Re-capturing
+
+1. The realtime objects and all three lifecycle triggers are registered in
+   `examples/sandbox/_capture.ts` (`chatServer`, `lobbyChannel`, `roomChannel`,
+   `sendMessage`, `typingMessage`, `onChatConnect`, `onRoomJoin`, `onRoomDeliver`).
+2. `sidestep validate <capture> --capture` is the intended path — it preserves guids.
+   When it is unavailable, `sidestep deploy` to a fresh ephemeral env plus
+   `sidestep ephemeral export <name>` works for everything except guid-bearing
+   comparisons (see above).
+3. Diff against the current goldens under `normalize()` **before** overwriting, and
+   make the comparison key-order-insensitive — a raw `JSON.stringify` reports key
+   order as a difference and buries the real diffs in noise.
+4. Treat each surviving diff as the usual fork (see the `xano-fixtures` skill): a
+   missing `normalize()` strip rule, or a genuine encoder bug. Do NOT widen
+   `normalize()` to make a diff disappear without deciding which it is — a strip rule
+   that hides an encoder bug reproduces exactly the blindness this promotion removed.
 5. While capturing, read the stored `input` of the `deliver` trigger. Whether a
-   deliver event also supplies the message payload and a recipient identity
-   distinct from the sender is the one part of that trigger's typed surface that
-   was deliberately not guessed — see `src/kinds/trigger-inputs.ts`.
+   deliver event also supplies the message payload and a recipient identity distinct
+   from the sender is the one part of that trigger's typed surface that was
+   deliberately not guessed — see `src/kinds/trigger-inputs.ts`.

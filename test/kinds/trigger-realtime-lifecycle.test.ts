@@ -142,6 +142,27 @@ describe("realtimeChannelTrigger", () => {
     );
   });
 
+  it("gives a deliver-only trigger the SAME stored inputs as a join one", () => {
+    // Engine-verified against a live capture. `deliver` runs per recipient and its
+    // stack rewrites the payload, so a `payload` entry and a recipient identity were
+    // the natural things to expect — the engine declares neither. They arrive at
+    // runtime under reserved keys that never enter the stored input array, so their
+    // absence here is the engine's shape, not a gap.
+    const deliver = encodeTrigger(
+      realtimeChannelTrigger({ name: "d", channel: rooms, actions: { deliver: true } }),
+    );
+    const join = encodeTrigger(
+      realtimeChannelTrigger({ name: "j", channel: rooms, actions: { join: true } }),
+    );
+    expect(deliver.input).toEqual(join.input);
+    expect(deliver.input.map((i) => i.name)).toEqual(["action", "channel", "client"]);
+    expect((deliver.input[0] as { values?: string[] }).values).toEqual([
+      "join",
+      "leave",
+      "deliver",
+    ]);
+  });
+
   it("still requires a channel HANDLE for a deliver-only trigger", () => {
     // A bare path is unique only within its server, so it cannot bind — the
     // deliver action does not create an exception to that.
