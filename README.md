@@ -402,6 +402,29 @@ async function fetchPosts(): Promise<Post[]> {
 - **`query.toSearchParams(input)`** → the GET transport counterpart to `InferInput`:
   serialize an input map into a `URLSearchParams` (scalars stringify, arrays repeat the
   key, `null`/`undefined` are dropped) instead of hand-building `?id=…`.
+- **URL path params** → name the endpoint with `{param}` segments and declare an input per
+  segment. `getPath({ params })` fills them, with the keys typed from the name itself:
+
+  ```ts
+  const getPost = query({
+    name: "blog/{slug}/review/{review_id}",       // segments chain; no wildcards
+    verb: "GET",
+    apiGroup: api,
+    input: { slug: input.text(), review_id: input.int(), verbose: input.bool() },
+    stack: [s.db.get({ table: post, fieldName: "slug", fieldValue: inp("slug"), as: "row" })],
+    response: ref("row"),
+  });
+
+  getPost.getPath({ params: { slug: "hello", review_id: 7 } });
+  // → "/api:<canonical>/blog/hello/review/7"
+  getPost.toSearchParams({ verbose: true });      // → "verbose=true" (path params dropped)
+  ```
+
+  Every `{param}` must have a matching input or `query()` throws — Xano treats an unbound
+  marker as inert route text, so the endpoint would answer on the path and see nothing.
+  Inputs that aren't in the path (`verbose`) stay ordinary query-string params. Never
+  interpolate the path by hand: a value containing `/` would silently address a different
+  endpoint, which `getPath` refuses. `realtimeChannel()` paths work identically.
 - **`InferRow<typeof post>`** → the table's row type. Rename or retype a column and every
   consumer breaks at compile time — exactly where you want it.
 - **`InferResponse<typeof someQuery>`** → the endpoint's **response** type, closing the round

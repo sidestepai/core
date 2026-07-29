@@ -29,8 +29,12 @@ import { measureCommittedLlms } from "../../scripts/measure-llms.js";
 // its three def shapes were missing from "Object def shapes" entirely, and the
 // client recipe — `getUrl`/`getChannel` plus the frame vocabulary — is the half
 // of realtime an agent cannot infer from a def, so a realtime primitive without
-// it is discoverable but unusable.)
-const CEILING_TOKENS = 27_200;
+// it is discoverable but unusable.
+// Raised again from 27.2k for URL path params: `{param}` segments are a whole
+// addressing capability with a hard authoring rule behind them (an unbound
+// marker throws), and the `getPath({ params })` / handle-`toSearchParams` recipe
+// is the client half an agent cannot infer from the def.)
+const CEILING_TOKENS = 27_400;
 
 describe("llms.txt token budget", () => {
   it("stays under the bloat-tripwire ceiling", () => {
