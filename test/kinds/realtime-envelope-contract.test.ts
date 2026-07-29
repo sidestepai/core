@@ -30,9 +30,16 @@ import { encodeRealtimeChannel } from "../../src/kinds/realtime-channel.js";
 import { encodeRealtimeMessage } from "../../src/kinds/realtime-message.js";
 import { realtimeServer } from "../../src/kinds/realtime-server.js";
 import { realtimeChannel } from "../../src/kinds/realtime-channel.js";
+import { input } from "../../src/inputs/input.js";
 
 const chat = realtimeServer({ name: "chat" });
-const rooms = realtimeChannel({ name: "rooms/{room_id}", server: chat });
+// A `{param}` segment must have a matching input to bind it — an unbound one would
+// be an inert part of the route string.
+const rooms = realtimeChannel({
+  name: "rooms/{room_id}",
+  server: chat,
+  input: { room_id: input.int() },
+});
 
 /** Stored fields the engine declares for a realtime server. */
 const SERVER_FIELDS = ["name", "description", "canonical", "enabled", "history", "tag"] as const;
@@ -151,8 +158,16 @@ describe("realtime envelope contract", () => {
     // both FKs. Two servers owning the same path must produce two distinct
     // channel guids, or the pair collapses onto one row.
     const other = realtimeServer({ name: "support" });
-    const roomsHere = realtimeChannel({ name: "rooms/{room_id}", server: chat });
-    const roomsThere = realtimeChannel({ name: "rooms/{room_id}", server: other });
+    const roomsHere = realtimeChannel({
+      name: "rooms/{room_id}",
+      server: chat,
+      input: { room_id: input.int() },
+    });
+    const roomsThere = realtimeChannel({
+      name: "rooms/{room_id}",
+      server: other,
+      input: { room_id: input.int() },
+    });
 
     const a = encodeRealtimeMessage({ name: "send", channel: roomsHere });
     const b = encodeRealtimeMessage({ name: "send", channel: roomsThere });
