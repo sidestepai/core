@@ -24,8 +24,13 @@ import { measureCommittedLlms } from "../../scripts/measure-llms.js";
 // entire point is a safety warning — an unvalidated passthrough an agent must be
 // told not to reach for by default — plus the `## Legacy` index that keeps
 // superseded paradigms recognizable without making them selectable. Cutting
-// either to fit would delete exactly the grounding this doc exists to carry.)
-const CEILING_TOKENS = 26_000;
+// either to fit would delete exactly the grounding this doc exists to carry.
+// Raised again from 26.0k when the realtime family became authorable end-to-end:
+// its three def shapes were missing from "Object def shapes" entirely, and the
+// client recipe — `getUrl`/`getChannel` plus the frame vocabulary — is the half
+// of realtime an agent cannot infer from a def, so a realtime primitive without
+// it is discoverable but unusable.)
+const CEILING_TOKENS = 27_200;
 
 describe("llms.txt token budget", () => {
   it("stays under the bloat-tripwire ceiling", () => {

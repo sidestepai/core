@@ -188,9 +188,33 @@ export const realtimeChannelKind: ObjectKind<RealtimeChannelDef, RealtimeChannel
 };
 registerKind(realtimeChannelKind);
 
+/** The `{param}` segment names in a channel path, in order (`[]` for a static path). */
+export function channelPathParams(path: string): string[] {
+  return [...path.matchAll(/\{([^{}]+)\}/g)].map((m) => m[1]!);
+}
+
+/**
+ * A `realtimeChannel()` handle: the def plus `getChannel()`, which resolves the
+ * path a client actually joins. The accessor is dropped by `JSON.stringify` and
+ * ignored by `encodeRealtimeChannel`, so serialization is unaffected.
+ */
+export type RealtimeChannelHandle<I extends Record<string, InputDescriptor> = Record<string, InputDescriptor>> =
+  RealtimeChannelDef<I> & {
+    /**
+     * The concrete channel path to put in a frame's `channel` field —
+     * `{param}` segments filled from `params` (`"rooms/{room_id}"` +
+     * `{ room_id: 42 }` → `"rooms/42"`). A static path needs no argument.
+     * Throws on a missing, empty, or unknown param, and on a value containing
+     * `/` (which would fabricate a path segment and silently join a different
+     * channel).
+     */
+    getChannel(params?: Record<string, string | number>): string;
+  };
+
 /**
  * Author a realtime channel — a joinable path on a realtime server that owns
- * message handlers.
+ * message handlers. Returns a {@link RealtimeChannelHandle}: the def plus
+ * `getChannel()`.
  *
  * Pass the returned handle (not a bare path) to `realtimeMessage({ channel })`:
  * the handle carries the owning server, so the message resolves both refs
@@ -198,8 +222,40 @@ registerKind(realtimeChannelKind);
  */
 export function realtimeChannel<const I extends Record<string, InputDescriptor>>(
   def: RealtimeChannelDef<I>,
-): RealtimeChannelDef<I> {
-  return def;
+): RealtimeChannelHandle<I> {
+  const getChannel = (params?: Record<string, string | number>): string => {
+    const context = `realtimeChannel "${def.name}"`;
+    const declared = channelPathParams(def.name);
+    const given = params ?? {};
+    for (const key of Object.keys(given)) {
+      if (!declared.includes(key)) {
+        throw new Error(
+          `${context}: getChannel() was given \`${key}\`, which is not a {param} segment of the path. ` +
+            (declared.length
+              ? `Expected: ${declared.map((p) => `\`${p}\``).join(", ")}.`
+              : `This path is static — call getChannel() with no arguments.`),
+        );
+      }
+    }
+    return def.name.replace(/\{([^{}]+)\}/g, (_all, key: string) => {
+      const value = given[key];
+      if (value === undefined || value === null || value === "") {
+        throw new Error(
+          `${context}: getChannel() needs a value for the path param \`${key}\` — ` +
+            `pass { ${declared.map((p) => `${p}: … `).join(", ")}}.`,
+        );
+      }
+      const text = String(value);
+      if (text.includes("/")) {
+        throw new Error(
+          `${context}: the path param \`${key}\` cannot contain "/" (got ${JSON.stringify(text)}) — ` +
+            `it would fabricate a path segment and address a different channel.`,
+        );
+      }
+      return text;
+    });
+  };
+  return { ...def, getChannel };
 }
 
 /** The guid a channel def resolves to — composed from its server and its path. */

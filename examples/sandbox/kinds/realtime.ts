@@ -18,6 +18,10 @@
  *  2. A channel's `input` types its PATH parameters; a message's `input` types
  *     the message PAYLOAD. Both reach the stack. They are different schemas for
  *     different things — see `roomChannel` (path) vs `sendMessage` (payload).
+ *
+ *  3. DERIVE the client's socket URL and channel path from the defs —
+ *     `chatServer.getUrl(baseUrl)` and `roomChannel.getChannel({ room_id })` —
+ *     never hardcode them. See `CLIENT_SNIPPET` at the bottom.
  */
 import {
   realtimeServer,
@@ -96,6 +100,31 @@ export const onChatConnect = realtimeServerTrigger({
   actions: { connect: true, disconnect: true },
   stack: (t) => [s.debug.log({ value: t.action })],
 });
+
+/**
+ * DERIVE THE CLIENT SIDE. Both halves of what a browser needs come off the
+ * defs, so a rename or a re-minted canonical cannot desync the client:
+ *
+ *   chatServer.getUrl("https://x.dev.xano.io")      // wss://x.dev.xano.io/ws/<canonical>
+ *   chatServer.getUrl(base, { tenant: "a-b-c" })    // /ws/<tenant>:<canonical> — tenant DB
+ *   roomChannel.getChannel({ room_id: 42 })         // "rooms/42" — the frame's `channel`
+ *
+ * `getUrl` accepts the instance base URL you already have (`https://…`) and
+ * normalizes the scheme to `wss://`; a remote host must be `wss` (a `ws://`
+ * socket fails as an opaque 1006). Auth is a bearer token passed as the
+ * websocket SUBPROTOCOL — `new WebSocket(url, token)` — with no token meaning an
+ * anonymous client. Join before you broadcast:
+ *
+ *   const ws = new WebSocket(chatServer.getUrl(BASE), TOKEN);
+ *   const channel = roomChannel.getChannel({ room_id: 42 });
+ *   ws.onopen = () => setTimeout(() => {
+ *     ws.send(JSON.stringify({ action: "join", channel }));
+ *     ws.send(JSON.stringify({ action: "broadcast", channel, type: "send", payload: { body: "hi" } }));
+ *   }, 500); // the server finishes its handshake first; an early frame is refused
+ *
+ * A canonical is minted and frozen by `sidestep export --lock`, so these throw
+ * (rather than guess) until one is pinned in code or in `xano.lock`.
+ */
 
 /** Channel lifecycle trigger — fires on join/leave of a specific channel. */
 export const onRoomJoin = realtimeChannelTrigger({
