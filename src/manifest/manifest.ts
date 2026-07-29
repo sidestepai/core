@@ -124,6 +124,17 @@ export interface ManifestValue {
   name: string;
   signature: string;
   description: string;
+  /**
+   * An older paradigm the SDK still SUPPORTS but no longer wants authored.
+   *
+   * Kept out of the `## Values` catalog — the list an agent picks from when it
+   * builds — and named-only in the `## Legacy` index at the end of `llms.txt`.
+   * That split is the whole point: hiding it entirely is worse than useless,
+   * because a pulled workspace can legitimately contain one, and an agent that
+   * has never heard of it will "fix" what it does not recognize. Naming it
+   * without a signature says "you will see this; do not reach for it."
+   */
+  legacy?: boolean;
 }
 
 /** One value-pipeline filter (`fl.<name>`). */
@@ -394,6 +405,8 @@ const VALUE_CONSTRUCTORS: ReadonlyArray<ManifestValue> = [
   { name: "c.null", signature: "() => Value", description: 'Null constant → tag "const:null".' },
   { name: "c.obj", signature: "(o: Json) => Value", description: 'Object constant (JSON string) → tag "const:obj". Plain JSON literals only — a nested tagged value (inp/ref/auth/c.*) is rejected; for a computed object response use a record of values, not c.obj (issue #42).' },
   { name: "c.array", signature: "(a: Json[]) => Value", description: 'Array constant (JSON string) → tag "const:array". Plain JSON literals only — a nested tagged value is rejected, same as c.obj (issue #42).' },
+  { name: "c.expression", signature: "(source: string) => Value", description: 'Xano Expression Engine source, passed through VERBATIM → tag "const:expr2". The string IS the expression: c.expression(\'"Hi, " ~ $input.name\'), c.expression("$var.price * $var.qty"). ⚠️ NOT VALIDATED — never parsed or type-checked, invisible to InferResponse, and untouched by a rename that updates every typed ref(); a typo surfaces at runtime or as a wrong answer. Use it ONLY for syntax the typed surfaces cannot express (~ concatenation, inline arithmetic, conditionals) — prefer ref/inp/col, withFilters+fl.*, and obj() (which BUILDS a checked expression). Not the expr() condition builder.' },
+  { name: "c.expressionLegacy", signature: "(source: string) => Value", legacy: true, description: 'the older `const:expr` expression form, emitted by codegen for workspaces that still hold one — author `c.expression` instead.' },
   { name: "c.now", signature: "() => Value", description: 'Current time as epoch-ms — the engine-native const:epochms constant (no filter). Valid inline as a where/cmp operand. For cutoff math (cutoff = now - max_age) either compare inline or, for reuse/readability, hoist it into an s.set_var and compare against the var (issue #120).' },
   { name: "obj", signature: "(fields: Record<string, Value | nested>) => Value", description: 'Dynamic object value → tag "const:expr2" (a XanoScript object-literal expression). The dynamic sibling of c.obj (issue #42): members may be inp/ref/auth/col/c.* values, nested records, or arrays. A value with filters, or a less-common tag (env/setting/output/…), is rejected. Use for e.g. s.ai.agent.run args.' },
   { name: "ref", signature: "(name: string, opts?: { safe?: boolean }) => Value", description: 'Reference a stack variable → tag "var". Pass { safe: true } for null-safe nested access — a dotted ref("owner.user_id", { safe: true }) compiles through the get filter so it resolves to null instead of raising "Unable to locate var" when the base is null (issue #47).' },
@@ -1168,7 +1181,10 @@ export function renderLlmsTxt(m: Manifest): string {
   );
 
   lines.push("## Values", "");
-  for (const v of m.values.constructors) lines.push(`- \`${v.name}${v.signature}\` — ${v.description}`);
+  for (const v of m.values.constructors) {
+    if (v.legacy) continue;
+    lines.push(`- \`${v.name}${v.signature}\` — ${v.description}`);
+  }
   lines.push("", `Tags: ${m.values.tags.join(", ")}.`, "");
 
   lines.push("## Fields", "");
@@ -1366,6 +1382,24 @@ export function renderLlmsTxt(m: Manifest): string {
         lines.push(`- \`${call}\`${flagSuffix}${resultSuffix}`);
       }
     }
+    lines.push("");
+  }
+
+  // The legacy index: named, never specified. Everything here is supported and
+  // still decodes out of a real workspace, so an agent reading pulled code has
+  // to be able to recognize it — but nothing here should ever be chosen for new
+  // code, so it carries no signature, no options, and no example to copy.
+  const legacyValues = m.values.constructors.filter((v) => v.legacy);
+  if (legacyValues.length > 0) {
+    lines.push(
+      "## Legacy",
+      "",
+      "Older paradigms this SDK still supports and still emits when it decodes an existing",
+      "workspace. **Do not author these.** They are listed by name only so you recognize them",
+      "in pulled code rather than \"fixing\" them; each line names what to use instead.",
+      "",
+    );
+    for (const v of legacyValues) lines.push(`- \`${v.name}\` — ${v.description}`);
     lines.push("");
   }
 

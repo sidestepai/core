@@ -9,7 +9,7 @@ import { registeredKinds } from "../../src/kinds/kind.js";
 import { TAGS } from "../../src/types/xdo.js";
 import { TOTAL_STATEMENTS } from "../../src/statements/surfaces.js";
 import { FILTER_NAMES } from "../../src/values/generated/filters.generated.js";
-import { sys } from "../../src/values/value.js";
+import { c, sys } from "../../src/values/value.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { version: string };
@@ -117,6 +117,28 @@ describe("manifest", () => {
     for (const method of ["registerRealtimeServers", "registerRealtimeChannels", "registerRealtimeMessages"]) {
       expect(published).toContain(method);
     }
+  });
+
+  it("names legacy constructors in the Legacy index and nowhere an agent picks from", () => {
+    // The legacy split has to hold in BOTH directions, and each direction fails
+    // a different way. Leaking into `## Values` puts a superseded paradigm in
+    // the list an agent builds from; dropping out of `## Legacy` entirely leaves
+    // an agent unable to recognize it in pulled code, which is how a working
+    // decoded value gets "fixed" into a broken one.
+    const legacy = m.values.constructors.filter((v) => v.legacy);
+    expect(legacy.map((v) => v.name)).toEqual(["c.expressionLegacy"]);
+
+    const llms = renderLlmsTxt(m);
+    const valuesSection = llms.slice(llms.indexOf("## Values"), llms.indexOf("## Fields"));
+    const legacySection = llms.slice(llms.indexOf("## Legacy"));
+    for (const v of legacy) {
+      expect(valuesSection, `${v.name} must not be selectable`).not.toContain(v.name);
+      expect(legacySection, `${v.name} must stay recognizable`).toContain(v.name);
+      // Named, never specified — a signature is an invitation to call it.
+      expect(legacySection).not.toContain(`${v.name}${v.signature}`);
+    }
+    // It stays a real export regardless — codegen emits it for pulled workspaces.
+    expect(typeof c.expressionLegacy).toBe("function");
   });
 
   it("every object kind carries a non-empty description, rendered into the llms.txt catalog", () => {
