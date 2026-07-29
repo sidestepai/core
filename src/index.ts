@@ -367,16 +367,19 @@ export type {
   RealtimeServerDef,
   RealtimeServerXdo,
   RealtimeServerHandle,
+  RealtimeUrlOptions,
 } from "./kinds/realtime-server.js";
 export {
   realtimeChannel,
   realtimeChannelKind,
   encodeRealtimeChannel,
   realtimeChannelGuid,
+  channelPathParams,
 } from "./kinds/realtime-channel.js";
 export type {
   RealtimeChannelDef,
   RealtimeChannelXdo,
+  RealtimeChannelHandle,
   RealtimeServerRef,
   ChannelPublishDef,
   ChannelPublishWho,

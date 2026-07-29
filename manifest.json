@@ -1,6 +1,6 @@
 {
   "name": "sidestep",
-  "version": "4.1.11",
+  "version": "4.1.12",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
@@ -283,7 +283,7 @@
       "kind": "realtime_server",
       "payloadKey": "realtime_server",
       "authorFactory": "realtimeServer",
-      "description": "A realtime (websocket) server: the canonical-addressed container that owns realtime channels. Off until `enabled: true`.",
+      "description": "A realtime (websocket) server: the canonical-addressed container that owns realtime channels. Off until `enabled: true`. Returns a handle with `getUrl(baseUrl)`/`getPath()` for the client's socket URL (`wss://<host>/ws/<canonical>`).",
       "registerMethod": "registerRealtimeServers",
       "registered": true
     },
@@ -291,7 +291,7 @@
       "kind": "channel",
       "payloadKey": "channel",
       "authorFactory": "realtimeChannel",
-      "description": "A realtime channel: a joinable path on a realtime server (`rooms/{room_id}`) with typed path params, join/publish policy, a client-visible conversation transcript, and delivery semantics. Owns message handlers.",
+      "description": "A realtime channel: a joinable path on a realtime server (`rooms/{room_id}`) with typed path params, join/publish policy, a client-visible conversation transcript, and delivery semantics. Owns message handlers. Returns a handle with `getChannel(params)` for the path a client joins.",
       "registerMethod": "registerRealtimeChannels",
       "registered": true
     },

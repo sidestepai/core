@@ -527,7 +527,7 @@ method. Payload keys use the engine's singular names.
 | `table({ schema, index, ... })` | `registerTables` | `dbo` |
 | `query({ verb, apiGroup, ... })` | `registerQueries` | `query` |
 | `apiGroup({ canonical, cors, ... })` | `registerApiGroups` | `app` |
-| `{tableTrigger,realtimeTrigger,mcpServerTrigger,agentTrigger,workspaceTrigger,errorTrigger}(...)` | `registerTriggers` | `trigger` |
+| `{tableTrigger,realtimeTrigger,realtimeServerTrigger,realtimeChannelTrigger,mcpServerTrigger,agentTrigger,workspaceTrigger,errorTrigger}(...)` | `registerTriggers` | `trigger` |
 | `tool({...})` | `registerTools` | `tool` |
 | `mcpServer({...})` | `registerMcpServers` | `toolset` |
 | `agent({ llm, ... })` | `registerAgents` | `toolset` |
@@ -608,6 +608,45 @@ realtimeChannelTrigger({
   stack: (t) => [s.debug.log({ value: t.channel })],
 });
 ```
+
+**The client side is derived too** — the same "import the def, don't hardcode the URL"
+contract `query().getPath()` and `mcpServer().getUrl()` give. A server handle builds the
+socket URL; a channel handle builds the path a client joins:
+
+```ts
+chat.getUrl("https://your-instance.xano.io");        // wss://your-instance.xano.io/ws/<canonical>
+chat.getUrl(BASE, { tenant: "xxxx-xxxx-xxxx" });     // wss://…/ws/<tenant>:<canonical>
+room.getChannel({ room_id: 42 });                    // "rooms/42"
+```
+
+`getUrl` takes the instance base URL you already have and normalizes the scheme
+(`https`→`wss`, `http`→`ws`); a remote host must end up `wss://` or the socket fails as an
+opaque 1006. Both accessors throw rather than guess — the `canonical` comes from the def,
+or from `xano.lock` once `sidestep export --lock` has minted it. `getChannel` also throws
+on a missing, unknown, or slash-bearing param, so a typo can't silently address a
+different channel.
+
+Auth is a bearer token passed as the websocket **subprotocol** (`new WebSocket(url,
+token)`); no token means an anonymous client, admitted only where
+`anonymousClients: true`. Frames are JSON — `{ action: "join" | "leave" | "broadcast" |
+"ack", channel, type, payload }`, where `type` is the `realtimeMessage` name — and you
+must `join` before you may `broadcast`:
+
+```ts
+const ws = new WebSocket(chat.getUrl(BASE), TOKEN);
+const channel = room.getChannel({ room_id: 42 });
+ws.onopen = () => setTimeout(() => {          // the server finishes its handshake first
+  ws.send(JSON.stringify({ action: "join", channel }));
+  ws.send(JSON.stringify({ action: "broadcast", channel, type: "send", payload: { body: "hi" } }));
+}, 500);
+```
+
+Server frames arrive as `action: join` (the ack, carrying bound `params`), `message`,
+`replay`, `presence_full`/`presence_join`/`presence_leave`,
+`conversation_start`/`conversation_end` (replayed transcript frames are flagged
+`conversation: true`, so history is distinguishable from live traffic), and `error`
+(`payload.message`, plus `payload.code`/`retry_after` when rate limited). An `error` is a
+per-frame refusal, not a disconnect.
 
 **MCP servers & agents** — two first-class root primitives. Both persist under the
 `toolset` payload key (obj_type=`toolset`), so an `mcpServer` and an `agent` **sharing a
