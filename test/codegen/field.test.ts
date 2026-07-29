@@ -12,6 +12,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { FieldXdo } from "../../src/types/xdo.js";
+import { normalize } from "../../src/validate/normalize.js";
 import { COLUMN_CONTEXT, INPUT_CONTEXT, encodeField } from "../../src/fields/field.js";
 import { f } from "../../src/fields/catalog.js";
 import type { FieldDescriptor } from "../../src/fields/catalog.js";
@@ -233,16 +234,22 @@ describe("decodeField — inputs", () => {
 });
 
 describe("decodeField — golden fixtures", () => {
-  it("round-trips the single field fixture verbatim through rawField", () => {
+  it("decodes a legacy `customize:\"\"` field to a catalog call, canonicalizing it", () => {
     // `enum-action.json` is older-vintage like several table columns: it stores
-    // `customize: ""` where the current encoder writes `{}`, so no `f.*` form can
-    // reproduce it. It still round-trips byte-for-byte via `rawField()`.
+    // `customize: ""` where the current engine and this SDK write `{}`. The two
+    // are the same empty customization, so the field decodes to a readable
+    // catalog call and re-exports the CURRENT form — `""` is a shape this SDK
+    // reads and never writes.
     const stored = readFixture("fields/enum-action.json") as FieldXdo;
     expect(stored.customize).toBe("");
     const ctx = new DecodeContext();
-    const back = evaluate(printExpr(decodeField(ctx, refsFor(), stored, "f").expr));
-    expect(encodeField(stored.name, back.type, back.options, COLUMN_CONTEXT)).toEqual(stored);
-    expect(ctx.report.entries[0]!.detail).toContain("customize");
+    const source = printExpr(decodeField(ctx, refsFor(), stored, "f").expr);
+    expect(source).not.toContain("rawField(");
+    const back = evaluate(source);
+    const reencoded = encodeField(stored.name, back.type, back.options, COLUMN_CONTEXT);
+    expect(reencoded.customize).toEqual({});
+    expect(normalize(reencoded)).toEqual(normalize(stored));
+    expect(ctx.report.entries).toEqual([]);
   });
 
   const TABLE_FIXTURES = [
@@ -257,17 +264,18 @@ describe("decodeField — golden fixtures", () => {
   ];
 
   /**
-   * Some fixture columns predate the current field encoder and store
-   * `customize: ""` where it now writes `{}` — a shape no authoring surface can
-   * produce, so those columns cannot round-trip by construction. They are
-   * separated here rather than skipped: the reporting assertion below is the one
-   * that matters for them (R9).
+   * Every column round-trips, compared under `normalize` — the round-trip
+   * contract's own comparator, and the one both `sidestep validate` and codegen
+   * verification use.
+   *
+   * Deliberately not raw byte equality. Several fixture columns predate the
+   * current field encoder and store `customize: ""` (plus an empty `_xsid`)
+   * where the engine and this SDK now write `{}`. Those are the same field, and
+   * asserting bytes here meant asserting that the decoder must preserve a shape
+   * it is not allowed to emit — which forced every such column through
+   * `rawField()`. Canonicalizing forward is the policy; this is the assertion
+   * that matches it.
    */
-  const producible = (column: FieldXdo) => column.customize !== "";
-
-  // Every column, including the ones no `f.*` form can express — those ride
-  // through `rawField()`. There is no such thing as a column that fails to
-  // round-trip, which is the whole point of the three escape hatches.
   it.each(TABLE_FIXTURES)("round-trips every column in %s", (file) => {
     const table = readFixture(`tables/${file}`) as { schema?: FieldXdo[] };
     const columns = table.schema ?? [];
@@ -278,28 +286,47 @@ describe("decodeField — golden fixtures", () => {
       // a {name, guid} literal, which still re-encodes to the same stored method.
       const back = evaluate(printExpr(decodeField(ctx, refsFor(), column, "f").expr));
       expect(
-        encodeField(column.name, back.type, back.options, COLUMN_CONTEXT),
+        normalize(encodeField(column.name, back.type, back.options, COLUMN_CONTEXT)),
         `${file} → ${column.name}`,
-      ).toEqual(column);
+      ).toEqual(normalize(column));
     }
   });
 
-  it("round-trips a column no authoring surface can produce, verbatim", () => {
+  it("emits the current empty-customize form for every legacy column", () => {
     const legacy = TABLE_FIXTURES.flatMap((file) => {
       const table = readFixture(`tables/${file}`) as { schema?: FieldXdo[] };
-      return (table.schema ?? []).filter((column) => !producible(column));
+      return (table.schema ?? []).filter((column) => column.customize === "");
     });
     expect(legacy.length).toBeGreaterThan(0);
     for (const column of legacy) {
       const ctx = new DecodeContext();
       const source = printExpr(decodeField(ctx, refsFor(), column, "f").expr);
-      expect(source, column.name).toContain("rawField(");
       const back = evaluate(source);
-      expect(encodeField(column.name, back.type, back.options, COLUMN_CONTEXT), column.name).toEqual(
-        column,
-      );
-      expect(ctx.report.entries[0]!.detail, column.name).toContain("customize");
+      // The whole point: a legacy column is not quarantined into `rawField()`,
+      // and what it re-exports carries `{}` — never the `""` it was read from.
+      expect(source, column.name).not.toContain("rawField(");
+      expect(
+        encodeField(column.name, back.type, back.options, COLUMN_CONTEXT).customize,
+        column.name,
+      ).toEqual({});
     }
+  });
+
+  it("round-trips a column no authoring surface can produce, verbatim", () => {
+    // `merge` is encoder-fixed with no authoring option, so a column that sets
+    // it cannot come back as any catalog call or descriptor — it rides through
+    // `rawField()` byte-for-byte and is reported by name (R9). No fixture column
+    // sets one, so the case is constructed rather than found.
+    const column = {
+      ...(readFixture("fields/enum-action.json") as FieldXdo),
+      merge: true,
+    };
+    const ctx = new DecodeContext();
+    const source = printExpr(decodeField(ctx, refsFor(), column, "f").expr);
+    expect(source).toContain("rawField(");
+    const back = evaluate(source);
+    expect(encodeField(column.name, back.type, back.options, COLUMN_CONTEXT)).toEqual(column);
+    expect(ctx.report.entries[0]!.detail).toContain("merge");
   });
 });
 

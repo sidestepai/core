@@ -80,7 +80,13 @@ export interface NestedField extends FieldOptions {
 
 /** Context distinguishing an input field from a column field. */
 export interface FieldContext {
-  customize: string | Record<string, unknown>;
+  /**
+   * The empty-customization block written into every encoded field. An OBJECT,
+   * never a string: `""` is the older engine generation's empty form, which this
+   * SDK reads (and `normalize` canonicalizes forward to `{}`) but must never
+   * write. Typed to make emitting it impossible rather than merely discouraged.
+   */
+  customize: Record<string, unknown>;
   marketItem: { id: string | number; version: string | number; guid: string };
   includeDescription: boolean;
 }

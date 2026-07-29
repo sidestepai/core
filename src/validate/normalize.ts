@@ -160,6 +160,27 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     case "description":
     case "sql_name":
       return v === "";
+    // Field-envelope members the engine fills with a fixed default on save. A
+    // field saved by an older engine generation omits them entirely, while both
+    // the current engine and the SDK always write them — the same lean-vs-full
+    // generational gap as the members above, and by far the most common one in
+    // the wild: nearly every field in a workspace that has not been re-saved
+    // lacks `is_settings_registry`. Without these the decoder cannot prove ANY
+    // authored form reproduces such a field, so every one of them degrades to a
+    // descriptor literal or `rawField()` — including foreign keys, which lose
+    // their `f.tableRef(table)` form and the table import with it.
+    case "is_settings_registry":
+    case "sensitive":
+      return v === false;
+    case "mode":
+    case "format":
+      return v === "";
+    // A field's `vector.size` is only authored on a `vector` column; on every
+    // other type the engine writes this exact default. Dropping it at the
+    // default is symmetric, so a real `vector` column of size 3 still compares
+    // equal, and any other size is preserved and still compared.
+    case "vector":
+      return deepEqual(v, { size: 3 });
     // Agent `agent_settings.model`: the engine persists a top-level empty
     // `model:""` (the real model lives under `configs.<provider>.model`); the SDK
     // omits the empty top-level field. Drop it on both sides when empty.
@@ -290,10 +311,19 @@ export function normalize<T>(value: T): T {
       if (k === "output" && isEmptyOutput(v)) continue;
       // `customize` empty form is a serialization-generation artifact: the corpus
       // emits `{}` on some fields and `""` on others within the *same* table, with
-      // no authoring distinction. Canonicalize both empties so field comparisons
+      // no authoring distinction. Canonicalize both empties to the CURRENT form
+      // — `{}`, what the engine and the SDK write today — so field comparisons
       // ignore it (a non-empty customize is preserved and still compared).
+      //
+      // The direction matters. Normalizing toward `""` made the legacy shape the
+      // canonical one, which no authoring surface can emit; every column carrying
+      // it was therefore declared unrepresentable and forced through
+      // `rawField()`. Canonicalizing forward instead means a legacy column
+      // decodes to the same readable `f.*` call as its modern twin, and the tree
+      // re-exports the current form. `""` is a shape this SDK reads and never
+      // writes.
       if (k === "customize" && isEmptyCustomize(v)) {
-        out[k] = "";
+        out[k] = {};
         continue;
       }
       // `arg` (filter/method arguments) is numeric/string-inconsistent in the
