@@ -1,4 +1,4 @@
-# sidestep v4.1.8
+# sidestep v4.1.7
 
 > TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.
 
@@ -6,7 +6,7 @@ Author a Xano workspace in TypeScript: build typed objects, register them on a
 `new Xano()` instance, and call `.export()` to get one importable bundle. Compile
 with `sidestep export ./xano/index.js`.
 
-Coverage: object kinds 15/30, statement surfaces 215/215, filters 225 (129 typed).
+Coverage: object kinds 12/30, statement surfaces 215/215, filters 225 (129 typed).
 
 Full reference: this doc shows the authoring signature for every kind, statement, and
 filter. For exhaustive per-entry detail NOT shown here — a statement's full field schema
@@ -391,8 +391,6 @@ Author with the factory, register on the Xano instance, lands under the payload 
 - api_group: `apiGroup` → `Xano.registerApiGroups` → payload `app` — A container that groups queries under a shared base path, CORS, and swagger config.
 - trigger (database): `tableTrigger` → `Xano.registerTriggers` → payload `trigger` — Fires when rows change on a bound table (insert/update/delete/truncate). The changed row is exposed as `t.new`/`t.old`, typed to the table when a `table()` handle is bound. Config-only (no response).
 - trigger (workspace_realtime_channel): `realtimeTrigger` → `Xano.registerTriggers` → payload `trigger` — Fires on realtime channel activity (message/join); inspect the channel, connecting client, options, and payload via `t`. Response-bearing — defaults to echoing the payload.
-- trigger (realtime_server): `realtimeServerTrigger` → `Xano.registerTriggers` → payload `trigger` — Fires when a client connects to or disconnects from a realtime server; inspect the connecting client and its permissions via `t`. Bind with `realtimeServer`. Response-bearing.
-- trigger (channel): `channelTrigger` → `Xano.registerTriggers` → payload `trigger` — Fires when a client joins or leaves a channel; inspect the addressed channel path and the client via `t`. Bind with a `realtimeChannel()` handle (a bare path is ambiguous across servers). Response-bearing.
 - trigger (toolset): `mcpServerTrigger` → `Xano.registerTriggers` → payload `trigger` — Fires when an MCP client connects to a bound MCP server; gate or annotate the exposed tools via `t.toolset`/`t.tools`. Response-bearing.
 - trigger (toolset): `agentTrigger` → `Xano.registerTriggers` → payload `trigger` — Fires when a client connects to a bound agent; gate or annotate its toolset via `t.toolset`/`t.tools`. Response-bearing.
 - trigger (workspace): `workspaceTrigger` → `Xano.registerTriggers` → payload `trigger` — Fires on branch lifecycle events (branch new/merge/live); inspect the from/to branch and action via `t`. Config-only.
@@ -403,9 +401,6 @@ Author with the factory, register on the Xano instance, lands under the payload 
 - task: `task` → `Xano.registerTasks` → payload `task` — A scheduled background job (cron/interval) that runs a stack on a timer.
 - middleware: `middleware` → `Xano.registerMiddleware` → payload `middleware` — A reusable pre/post stack attached to a query/function/task/tool/API group to run before or after its own logic.
 - addon: `addon` → `Xano.registerAddons` → payload `addon` — A reusable read fragment that enriches a query result by joining related table data.
-- realtime_server: `realtimeServer` → `Xano.registerRealtimeServers` → payload `realtime_server` — A realtime (websocket) server: the canonical-addressed container that owns realtime channels. Off until `enabled: true`.
-- channel: `realtimeChannel` → `Xano.registerRealtimeChannels` → payload `channel` — A realtime channel: a joinable path on a realtime server (`rooms/{room_id}`) with typed path params, join/publish policy, a client-visible conversation transcript, and delivery semantics. Owns message handlers.
-- message: `realtimeMessage` → `Xano.registerRealtimeMessages` → payload `message` — A realtime message handler: a named message type on a channel with its own typed payload and stack — the realtime analogue of a query. Pass the `realtimeChannel()` handle as `channel` and the owning server comes with it.
 - workspace: `workspaceConfig` → `Xano.registerWorkspace` → payload `workspace` — Workspace-level configuration such as default middleware chains and request-history defaults per host kind.
 
 ## Object def shapes

@@ -1,10 +1,10 @@
 {
   "name": "sidestep",
-  "version": "4.1.8",
+  "version": "4.1.7",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
-      "implemented": 15,
+      "implemented": 12,
       "total": 30
     },
     "statements": {
@@ -172,8 +172,8 @@
     {
       "kind": "trigger",
       "payloadKey": "trigger",
-      "authorFactory": "{tableTrigger,realtimeTrigger,realtimeServerTrigger,channelTrigger,mcpServerTrigger,agentTrigger,workspaceTrigger,errorTrigger}",
-      "description": "An event-driven handler fired by a DB write, realtime server/channel lifecycle, MCP/agent connection, branch lifecycle, or error — inputs are implied by type and arrive on the `t` handle.",
+      "authorFactory": "{tableTrigger,realtimeTrigger,mcpServerTrigger,agentTrigger,workspaceTrigger,errorTrigger}",
+      "description": "An event-driven handler fired by a DB write, realtime channel, MCP/agent connection, branch lifecycle, or error — inputs are implied by type and arrive on the `t` handle.",
       "registerMethod": "registerTriggers",
       "subKinds": [
         {
@@ -185,16 +185,6 @@
           "authorFactory": "realtimeTrigger",
           "objType": "workspace_realtime_channel",
           "description": "Fires on realtime channel activity (message/join); inspect the channel, connecting client, options, and payload via `t`. Response-bearing — defaults to echoing the payload."
-        },
-        {
-          "authorFactory": "realtimeServerTrigger",
-          "objType": "realtime_server",
-          "description": "Fires when a client connects to or disconnects from a realtime server; inspect the connecting client and its permissions via `t`. Bind with `realtimeServer`. Response-bearing."
-        },
-        {
-          "authorFactory": "channelTrigger",
-          "objType": "channel",
-          "description": "Fires when a client joins or leaves a channel; inspect the addressed channel path and the client via `t`. Bind with a `realtimeChannel()` handle (a bare path is ambiguous across servers). Response-bearing."
         },
         {
           "authorFactory": "mcpServerTrigger",
@@ -265,30 +255,6 @@
       "authorFactory": "addon",
       "description": "A reusable read fragment that enriches a query result by joining related table data.",
       "registerMethod": "registerAddons",
-      "registered": true
-    },
-    {
-      "kind": "realtime_server",
-      "payloadKey": "realtime_server",
-      "authorFactory": "realtimeServer",
-      "description": "A realtime (websocket) server: the canonical-addressed container that owns realtime channels. Off until `enabled: true`.",
-      "registerMethod": "registerRealtimeServers",
-      "registered": true
-    },
-    {
-      "kind": "channel",
-      "payloadKey": "channel",
-      "authorFactory": "realtimeChannel",
-      "description": "A realtime channel: a joinable path on a realtime server (`rooms/{room_id}`) with typed path params, join/publish policy, a client-visible conversation transcript, and delivery semantics. Owns message handlers.",
-      "registerMethod": "registerRealtimeChannels",
-      "registered": true
-    },
-    {
-      "kind": "message",
-      "payloadKey": "message",
-      "authorFactory": "realtimeMessage",
-      "description": "A realtime message handler: a named message type on a channel with its own typed payload and stack — the realtime analogue of a query. Pass the `realtimeChannel()` handle as `channel` and the owning server comes with it.",
-      "registerMethod": "registerRealtimeMessages",
       "registered": true
     },
     {
