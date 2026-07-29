@@ -185,16 +185,27 @@ function parseOAuth(record: Record<string, unknown>, path: string): OAuthCredent
       `Missing \`workspace_id\` ${at} — it predates workspace pinning at login. ${REAUTH_HINT}`,
     );
   }
+  // `login` always writes both, and a refresh cannot be attempted without them —
+  // an empty default here would surface much later as an unintelligible URL
+  // error instead of "your credential is broken, sign in again".
+  if (typeof record.auth_host !== "string" || record.auth_host === "") {
+    throw new Error(`Missing \`auth_host\` ${at}. ${REAUTH_HINT}`);
+  }
+  if (typeof record.client_id !== "string" || record.client_id === "") {
+    throw new Error(`Missing \`client_id\` ${at}. ${REAUTH_HINT}`);
+  }
   return {
     type: "oauth",
     access_token: record.access_token,
     refresh_token: typeof record.refresh_token === "string" ? record.refresh_token : undefined,
+    // A missing expiry reads as "already expired", which triggers a refresh
+    // rather than handing out a token we cannot vouch for.
     expires_at: typeof record.expires_at === "number" ? record.expires_at : 0,
     scope: typeof record.scope === "string" ? record.scope : undefined,
     instance: record.instance,
     workspace_id: requireWorkspaceId(record.workspace_id, at),
-    auth_host: typeof record.auth_host === "string" ? record.auth_host : "",
-    client_id: typeof record.client_id === "string" ? record.client_id : "",
+    auth_host: record.auth_host,
+    client_id: record.client_id,
   };
 }
 

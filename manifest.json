@@ -1,6 +1,6 @@
 {
   "name": "sidestep",
-  "version": "4.1.7",
+  "version": "4.1.8",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
@@ -8284,10 +8284,6 @@
           "description": "Ephemeral display name at create time (default: the workspace name from the bundle, else the project dir basename). Ignored for --dest sandbox."
         },
         {
-          "flag": "--workspace <id>",
-          "description": "Parent workspace id to create the ephemeral in (default: 1, the standard primary workspace — not resolved from the token). The env's own internal workspace id is always 1."
-        },
-        {
           "flag": "--expires-hours <n>",
           "description": "Ephemeral TTL at create time, 1–72 (default 1). Only applies when a new ephemeral is created, not on refresh."
         },
@@ -8331,11 +8327,11 @@
     },
     {
       "command": "ephemeral list|get|delete|export|impersonate",
-      "args": "[<name>] [--all-workspaces] [--workspace <id>] [--format <json|multidoc>] [--path <path>|-] [--guest] [--url-only] [--yes]",
+      "args": "[<name>] [--all-workspaces] [--format <json|multidoc>] [--path <path>|-] [--guest] [--url-only] [--yes]",
       "flags": [
         {
           "flag": "list [--all-workspaces]",
-          "description": "List ephemeral tenants in the token's parent workspace, or across every workspace on the instance with --all-workspaces. Expired-but-unswept rows are marked."
+          "description": "List ephemeral tenants in your credential's workspace, or across every workspace on the instance with --all-workspaces. Expired-but-unswept rows are marked."
         },
         {
           "flag": "get <name>",
@@ -8385,11 +8381,11 @@
     },
     {
       "command": "workspace details|export|codegen",
-      "args": "[<path>] [--workspace <id>] [--path <path>|-] [--name <name>] [--ai <preset>] [--force] [--no-install] [--no-verify]",
+      "args": "[<path>] [--path <path>|-] [--name <name>] [--ai <preset>] [--force] [--no-install] [--no-verify]",
       "flags": [
         {
           "flag": "details",
-          "description": "Show which workspace your OAuth token is scoped to — instance, numeric id, name, guid. Read it before `export`/`codegen` to confirm what they will read."
+          "description": "Show which workspace your credential is bound to — instance, numeric id, name, guid, and which credential selected it. Read it before `export`/`codegen` to confirm what they will read."
         },
         {
           "flag": "export [--path <p>|-] [--name <n>]",
@@ -8398,13 +8394,9 @@
         {
           "flag": "codegen <path>",
           "description": "Decode the workspace into a runnable SideStep project at <path> (the `init` scaffold with `xano/` filled from the pull), then verify it re-exports identically."
-        },
-        {
-          "flag": "--workspace <id>",
-          "description": "Override the scoped workspace id (for an account with access to several). Default: the id the token consented to — never a hard-coded 1."
         }
       ],
-      "description": "Read the REAL workspace your OAuth token is scoped to, via `workspace/{id}/export` (the compressed bundle). Deliberately read-only: there is no `workspace deploy`, because the only import path is a FULL REPLACE of the target workspace. The loop is pull from here, edit, then `deploy` to a disposable ephemeral/sandbox env."
+      "description": "Read the REAL workspace your credential is bound to, via `workspace/{id}/export` (the compressed bundle). The workspace id comes from the credential and cannot be overridden. Deliberately read-only: there is no `workspace deploy`, because the only import path is a FULL REPLACE of the target workspace. The loop is pull from here, edit, then `deploy` to a disposable ephemeral/sandbox env."
     },
     {
       "command": "codegen",
@@ -8459,12 +8451,12 @@
     {
       "command": "login",
       "args": "[--origin <origin>] [--config <path>] [--local] [--port <n>] [--scope <list>]",
-      "description": "OAuth sign-in (browser consent; pick the instance at consent). Caches tokens in the shared ~/.sidestep/auth.json (reused from any project), or in the project-local ./.xano/auth.json with --local. For CI, set $XANO_REFRESH_TOKEN + $XANO_CLIENT_ID instead."
+      "description": "OAuth sign-in (browser consent; pick the instance AND workspace at consent). Writes a `type: \"oauth\"` credential to the shared ~/.sidestep/auth.json (reused from any project), or the project-local ./.xano/auth.json with --local, PINNING the numeric workspace so no later command looks it up or overrides it. For CI, set $XANO_REFRESH_TOKEN + $XANO_CLIENT_ID instead."
     },
     {
       "command": "logout",
       "args": "[--config <path>] [--local]",
-      "description": "Revoke the refresh token and delete the cached credentials — the shared ~/.sidestep cache by default, or the project-local ./.xano cache with --local."
+      "description": "Delete the stored credential — the shared ~/.sidestep one by default, or the project-local ./.xano one with --local. An `oauth` credential is revoked at the authorization server first; a hand-authored `token` credential has nothing to revoke, so the file is simply removed."
     },
     {
       "command": "lock",

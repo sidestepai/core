@@ -341,7 +341,7 @@ npm i -D tsx                       # lets the CLI run your .ts entry directly
 #    xano/index.ts  →  export default workspace("my-app")...
 
 # 3. Sign in once (OAuth — no API keys to copy around)
-npx sidestep login                 # opens your browser; you pick the instance
+npx sidestep login                 # opens your browser; you pick the instance + workspace
 
 # 4. Deploy to a live ephemeral environment — this is the dev loop
 npx sidestep deploy ./xano/index.ts                     # → prints your ephemeral URL
@@ -1232,7 +1232,8 @@ sidestep lock rename table users members     # move a lock entry after renaming 
 sidestep lock prune ./xano/index.ts --yes    # drop lock entries nothing exports anymore
 sidestep lock adopt live-export.json --yes   # seed the lock from a live engine export
 
-sidestep login                               # OAuth sign-in (once) — pick the instance at consent
+sidestep login                               # OAuth sign-in (once) — pick the instance + workspace at consent
+sidestep workspace details                   # which instance/workspace am I bound to, and via which credential?
 sidestep deploy ./xano/index.ts              # compile + import into a live ephemeral (the dev loop) → URL
 sidestep deploy ./xano/index.ts --dest sandbox             # …or your throwaway singleton sandbox
 sidestep deploy ./xano/index.ts --static ./frontend/dist   # also deploy a static frontend (onto the ephemeral)
@@ -1320,8 +1321,9 @@ sidestep validate --bundle ws.json                     # validate an already-exp
 ```
 
 Config comes from the environment (a `.env` is autoloaded; a real env var wins),
-`--instance`/`--workspace` override per run, and the token is env-only — never a
-flag. A non-zero exit means a check failed; `--verbose` prints full diffs and raw
+`--instance` overrides per run, and the token is env-only — never a flag. This
+harness is deliberately separate from the `auth.json` credential the rest of the
+CLI uses. A non-zero exit means a check failed; `--verbose` prints full diffs and raw
 engine detail instead of a projected summary.
 
 </details>
@@ -1337,9 +1339,42 @@ authorize step never depends on the server tolerating an arbitrary loopback port
 registration is cached in `~/.xano/sidestep-clients.json`. The instance you're bound to is
 read from the token's own `aud` claim.
 
-Tokens (access + refresh) cache by default in a **shared** `~/.sidestep/auth.json`, reusable
+`login` also **pins the numeric workspace** you consented to into the credential, so every
+later command acts on exactly that workspace without looking it up again. There is **no
+`--workspace` flag** — a credential addresses exactly one instance and one workspace. Run
+`sidestep workspace details` to see which.
+
+The credential caches by default in a **shared** `~/.sidestep/auth.json`, reusable
 from **any** project directory — so a single `sidestep login` covers all your projects.
 Override the OAuth host with `--origin`/`$XANO_ORIGIN` and the loopback port with `--port`.
+
+**Credential formats.** `auth.json` holds one credential, discriminated by `type`:
+
+```jsonc
+// type: "oauth" — written by `sidestep login`. Do not hand-edit.
+{ "type": "oauth", "instance": "https://your-instance.xano.io", "workspace_id": 3, /* …tokens… */ }
+```
+
+```jsonc
+// type: "token" — WRITE THIS YOURSELF. A meta API bearer token for the same
+// meta APIs, for automation. No login flow, no refresh, no rotation.
+{
+  "type": "token",
+  "instance_base_url": "https://your-instance.xano.io",
+  "workspace_id": 3,
+  "meta_api_token": "your-meta-api-token"
+}
+```
+
+Both formats work at **either** location (project-local `./.xano/auth.json` or global
+`~/.sidestep/auth.json`) on the same precedence ladder below, and both determine the same
+thing: one instance, one workspace. A `token` credential is never created, refreshed, or
+revoked by the CLI — `sidestep logout` just deletes the file, and the token itself stays
+valid until you revoke it wherever you minted it. Save it with owner-only permissions
+(`chmod 600`) and keep it out of git.
+
+> **Upgrading:** this format is a break. An `auth.json` written before it is rejected with a
+> message naming the fix — run `sidestep login` again.
 
 **Project-local credentials** — pass `--local` to `login` to cache tokens in a
 **project-local** `./.xano/auth.json` instead (which `login` **auto-adds to `.gitignore`**),
@@ -1421,9 +1456,11 @@ to retry just that step.
 expires (Xano rotates the refresh token on every use; the new one is persisted). A rejected
 refresh (`invalid_grant`) clears the stale cache and tells you to `sidestep login` again.
 
-**CI & agents** run non-interactively from `$XANO_REFRESH_TOKEN` + `$XANO_CLIENT_ID` (both
-copied once from `./.xano/auth.json` after a local `sidestep login`). The target instance
-is read from the refresh token's `aud`.
+**CI & agents** run non-interactively either way: from `$XANO_REFRESH_TOKEN` +
+`$XANO_CLIENT_ID` (both copied once from `auth.json` after a local `sidestep login`; the
+target instance is read from the refresh token's `aud` and the workspace resolved per run),
+or by dropping a `type: "token"` credential file in place — which needs no login at all and
+carries its instance and workspace with it.
 
 > **Automated agents:** authenticate with `$XANO_REFRESH_TOKEN` + `$XANO_CLIENT_ID`; do
 > **not** invoke `sidestep login` (it blocks on interactive browser consent). Xano rotates
