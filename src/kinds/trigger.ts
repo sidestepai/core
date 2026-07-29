@@ -134,6 +134,12 @@ function baseMeta() {
     toolset: { action: { connection: false } },
     workspace: { action: { branch_live: false, branch_merge: false, branch_new: false } },
     workspace_realtime_channel: { action: { message: false, join: false } },
+    // The two realtime lifecycle groups. Every trigger type carries the WHOLE
+    // skeleton with only its own group's flags set — verified against a live
+    // engine capture, which emits all six groups for a table trigger, a workspace
+    // trigger, and both realtime lifecycle triggers alike.
+    realtime_server: { action: { connect: false, disconnect: false } },
+    channel: { action: { join: false, leave: false, deliver: false } },
   };
 }
 
@@ -322,9 +328,10 @@ export function realtimeTrigger(
  * name); it resolves to the server's guid at export, so the binding survives a
  * `--reset` deploy. A raw numeric `objId` stays the escape hatch.
  *
- * Its `meta` carries only its own action group — unlike the four-group skeleton
- * the pre-realtime trigger types emit. That is the engine's stored shape for
- * this type, verified against its own record, not an omission.
+ * Like every other trigger type, its `meta` carries the WHOLE six-group skeleton
+ * with only its own group's flags set. An earlier version of this comment claimed
+ * the realtime types stored a single-group `meta`; a live engine capture disproved
+ * it — the engine emits all six groups for every type.
  */
 export function realtimeServerTrigger(
   args: CommonArgs & {
@@ -335,6 +342,11 @@ export function realtimeServerTrigger(
   },
 ): TriggerDef {
   const t = buildTriggerHandle("realtime_server") as unknown as RealtimeServerTriggerInputs;
+  const serverMeta = baseMeta();
+  serverMeta.realtime_server.action = {
+    connect: args.actions?.connect ?? false,
+    disconnect: args.actions?.disconnect ?? false,
+  };
   return {
     name: args.name,
     guid: args.guid,
@@ -347,14 +359,7 @@ export function realtimeServerTrigger(
         : args.objId,
     objType: "realtime_server",
     hasResult: true,
-    meta: {
-      realtime_server: {
-        action: {
-          connect: args.actions?.connect ?? false,
-          disconnect: args.actions?.disconnect ?? false,
-        },
-      },
-    },
+    meta: serverMeta,
     stack: args.stack?.(t) ?? [],
     response: args.response?.(t),
   };
@@ -383,6 +388,12 @@ export function realtimeChannelTrigger(
   },
 ): TriggerDef {
   const t = buildTriggerHandle("channel") as unknown as RealtimeChannelTriggerInputs;
+  const channelMeta = baseMeta();
+  channelMeta.channel.action = {
+    join: args.actions?.join ?? false,
+    leave: args.actions?.leave ?? false,
+    deliver: args.actions?.deliver ?? false,
+  };
   return {
     name: args.name,
     guid: args.guid,
@@ -392,15 +403,7 @@ export function realtimeChannelTrigger(
     objId: args.channel !== undefined ? realtimeChannelGuid(args.channel) : args.objId,
     objType: "channel",
     hasResult: true,
-    meta: {
-      channel: {
-        action: {
-          join: args.actions?.join ?? false,
-          leave: args.actions?.leave ?? false,
-          deliver: args.actions?.deliver ?? false,
-        },
-      },
-    },
+    meta: channelMeta,
     stack: args.stack?.(t) ?? [],
     response: args.response?.(t),
   };

@@ -1,0 +1,4780 @@
+{
+  "app": "xano",
+  "version": "1.03",
+  "type": "workspace",
+  "payload": {
+    "partial": false,
+    "action_package_install": [],
+    "addon": [
+      {
+        "tag": [],
+        "guid": "mYk-2jQhz1x5N4Pf6te_3KmbN7g",
+        "name": "ex_kind_author_addon",
+        "input": [],
+        "branch": {
+          "id": 0
+        },
+        "output": {
+          "items": [
+            {
+              "name": "id",
+              "children": []
+            },
+            {
+              "name": "name",
+              "children": []
+            },
+            {
+              "name": "email",
+              "children": []
+            }
+          ],
+          "customize": true
+        },
+        "context": {
+          "dbo": {
+            "as": "",
+            "id": "4bKT1A5av3h7xDOrCYgQp2ex2lY"
+          },
+          "bind": [],
+          "eval": [],
+          "lock": {
+            "tag": "const:bool",
+            "value": "",
+            "filters": []
+          },
+          "sort": [],
+          "future": false,
+          "return": {
+            "list": {
+              "sort": [],
+              "paging": {
+                "page": 1,
+                "offset": 0,
+                "totals": false,
+                "enabled": false,
+                "metadata": true,
+                "per_page": 25
+              },
+              "distinct": "auto"
+            },
+            "type": "list",
+            "single": {
+              "sort": []
+            },
+            "stream": {
+              "sort": [],
+              "paging": {
+                "page": 1,
+                "enabled": false,
+                "per_page": 25
+              },
+              "distinct": "auto"
+            },
+            "aggregate": {
+              "eval": [],
+              "sort": [],
+              "group": [],
+              "index": [],
+              "paging": {
+                "page": 1,
+                "enabled": false,
+                "metadata": true,
+                "per_page": 25
+              }
+            }
+          },
+          "search": {
+            "expression": []
+          },
+          "external": {
+            "tag": "input",
+            "value": "",
+            "filters": [],
+            "permissions": {
+              "page": true,
+              "sort": true,
+              "search": true,
+              "per_page": false
+            }
+          },
+          "simpleExternal": {
+            "page": {
+              "tag": "input",
+              "value": "",
+              "filters": []
+            },
+            "sort": {
+              "tag": "input",
+              "value": "",
+              "filters": []
+            },
+            "offset": {
+              "tag": "input",
+              "value": "",
+              "filters": []
+            },
+            "search": {
+              "tag": "input",
+              "value": "",
+              "filters": []
+            },
+            "per_page": {
+              "tag": "input",
+              "value": "",
+              "filters": []
+            }
+          }
+        },
+        "description": ""
+      }
+    ],
+    "app": [
+      {
+        "tag": [],
+        "cors": {
+          "mode": "default",
+          "maxAge": 0,
+          "allowHeaders": [],
+          "allowMethods": {
+            "get": false,
+            "put": false,
+            "head": false,
+            "post": false,
+            "patch": false,
+            "delete": false
+          },
+          "allowOrigins": [],
+          "allowCredentials": false
+        },
+        "docs": "",
+        "guid": "3cNKNewfp2SWFLODKAMnYOIsSuc",
+        "name": "examples",
+        "branch": {
+          "id": 0
+        },
+        "history": {
+          "inherit": true,
+          "query_limit": 100,
+          "query_enabled": true
+        },
+        "swagger": false,
+        "canonical": "examples",
+        "middleware": {
+          "pre": [],
+          "post": [],
+          "pre_customize": false,
+          "post_customize": false
+        },
+        "description": "",
+        "documentation": {
+          "token": "",
+          "require_token": false
+        },
+        "api_group_enabled": true
+      }
+    ],
+    "branch": [],
+    "channel": [
+      {
+        "tag": [],
+        "guid": "X9HUekYoLsRg0MTPjz2L2dh9hGE",
+        "name": "lobby",
+        "input": [],
+        "active": true,
+        "branch": {
+          "id": 0
+        },
+        "server": {
+          "id": "MWT3En76DWAq0PJaXBsodu2nA9E"
+        },
+        "history": {
+          "inherit": true,
+          "message_limit": 100,
+          "message_enabled": false
+        },
+        "publish": {
+          "who": "authenticated",
+          "direct": false
+        },
+        "delivery": {
+          "guarantee": "at_most_once",
+          "per_recipient": false
+        },
+        "presence": true,
+        "rate_limit": {
+          "messages_per_minute": 0
+        },
+        "description": "The single shared lobby",
+        "conversation": {
+          "ttl": 0,
+          "limit": 0,
+          "enabled": false
+        },
+        "anonymous_clients": false
+      },
+      {
+        "tag": [],
+        "guid": "twLNeRZEeAbpwze-Nuz83XIHvrU",
+        "name": "rooms/{room_id}",
+        "input": [
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "room_id",
+            "type": "int",
+            "_xsid": "i:3b84177b-5687-40dd-86c8-e87bdd2bc587",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": false,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          }
+        ],
+        "active": true,
+        "branch": {
+          "id": 0
+        },
+        "server": {
+          "id": "MWT3En76DWAq0PJaXBsodu2nA9E"
+        },
+        "history": {
+          "inherit": true,
+          "message_limit": 100,
+          "message_enabled": false
+        },
+        "publish": {
+          "who": "authenticated",
+          "direct": false
+        },
+        "delivery": {
+          "guarantee": "at_most_once",
+          "per_recipient": false
+        },
+        "presence": false,
+        "rate_limit": {
+          "messages_per_minute": 0
+        },
+        "description": "One channel per room",
+        "conversation": {
+          "ttl": 0,
+          "limit": 50,
+          "enabled": true
+        },
+        "anonymous_clients": false
+      }
+    ],
+    "dbo": [
+      {
+        "tag": [],
+        "auth": true,
+        "docs": "",
+        "guid": "4bKT1A5av3h7xDOrCYgQp2ex2lY",
+        "name": "users",
+        "index": [
+          {
+            "lang": "",
+            "name": "",
+            "type": "primary",
+            "fields": [
+              {
+                "op": "",
+                "name": "id"
+              }
+            ],
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            }
+          },
+          {
+            "lang": "",
+            "name": "",
+            "type": "btree",
+            "fields": [
+              {
+                "op": "desc",
+                "name": "created_at"
+              }
+            ],
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            }
+          },
+          {
+            "lang": "",
+            "name": "",
+            "type": "btree|unique",
+            "fields": [
+              {
+                "op": "",
+                "name": "email"
+              }
+            ],
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            }
+          }
+        ],
+        "views": [],
+        "schema": [
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "id",
+            "type": "int",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "created_at",
+            "type": "epochms",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "private",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "now",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": false,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "email",
+            "type": "email",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "name",
+            "type": "text",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": false,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "votes",
+            "type": "int",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "0",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": false,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "password",
+            "type": "password",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "internal",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": false,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "role",
+            "type": "enum",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [
+              "admin",
+              "member"
+            ],
+            "vector": {
+              "size": 3
+            },
+            "default": "member",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": false,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "verified",
+            "type": "bool",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "false",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": false,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "bio",
+            "type": "text",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "markdown",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": false,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          }
+        ],
+        "install": false,
+        "use_xdo": false,
+        "external": {
+          "id": "",
+          "source": ""
+        },
+        "sql_name": "",
+        "description": "",
+        "autocomplete": [],
+        "import": {
+          "mode": "standard"
+        }
+      },
+      {
+        "tag": [],
+        "auth": false,
+        "docs": "",
+        "guid": "tjahhzCFXvRMAh49O0SKCpSTe7Q",
+        "name": "posts",
+        "index": [
+          {
+            "lang": "",
+            "name": "",
+            "type": "primary",
+            "fields": [
+              {
+                "op": "",
+                "name": "id"
+              }
+            ],
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            }
+          },
+          {
+            "lang": "",
+            "name": "",
+            "type": "btree",
+            "fields": [
+              {
+                "op": "desc",
+                "name": "created_at"
+              }
+            ],
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            }
+          }
+        ],
+        "views": [],
+        "schema": [
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "id",
+            "type": "int",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "created_at",
+            "type": "epochms",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "private",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "now",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": false,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "title",
+            "type": "text",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "body",
+            "type": "text",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": false,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "author_id",
+            "type": "int",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [
+              {
+                "arg": [
+                  "dbo=4bKT1A5av3h7xDOrCYgQp2ex2lY"
+                ],
+                "name": "@",
+                "disabled": false
+              }
+            ],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "published",
+            "type": "bool",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "false",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": false,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "tags",
+            "type": "text",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "list"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": false,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "score",
+            "type": "decimal",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "0",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": false,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          }
+        ],
+        "install": false,
+        "use_xdo": false,
+        "external": {
+          "id": "",
+          "source": ""
+        },
+        "sql_name": "",
+        "description": "",
+        "autocomplete": [],
+        "import": {
+          "mode": "standard"
+        }
+      },
+      {
+        "tag": [],
+        "auth": false,
+        "docs": "",
+        "guid": "sZr4cKCKlQAkX37F8EPNv8Sh_-o",
+        "name": "ex_kind_products",
+        "index": [
+          {
+            "lang": "",
+            "name": "",
+            "type": "primary",
+            "fields": [
+              {
+                "op": "",
+                "name": "id"
+              }
+            ],
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            }
+          },
+          {
+            "lang": "",
+            "name": "",
+            "type": "btree",
+            "fields": [
+              {
+                "op": "desc",
+                "name": "created_at"
+              }
+            ],
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            }
+          },
+          {
+            "lang": "",
+            "name": "",
+            "type": "btree|unique",
+            "fields": [
+              {
+                "op": "",
+                "name": "sku"
+              }
+            ],
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            }
+          },
+          {
+            "lang": "",
+            "name": "",
+            "type": "btree",
+            "fields": [
+              {
+                "op": "desc",
+                "name": "price"
+              }
+            ],
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            }
+          }
+        ],
+        "views": [],
+        "schema": [
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "id",
+            "type": "int",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "created_at",
+            "type": "epochms",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "private",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "now",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": false,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "sku",
+            "type": "text",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "name",
+            "type": "text",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "price",
+            "type": "decimal",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "0",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": false,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "in_stock",
+            "type": "bool",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "true",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": false,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "tags",
+            "type": "text",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "list"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": false,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          }
+        ],
+        "install": false,
+        "use_xdo": false,
+        "external": {
+          "id": "",
+          "source": ""
+        },
+        "sql_name": "",
+        "description": "",
+        "autocomplete": [],
+        "import": {
+          "mode": "standard"
+        }
+      },
+      {
+        "tag": [],
+        "auth": false,
+        "docs": "",
+        "guid": "uRgCn_yuQxo6Fr25z7X5biP_5Dg",
+        "name": "ex_field_table_ref",
+        "index": [
+          {
+            "lang": "",
+            "name": "",
+            "type": "primary",
+            "fields": [
+              {
+                "op": "",
+                "name": "id"
+              }
+            ],
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            }
+          },
+          {
+            "lang": "",
+            "name": "",
+            "type": "btree",
+            "fields": [
+              {
+                "op": "desc",
+                "name": "created_at"
+              }
+            ],
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            }
+          }
+        ],
+        "views": [],
+        "schema": [
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "id",
+            "type": "int",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "created_at",
+            "type": "epochms",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "private",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "now",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": false,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "owner_id",
+            "type": "int",
+            "_xsid": "",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [
+              {
+                "arg": [
+                  "dbo=4bKT1A5av3h7xDOrCYgQp2ex2lY"
+                ],
+                "name": "@",
+                "disabled": false
+              }
+            ],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          }
+        ],
+        "install": false,
+        "use_xdo": false,
+        "external": {
+          "id": "",
+          "source": ""
+        },
+        "sql_name": "",
+        "description": "",
+        "autocomplete": [],
+        "import": {
+          "mode": "standard"
+        }
+      }
+    ],
+    "env": [],
+    "function": [],
+    "market_item": [],
+    "message": [
+      {
+        "run": [
+          {
+            "as": "",
+            "name": "mvp:debug_log",
+            "_xsid": "f:666b7adc-52b4-4a6c-90b3-6b86ce1038fd",
+            "addon": [],
+            "input": [],
+            "mocks": {},
+            "output": {
+              "items": [],
+              "filters": [],
+              "customize": false
+            },
+            "context": {
+              "tag": "const",
+              "value": "message received",
+              "filters": []
+            },
+            "runtime": null,
+            "disabled": false,
+            "description": "",
+            "settings_registry": null
+          }
+        ],
+        "tag": [],
+        "auth": false,
+        "guid": "JBRBlrvophGGK57U2Nf4McmZ1Rc",
+        "name": "send",
+        "input": [
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "body",
+            "type": "text",
+            "_xsid": "i:81bec163-febb-4aad-bd17-409cd265d576",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          }
+        ],
+        "active": true,
+        "branch": {
+          "id": 0
+        },
+        "output": [],
+        "result": [],
+        "server": {
+          "id": "MWT3En76DWAq0PJaXBsodu2nA9E"
+        },
+        "channel": {
+          "id": "twLNeRZEeAbpwze-Nuz83XIHvrU"
+        },
+        "history": {
+          "limit": 100,
+          "enabled": false,
+          "inherit": true
+        },
+        "disabled": false,
+        "deliver_to": "channel",
+        "middleware": {
+          "pre": [],
+          "post": [],
+          "pre_customize": false,
+          "post_customize": false
+        },
+        "description": "Post a message to a room"
+      },
+      {
+        "run": [],
+        "tag": [],
+        "auth": false,
+        "guid": "npewBzOg02wRRGLv_3dU4tbgXx8",
+        "name": "typing",
+        "input": [],
+        "active": true,
+        "branch": {
+          "id": 0
+        },
+        "output": [],
+        "result": [],
+        "server": {
+          "id": "MWT3En76DWAq0PJaXBsodu2nA9E"
+        },
+        "channel": {
+          "id": "twLNeRZEeAbpwze-Nuz83XIHvrU"
+        },
+        "history": {
+          "limit": 100,
+          "enabled": false,
+          "inherit": true
+        },
+        "disabled": false,
+        "deliver_to": "others",
+        "middleware": {
+          "pre": [],
+          "post": [],
+          "pre_customize": false,
+          "post_customize": false
+        },
+        "description": "Ephemeral typing indicator"
+      }
+    ],
+    "microservice": [],
+    "middleware": [
+      {
+        "run": [
+          {
+            "as": "",
+            "name": "mvp:redis_ratelimit",
+            "_xsid": "f:266e1553-9a3d-4f63-a6eb-dc3f9442c839",
+            "addon": [],
+            "input": [
+              {
+                "tag": "const",
+                "name": "key",
+                "value": "ex:rl:write:",
+                "expand": false,
+                "ignore": false,
+                "filters": [
+                  {
+                    "arg": [
+                      {
+                        "tag": "auth",
+                        "value": "id",
+                        "filters": []
+                      }
+                    ],
+                    "name": "concat",
+                    "disabled": false
+                  }
+                ],
+                "children": []
+              },
+              {
+                "tag": "const:int",
+                "name": "max",
+                "value": "10",
+                "expand": false,
+                "ignore": false,
+                "filters": [],
+                "children": []
+              },
+              {
+                "tag": "const:int",
+                "name": "ttl",
+                "value": "30",
+                "expand": false,
+                "ignore": false,
+                "filters": [],
+                "children": []
+              },
+              {
+                "tag": "const",
+                "name": "error",
+                "value": "Too fast — slow down.",
+                "expand": false,
+                "ignore": false,
+                "filters": [],
+                "children": []
+              }
+            ],
+            "mocks": {},
+            "output": {
+              "items": [],
+              "filters": [],
+              "customize": false
+            },
+            "context": {},
+            "runtime": null,
+            "disabled": false,
+            "description": "",
+            "settings_registry": null
+          }
+        ],
+        "tag": [],
+        "docs": "",
+        "guid": "ACQx5i1yxJnmg9rFlhbyS8ixr3A",
+        "name": "ex_kind_rate_limit",
+        "test": [],
+        "input": [],
+        "branch": {
+          "id": 0
+        },
+        "result": [],
+        "history": {
+          "limit": 100,
+          "enabled": false,
+          "inherit": true
+        },
+        "exception": "rethrow",
+        "description": "",
+        "result_type": "merge",
+        "shared_workspace": {
+          "is_shared": false
+        }
+      }
+    ],
+    "query": [
+      {
+        "app": {
+          "id": "3cNKNewfp2SWFLODKAMnYOIsSuc"
+        },
+        "run": [
+          {
+            "as": "user",
+            "name": "mvp:dbo_getby",
+            "_xsid": "f:d6a28545-e817-4f38-acd3-e6eb2980a41d",
+            "addon": [],
+            "input": [
+              {
+                "tag": "const",
+                "name": "field_name",
+                "value": "id",
+                "expand": false,
+                "ignore": false,
+                "filters": [],
+                "children": []
+              },
+              {
+                "tag": "input",
+                "name": "field_value",
+                "value": "id",
+                "expand": false,
+                "ignore": false,
+                "filters": [],
+                "children": []
+              }
+            ],
+            "mocks": {},
+            "output": {
+              "items": [],
+              "filters": [],
+              "customize": false
+            },
+            "context": {
+              "dbo": {
+                "id": "4bKT1A5av3h7xDOrCYgQp2ex2lY"
+              }
+            },
+            "runtime": null,
+            "disabled": false,
+            "description": "",
+            "settings_registry": null
+          }
+        ],
+        "tag": [],
+        "auth": false,
+        "docs": "",
+        "guid": "WZgrAz7JEeZAQ3O6U3bIeujJgFI",
+        "name": "ex_get_user",
+        "test": [],
+        "verb": "GET",
+        "cache": {
+          "ip": false,
+          "env": [],
+          "ttl": 3600,
+          "auth": true,
+          "input": true,
+          "active": false,
+          "headers": [],
+          "datasource": true
+        },
+        "input": [
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "id",
+            "type": "int",
+            "_xsid": "i:50b2a0ee-5cda-4e9b-8385-75cc71ac6ec6",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          }
+        ],
+        "output": [],
+        "result": [
+          {
+            "tag": "var",
+            "name": "",
+            "_xsid": "r:fa843f61-07b2-49b5-a60c-5974759cd81d",
+            "value": "user",
+            "filters": [],
+            "disabled": false
+          }
+        ],
+        "example": {},
+        "history": {
+          "limit": 100,
+          "enabled": true,
+          "inherit": true
+        },
+        "disabled": false,
+        "middleware": {
+          "pre": [],
+          "post": [],
+          "pre_customize": false,
+          "post_customize": false
+        },
+        "api_enabled": true,
+        "description": "",
+        "response_type": "standard"
+      },
+      {
+        "app": {
+          "id": "3cNKNewfp2SWFLODKAMnYOIsSuc"
+        },
+        "run": [
+          {
+            "as": "answer",
+            "name": "mvp:call_agent",
+            "_xsid": "f:17dc4486-cc0e-43d4-a9f0-d4db438020e2",
+            "addon": [],
+            "input": [
+              {
+                "tag": "const:expr2",
+                "name": "args",
+                "value": "{ question: $input.question }",
+                "expand": false,
+                "ignore": false,
+                "filters": [],
+                "children": []
+              }
+            ],
+            "mocks": {},
+            "output": {
+              "items": [],
+              "filters": [],
+              "customize": false
+            },
+            "context": {
+              "toolset": {
+                "id": "f-dk11v3iISjiGMPraX2oXxV-Oo"
+              }
+            },
+            "runtime": null,
+            "disabled": false,
+            "description": "",
+            "settings_registry": null
+          }
+        ],
+        "tag": [],
+        "auth": false,
+        "docs": "",
+        "guid": "67fwtZh327-AAj6ECVC91DmO7Eo",
+        "name": "ex_ask_assistant",
+        "test": [],
+        "verb": "POST",
+        "cache": {
+          "ip": false,
+          "env": [],
+          "ttl": 3600,
+          "auth": true,
+          "input": true,
+          "active": false,
+          "headers": [],
+          "datasource": true
+        },
+        "input": [
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "question",
+            "type": "text",
+            "_xsid": "i:d3d2cd39-237d-4465-8fda-f1242b579c80",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          }
+        ],
+        "output": [],
+        "result": [
+          {
+            "tag": "var",
+            "name": "text",
+            "_xsid": "r:f133a816-3e00-4619-9f7b-8db168083cb0",
+            "value": "answer.result",
+            "filters": [],
+            "disabled": false
+          }
+        ],
+        "example": {},
+        "history": {
+          "limit": 100,
+          "enabled": true,
+          "inherit": true
+        },
+        "disabled": false,
+        "middleware": {
+          "pre": [],
+          "post": [],
+          "pre_customize": false,
+          "post_customize": false
+        },
+        "api_enabled": true,
+        "description": "",
+        "response_type": "standard"
+      },
+      {
+        "app": {
+          "id": "3cNKNewfp2SWFLODKAMnYOIsSuc"
+        },
+        "run": [
+          {
+            "as": "user",
+            "name": "mvp:dbo_getby",
+            "_xsid": "f:1a77d3bc-c596-4894-9d41-c4418e8c256b",
+            "addon": [],
+            "input": [
+              {
+                "tag": "const",
+                "name": "field_name",
+                "value": "id",
+                "expand": false,
+                "ignore": false,
+                "filters": [],
+                "children": []
+              },
+              {
+                "tag": "input",
+                "name": "field_value",
+                "value": "id",
+                "expand": false,
+                "ignore": false,
+                "filters": [],
+                "children": []
+              }
+            ],
+            "mocks": {},
+            "output": {
+              "items": [],
+              "filters": [],
+              "customize": false
+            },
+            "context": {
+              "dbo": {
+                "id": "4bKT1A5av3h7xDOrCYgQp2ex2lY"
+              }
+            },
+            "runtime": null,
+            "disabled": false,
+            "description": "",
+            "settings_registry": null
+          }
+        ],
+        "tag": [],
+        "auth": false,
+        "docs": "",
+        "guid": "a9nuo_4reWDeHGIWIhScC3utOjc",
+        "name": "ex_history_query",
+        "test": [],
+        "verb": "GET",
+        "cache": {
+          "ip": false,
+          "env": [],
+          "ttl": 3600,
+          "auth": true,
+          "input": true,
+          "active": false,
+          "headers": [],
+          "datasource": true
+        },
+        "input": [
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "id",
+            "type": "int",
+            "_xsid": "i:6fb32081-8a46-4e7d-bffb-6b67b5b61de0",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          }
+        ],
+        "output": [],
+        "result": [
+          {
+            "tag": "var",
+            "name": "",
+            "_xsid": "r:6d0835ba-9048-4a41-b846-fd7a996a0d93",
+            "value": "user",
+            "filters": [],
+            "disabled": false
+          }
+        ],
+        "example": {},
+        "history": {
+          "limit": 100,
+          "enabled": true,
+          "inherit": false
+        },
+        "disabled": false,
+        "middleware": {
+          "pre": [],
+          "post": [],
+          "pre_customize": false,
+          "post_customize": false
+        },
+        "api_enabled": true,
+        "description": "",
+        "response_type": "standard"
+      }
+    ],
+    "realtime_server": [
+      {
+        "tag": [],
+        "guid": "MWT3En76DWAq0PJaXBsodu2nA9E",
+        "name": "ex_kind_chat_server",
+        "branch": {
+          "id": 0
+        },
+        "enabled": true,
+        "history": {
+          "inherit": true,
+          "message_limit": 100,
+          "message_enabled": false
+        },
+        "canonical": "",
+        "description": "Team chat over websockets"
+      }
+    ],
+    "run_install": [],
+    "task": [
+      {
+        "run": [
+          {
+            "as": "",
+            "name": "mvp:dbo_bulkdelete",
+            "_xsid": "f:345e66f6-c5b3-4333-a7fa-3946d4e5577d",
+            "addon": [],
+            "input": [],
+            "mocks": {},
+            "output": {
+              "items": [],
+              "filters": [],
+              "customize": false
+            },
+            "context": {
+              "dbo": {
+                "id": "tjahhzCFXvRMAh49O0SKCpSTe7Q"
+              },
+              "search": {
+                "expression": [
+                  {
+                    "or": false,
+                    "type": "statement",
+                    "group": {
+                      "expression": []
+                    },
+                    "statement": {
+                      "op": "=",
+                      "left": {
+                        "tag": "col",
+                        "filters": [],
+                        "operand": "published"
+                      },
+                      "right": {
+                        "tag": "const:bool",
+                        "filters": [],
+                        "operand": "false"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "runtime": null,
+            "disabled": false,
+            "description": "",
+            "settings_registry": null
+          }
+        ],
+        "tag": [],
+        "docs": "",
+        "guid": "7Y7GH-jo8O-6RSctFIN-rh6jmXk",
+        "name": "ex_kind_nightly_cleanup",
+        "active": false,
+        "branch": {
+          "id": 0
+        },
+        "history": {
+          "limit": 100,
+          "enabled": true,
+          "inherit": true
+        },
+        "schedule": [
+          {
+            "repeat": {
+              "ends": {
+                "on": "2026-01-01 00:00:00+0000",
+                "enabled": false
+              },
+              "freq": 86400,
+              "enabled": true
+            },
+            "starts_on": "2026-01-01 00:00:00+0000"
+          }
+        ],
+        "datasource": "",
+        "middleware": {
+          "pre": [],
+          "post": [],
+          "pre_customize": false,
+          "post_customize": false
+        },
+        "description": ""
+      }
+    ],
+    "tool": [
+      {
+        "run": [
+          {
+            "as": "rows",
+            "name": "mvp:dbo_view",
+            "_xsid": "f:43d439b2-f99d-47bd-9a80-d0fa4ff0bc7b",
+            "addon": [],
+            "input": [],
+            "mocks": {},
+            "output": {
+              "items": [],
+              "filters": [],
+              "customize": false
+            },
+            "context": {
+              "dbo": {
+                "id": "tjahhzCFXvRMAh49O0SKCpSTe7Q"
+              },
+              "return": {
+                "type": "list"
+              }
+            },
+            "runtime": null,
+            "disabled": false,
+            "description": "",
+            "settings_registry": null
+          }
+        ],
+        "tag": [],
+        "auth": false,
+        "docs": "",
+        "guid": "JQyTBubKaiKwwubulOtVXKmydAY",
+        "name": "ex_kind_search_tool",
+        "input": [
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "query",
+            "type": "text",
+            "_xsid": "i:efc2d6fe-1d63-4c7b-bb15-2cf4db53411f",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          }
+        ],
+        "branch": {
+          "id": 0
+        },
+        "output": [],
+        "result": [
+          {
+            "tag": "var",
+            "name": "",
+            "_xsid": "r:803cebde-83c7-4bf0-8aa5-c259901e9580",
+            "value": "rows",
+            "filters": [],
+            "disabled": false
+          }
+        ],
+        "enabled": true,
+        "history": {
+          "limit": 100,
+          "enabled": true,
+          "inherit": true
+        },
+        "toolset": {
+          "id": 0
+        },
+        "middleware": {
+          "pre": [],
+          "post": [],
+          "pre_customize": false,
+          "post_customize": false
+        },
+        "description": "Search posts by title",
+        "instructions": ""
+      }
+    ],
+    "knowledge": [],
+    "knowledge_file": [],
+    "toolset": [
+      {
+        "tag": [],
+        "docs": "",
+        "guid": "MVXg3CKXVNSVbQ-U5esglUJ3mq0",
+        "name": "ex_kind_mcp_server",
+        "spec": "",
+        "tool": [
+          {
+            "id": "JQyTBubKaiKwwubulOtVXKmydAY",
+            "auth": false,
+            "enabled": true
+          }
+        ],
+        "type": "mcp",
+        "branch": {
+          "id": 0
+        },
+        "enabled": true,
+        "history": {
+          "inherit": true,
+          "tool_limit": 100,
+          "tool_enabled": true
+        },
+        "canonical": "assistant-mcp",
+        "middleware": {
+          "pre": [],
+          "post": [],
+          "pre_customize": false,
+          "post_customize": false
+        },
+        "description": "",
+        "instructions": "Expose the search tool over MCP.",
+        "agent_settings": null
+      },
+      {
+        "tag": [],
+        "docs": "",
+        "guid": "f-dk11v3iISjiGMPraX2oXxV-Oo",
+        "name": "ex_assistant",
+        "spec": "",
+        "tool": [
+          {
+            "id": "JQyTBubKaiKwwubulOtVXKmydAY",
+            "auth": false,
+            "enabled": true
+          }
+        ],
+        "type": "agent",
+        "branch": {
+          "id": 0
+        },
+        "enabled": true,
+        "history": {
+          "inherit": true,
+          "tool_limit": 100,
+          "tool_enabled": true
+        },
+        "canonical": "assistant-agent",
+        "middleware": {
+          "pre": [],
+          "post": [],
+          "pre_customize": false,
+          "post_customize": false
+        },
+        "description": "",
+        "instructions": "",
+        "agent_settings": {
+          "type": "xano-free",
+          "model": "",
+          "prompt": "Answer this question: {{ $args.question }}",
+          "configs": {
+            "xano-free": {
+              "baseURL": "",
+              "headers": "",
+              "temperature": 1,
+              "safetySettings": "",
+              "thinkingConfig": {
+                "thinkingBudget": 0,
+                "includeThoughts": false
+              },
+              "useSearchGrounding": false,
+              "dynamicRetrievalConfig": ""
+            }
+          },
+          "max_steps": 5,
+          "telemetry": {
+            "enabled": false,
+            "langfuse": {
+              "base_url": "",
+              "public_key": "",
+              "secret_key": ""
+            },
+            "langsmith": {
+              "api_key": ""
+            },
+            "braintrust": {
+              "api_key": "",
+              "project_name": ""
+            },
+            "destination": ""
+          },
+          "prompt_type": "prompt",
+          "system_prompt": "You are a helpful assistant.",
+          "prompt_messages": "",
+          "structuredOutputs": false,
+          "structuredOutputsSchema": []
+        }
+      }
+    ],
+    "trigger": [
+      {
+        "run": [
+          {
+            "as": "",
+            "name": "mvp:debug_log",
+            "_xsid": "f:97868951-b0bf-4d8e-a1e1-b03c88dbf28b",
+            "addon": [],
+            "input": [],
+            "mocks": {},
+            "output": {
+              "items": [],
+              "filters": [],
+              "customize": false
+            },
+            "context": {
+              "tag": "input",
+              "value": "new.email",
+              "filters": []
+            },
+            "runtime": null,
+            "disabled": false,
+            "description": "",
+            "settings_registry": null
+          }
+        ],
+        "tag": [],
+        "guid": "D-cTI7THgGLig4hO47lHVrmMxzg",
+        "meta": {
+          "channel": {
+            "action": {
+              "join": false,
+              "leave": false,
+              "deliver": false
+            }
+          },
+          "toolset": {
+            "action": {
+              "connection": false
+            }
+          },
+          "database": {
+            "action": {
+              "delete": false,
+              "insert": true,
+              "update": false,
+              "truncate": false
+            },
+            "search": {
+              "expression": []
+            },
+            "datasource": []
+          },
+          "workspace": {
+            "action": {
+              "branch_new": false,
+              "branch_live": false,
+              "branch_merge": false
+            }
+          },
+          "realtime_server": {
+            "action": {
+              "connect": false,
+              "disconnect": false
+            }
+          },
+          "workspace_realtime_channel": {
+            "action": {
+              "join": false,
+              "message": false
+            }
+          }
+        },
+        "name": "ex_kind_trigger_on_user_insert",
+        "input": [
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "new",
+            "type": "json",
+            "_xsid": "i:efa64300-9a8d-4763-b1d8-7215f27dfda9",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": false,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "old",
+            "type": "json",
+            "_xsid": "i:970542ca-06cc-4ceb-bb7f-a7b8303da73a",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": false,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "action",
+            "type": "enum",
+            "_xsid": "i:100e6894-4049-4f27-91b1-4f6c7bfd320e",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [
+              "insert",
+              "update",
+              "delete",
+              "truncate"
+            ],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "datasource",
+            "type": "text",
+            "_xsid": "i:b8b0c9b7-82e2-4bad-8b68-eec927072d12",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [
+              "insert",
+              "update",
+              "delete",
+              "truncate"
+            ],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          }
+        ],
+        "active": true,
+        "branch": {
+          "id": 0
+        },
+        "obj_id": "4bKT1A5av3h7xDOrCYgQp2ex2lY",
+        "output": [],
+        "result": [],
+        "history": {
+          "limit": 100,
+          "enabled": false,
+          "inherit": true
+        },
+        "obj_type": "database",
+        "description": ""
+      },
+      {
+        "run": [],
+        "tag": [],
+        "guid": "bIJAb-cervgOfRQ2k72vFccHHgE",
+        "meta": {
+          "channel": {
+            "action": {
+              "join": false,
+              "leave": false,
+              "deliver": false
+            }
+          },
+          "toolset": {
+            "action": {
+              "connection": false
+            }
+          },
+          "database": {
+            "action": {
+              "delete": false,
+              "insert": false,
+              "update": false,
+              "truncate": false
+            },
+            "search": {
+              "expression": []
+            },
+            "datasource": []
+          },
+          "workspace": {
+            "action": {
+              "branch_new": false,
+              "branch_live": false,
+              "branch_merge": false
+            }
+          },
+          "realtime_server": {
+            "action": {
+              "connect": false,
+              "disconnect": false
+            }
+          },
+          "workspace_realtime_channel": {
+            "action": {
+              "join": false,
+              "message": true
+            }
+          }
+        },
+        "name": "ex_kind_trigger_on_message",
+        "input": [
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "action",
+            "type": "enum",
+            "_xsid": "i:53d22abc-1d06-4f1f-bc94-834bb4befec5",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [
+              "message",
+              "join"
+            ],
+            "vector": {
+              "size": 3
+            },
+            "default": "message",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "channel",
+            "type": "text",
+            "_xsid": "i:f9b5c607-0bd4-40a3-8b36-633e4f63e143",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "client",
+            "type": "obj",
+            "_xsid": "i:f156336e-2db9-419c-b662-e3654bc0db11",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [
+              {
+                "list": {
+                  "max": "",
+                  "min": ""
+                },
+                "mode": "",
+                "name": "extras",
+                "type": "json",
+                "_xsid": "i:57d14d8b-1a31-4109-bfe1-a96b1a5c7fdb",
+                "merge": false,
+                "style": {
+                  "type": "single"
+                },
+                "access": "public",
+                "format": "",
+                "hidden": [],
+                "values": [],
+                "vector": {
+                  "size": 3
+                },
+                "default": "",
+                "methods": [],
+                "children": [],
+                "nullable": false,
+                "override": [],
+                "required": false,
+                "customize": {},
+                "sensitive": false,
+                "description": "",
+                "market_item": {
+                  "id": 0,
+                  "guid": "",
+                  "version": 0
+                },
+                "is_settings_registry": false
+              },
+              {
+                "list": {
+                  "max": "",
+                  "min": ""
+                },
+                "mode": "",
+                "name": "permissions",
+                "type": "obj",
+                "_xsid": "i:549881ae-1dcd-416f-98d8-cf474671c94f",
+                "merge": false,
+                "style": {
+                  "type": "single"
+                },
+                "access": "public",
+                "format": "",
+                "hidden": [],
+                "values": [],
+                "vector": {
+                  "size": 3
+                },
+                "default": "",
+                "methods": [],
+                "children": [
+                  {
+                    "list": {
+                      "max": "",
+                      "min": ""
+                    },
+                    "mode": "",
+                    "name": "dbo_id",
+                    "type": "int",
+                    "_xsid": "i:deb24453-e6d8-4e9c-9857-1aaacb20b2d1",
+                    "merge": false,
+                    "style": {
+                      "type": "single"
+                    },
+                    "access": "public",
+                    "format": "",
+                    "hidden": [],
+                    "values": [],
+                    "vector": {
+                      "size": 3
+                    },
+                    "default": "",
+                    "methods": [],
+                    "children": [],
+                    "nullable": false,
+                    "override": [],
+                    "required": false,
+                    "customize": {},
+                    "sensitive": false,
+                    "description": "",
+                    "market_item": {
+                      "id": 0,
+                      "guid": "",
+                      "version": 0
+                    },
+                    "is_settings_registry": false
+                  },
+                  {
+                    "list": {
+                      "max": "",
+                      "min": ""
+                    },
+                    "mode": "",
+                    "name": "row_id",
+                    "type": "text",
+                    "_xsid": "i:eee63143-ba09-42f2-ae26-2d5f305b2321",
+                    "merge": false,
+                    "style": {
+                      "type": "single"
+                    },
+                    "access": "public",
+                    "format": "",
+                    "hidden": [],
+                    "values": [],
+                    "vector": {
+                      "size": 3
+                    },
+                    "default": "",
+                    "methods": [],
+                    "children": [],
+                    "nullable": false,
+                    "override": [],
+                    "required": false,
+                    "customize": {},
+                    "sensitive": false,
+                    "description": "",
+                    "market_item": {
+                      "id": 0,
+                      "guid": "",
+                      "version": 0
+                    },
+                    "is_settings_registry": false
+                  }
+                ],
+                "nullable": false,
+                "override": [],
+                "required": true,
+                "customize": {},
+                "sensitive": false,
+                "description": "",
+                "market_item": {
+                  "id": 0,
+                  "guid": "",
+                  "version": 0
+                },
+                "is_settings_registry": false
+              }
+            ],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "options",
+            "type": "obj",
+            "_xsid": "i:8b595705-6483-412d-8adc-9ee8ac5c6c3a",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [
+              {
+                "list": {
+                  "max": "",
+                  "min": ""
+                },
+                "mode": "",
+                "name": "authenticated",
+                "type": "bool",
+                "_xsid": "i:f0b7a1c2-07de-4646-866e-b93c4845c8fc",
+                "merge": false,
+                "style": {
+                  "type": "single"
+                },
+                "access": "public",
+                "format": "",
+                "hidden": [],
+                "values": [],
+                "vector": {
+                  "size": 3
+                },
+                "default": "",
+                "methods": [],
+                "children": [],
+                "nullable": false,
+                "override": [],
+                "required": false,
+                "customize": {},
+                "sensitive": false,
+                "description": "",
+                "market_item": {
+                  "id": 0,
+                  "guid": "",
+                  "version": 0
+                },
+                "is_settings_registry": false
+              },
+              {
+                "list": {
+                  "max": "",
+                  "min": ""
+                },
+                "mode": "",
+                "name": "channel",
+                "type": "text",
+                "_xsid": "i:75d9ad4b-4436-4052-83e7-aead723a3290",
+                "merge": false,
+                "style": {
+                  "type": "single"
+                },
+                "access": "public",
+                "format": "",
+                "hidden": [],
+                "values": [],
+                "vector": {
+                  "size": 3
+                },
+                "default": "",
+                "methods": [],
+                "children": [],
+                "nullable": false,
+                "override": [],
+                "required": false,
+                "customize": {},
+                "sensitive": false,
+                "description": "",
+                "market_item": {
+                  "id": 0,
+                  "guid": "",
+                  "version": 0
+                },
+                "is_settings_registry": false
+              }
+            ],
+            "nullable": false,
+            "override": [],
+            "required": false,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "payload",
+            "type": "json",
+            "_xsid": "i:c523903e-cae0-44f9-89ba-c159ffbc6405",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": true,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          }
+        ],
+        "active": true,
+        "branch": {
+          "id": 0
+        },
+        "obj_id": 0,
+        "output": [],
+        "result": [
+          {
+            "tag": "input",
+            "name": "",
+            "_xsid": "",
+            "value": "payload",
+            "filters": [],
+            "disabled": false
+          }
+        ],
+        "history": {
+          "limit": 100,
+          "enabled": false,
+          "inherit": true
+        },
+        "obj_type": "workspace_realtime_channel",
+        "description": ""
+      },
+      {
+        "run": [
+          {
+            "as": "",
+            "name": "mvp:debug_log",
+            "_xsid": "f:eff1ec63-b866-41f7-8ca6-0f7d76be0d71",
+            "addon": [],
+            "input": [],
+            "mocks": {},
+            "output": {
+              "items": [],
+              "filters": [],
+              "customize": false
+            },
+            "context": {
+              "tag": "const",
+              "value": "branch went live",
+              "filters": []
+            },
+            "runtime": null,
+            "disabled": false,
+            "description": "",
+            "settings_registry": null
+          }
+        ],
+        "tag": [],
+        "guid": "trPoZnnm9esW2BX79lH4OJuZmIs",
+        "meta": {
+          "channel": {
+            "action": {
+              "join": false,
+              "leave": false,
+              "deliver": false
+            }
+          },
+          "toolset": {
+            "action": {
+              "connection": false
+            }
+          },
+          "database": {
+            "action": {
+              "delete": false,
+              "insert": false,
+              "update": false,
+              "truncate": false
+            },
+            "search": {
+              "expression": []
+            },
+            "datasource": []
+          },
+          "workspace": {
+            "action": {
+              "branch_new": false,
+              "branch_live": true,
+              "branch_merge": false
+            }
+          },
+          "realtime_server": {
+            "action": {
+              "connect": false,
+              "disconnect": false
+            }
+          },
+          "workspace_realtime_channel": {
+            "action": {
+              "join": false,
+              "message": false
+            }
+          }
+        },
+        "name": "ex_kind_trigger_on_branch_live",
+        "input": [
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "to_branch",
+            "type": "obj",
+            "_xsid": "i:b074e3f0-7e43-414d-96b4-ff39ad6d8d73",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [
+              {
+                "list": {
+                  "max": "",
+                  "min": ""
+                },
+                "mode": "",
+                "name": "id",
+                "type": "int",
+                "_xsid": "i:1d258acf-6e80-438b-97c0-9e25ef867645",
+                "merge": false,
+                "style": {
+                  "type": "single"
+                },
+                "access": "public",
+                "format": "",
+                "hidden": [],
+                "values": [],
+                "vector": {
+                  "size": 3
+                },
+                "default": "",
+                "methods": [],
+                "children": [],
+                "nullable": false,
+                "override": [],
+                "required": false,
+                "customize": {},
+                "sensitive": false,
+                "description": "",
+                "market_item": {
+                  "id": 0,
+                  "guid": "",
+                  "version": 0
+                },
+                "is_settings_registry": false
+              },
+              {
+                "list": {
+                  "max": "",
+                  "min": ""
+                },
+                "mode": "",
+                "name": "label",
+                "type": "text",
+                "_xsid": "i:681c204b-43ef-4d09-8bd8-8bc03f14ed5c",
+                "merge": false,
+                "style": {
+                  "type": "single"
+                },
+                "access": "public",
+                "format": "",
+                "hidden": [],
+                "values": [],
+                "vector": {
+                  "size": 3
+                },
+                "default": "",
+                "methods": [
+                  {
+                    "arg": [],
+                    "name": "trim",
+                    "disabled": false
+                  }
+                ],
+                "children": [],
+                "nullable": false,
+                "override": [],
+                "required": false,
+                "customize": {},
+                "sensitive": false,
+                "description": "",
+                "market_item": {
+                  "id": 0,
+                  "guid": "",
+                  "version": 0
+                },
+                "is_settings_registry": false
+              }
+            ],
+            "nullable": false,
+            "override": [],
+            "required": false,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "from_branch",
+            "type": "obj",
+            "_xsid": "i:d0bf99dd-e1b3-4183-9de5-598634429c3f",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [
+              {
+                "list": {
+                  "max": "",
+                  "min": ""
+                },
+                "mode": "",
+                "name": "id",
+                "type": "int",
+                "_xsid": "i:a161781a-9020-44ad-982a-44b044cdb76a",
+                "merge": false,
+                "style": {
+                  "type": "single"
+                },
+                "access": "public",
+                "format": "",
+                "hidden": [],
+                "values": [],
+                "vector": {
+                  "size": 3
+                },
+                "default": "",
+                "methods": [],
+                "children": [],
+                "nullable": false,
+                "override": [],
+                "required": false,
+                "customize": {},
+                "sensitive": false,
+                "description": "",
+                "market_item": {
+                  "id": 0,
+                  "guid": "",
+                  "version": 0
+                },
+                "is_settings_registry": false
+              },
+              {
+                "list": {
+                  "max": "",
+                  "min": ""
+                },
+                "mode": "",
+                "name": "label",
+                "type": "text",
+                "_xsid": "i:28b3cc2a-79e8-4c88-9943-cbbb7c8c2737",
+                "merge": false,
+                "style": {
+                  "type": "single"
+                },
+                "access": "public",
+                "format": "",
+                "hidden": [],
+                "values": [],
+                "vector": {
+                  "size": 3
+                },
+                "default": "",
+                "methods": [
+                  {
+                    "arg": [],
+                    "name": "trim",
+                    "disabled": false
+                  }
+                ],
+                "children": [],
+                "nullable": false,
+                "override": [],
+                "required": false,
+                "customize": {},
+                "sensitive": false,
+                "description": "",
+                "market_item": {
+                  "id": 0,
+                  "guid": "",
+                  "version": 0
+                },
+                "is_settings_registry": false
+              }
+            ],
+            "nullable": false,
+            "override": [],
+            "required": false,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "action",
+            "type": "enum",
+            "_xsid": "i:67b5ace9-545d-4758-bbff-18f383db01a9",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [
+              "branch_live",
+              "branch_merge",
+              "branch_new"
+            ],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          }
+        ],
+        "active": true,
+        "branch": {
+          "id": 0
+        },
+        "obj_id": 1,
+        "output": [],
+        "result": [],
+        "history": {
+          "limit": 100,
+          "enabled": false,
+          "inherit": true
+        },
+        "obj_type": "workspace",
+        "description": ""
+      },
+      {
+        "run": [
+          {
+            "as": "",
+            "name": "mvp:debug_log",
+            "_xsid": "f:6d7dfe34-3e6b-450c-bf37-e59efdc691f2",
+            "addon": [],
+            "input": [],
+            "mocks": {},
+            "output": {
+              "items": [],
+              "filters": [],
+              "customize": false
+            },
+            "context": {
+              "tag": "input",
+              "value": "action",
+              "filters": []
+            },
+            "runtime": null,
+            "disabled": false,
+            "description": "",
+            "settings_registry": null
+          }
+        ],
+        "tag": [],
+        "guid": "o5gnXg9Hf_8DZaSjdGHZtZlIWao",
+        "meta": {
+          "channel": {
+            "action": {
+              "join": false,
+              "leave": false,
+              "deliver": false
+            }
+          },
+          "toolset": {
+            "action": {
+              "connection": false
+            }
+          },
+          "database": {
+            "action": {
+              "delete": false,
+              "insert": false,
+              "update": false,
+              "truncate": false
+            },
+            "search": {
+              "expression": []
+            },
+            "datasource": []
+          },
+          "workspace": {
+            "action": {
+              "branch_new": false,
+              "branch_live": false,
+              "branch_merge": false
+            }
+          },
+          "realtime_server": {
+            "action": {
+              "connect": true,
+              "disconnect": true
+            }
+          },
+          "workspace_realtime_channel": {
+            "action": {
+              "join": false,
+              "message": false
+            }
+          }
+        },
+        "name": "ex_kind_trigger_on_chat_connect",
+        "input": [
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "action",
+            "type": "enum",
+            "_xsid": "i:170440fe-4ff3-44ae-a62d-cde8f52d3443",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [
+              "connect",
+              "disconnect"
+            ],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "realtime_server",
+            "type": "text",
+            "_xsid": "i:5fa1099a-67ad-431e-97bd-3a2c0156cc48",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "client",
+            "type": "obj",
+            "_xsid": "i:80491410-bedf-4f15-838a-04bcb993f694",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [
+              {
+                "list": {
+                  "max": "",
+                  "min": ""
+                },
+                "mode": "",
+                "name": "extras",
+                "type": "json",
+                "_xsid": "i:fb814531-48c3-4866-a7a9-19444f215744",
+                "merge": false,
+                "style": {
+                  "type": "single"
+                },
+                "access": "public",
+                "format": "",
+                "hidden": [],
+                "values": [],
+                "vector": {
+                  "size": 3
+                },
+                "default": "",
+                "methods": [],
+                "children": [],
+                "nullable": false,
+                "override": [],
+                "required": false,
+                "customize": {},
+                "sensitive": false,
+                "description": "",
+                "market_item": {
+                  "id": 0,
+                  "guid": "",
+                  "version": 0
+                },
+                "is_settings_registry": false
+              },
+              {
+                "list": {
+                  "max": "",
+                  "min": ""
+                },
+                "mode": "",
+                "name": "permissions",
+                "type": "obj",
+                "_xsid": "i:d4c2fa77-42c0-4f57-bd17-528222977489",
+                "merge": false,
+                "style": {
+                  "type": "single"
+                },
+                "access": "public",
+                "format": "",
+                "hidden": [],
+                "values": [],
+                "vector": {
+                  "size": 3
+                },
+                "default": "",
+                "methods": [],
+                "children": [
+                  {
+                    "list": {
+                      "max": "",
+                      "min": ""
+                    },
+                    "mode": "",
+                    "name": "dbo_id",
+                    "type": "int",
+                    "_xsid": "i:5179bbe5-e132-4408-8632-eff59b7b17d7",
+                    "merge": false,
+                    "style": {
+                      "type": "single"
+                    },
+                    "access": "public",
+                    "format": "",
+                    "hidden": [],
+                    "values": [],
+                    "vector": {
+                      "size": 3
+                    },
+                    "default": "",
+                    "methods": [],
+                    "children": [],
+                    "nullable": false,
+                    "override": [],
+                    "required": false,
+                    "customize": {},
+                    "sensitive": false,
+                    "description": "",
+                    "market_item": {
+                      "id": 0,
+                      "guid": "",
+                      "version": 0
+                    },
+                    "is_settings_registry": false
+                  },
+                  {
+                    "list": {
+                      "max": "",
+                      "min": ""
+                    },
+                    "mode": "",
+                    "name": "row_id",
+                    "type": "text",
+                    "_xsid": "i:92f97e62-5fb9-4d52-afbf-4068964b6f43",
+                    "merge": false,
+                    "style": {
+                      "type": "single"
+                    },
+                    "access": "public",
+                    "format": "",
+                    "hidden": [],
+                    "values": [],
+                    "vector": {
+                      "size": 3
+                    },
+                    "default": "",
+                    "methods": [],
+                    "children": [],
+                    "nullable": false,
+                    "override": [],
+                    "required": false,
+                    "customize": {},
+                    "sensitive": false,
+                    "description": "",
+                    "market_item": {
+                      "id": 0,
+                      "guid": "",
+                      "version": 0
+                    },
+                    "is_settings_registry": false
+                  }
+                ],
+                "nullable": false,
+                "override": [],
+                "required": true,
+                "customize": {},
+                "sensitive": false,
+                "description": "",
+                "market_item": {
+                  "id": 0,
+                  "guid": "",
+                  "version": 0
+                },
+                "is_settings_registry": false
+              }
+            ],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          }
+        ],
+        "active": true,
+        "branch": {
+          "id": 0
+        },
+        "obj_id": "MWT3En76DWAq0PJaXBsodu2nA9E",
+        "output": [],
+        "result": [],
+        "history": {
+          "limit": 100,
+          "enabled": false,
+          "inherit": true
+        },
+        "obj_type": "realtime_server",
+        "description": ""
+      },
+      {
+        "run": [
+          {
+            "as": "",
+            "name": "mvp:debug_log",
+            "_xsid": "f:33a40272-7ee3-4dde-967e-e3e3da9f0a96",
+            "addon": [],
+            "input": [],
+            "mocks": {},
+            "output": {
+              "items": [],
+              "filters": [],
+              "customize": false
+            },
+            "context": {
+              "tag": "input",
+              "value": "channel",
+              "filters": []
+            },
+            "runtime": null,
+            "disabled": false,
+            "description": "",
+            "settings_registry": null
+          }
+        ],
+        "tag": [],
+        "guid": "JRVBzajOLUfg99OIWVlSIf3dlUU",
+        "meta": {
+          "channel": {
+            "action": {
+              "join": true,
+              "leave": false,
+              "deliver": false
+            }
+          },
+          "toolset": {
+            "action": {
+              "connection": false
+            }
+          },
+          "database": {
+            "action": {
+              "delete": false,
+              "insert": false,
+              "update": false,
+              "truncate": false
+            },
+            "search": {
+              "expression": []
+            },
+            "datasource": []
+          },
+          "workspace": {
+            "action": {
+              "branch_new": false,
+              "branch_live": false,
+              "branch_merge": false
+            }
+          },
+          "realtime_server": {
+            "action": {
+              "connect": false,
+              "disconnect": false
+            }
+          },
+          "workspace_realtime_channel": {
+            "action": {
+              "join": false,
+              "message": false
+            }
+          }
+        },
+        "name": "ex_kind_trigger_on_room_join",
+        "input": [
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "action",
+            "type": "enum",
+            "_xsid": "i:cff27b90-f882-444c-979e-a7c5e6c5be4f",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [
+              "join",
+              "leave",
+              "deliver"
+            ],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "channel",
+            "type": "text",
+            "_xsid": "i:28868a39-81b2-4210-8af5-70fb451e455c",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "client",
+            "type": "obj",
+            "_xsid": "i:d5dfd80d-c59c-4416-8f97-c868721a98cf",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [
+              {
+                "list": {
+                  "max": "",
+                  "min": ""
+                },
+                "mode": "",
+                "name": "extras",
+                "type": "json",
+                "_xsid": "i:c4843852-1017-4058-a919-fd6a6c0425f4",
+                "merge": false,
+                "style": {
+                  "type": "single"
+                },
+                "access": "public",
+                "format": "",
+                "hidden": [],
+                "values": [],
+                "vector": {
+                  "size": 3
+                },
+                "default": "",
+                "methods": [],
+                "children": [],
+                "nullable": false,
+                "override": [],
+                "required": false,
+                "customize": {},
+                "sensitive": false,
+                "description": "",
+                "market_item": {
+                  "id": 0,
+                  "guid": "",
+                  "version": 0
+                },
+                "is_settings_registry": false
+              },
+              {
+                "list": {
+                  "max": "",
+                  "min": ""
+                },
+                "mode": "",
+                "name": "permissions",
+                "type": "obj",
+                "_xsid": "i:1d06b511-3018-429b-8ac8-d5eaa39570de",
+                "merge": false,
+                "style": {
+                  "type": "single"
+                },
+                "access": "public",
+                "format": "",
+                "hidden": [],
+                "values": [],
+                "vector": {
+                  "size": 3
+                },
+                "default": "",
+                "methods": [],
+                "children": [
+                  {
+                    "list": {
+                      "max": "",
+                      "min": ""
+                    },
+                    "mode": "",
+                    "name": "dbo_id",
+                    "type": "int",
+                    "_xsid": "i:e1434334-7ec1-467a-ad73-48ee2b832195",
+                    "merge": false,
+                    "style": {
+                      "type": "single"
+                    },
+                    "access": "public",
+                    "format": "",
+                    "hidden": [],
+                    "values": [],
+                    "vector": {
+                      "size": 3
+                    },
+                    "default": "",
+                    "methods": [],
+                    "children": [],
+                    "nullable": false,
+                    "override": [],
+                    "required": false,
+                    "customize": {},
+                    "sensitive": false,
+                    "description": "",
+                    "market_item": {
+                      "id": 0,
+                      "guid": "",
+                      "version": 0
+                    },
+                    "is_settings_registry": false
+                  },
+                  {
+                    "list": {
+                      "max": "",
+                      "min": ""
+                    },
+                    "mode": "",
+                    "name": "row_id",
+                    "type": "text",
+                    "_xsid": "i:62dab6b2-2deb-4564-913c-16c576f2c3a7",
+                    "merge": false,
+                    "style": {
+                      "type": "single"
+                    },
+                    "access": "public",
+                    "format": "",
+                    "hidden": [],
+                    "values": [],
+                    "vector": {
+                      "size": 3
+                    },
+                    "default": "",
+                    "methods": [],
+                    "children": [],
+                    "nullable": false,
+                    "override": [],
+                    "required": false,
+                    "customize": {},
+                    "sensitive": false,
+                    "description": "",
+                    "market_item": {
+                      "id": 0,
+                      "guid": "",
+                      "version": 0
+                    },
+                    "is_settings_registry": false
+                  }
+                ],
+                "nullable": false,
+                "override": [],
+                "required": true,
+                "customize": {},
+                "sensitive": false,
+                "description": "",
+                "market_item": {
+                  "id": 0,
+                  "guid": "",
+                  "version": 0
+                },
+                "is_settings_registry": false
+              }
+            ],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          }
+        ],
+        "active": true,
+        "branch": {
+          "id": 0
+        },
+        "obj_id": "twLNeRZEeAbpwze-Nuz83XIHvrU",
+        "output": [],
+        "result": [],
+        "history": {
+          "limit": 100,
+          "enabled": false,
+          "inherit": true
+        },
+        "obj_type": "channel",
+        "description": ""
+      },
+      {
+        "run": [
+          {
+            "as": "",
+            "name": "mvp:debug_log",
+            "_xsid": "f:507f69cf-14f9-4e0b-8396-39d50a8136f9",
+            "addon": [],
+            "input": [],
+            "mocks": {},
+            "output": {
+              "items": [],
+              "filters": [],
+              "customize": false
+            },
+            "context": {
+              "tag": "input",
+              "value": "action",
+              "filters": []
+            },
+            "runtime": null,
+            "disabled": false,
+            "description": "",
+            "settings_registry": null
+          }
+        ],
+        "tag": [],
+        "guid": "dL7HdLkY8yuhXaI-2lXVwP-1vLY",
+        "meta": {
+          "channel": {
+            "action": {
+              "join": false,
+              "leave": false,
+              "deliver": true
+            }
+          },
+          "toolset": {
+            "action": {
+              "connection": false
+            }
+          },
+          "database": {
+            "action": {
+              "delete": false,
+              "insert": false,
+              "update": false,
+              "truncate": false
+            },
+            "search": {
+              "expression": []
+            },
+            "datasource": []
+          },
+          "workspace": {
+            "action": {
+              "branch_new": false,
+              "branch_live": false,
+              "branch_merge": false
+            }
+          },
+          "realtime_server": {
+            "action": {
+              "connect": false,
+              "disconnect": false
+            }
+          },
+          "workspace_realtime_channel": {
+            "action": {
+              "join": false,
+              "message": false
+            }
+          }
+        },
+        "name": "ex_kind_trigger_on_room_deliver",
+        "input": [
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "action",
+            "type": "enum",
+            "_xsid": "i:aed09b10-50b5-4393-802a-87813b0f6241",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [
+              "join",
+              "leave",
+              "deliver"
+            ],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "channel",
+            "type": "text",
+            "_xsid": "i:4ceab07c-93a7-4790-b6aa-d3d79e8a699f",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          },
+          {
+            "list": {
+              "max": "",
+              "min": ""
+            },
+            "mode": "",
+            "name": "client",
+            "type": "obj",
+            "_xsid": "i:76689a0d-8e6f-4fe8-b88f-bb0408c1d39e",
+            "merge": false,
+            "style": {
+              "type": "single"
+            },
+            "access": "public",
+            "format": "",
+            "hidden": [],
+            "values": [],
+            "vector": {
+              "size": 3
+            },
+            "default": "",
+            "methods": [],
+            "children": [
+              {
+                "list": {
+                  "max": "",
+                  "min": ""
+                },
+                "mode": "",
+                "name": "extras",
+                "type": "json",
+                "_xsid": "i:fd2b776e-a128-4a06-8cd7-dbccebd43af9",
+                "merge": false,
+                "style": {
+                  "type": "single"
+                },
+                "access": "public",
+                "format": "",
+                "hidden": [],
+                "values": [],
+                "vector": {
+                  "size": 3
+                },
+                "default": "",
+                "methods": [],
+                "children": [],
+                "nullable": false,
+                "override": [],
+                "required": false,
+                "customize": {},
+                "sensitive": false,
+                "description": "",
+                "market_item": {
+                  "id": 0,
+                  "guid": "",
+                  "version": 0
+                },
+                "is_settings_registry": false
+              },
+              {
+                "list": {
+                  "max": "",
+                  "min": ""
+                },
+                "mode": "",
+                "name": "permissions",
+                "type": "obj",
+                "_xsid": "i:dc1e7589-cb41-49c4-b99e-371e9363066f",
+                "merge": false,
+                "style": {
+                  "type": "single"
+                },
+                "access": "public",
+                "format": "",
+                "hidden": [],
+                "values": [],
+                "vector": {
+                  "size": 3
+                },
+                "default": "",
+                "methods": [],
+                "children": [
+                  {
+                    "list": {
+                      "max": "",
+                      "min": ""
+                    },
+                    "mode": "",
+                    "name": "dbo_id",
+                    "type": "int",
+                    "_xsid": "i:6acc5af5-58fb-4a0c-a43a-1e4764c1667f",
+                    "merge": false,
+                    "style": {
+                      "type": "single"
+                    },
+                    "access": "public",
+                    "format": "",
+                    "hidden": [],
+                    "values": [],
+                    "vector": {
+                      "size": 3
+                    },
+                    "default": "",
+                    "methods": [],
+                    "children": [],
+                    "nullable": false,
+                    "override": [],
+                    "required": false,
+                    "customize": {},
+                    "sensitive": false,
+                    "description": "",
+                    "market_item": {
+                      "id": 0,
+                      "guid": "",
+                      "version": 0
+                    },
+                    "is_settings_registry": false
+                  },
+                  {
+                    "list": {
+                      "max": "",
+                      "min": ""
+                    },
+                    "mode": "",
+                    "name": "row_id",
+                    "type": "text",
+                    "_xsid": "i:94251ed4-ddc9-427d-970b-cf278e37faf6",
+                    "merge": false,
+                    "style": {
+                      "type": "single"
+                    },
+                    "access": "public",
+                    "format": "",
+                    "hidden": [],
+                    "values": [],
+                    "vector": {
+                      "size": 3
+                    },
+                    "default": "",
+                    "methods": [],
+                    "children": [],
+                    "nullable": false,
+                    "override": [],
+                    "required": false,
+                    "customize": {},
+                    "sensitive": false,
+                    "description": "",
+                    "market_item": {
+                      "id": 0,
+                      "guid": "",
+                      "version": 0
+                    },
+                    "is_settings_registry": false
+                  }
+                ],
+                "nullable": false,
+                "override": [],
+                "required": true,
+                "customize": {},
+                "sensitive": false,
+                "description": "",
+                "market_item": {
+                  "id": 0,
+                  "guid": "",
+                  "version": 0
+                },
+                "is_settings_registry": false
+              }
+            ],
+            "nullable": false,
+            "override": [],
+            "required": true,
+            "customize": {},
+            "sensitive": false,
+            "description": "",
+            "market_item": {
+              "id": 0,
+              "guid": "",
+              "version": 0
+            },
+            "is_settings_registry": false
+          }
+        ],
+        "active": true,
+        "branch": {
+          "id": 0
+        },
+        "obj_id": "twLNeRZEeAbpwze-Nuz83XIHvrU",
+        "output": [],
+        "result": [],
+        "history": {
+          "limit": 100,
+          "enabled": false,
+          "inherit": true
+        },
+        "obj_type": "channel",
+        "description": ""
+      }
+    ],
+    "vault": [],
+    "workflow_test": [],
+    "service": [],
+    "workspace": {
+      "iv": "1a38a81818b3013d1fe0a55b61441c7e",
+      "env": [],
+      "git": {
+        "repo": "",
+        "prefix": false,
+        "status": "ok",
+        "error_msg": "",
+        "public_key": "",
+        "private_key": ""
+      },
+      "guid": "5QHNPeNoaacJalPccGgjbDHeGBc",
+      "name": "sidestep-capture-kinds",
+      "salt": "cb5e32b031c5a4354ea97f8beeb7e53c",
+      "mesh0": {
+        "gen": 0,
+        "enabled": false,
+        "project_id": "",
+        "disabled_at": null,
+        "disabled_by": null,
+        "api_key_full": "",
+        "api_key_read": "",
+        "capture_mode": "full"
+      },
+      "usage": {
+        "resend": {
+          "max_hit": false,
+          "emails_sent": 0
+        },
+        "model_tokens": {
+          "input": 0,
+          "output": 0,
+          "max_hit": false
+        }
+      },
+      "branch": {
+        "id": 0
+      },
+      "crypto": {
+        "iv": "4ec178600cb5a4446c4a46f2021c59ec",
+        "salt": "c9709a668a6946c74f5d250c16e60dce",
+        "secret": "78aa535fbdadf9dba78754823009c03a"
+      },
+      "secret": "af35d74bc622d7829e0f4c0ec7e47c2f",
+      "connect": {
+        "ncscale": {
+          "connected": false,
+          "sync_api_history": false,
+          "sync_task_history": false,
+          "sync_log_statements": false
+        },
+        "webflow": {
+          "env": []
+        }
+      },
+      "history": {
+        "task_limit": 100,
+        "tool_limit": 100,
+        "query_limit": 100,
+        "task_enabled": true,
+        "tool_enabled": true,
+        "message_limit": 100,
+        "query_enabled": true,
+        "trigger_limit": 100,
+        "function_limit": 100,
+        "message_enabled": false,
+        "trigger_enabled": false,
+        "function_enabled": false,
+        "middleware_limit": 100,
+        "middleware_enabled": false
+      },
+      "release": {
+        "id": 0
+      },
+      "swagger": false,
+      "use_xdo": false,
+      "checksum": "14b04c9ab3",
+      "defaults": {
+        "db_primary_key": "int"
+      },
+      "disabled": false,
+      "features": {},
+      "realtime": {
+        "hash": "",
+        "mode": "",
+        "enabled": false,
+        "channels": []
+      },
+      "settings": {
+        "ai_enabled": false,
+        "ai_settings": {
+          "providers": {
+            "google": {
+              "model": "",
+              "api_key": ""
+            },
+            "openai": {
+              "model": "",
+              "api_key": ""
+            },
+            "anthropic": {
+              "model": "",
+              "api_key": ""
+            },
+            "azure-openai": {
+              "model": "",
+              "api_key": "",
+              "base_url": "",
+              "api_version": ""
+            }
+          },
+          "default_provider": "free"
+        },
+        "hide_xano_agent": false
+      },
+      "canonical": "9NsNMA7-",
+      "provision": [],
+      "middleware": {
+        "task_pre": [],
+        "tool_pre": [],
+        "query_pre": [],
+        "task_post": [],
+        "tool_post": [],
+        "query_post": [],
+        "function_pre": [],
+        "function_post": []
+      },
+      "well_known": [],
+      "datasources": [],
+      "description": "",
+      "preferences": {
+        "allow_push": false,
+        "track_performance": true,
+        "use_internal_docs": false
+      },
+      "documentation": {
+        "token": "f8h3dHq_Q2c0BOflUMebLfu9k-E",
+        "whitelist": [],
+        "require_token": false
+      },
+      "domain_prefix": "",
+      "require_setup": true,
+      "datasource_live": {
+        "color": "#008000",
+        "show_banner": false
+      },
+      "sql_schema_name": "",
+      "use_custom_names": false,
+      "tailor_experience": {
+        "onboarding": {},
+        "connect_with": "",
+        "use_xano_for": "",
+        "importing_from": "",
+        "using_frontend": "",
+        "importing_from_other": "",
+        "using_frontend_other": ""
+      },
+      "installed_services": {}
+    }
+  },
+  "sig": "aHRWLlwxLtFN9IpKOGGFgeOyc1s."
+}

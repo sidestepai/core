@@ -17,6 +17,42 @@
         "leave": false,
         "deliver": false
       }
+    },
+    "toolset": {
+      "action": {
+        "connection": false
+      }
+    },
+    "database": {
+      "action": {
+        "delete": false,
+        "insert": false,
+        "update": false,
+        "truncate": false
+      },
+      "search": {
+        "expression": []
+      },
+      "datasource": []
+    },
+    "workspace": {
+      "action": {
+        "branch_new": false,
+        "branch_live": false,
+        "branch_merge": false
+      }
+    },
+    "realtime_server": {
+      "action": {
+        "connect": false,
+        "disconnect": false
+      }
+    },
+    "workspace_realtime_channel": {
+      "action": {
+        "join": false,
+        "message": false
+      }
     }
   },
   "tag": [],
