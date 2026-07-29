@@ -153,7 +153,22 @@ export interface RealtimeEventArgs {
   authId: Value;
 }
 
-/** `api.realtime_event { … }` — publish a realtime event (`mvp:realtime_event`). */
+/**
+ * `api.realtime_event { … }` — publish a realtime event (`mvp:realtime_event`).
+ *
+ * @deprecated Superseded. This publishes to Xano's older workspace-global realtime
+ * layer, NOT to a `realtimeChannel()` — its `channel` is a string against that layer,
+ * so pointing it at a current-layer channel path publishes into the void.
+ *
+ * There is no current-layer send statement yet, so this is not a stand-in for one:
+ * to move a payload out over the current layer, return it from a `realtimeMessage()`
+ * handler and let its `deliverTo` (`channel` / `sender` / `others`) decide who
+ * receives it.
+ *
+ * Still exported and still supported so `sidestep codegen` can bring back a workspace
+ * that holds one. Withheld from the `llms.txt` statement catalog and named only under
+ * `## Legacy`.
+ */
 export function realtimeEvent(a: RealtimeEventArgs): Statement {
   const auth: Record<string, unknown> = { row_id: vf(a.authId) };
   if (a.authTable !== undefined) auth.dbo_id = resolveRef("dbo", a.authTable);

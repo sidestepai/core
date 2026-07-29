@@ -10,6 +10,7 @@ import { TAGS } from "../../src/types/xdo.js";
 import { TOTAL_STATEMENTS } from "../../src/statements/surfaces.js";
 import { FILTER_NAMES } from "../../src/values/generated/filters.generated.js";
 import { c, sys } from "../../src/values/value.js";
+import { realtimeTrigger } from "../../src/kinds/trigger.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { version: string };
@@ -141,6 +142,53 @@ describe("manifest", () => {
     expect(typeof c.expressionLegacy).toBe("function");
   });
 
+  it("holds the same legacy split for the superseded realtime trigger and statement", () => {
+    // The realtime pair is why the legacy index stopped being values-only: the
+    // same superseded paradigm surfaces as a trigger FACTORY and as a STATEMENT,
+    // and naming only one leaves the other looking current. Worse than for
+    // values, because the two realtime generations reuse the words "realtime" and
+    // "channel" for different objects — an agent that sees both in one catalog
+    // mixes them, and a mixed workspace fails at runtime, not at compile.
+    const llms = renderLlmsTxt(m);
+    const legacySection = llms.slice(llms.indexOf("## Legacy"));
+    // `## Legacy` is the last section, so everything before it is what an agent
+    // picks from — a wider net than the per-section slices the values test uses,
+    // and the right one here: these two leaked through the trigger PROSE, not the
+    // catalog, so a catalog-only slice would have passed while the leak shipped.
+    const selectable = llms.slice(llms.indexOf("## Object kinds"), llms.indexOf("## Legacy"));
+    const statementsSection = llms.slice(llms.indexOf("## Statements"), llms.indexOf("## Legacy"));
+    expect(selectable.length).toBeGreaterThan(0);
+    expect(legacySection.length).toBeGreaterThan(0);
+
+    const legacyFactories = m.objectKinds.flatMap((k) => (k.subKinds ?? []).filter((s) => s.legacy));
+    expect(legacyFactories.map((s) => s.authorFactory)).toEqual(["realtimeTrigger"]);
+    const legacyStatements = m.statements.filter((s) => s.legacy);
+    expect(legacyStatements.map((s) => s.sPath)).toEqual(["api.realtime_event"]);
+
+    for (const f of legacyFactories) {
+      expect(selectable, `${f.authorFactory} must not be selectable`).not.toContain(
+        f.authorFactory,
+      );
+      expect(legacySection, `${f.authorFactory} must stay recognizable`).toContain(f.authorFactory);
+    }
+    for (const s of legacyStatements) {
+      expect(statementsSection, `s.${s.sPath} must not be selectable`).not.toContain(s.sPath);
+      expect(legacySection, `s.${s.sPath} must stay recognizable`).toContain(s.sPath);
+    }
+
+    // The trigger-authoring PROSE is a separate hand-written block from the
+    // catalog, and it listed the legacy factory by name in two places (the
+    // factory-set line and its own bullet). Both had to go, or the split leaks
+    // through the part an agent actually reads first.
+    const triggerProse = llms.slice(llms.indexOf("### Triggers"), llms.indexOf("### Responses"));
+    expect(triggerProse).not.toContain("realtimeTrigger");
+    expect(triggerProse).toContain("realtimeChannelTrigger");
+
+    // Both stay real exports — codegen emits them for pulled workspaces.
+    expect(typeof realtimeTrigger).toBe("function");
+    expect(typeof s.api.realtime_event).toBe("function");
+  });
+
   it("every object kind carries a non-empty description, rendered into the llms.txt catalog", () => {
     const llms = renderLlmsTxt(m);
     for (const k of m.objectKinds) {
@@ -154,7 +202,10 @@ describe("manifest", () => {
           expect(sub.authorFactory.length).toBeGreaterThan(0);
           expect(sub.objType.length).toBeGreaterThan(0);
           expect(sub.description.trim().length).toBeGreaterThan(0);
-          expect(llms).toContain(`\`${sub.authorFactory}\``);
+          // A legacy sub-kind is described too, but its description lands in
+          // `## Legacy` rather than the catalog — the catalog is the list an agent
+          // picks from. Where it renders is asserted by the legacy-split test.
+          if (!sub.legacy) expect(llms).toContain(`\`${sub.authorFactory}\``);
           expect(llms).toContain(`— ${sub.description}`);
         }
       } else {

@@ -397,7 +397,6 @@ Author with the factory, register on the Xano instance, lands under the payload 
 - query: `query` → `Xano.registerQueries` → payload `query` — An HTTP API endpoint (verb + path) bound to an API group; the main request/response surface.
 - api_group: `apiGroup` → `Xano.registerApiGroups` → payload `app` — A container that groups queries under a shared base path, CORS, and swagger config.
 - trigger (database): `tableTrigger` → `Xano.registerTriggers` → payload `trigger` — Fires when rows change on a bound table (insert/update/delete/truncate). The changed row is exposed as `t.new`/`t.old`, typed to the table when a `table()` handle is bound. Config-only (no response).
-- trigger (workspace_realtime_channel): `realtimeTrigger` → `Xano.registerTriggers` → payload `trigger` — Fires on realtime channel activity (message/join); inspect the channel, connecting client, options, and payload via `t`. Response-bearing — defaults to echoing the payload.
 - trigger (realtime_server): `realtimeServerTrigger` → `Xano.registerTriggers` → payload `trigger` — Fires when a client connects to or disconnects from a realtime server; inspect the connecting client and its permissions via `t`. Bind with `realtimeServer`. Response-bearing.
 - trigger (channel): `realtimeChannelTrigger` → `Xano.registerTriggers` → payload `trigger` — Fires when a client joins or leaves a channel; inspect the addressed channel path and the client via `t`. Bind with a `realtimeChannel()` handle (a bare path is ambiguous across servers). Response-bearing.
 - trigger (toolset): `mcpServerTrigger` → `Xano.registerTriggers` → payload `trigger` — Fires when an MCP client connects to a bound MCP server; gate or annotate the exposed tools via `t.toolset`/`t.tools`. Response-bearing.
@@ -460,13 +459,12 @@ user-declared `input`, so its inputs are **implied by type** (fixed by Xano,
 not editable) and arrive through the typed **stack handle** `t` — you can't
 reference them without it. (Response-bearing types take `response: (t) =>
 ResponseDef` too.) `t` exposes exactly that trigger type's inputs; a wrong
-name is a compile error, not a runtime surprise. The eight trigger types are
-distinct root factories (not a namespace): `{tableTrigger, realtimeTrigger,
-realtimeServerTrigger, realtimeChannelTrigger, mcpServerTrigger, agentTrigger,
-workspaceTrigger, errorTrigger}({ name, guid?, description?, active?, tags?, ... })`.
+name is a compile error, not a runtime surprise. The seven trigger types are
+distinct root factories (not a namespace): `{tableTrigger, realtimeServerTrigger,
+realtimeChannelTrigger, mcpServerTrigger, agentTrigger, workspaceTrigger,
+errorTrigger}({ name, guid?, description?, active?, tags?, ... })`.
 
 - `tableTrigger({ name, table?, datasources?, actions?: {insert?,update?,delete?,truncate?}, stack })` — database/table trigger. `t.new` / `t.old` are the row **after** / **before** the change; `t.action` (`insert|update|delete|truncate`), `t.datasource`. Bind `table` to a `table()` handle and `t.new("col")` / `t.old("col")` are typed to that row (misspelled column = compile error). Nullability follows the enabled actions: insert → `old` is null, delete → `new` is null, update → both, truncate → neither. Config-only (no response).
-- `realtimeTrigger({ name, objId, actions?: {message?,join?}, stack?, response? })` — realtime channel. Inputs: `t.action` (`message|join`), `t.channel`, `t.client` (`t.client("permissions.dbo_id")`), `t.options`, `t.payload`. Response-bearing; `response` defaults to the `payload` passthrough.
 - `realtimeServerTrigger({ name, realtimeServer, actions?: {connect?,disconnect?}, stack?, response? })` — realtime SERVER lifecycle (a client connecting to / disconnecting from the server, not a message). Inputs: `t.action` (`connect|disconnect`), `t.realtime_server`, `t.client`. Bind `realtimeServer` to a `realtimeServer()` handle (or its name). Response-bearing.
 - `realtimeChannelTrigger({ name, channel, actions?: {join?,leave?,deliver?}, stack?, response? })` — realtime CHANNEL lifecycle. Inputs: `t.action` (`join|leave|deliver`), `t.channel`, `t.client`. Bind `channel` to a `realtimeChannel()` handle — a bare path is NOT accepted (it is unique only within its server). The three actions have DIFFERENT postures, and the posture decides what the stack should return: `join` GATES the join (return admits/denies, fail-closed), `leave` is OBSERVATIONAL (return ignored), `deliver` GATES delivery PER RECIPIENT — it runs once per client the message is about to reach and its return rewrites that recipient's payload, drops the message for that recipient, or passes the original through. `deliver` is the per-viewer redaction tool and the most expensive action here (a stack per recipient per message).
 - `mcpServerTrigger(...)` / `agentTrigger({ name, objId, stack?, response? })` — toolset connection. Inputs: `t.toolset` (`t.toolset("name")`), `t.tools`. Response-bearing; the default stack copies `toolset`/`tools` into vars and returns them.
@@ -857,7 +855,6 @@ Auth & calls:
 - `s.api.call` [special]
 - `s.api.lambda({ as?: string; code?: value; timeout?: value })`
 - `s.api.microservice` [special]
-- `s.api.realtime_event` [special]
 - `s.api.request` [special, output]
 - `s.api.stream({ value: value })`
 
@@ -1123,4 +1120,10 @@ Older paradigms this SDK still supports and still emits when it decodes an exist
 workspace. **Do not author these.** They are listed by name only so you recognize them
 in pulled code rather than "fixing" them; each line names what to use instead.
 
+Names overlap across the split deliberately — the engine reused words like
+"realtime" and "channel" for both generations. A name matching is NOT evidence that
+two things are the same object; check which list it came from.
+
 - `c.expressionLegacy` — the older `const:expr` expression form, emitted by codegen for workspaces that still hold one — author `c.expression` instead.
+- `realtimeTrigger()` — the SUPERSEDED realtime trigger, against the workspace-global realtime layer — a different object from the current `channel`, despite the similar name. For a join hook use `realtimeChannelTrigger({ actions: { join: true } })`; for message handling use a `realtimeMessage()` handler, which is the current equivalent of its `message` action (a message is an authored unit now, not a trigger action).
+- `s.api.realtime_event` — publishes to the SUPERSEDED workspace-global realtime layer, NOT to a `realtimeChannel()`. There is no current-layer send statement yet, so this is not a stand-in for one: to move a payload out over the current layer, return it from a `realtimeMessage()` handler (its `deliverTo` decides who receives it).

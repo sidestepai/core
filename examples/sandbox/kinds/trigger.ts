@@ -1,8 +1,12 @@
 /**
- * `{tableTrigger,realtimeTrigger,mcpServerTrigger,agentTrigger,workspaceTrigger,
- * errorTrigger}(...)` — the six trigger types (payload key `trigger`), each a
- * distinct root factory. A trigger's `stack` is a CALLBACK `(t) => [...]`;
- * inputs are implied by type and exposed on `t`.
+ * `{tableTrigger,realtimeServerTrigger,realtimeChannelTrigger,mcpServerTrigger,
+ * agentTrigger,workspaceTrigger,errorTrigger}(...)` — the seven current trigger
+ * types (payload key `trigger`), each a distinct root factory. A trigger's `stack`
+ * is a CALLBACK `(t) => [...]`; inputs are implied by type and exposed on `t`.
+ *
+ * The two realtime lifecycle types live in `realtime.ts` alongside the objects they
+ * bind to. What is here instead is `realtimeTrigger` — the SUPERSEDED one — kept as
+ * a round-trip fixture, NOT as an example to copy. See Gate 2.
  *
  * PARAM GATE: the trigger type (`obj_type`).
  */
@@ -17,7 +21,22 @@ export const onUserInsert = tableTrigger({
   stack: (t) => [s.debug.log({ value: t.new("email") })],
 });
 
-/** Gate 2 — realtime channel trigger (response-bearing; defaults to echoing the payload). */
+/**
+ * Gate 2 — the SUPERSEDED realtime trigger. **Do not copy this into new code.**
+ *
+ * It fires against Xano's older workspace-global realtime layer, which is a
+ * different object from the current `channel` despite the shared vocabulary. It is
+ * here only so the corpus proves `sidestep codegen` can bring one back out of a
+ * workspace that still holds it — the round-trip has to keep working for people
+ * migrating off it.
+ *
+ * The current equivalents, both in `realtime.ts`:
+ *  - its `join` action  -> `realtimeChannelTrigger({ actions: { join: true } })`
+ *  - its `message` action -> a `realtimeMessage()` handler, since a message is now
+ *    an authored unit with its own typed payload and stack, not a trigger action
+ *
+ * (Response-bearing; `response` defaults to echoing the payload.)
+ */
 export const onMessage = realtimeTrigger({
   name: "ex_kind_trigger_on_message",
   actions: { message: true },

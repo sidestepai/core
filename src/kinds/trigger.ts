@@ -268,7 +268,23 @@ export function tableTrigger<
   };
 }
 
-/** Realtime channel trigger (obj_type=workspace_realtime_channel). Response-bearing. */
+/**
+ * LEGACY realtime trigger (obj_type=workspace_realtime_channel). Response-bearing.
+ *
+ * @deprecated Superseded. This fires against Xano's older workspace-global realtime
+ * config, which is a DIFFERENT object from the current `channel` despite the shared
+ * vocabulary — the two generations coexist and mixing them fails at runtime rather
+ * than at compile.
+ *
+ * It is still exported and still supported because `sidestep codegen` has to bring
+ * back a workspace that holds one. Do not author it in new code:
+ *  - its `join` action is now `realtimeChannelTrigger({ actions: { join: true } })`
+ *  - its `message` action is now a `realtimeMessage()` handler, because a message is
+ *    an authored unit with its own typed payload and stack rather than a trigger
+ *    action
+ *
+ * Withheld from the `llms.txt` object-kind catalog and named only under `## Legacy`.
+ */
 export function realtimeTrigger(
   args: CommonArgs & {
     actions?: RealtimeActions;
