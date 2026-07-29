@@ -184,6 +184,13 @@ describe("sidestep ephemeral", () => {
     expect(m.mock.calls[1]![0]).toBe("https://e4f2.xano.io/api:meta/workspace/1/export");
     expect(JSON.parse(stdout.join(""))).toEqual(bundle);
   });
+  it("export asks the env to skip table rows — nothing on the read side consumes them", async () => {
+    const bundle = { app: "xano", type: "workspace", payload: { function: [] } };
+    const m = seq(res(LIVE), new Response(Buffer.from(encodeWorkspaceArchive(JSON.stringify(bundle))), { status: 200 }));
+    await run(["ephemeral", "export", "e4f2", "--config", authFile, "--format", "json", "--path", "-"]);
+    const body = JSON.parse(String((m.mock.calls[1]![1] as RequestInit).body)) as { records: boolean };
+    expect(body.records).toBe(false);
+  });
   it("export on a swept tenant fails with the gone message and no base-URL call", async () => {
     const m = seq(res("nope", 404));
     await expect(

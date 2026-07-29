@@ -169,6 +169,16 @@ describe("sidestep sandbox export", () => {
     expect(urls.some((u) => /\/api:meta\/workspace\/1\/export$/.test(u))).toBe(true);
   });
 
+  it("json asks the sandbox to skip table rows — nothing on the read side consumes them", async () => {
+    const authFile = writeTokenFile(dir);
+    const fetchMock = mockSandboxJsonFetch();
+    await runSandboxExportCommand(parseArgs(["sandbox", "export", "--config", authFile, "--path", join(dir, "ws.json")]));
+
+    const exportCall = fetchMock.mock.calls.find((c) => /\/workspace\/1\/export$/.test(String(c[0])))!;
+    const body = JSON.parse(String((exportCall[1] as RequestInit).body)) as { records: boolean };
+    expect(body.records).toBe(false);
+  });
+
   it("json defaults to ./sandbox.json in the cwd when --path is omitted", async () => {
     const authFile = writeTokenFile(dir);
     mockSandboxJsonFetch();
