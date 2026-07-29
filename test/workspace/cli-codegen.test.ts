@@ -210,14 +210,18 @@ describe("workspace codegen <path> — the real workspace", () => {
     expect(body.records).toBe(false);
   });
 
-  it("still exports rows for `workspace export` — that bundle is the data, not a tree", async () => {
+  it("skips table rows for `workspace export` too — the bundle never carried them", async () => {
+    // Not a behaviour change dressed as one: `decodeWorkspaceArchive` keeps
+    // `workspace.json` and discards the archive's `content/` entries, so the rows
+    // this used to request were dropped before the file was written. Same bundle,
+    // without making the server page through every table to build it.
     const fetchSpy = seq(archive(sampleBundle()));
     await run(["workspace", "export", "--path", join(dir, "ws.json")]);
 
     const body = JSON.parse(String((fetchSpy.mock.calls[0]![1] as RequestInit).body)) as {
       records: boolean;
     };
-    expect(body.records).toBe(true);
+    expect(body.records).toBe(false);
   });
 
   it("rejects --workspace instead of reading a workspace the credential does not address", async () => {

@@ -116,10 +116,6 @@ async function fetchBundle(args: ParsedArgs, source: CodegenSource): Promise<Sou
       base: auth.instance,
       workspaceId,
       label: "workspace export",
-      // A pull decodes configuration only, so the rows are fetched, held, and
-      // discarded — and on a workspace with real tables, exporting them is what
-      // makes the call outlast its timeout.
-      records: false,
     }),
     origin: { source: "workspace", origin: String(workspaceId) },
   };
