@@ -12,11 +12,13 @@ function writeTokenFile(dir: string): string {
   writeFileSync(
     path,
     JSON.stringify({
+      type: "oauth",
       access_token: "acc-cached",
       refresh_token: "ref-cached",
       expires_at: Date.now() + 3_600_000,
       scope: "offline_access workspace:write",
       instance: INSTANCE,
+      workspace_id: 114,
       auth_host: "https://app.xano.com",
       client_id: "dcr-abc",
     }),
@@ -80,7 +82,7 @@ describe("sidestep deploy", () => {
       res(EPH), // waitUntilReady GET → ok
       res({ id: 1 }), // import
     );
-    await run(["deploy", "--bundle", bundleFile(dir), "--config", authFile, "--workspace", "114"]);
+    await run(["deploy", "--bundle", bundleFile(dir), "--config", authFile]);
 
     expect(m.mock.calls[0]![0]).toBe(`${INSTANCE}/api:meta/workspace/114/ephemeral`);
     expect((m.mock.calls[0]![1] as RequestInit).method).toBe("POST");
@@ -104,7 +106,7 @@ describe("sidestep deploy", () => {
       res(EPH), // GET existing → alive
       res({ id: 1 }), // import
     );
-    await run(["deploy", "--bundle", bundleFile(dir), "--config", authFile, "--workspace", "114"]);
+    await run(["deploy", "--bundle", bundleFile(dir), "--config", authFile]);
 
     // no create call — first call is the GET, second the import
     expect(m.mock.calls[0]![0]).toBe(`${INSTANCE}/api:meta/workspace/114/tenant/e4f2-9ab1`);
@@ -123,7 +125,7 @@ describe("sidestep deploy", () => {
       res(fresh), // waitUntilReady → ok
       res({ id: 1 }), // import
     );
-    await run(["deploy", "--bundle", bundleFile(dir), "--config", authFile, "--workspace", "114"]);
+    await run(["deploy", "--bundle", bundleFile(dir), "--config", authFile]);
 
     expect(m.mock.calls[1]![0]).toBe(`${INSTANCE}/api:meta/workspace/114/ephemeral`); // create
     expect(m.mock.calls[3]![0]).toBe("https://new-9ab1.xano.io/api:meta/workspace/1/import");
@@ -139,14 +141,14 @@ describe("sidestep deploy", () => {
       res(EPH), // ready
       res({ id: 1 }), // import
     );
-    await run(["deploy", "--bundle", bundleFile(dir), "--config", authFile, "--workspace", "114"]);
+    await run(["deploy", "--bundle", bundleFile(dir), "--config", authFile]);
     expect(m.mock.calls[1]![0]).toBe(`${INSTANCE}/api:meta/workspace/114/ephemeral`);
     expect(JSON.parse(stdout.join("")).created).toBe(true);
   });
 
   it("forwards --name and --expires-hours to create", async () => {
     const m = seq(res(EPH), res(EPH), res({ id: 1 }));
-    await run(["deploy", "--bundle", bundleFile(dir), "--config", authFile, "--workspace", "114", "--name", "PR 123", "--expires-hours", "24"]);
+    await run(["deploy", "--bundle", bundleFile(dir), "--config", authFile, "--name", "PR 123", "--expires-hours", "24"]);
     const body = JSON.parse((m.mock.calls[0]![1] as RequestInit).body as string);
     expect(body).toMatchObject({ display: "PR 123", expires_hours: 24 });
   });
@@ -162,7 +164,7 @@ describe("sidestep deploy", () => {
     process.env.XANO_GLOBAL_CONFIG = globalCache;
     try {
       seq(res(EPH), res(EPH), res({ id: 1 }));
-      await run(["deploy", "--bundle", bundleFile(dir), "--workspace", "114"]);
+      await run(["deploy", "--bundle", bundleFile(dir)]);
       // state is project-local (dir/.xano/ephemeral.json), not next to the global cache
       expect(existsSync(statePath(dir))).toBe(true);
       expect(JSON.parse(readFileSync(statePath(dir), "utf8")).environments["114"].name).toBe("e4f2-9ab1");
@@ -172,15 +174,19 @@ describe("sidestep deploy", () => {
     }
   });
 
-  it("resolves the parent workspace from the token when --workspace is omitted (not a hard-coded 1)", async () => {
-    // /auth/me maps the token's scoped guid to its numeric workspace id (9 here).
-    const me = { extras: { oauth: { workspace: "ws-guid" }, instance: { membership: { workspace: [{ guid: "ws-guid", id: 9 }] } } } };
-    const m = seq(res(me), res(EPH), res(EPH), res({ id: 1 }));
-    await run(["deploy", "--bundle", bundleFile(dir), "--config", authFile]); // no --workspace
-    // first resolve the scoped workspace via /auth/me…
-    expect(m.mock.calls[0]![0]).toBe(`${INSTANCE}/api:meta/auth/me`);
-    // …then create against THAT id, never a hard-coded workspace/1 (which 404s "Invalid workspace")
-    expect(m.mock.calls[1]![0]).toBe(`${INSTANCE}/api:meta/workspace/9/ephemeral`);
+  it("creates the ephemeral under the credential's pinned parent workspace, never a hard-coded 1", async () => {
+    const m = seq(res(EPH), res(EPH), res({ id: 1 }));
+    await run(["deploy", "--bundle", bundleFile(dir), "--config", authFile]);
+    // Straight to the pinned id — no /auth/me round-trip, and never workspace/1
+    // (which 404s "Invalid workspace" wherever the primary workspace isn't 1).
+    expect(m.mock.calls[0]![0]).toBe(`${INSTANCE}/api:meta/workspace/114/ephemeral`);
+    expect(m.mock.calls.map((c) => String(c[0]))).not.toContain(`${INSTANCE}/api:meta/auth/me`);
+  });
+
+  it("rejects --workspace rather than deploying into a workspace the credential does not address", async () => {
+    await expect(
+      run(["deploy", "--bundle", bundleFile(dir), "--config", authFile, "--workspace", "9"]),
+    ).rejects.toThrow(/`--workspace` was removed/);
   });
 
   it("rejects an invalid --dest at parse time", async () => {
@@ -197,7 +203,7 @@ describe("sidestep deploy", () => {
       res({ id: 1 }), // backend import
       res({ dev: { host: "my-app.xano.io" } }), // static build
     );
-    await run(["deploy", "--bundle", bundleFile(dir), "--config", authFile, "--workspace", "114", "--static", site]);
+    await run(["deploy", "--bundle", bundleFile(dir), "--config", authFile, "--static", site]);
     // backend import + static build both target the ephemeral base URL / workspace 1
     expect(m.mock.calls[2]![0]).toBe("https://e4f2-9ab1.xano.io/api:meta/workspace/1/import");
     expect(m.mock.calls[3]![0]).toBe("https://e4f2-9ab1.xano.io/api:meta/workspace/1/static_host/default/build");
@@ -218,7 +224,7 @@ describe("sidestep deploy", () => {
       res({ id: 1 }), // backend import
       res({ dev: { host: "my-app.xano.io" } }), // static build
     );
-    await run(["deploy", "--bundle", bundleFile(dir), "--config", authFile, "--workspace", "114", "--static", site]);
+    await run(["deploy", "--bundle", bundleFile(dir), "--config", authFile, "--static", site]);
     // both hit the tenant-prefixed base URL, prefix intact
     expect(m.mock.calls[2]![0]).toBe(`${INSTANCE}/tenant/e4f2-9ab1/api:meta/workspace/1/import`);
     expect(m.mock.calls[3]![0]).toBe(`${INSTANCE}/tenant/e4f2-9ab1/api:meta/workspace/1/static_host/default/build`);

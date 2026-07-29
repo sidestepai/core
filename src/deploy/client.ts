@@ -10,7 +10,7 @@
  * Lazily imported by the command layer so the browser-safe authoring bundle
  * never pulls this Node-only transport in.
  */
-import type { ResolvedAuth } from "../auth/token.js";
+import type { BearerTarget } from "../auth/token.js";
 
 /** Bound the upload so a stalled endpoint can't hang the CLI/CI forever. */
 const UPLOAD_TIMEOUT_MS = 120_000;
@@ -21,7 +21,7 @@ export interface DeployRequest {
   /** Meta-API route — `/api:meta/sandbox/bundle`. */
   endpointPath: string;
   /** Access token + the instance origin it authorizes against. */
-  auth: ResolvedAuth;
+  auth: BearerTarget;
   /**
    * Query params appended to the endpoint URL (the sandbox route takes a
    * `reset=true` bool). The `bundle` itself is the raw request body, never a param.

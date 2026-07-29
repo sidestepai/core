@@ -1,32 +1,32 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { buildStaticEnv, deriveDisplay, deployStaticTo, resolveParentWorkspaceId } from "../../src/emit/deploy-command.js";
+import { buildStaticEnv, deriveDisplay, deployStaticTo } from "../../src/emit/deploy-command.js";
 import type { StaticTarget } from "../../src/emit/deploy-command.js";
 import type { ResolvedAuth } from "../../src/auth/token.js";
 import type { StaticHostResult } from "../../src/deploy/static-host.js";
+import { parseArgs } from "../../src/emit/cli.js";
 
-const auth: ResolvedAuth = { instance: "https://inst.xano.io", access_token: "tok" } as ResolvedAuth;
+const auth: ResolvedAuth = {
+  instance: "https://inst.xano.io",
+  access_token: "tok",
+  workspaceId: 42,
+  credentialType: "oauth",
+};
 
 const deployStaticHost = vi.hoisted(() => vi.fn());
 const verifyRollout = vi.hoisted(() => vi.fn());
 vi.mock("../../src/deploy/static-host.js", () => ({ deployStaticHost }));
 vi.mock("../../src/deploy/verify-rollout.js", () => ({ verifyRollout }));
 
-describe("resolveParentWorkspaceId", () => {
-  it("prefers an explicit --workspace without touching the token", async () => {
-    const resolve = vi.fn(async () => 9);
-    expect(await resolveParentWorkspaceId(200, auth, resolve)).toBe(200);
-    expect(resolve).not.toHaveBeenCalled();
+describe("the parent workspace comes from the credential", () => {
+  it("is not overridable — `--workspace` no longer parses", () => {
+    expect(() => parseArgs(["deploy", "app.ts", "--workspace", "200"])).toThrow(/was removed/);
   });
 
-  it("falls back to the token's scoped workspace when --workspace is omitted", async () => {
-    const resolve = vi.fn(async () => 9);
-    expect(await resolveParentWorkspaceId(undefined, auth, resolve)).toBe(9);
-    expect(resolve).toHaveBeenCalledWith(auth);
-  });
-
-  it("never falls back to a hard-coded id 1", async () => {
-    const resolve = vi.fn(async () => 42);
-    expect(await resolveParentWorkspaceId(undefined, auth, resolve)).toBe(42);
+  it("is never a hard-coded 1 — it is whatever the credential pinned", () => {
+    // Instances number workspaces from their own sequence, so a fixed 1 404s
+    // ("Invalid workspace") anywhere the primary workspace isn't id 1.
+    expect(auth.workspaceId).toBe(42);
+    expect(auth.workspaceId).not.toBe(1);
   });
 });
 

@@ -22,7 +22,10 @@ export async function runValidateCommand(args: ParsedArgs): Promise<void> {
   const { MetaClient } = await import("../validate/meta-client.js");
   const { runValidateLoop, runnableFunctionNames } = await import("../validate/loop.js");
 
-  const config = resolveValidateConfig({ instance: args.instance, workspaceId: args.workspace });
+  // No workspace override from the CLI: `validate` targets a disposable sandbox
+  // tenant, and its workspace id comes from the import response (or the
+  // harness-only $XANO_VALIDATE_WORKSPACE_ID).
+  const config = resolveValidateConfig({ instance: args.instance });
   const who = await verifyToken(config);
   const host = new URL(config.instance).host;
   step(`Validating against ${host}${who.name ? ` (as ${who.name})` : ""}`);

@@ -12,11 +12,13 @@ function writeTokenFile(dir: string): string {
   writeFileSync(
     path,
     JSON.stringify({
+      type: "oauth",
       access_token: "acc-cached",
       refresh_token: "ref-cached",
       expires_at: Date.now() + 3_600_000,
       scope: "offline_access workspace:write",
       instance: INSTANCE,
+      workspace_id: 42,
       auth_host: "https://app.xano.com",
       client_id: "dcr-abc",
     }),

@@ -13,11 +13,13 @@ function writeTokenFile(dir: string): string {
   writeFileSync(
     path,
     JSON.stringify({
+      type: "oauth",
       access_token: "acc-cached",
       refresh_token: "ref-cached",
       expires_at: Date.now() + 3_600_000,
       scope: "offline_access workspace:write",
       instance: INSTANCE,
+      workspace_id: 114,
       auth_host: "https://app.xano.com",
       client_id: "dcr-abc",
     }),
@@ -69,7 +71,7 @@ describe("sidestep ephemeral", () => {
   // ── list ──
   it("list emits JSON of the workspace ephemerals (non-TTY)", async () => {
     const m = seq(res([LIVE]));
-    await run(["ephemeral", "list", "--config", authFile, "--workspace", "114"]);
+    await run(["ephemeral", "list", "--config", authFile]);
     expect(m.mock.calls[0]![0]).toBe(`${INSTANCE}/api:meta/workspace/114/ephemeral`);
     expect(JSON.parse(stdout.join(""))).toHaveLength(1);
   });
@@ -78,20 +80,18 @@ describe("sidestep ephemeral", () => {
     await run(["ephemeral", "list", "--config", authFile, "--all-workspaces"]);
     expect(m.mock.calls[0]![0]).toBe(`${INSTANCE}/api:meta/ephemeral`);
   });
-  it("list without --workspace resolves the workspace id from the token (never hard-codes 1)", async () => {
-    // /api:meta/auth/me maps the token's scoped guid → its numeric workspace id.
-    const me = { extras: { oauth: { workspace: "guid-x" }, instance: { membership: { workspace: [{ guid: "guid-x", id: 9 }] } } } };
-    const m = seq(res(me), res([LIVE]));
+  it("list uses the credential's pinned workspace and never looks it up (nor hard-codes 1)", async () => {
+    const m = seq(res([LIVE]));
     await run(["ephemeral", "list", "--config", authFile]);
-    expect(m.mock.calls[0]![0]).toBe(`${INSTANCE}/api:meta/auth/me`);
-    expect(m.mock.calls[1]![0]).toBe(`${INSTANCE}/api:meta/workspace/9/ephemeral`);
+    expect(m.mock.calls[0]![0]).toBe(`${INSTANCE}/api:meta/workspace/114/ephemeral`);
+    expect(m.mock.calls.map((c) => String(c[0]))).not.toContain(`${INSTANCE}/api:meta/auth/me`);
   });
   it("list renders 'No ephemeral tenants found' on empty (TTY)", async () => {
     seq(res([]));
     const prev = process.stdout.isTTY;
     process.stdout.isTTY = true;
     try {
-      await run(["ephemeral", "list", "--config", authFile, "--workspace", "114"]);
+      await run(["ephemeral", "list", "--config", authFile]);
     } finally {
       process.stdout.isTTY = prev;
     }
@@ -101,33 +101,38 @@ describe("sidestep ephemeral", () => {
   // ── get ──
   it("get projects the live tenant (non-TTY JSON)", async () => {
     seq(res(LIVE));
-    await run(["ephemeral", "get", "e4f2", "--config", authFile, "--workspace", "114"]);
+    await run(["ephemeral", "get", "e4f2", "--config", authFile]);
     expect(JSON.parse(stdout.join("")).url).toBe("https://e4f2.xano.io");
   });
-  it("get without --workspace resolves the workspace id from the token first", async () => {
-    const me = { extras: { oauth: { workspace: "guid-x" }, instance: { membership: { workspace: [{ guid: "guid-x", id: 9 }] } } } };
-    const m = seq(res(me), res(LIVE));
+  it("get goes straight to the pinned workspace, with no resolution round-trip", async () => {
+    const m = seq(res(LIVE));
     await run(["ephemeral", "get", "e4f2", "--config", authFile]);
-    expect(m.mock.calls[0]![0]).toBe(`${INSTANCE}/api:meta/auth/me`);
-    expect(m.mock.calls[1]![0]).toBe(`${INSTANCE}/api:meta/workspace/9/tenant/e4f2`);
+    expect(m.mock.calls[0]![0]).toBe(`${INSTANCE}/api:meta/workspace/114/tenant/e4f2`);
+    expect(m.mock.calls).toHaveLength(1);
+  });
+
+  it("rejects the removed --workspace flag rather than acting on a different workspace", async () => {
+    await expect(run(["ephemeral", "list", "--config", authFile, "--workspace", "9"])).rejects.toThrow(
+      /`--workspace` was removed/,
+    );
   });
   it("get on a 404 fails with the expired/gone message and makes no base-URL call", async () => {
     const m = seq(res("nope", 404));
-    await expect(run(["ephemeral", "get", "gone", "--config", authFile, "--workspace", "114"])).rejects.toThrow(
+    await expect(run(["ephemeral", "get", "gone", "--config", authFile])).rejects.toThrow(
       /expired or no longer exists/,
     );
     expect(m).toHaveBeenCalledTimes(1); // only the parent GET, never the env base URL
   });
   it("get on a past-expiry tenant is treated as gone", async () => {
     seq(res(EXPIRED));
-    await expect(run(["ephemeral", "get", "e4f2", "--config", authFile, "--workspace", "114"])).rejects.toThrow(
+    await expect(run(["ephemeral", "get", "e4f2", "--config", authFile])).rejects.toThrow(
       /expired or no longer exists/,
     );
   });
   it("get on a gone tenant clears a matching local record", async () => {
     writeState(dir, 114, "e4f2");
     seq(res("nope", 404));
-    await expect(run(["ephemeral", "get", "e4f2", "--config", authFile, "--workspace", "114"])).rejects.toThrow(/cleared its local record/);
+    await expect(run(["ephemeral", "get", "e4f2", "--config", authFile])).rejects.toThrow(/cleared its local record/);
     expect(JSON.parse(readFileSync(statePath(dir), "utf8")).environments["114"]).toBeUndefined();
   });
 
@@ -135,40 +140,40 @@ describe("sidestep ephemeral", () => {
   it("delete --yes issues DELETE and clears a matching local record", async () => {
     writeState(dir, 114, "e4f2");
     const m = seq(res({}, 200));
-    await run(["ephemeral", "delete", "e4f2", "--config", authFile, "--workspace", "114", "--yes"]);
+    await run(["ephemeral", "delete", "e4f2", "--config", authFile, "--yes"]);
     expect((m.mock.calls[0]![1] as RequestInit).method).toBe("DELETE");
     expect(JSON.parse(readFileSync(statePath(dir), "utf8")).environments["114"]).toBeUndefined();
   });
   it("delete on an already-gone tenant is idempotent (no throw)", async () => {
     seq(res("nope", 404));
-    await expect(run(["ephemeral", "delete", "gone", "--config", authFile, "--workspace", "114", "--yes"])).resolves.toBeUndefined();
+    await expect(run(["ephemeral", "delete", "gone", "--config", authFile, "--yes"])).resolves.toBeUndefined();
   });
 
   // ── export ──
   it("export --format multidoc hits the tenant multidoc route after the existence gate", async () => {
     const m = seq(res(LIVE), res("api foo {}\n")); // GET tenant, then multidoc
-    await run(["ephemeral", "export", "e4f2", "--config", authFile, "--workspace", "114", "--format", "multidoc", "--path", "-"]);
+    await run(["ephemeral", "export", "e4f2", "--config", authFile, "--format", "multidoc", "--path", "-"]);
     expect(m.mock.calls[1]![0]).toBe(`${INSTANCE}/api:meta/workspace/114/tenant/e4f2/multidoc`);
     expect(stdout.join("")).toMatch(/api foo/);
   });
   it("export --format json decodes the env archive from workspace/1/export", async () => {
     const bundle = { app: "xano", type: "workspace", payload: { function: [] } };
     const m = seq(res(LIVE), new Response(Buffer.from(encodeWorkspaceArchive(JSON.stringify(bundle))), { status: 200 }));
-    await run(["ephemeral", "export", "e4f2", "--config", authFile, "--workspace", "114", "--format", "json", "--path", "-"]);
+    await run(["ephemeral", "export", "e4f2", "--config", authFile, "--format", "json", "--path", "-"]);
     expect(m.mock.calls[1]![0]).toBe("https://e4f2.xano.io/api:meta/workspace/1/export");
     expect(JSON.parse(stdout.join(""))).toEqual(bundle);
   });
   it("export on a swept tenant fails with the gone message and no base-URL call", async () => {
     const m = seq(res("nope", 404));
     await expect(
-      run(["ephemeral", "export", "gone", "--config", authFile, "--workspace", "114", "--format", "json", "--path", "-"]),
+      run(["ephemeral", "export", "gone", "--config", authFile, "--format", "json", "--path", "-"]),
     ).rejects.toThrow(/expired or no longer exists/);
     expect(m).toHaveBeenCalledTimes(1);
   });
   it("export writes to a file when --path is a location", async () => {
     seq(res(LIVE), res("api foo {}\n"));
     const out = join(dir, "dump.xs");
-    await run(["ephemeral", "export", "e4f2", "--config", authFile, "--workspace", "114", "--format", "multidoc", "--path", out]);
+    await run(["ephemeral", "export", "e4f2", "--config", authFile, "--format", "multidoc", "--path", out]);
     expect(existsSync(out)).toBe(true);
     expect(readFileSync(out, "utf8")).toMatch(/api foo/);
   });
@@ -176,7 +181,7 @@ describe("sidestep ephemeral", () => {
   // ── impersonate ──
   it("impersonate emits JSON with the token and dashboard URL (non-TTY)", async () => {
     const m = seq(res(LIVE), res({ _ti: "tok" })); // GET tenant (gate), then mint
-    await run(["ephemeral", "impersonate", "e4f2", "--config", authFile, "--workspace", "114"]);
+    await run(["ephemeral", "impersonate", "e4f2", "--config", authFile]);
     expect(m.mock.calls[1]![0]).toBe(`${INSTANCE}/api:meta/workspace/114/tenant/e4f2/impersonate`);
     expect(JSON.parse(stdout.join(""))).toEqual({ _ti: "tok", url: `${INSTANCE}/impersonate?_ti=tok` });
   });
@@ -185,7 +190,7 @@ describe("sidestep ephemeral", () => {
     const prev = process.stdout.isTTY;
     process.stdout.isTTY = true;
     try {
-      await run(["ephemeral", "impersonate", "e4f2", "--config", authFile, "--workspace", "114", "--url-only"]);
+      await run(["ephemeral", "impersonate", "e4f2", "--config", authFile, "--url-only"]);
     } finally {
       process.stdout.isTTY = prev;
     }
@@ -196,7 +201,7 @@ describe("sidestep ephemeral", () => {
     const prev = process.stdout.isTTY;
     process.stdout.isTTY = true;
     try {
-      await run(["ephemeral", "impersonate", "e4f2", "--config", authFile, "--workspace", "114"]);
+      await run(["ephemeral", "impersonate", "e4f2", "--config", authFile]);
     } finally {
       process.stdout.isTTY = prev;
     }
@@ -204,12 +209,12 @@ describe("sidestep ephemeral", () => {
   });
   it("impersonate --guest requests a read-only session", async () => {
     const m = seq(res(LIVE), res({ _ti: "tok" }));
-    await run(["ephemeral", "impersonate", "e4f2", "--config", authFile, "--workspace", "114", "--guest"]);
+    await run(["ephemeral", "impersonate", "e4f2", "--config", authFile, "--guest"]);
     expect(String(m.mock.calls[1]![0])).toContain("guest_read_only=true");
   });
   it("impersonate on a swept tenant fails with the gone message and never mints", async () => {
     const m = seq(res("nope", 404));
-    await expect(run(["ephemeral", "impersonate", "gone", "--config", authFile, "--workspace", "114"])).rejects.toThrow(
+    await expect(run(["ephemeral", "impersonate", "gone", "--config", authFile])).rejects.toThrow(
       /expired or no longer exists/,
     );
     expect(m).toHaveBeenCalledTimes(1); // only the gate GET, never the impersonate route
@@ -217,13 +222,13 @@ describe("sidestep ephemeral", () => {
   it("impersonate on a gone tenant clears a matching local record", async () => {
     writeState(dir, 114, "e4f2");
     seq(res("nope", 404));
-    await expect(run(["ephemeral", "impersonate", "e4f2", "--config", authFile, "--workspace", "114"])).rejects.toThrow(
+    await expect(run(["ephemeral", "impersonate", "e4f2", "--config", authFile])).rejects.toThrow(
       /cleared its local record/,
     );
     expect(JSON.parse(readFileSync(statePath(dir), "utf8")).environments["114"]).toBeUndefined();
   });
   it("impersonate without a name fails with an actionable message", async () => {
-    await expect(run(["ephemeral", "impersonate", "--config", authFile, "--workspace", "114"])).rejects.toThrow(
+    await expect(run(["ephemeral", "impersonate", "--config", authFile])).rejects.toThrow(
       /needs a tenant name/,
     );
   });

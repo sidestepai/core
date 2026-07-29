@@ -40,10 +40,12 @@ describe("getAccessToken — stale-local-shadows-global warning", () => {
     writeFileSync(
       path,
       JSON.stringify({
+        type: "oauth",
         access_token: "acc",
         refresh_token: "ref",
         expires_at: Date.now() + 3_600_000,
         instance,
+        workspace_id: 42,
         auth_host: "https://app.xano.com",
         client_id: "dcr-abc",
       }),
@@ -75,7 +77,7 @@ describe("getAccessToken — stale-local-shadows-global warning", () => {
 
     const auth = await getAccessToken(parseArgs(["deploy"]));
     expect(auth.instance).toBe("https://local.xano.io"); // local still wins
-    expect(stderr.join("")).toMatch(/global cache bound to/i);
+    expect(stderr.join("")).toMatch(/global credential for/i);
     expect(stderr.join("")).toContain("global.xano.io");
   });
 

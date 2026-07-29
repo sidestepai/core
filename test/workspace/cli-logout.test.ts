@@ -23,10 +23,12 @@ function oauthJson(body: unknown): Response {
 function writeTokenFile(dir: string, withRefresh: boolean): string {
   const path = join(dir, ".xano", "auth.json");
   const record: Record<string, unknown> = {
+    type: "oauth",
     access_token: "acc",
     expires_at: Date.now() + 3_600_000,
     scope: "offline_access workspace:write",
     instance: "https://x8ki.xano.io",
+    workspace_id: 42,
     auth_host: "https://app.xano.com",
     client_id: "dcr-abc",
   };
@@ -126,9 +128,11 @@ describe("sidestep logout", () => {
     writeFileSync(
       globalPath,
       JSON.stringify({
+        type: "oauth",
         access_token: "acc",
         refresh_token: "shared-ref",
         instance: "https://x8ki.xano.io",
+        workspace_id: 42,
         auth_host: "https://app.xano.com",
         client_id: "dcr-abc",
       }),

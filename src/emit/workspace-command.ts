@@ -22,7 +22,6 @@
 import { writeFileSync } from "node:fs";
 import type { ParsedArgs } from "./cli.js";
 import { getAccessToken, type ResolvedAuth } from "../auth/token.js";
-import { resolveScopedWorkspaceId } from "../deploy/workspace.js";
 import { resolveOutputTarget } from "./sandbox-export-command.js";
 import { fetchWorkspaceBundle, runCodegenCommand } from "./codegen-command.js";
 import { formatFields, step, success, stdoutStyle } from "./ui.js";
@@ -82,7 +81,7 @@ async function fetchWorkspaces(auth: ResolvedAuth): Promise<Array<Record<string,
  */
 async function runDetails(args: ParsedArgs): Promise<void> {
   const auth = await getAccessToken(args);
-  const workspaceId = args.workspace ?? (await resolveScopedWorkspaceId(auth));
+  const workspaceId = auth.workspaceId;
   const match = (await fetchWorkspaces(auth)).find((w) => w.id === workspaceId);
 
   const summary = {
@@ -90,7 +89,8 @@ async function runDetails(args: ParsedArgs): Promise<void> {
     id: workspaceId,
     name: typeof match?.name === "string" ? match.name : undefined,
     guid: typeof match?.guid === "string" ? match.guid : undefined,
-    scoped: args.workspace === undefined,
+    /** Which credential this command is acting under — the only thing that selects a workspace. */
+    credential: auth.credentialType,
   };
 
   if (!process.stdout.isTTY) {
@@ -103,7 +103,10 @@ async function runDetails(args: ParsedArgs): Promise<void> {
     ["workspace", `${summary.name ?? "(unnamed)"} ${s.dim(`#${summary.id}`)}`],
   ];
   if (summary.guid !== undefined) rows.push(["guid", summary.guid]);
-  rows.push(["source", summary.scoped ? "your token's scope" : "--workspace"]);
+  rows.push([
+    "source",
+    summary.credential === "token" ? "your meta API token credential" : "your sign-in (pinned at login)",
+  ]);
   process.stdout.write(formatFields(rows) + "\n");
 }
 
@@ -115,7 +118,7 @@ async function runDetails(args: ParsedArgs): Promise<void> {
  */
 async function runExport(args: ParsedArgs): Promise<void> {
   const auth = await getAccessToken(args);
-  const bundle = await fetchWorkspaceBundle(args, auth);
+  const bundle = await fetchWorkspaceBundle(auth);
   const content = JSON.stringify(bundle, null, 2);
 
   const target = resolveOutputTarget({ path: args.path, name: args.name ?? DEFAULT_NAME, ext: "json" });
