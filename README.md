@@ -602,7 +602,15 @@ message is the realtime analogue of a query — its own typed payload and stack)
 are what make the binding unambiguous. A channel's `input` types its **path** params
 (`rooms/{room_id}`); a message's `input` types the message **payload**. A server is off
 until `enabled: true`. Lifecycle events are triggers: `realtimeServerTrigger` (client
-connect/disconnect) and `realtimeChannelTrigger` (join/leave).
+connect/disconnect) and `realtimeChannelTrigger` (join/leave/deliver). Those actions do
+not share a posture, and the posture decides what your stack should return: `connect` and
+`join` **gate** (the return admits or denies, fail-closed), `disconnect` and `leave` are
+**observational** (the return is ignored), and `deliver` gates **per recipient** — it runs
+once for each client a message is about to reach, and its return rewrites that recipient's
+copy of the payload, drops the message for that recipient, or passes the original through.
+That makes `deliver` the per-viewer redaction tool ("hide the author's address from
+everyone but the author") and also the most expensive action of the five: a stack per
+recipient per message.
 
 ```ts
 const chat = realtimeServer({ name: "chat", enabled: true });
@@ -627,8 +635,15 @@ realtimeMessage({
 realtimeChannelTrigger({
   name: "on-room-join",
   channel: room,                     // a handle — a bare path is ambiguous
-  actions: { join: true },
+  actions: { join: true },           // gating: the return admits or denies the join
   stack: (t) => [s.debug.log({ value: t.channel })],
+});
+
+realtimeChannelTrigger({
+  name: "on-room-deliver",
+  channel: room,
+  actions: { deliver: true },        // runs once PER RECIPIENT, not per event
+  stack: (t) => [s.debug.log({ value: t.action })],
 });
 ```
 

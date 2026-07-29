@@ -59,11 +59,15 @@ const KIND_CORPUS: Array<{ kind: string; payloadKey: string; name: string; fixtu
  * SCHEMA-DERIVED goldens — a weaker oracle, kept in its own table so no reader
  * mistakes one for an engine-persisted fixture.
  *
- * Xano's workspace-archive export/import does not yet carry realtime sections,
- * so there is no way to round-trip a realtime object through an engine and read
- * back what it stored. These were minted from the encoders instead: they pin the
- * wire shape against refactors, but they cannot catch the encoder and the engine
- * disagreeing. See `test/fixtures/realtime/README.md` for the re-capture steps.
+ * These were minted from the encoders rather than captured from an engine, so they
+ * pin the wire shape against refactors but cannot catch the encoder and the engine
+ * disagreeing — compared against the encoder that produced them, they are
+ * self-consistent by construction.
+ *
+ * The reason they were minted no longer holds: the workspace archive carries
+ * realtime sections now, so a round-trip IS possible and these can be promoted.
+ * That work is pending a live capture, not blocked on the engine. See
+ * `test/fixtures/realtime/README.md` for the steps.
  */
 const SCHEMA_DERIVED_CORPUS: Array<{ kind: string; payloadKey: string; name: string; fixture: string }> = [
   { kind: "realtime server", payloadKey: "realtime_server", name: "ex_kind_chat_server", fixture: "realtime/realtime_server_chat.json" },

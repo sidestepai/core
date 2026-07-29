@@ -22,10 +22,13 @@
  *    (`message_enabled`/`message_limit`) and it defaults **off** — message
  *    history is a hot path.
  *
- * NOTE ON DEPLOYMENT: Xano's workspace-archive import does not yet carry
- * realtime sections. Authoring, encoding, and round-tripping all work today;
- * a realtime object included in a deployed bundle is inert until the engine
- * side lands.
+ * NOTE ON DEPLOYMENT: the workspace archive now carries realtime sections, so a
+ * realtime object in a deployed bundle is imported like any other object — it is
+ * no longer inert. What has NOT happened yet is a live round-trip check of the
+ * three encoders against what an engine actually persists, so the realtime
+ * goldens remain schema-derived (self-consistent by construction) rather than
+ * engine-captured. Treat a first deploy of a realtime object as unproven in the
+ * details, not as unsupported.
  */
 import { registerKind } from "./kind.js";
 import type { ObjectKind } from "./kind.js";
