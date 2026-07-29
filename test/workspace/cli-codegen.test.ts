@@ -229,6 +229,29 @@ describe("workspace — the read-only family", () => {
     expect(summary.credential).toBe("oauth");
   });
 
+  it("reports a meta API token credential as the source of the workspace", async () => {
+    writeFileSync(
+      join(dir, ".xano", "auth.json"),
+      JSON.stringify({
+        type: "token",
+        instance_base_url: INSTANCE,
+        workspace_id: 7,
+        meta_api_token: "meta-tok",
+      }),
+    );
+    seq(res([{ id: 7, name: "via-token", guid: "ws-guid" }]));
+    const out: string[] = [];
+    vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      out.push(String(chunk));
+      return true;
+    });
+
+    await run(["workspace", "details"]);
+    const summary = JSON.parse(out.join("")) as { id: number; credential: string };
+    expect(summary.id).toBe(7);
+    expect(summary.credential).toBe("token");
+  });
+
   it("says plainly that there is no workspace deploy", async () => {
     // The removed-command tombstone matters: `deploy` is a full replace, so
     // pointing it at a real workspace would destroy data.

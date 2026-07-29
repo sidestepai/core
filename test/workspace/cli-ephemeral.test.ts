@@ -111,6 +111,27 @@ describe("sidestep ephemeral", () => {
     expect(m.mock.calls).toHaveLength(1);
   });
 
+  it("drives a real command off a hand-authored meta API token credential", async () => {
+    // End-to-end proof of the second credential arm: no login, no refresh, just
+    // the file → the right route with the right bearer and workspace.
+    const tokenFile = join(dir, "token-auth.json");
+    writeFileSync(
+      tokenFile,
+      JSON.stringify({
+        type: "token",
+        instance_base_url: INSTANCE,
+        workspace_id: 300,
+        meta_api_token: "meta-tok",
+      }),
+    );
+    const m = seq(res([LIVE]));
+    await run(["ephemeral", "list", "--config", tokenFile]);
+
+    expect(m.mock.calls[0]![0]).toBe(`${INSTANCE}/api:meta/workspace/300/ephemeral`);
+    const headers = m.mock.calls[0]![1]!.headers as Record<string, string>;
+    expect(headers.Authorization).toBe("Bearer meta-tok");
+  });
+
   it("rejects the removed --workspace flag rather than acting on a different workspace", async () => {
     await expect(run(["ephemeral", "list", "--config", authFile, "--workspace", "9"])).rejects.toThrow(
       /`--workspace` was removed/,
