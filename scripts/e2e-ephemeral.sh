@@ -110,6 +110,24 @@ CODE="$(curl -s -o ping.out -w '%{http_code}' "$URL/api:e2e/ping?n=21")"
 if [[ "$CODE" == "200" ]] && [[ "$(cat ping.out)" == "42" ]]; then ok "backend served ping → 42"
 else bad "live ping failed (HTTP $CODE, body: $(cat ping.out 2>/dev/null | head -c 120))"; fi
 
+# ── 8b. URL path params: does the ENGINE bind each {param} segment? ─────────
+step "live call: GET $URL/api:e2e/echo/hello/n/7"
+CODE="$(curl -s -o echo.out -w '%{http_code}' "$URL/api:e2e/echo/hello/n/7")"
+if [[ "$CODE" == "200" ]]; then
+  ok "path-param route resolved (HTTP 200)"
+  SLUG="$(jget slug <echo.out)"; COUNT="$(jget count <echo.out)"
+  [[ "$SLUG" == "hello" ]] && ok "{slug} bound to its segment → 'hello'" || bad "{slug} bound to '$SLUG', expected 'hello'"
+  [[ "$COUNT" == "7" ]] && ok "{count} bound and coerced to int → 7" || bad "{count} bound to '$COUNT', expected 7"
+else
+  bad "path-param route failed (HTTP $CODE, body: $(head -c 120 echo.out 2>/dev/null))"
+fi
+
+# The re-export must still carry the {param} name verbatim — a path param is a
+# naming convention over `name`, so a round trip that mangles it is data loss.
+if grep -q 'echo/{slug}/n/{count}' e2e-export.json 2>/dev/null; then
+  ok "re-export preserved the {param} name verbatim"
+else bad "re-export lost or rewrote the {param} name"; fi
+
 # ── 9. delete ───────────────────────────────────────────────────────────────
 step "ephemeral delete $TENANT --yes"
 node "$BIN" ephemeral delete "$TENANT" --workspace "$WS" --yes >del.out 2>del.err

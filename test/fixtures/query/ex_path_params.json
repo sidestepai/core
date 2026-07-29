@@ -1,0 +1,177 @@
+{
+  "app": {
+    "id": "_YkNHAI8GdrEXMcpTMVMgArXCgE"
+  },
+  "run": [
+    {
+      "as": "slug_seen",
+      "name": "mvp:set_var",
+      "_xsid": "f:00a35ceb-494a-4335-9e2a-6b1803988755",
+      "addon": [],
+      "input": [],
+      "mocks": {},
+      "output": {
+        "items": [],
+        "filters": [],
+        "customize": false
+      },
+      "context": {
+        "tag": "input",
+        "value": "slug",
+        "filters": []
+      },
+      "runtime": null,
+      "disabled": false,
+      "description": "",
+      "settings_registry": null
+    },
+    {
+      "as": "count_seen",
+      "name": "mvp:set_var",
+      "_xsid": "f:56925f94-11c5-453d-a79f-268c249b9976",
+      "addon": [],
+      "input": [],
+      "mocks": {},
+      "output": {
+        "items": [],
+        "filters": [],
+        "customize": false
+      },
+      "context": {
+        "tag": "input",
+        "value": "count",
+        "filters": []
+      },
+      "runtime": null,
+      "disabled": false,
+      "description": "",
+      "settings_registry": null
+    }
+  ],
+  "tag": [],
+  "auth": false,
+  "docs": "",
+  "guid": "0U2m4oSyeRcKiR41oVKVtMbCGbY",
+  "name": "echo/{slug}/n/{count}",
+  "test": [],
+  "verb": "GET",
+  "cache": {
+    "ip": false,
+    "env": [],
+    "ttl": 3600,
+    "auth": true,
+    "input": true,
+    "active": false,
+    "headers": [],
+    "datasource": true
+  },
+  "input": [
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "slug",
+      "type": "text",
+      "_xsid": "i:d974594b-484e-4fe0-ae7c-fed36caf13ba",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": false,
+      "customize": {},
+      "sensitive": false,
+      "description": "",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    },
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "count",
+      "type": "int",
+      "_xsid": "i:0ac8f12f-1a8b-48c8-85ca-1eb584eba6e6",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": false,
+      "customize": {},
+      "sensitive": false,
+      "description": "",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    }
+  ],
+  "output": [],
+  "result": [
+    {
+      "tag": "var",
+      "name": "slug",
+      "_xsid": "r:cee4ece9-3134-4114-8c84-b47e48a0ebcb",
+      "value": "slug_seen",
+      "filters": [],
+      "disabled": false
+    },
+    {
+      "tag": "var",
+      "name": "count",
+      "_xsid": "r:13329d21-35f9-4197-82f1-a4cd4887ef9c",
+      "value": "count_seen",
+      "filters": [],
+      "disabled": false
+    }
+  ],
+  "example": {},
+  "history": {
+    "limit": 100,
+    "enabled": true,
+    "inherit": true
+  },
+  "disabled": false,
+  "middleware": {
+    "pre": [],
+    "post": [],
+    "pre_customize": false,
+    "post_customize": false
+  },
+  "api_enabled": true,
+  "description": "",
+  "response_type": "standard"
+}

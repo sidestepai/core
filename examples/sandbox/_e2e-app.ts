@@ -28,9 +28,28 @@ const ping = query({
   response: ref("doubled"),
 });
 
+/**
+ * URL path params, live. The offline corpus can prove SideStep emits
+ * `name: "echo/{slug}/n/{count}"` and that the input map lines up — it cannot
+ * prove the ENGINE routes that path and binds each segment to its input. Only a
+ * real request does, so this endpoint echoes both segments straight back and the
+ * e2e script asserts on the values.
+ */
+const echo = query({
+  name: "echo/{slug}/n/{count}",
+  verb: "GET",
+  apiGroup: api,
+  input: { slug: input.text(), count: input.int() },
+  stack: [
+    s.set_var("slug_seen", inp("slug")),
+    s.set_var("count_seen", inp("count")),
+  ],
+  response: { slug: ref("slug_seen"), count: ref("count_seen") },
+});
+
 const defs = (xs: unknown[]) => xs as never[];
 
 export default workspace("sidestep-e2e")
   .registerApiGroups(defs([api]))
   .registerTables(defs([widgets]))
-  .registerQueries(defs([ping]));
+  .registerQueries(defs([ping, echo]));
