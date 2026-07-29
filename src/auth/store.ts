@@ -73,13 +73,13 @@ export function globalAuthFilePath(): string {
   return process.env.XANO_GLOBAL_CONFIG ?? join(homedir(), ".sidestep", "auth.json");
 }
 
-/** The project-local token cache path (`./.xano/auth.json`), resolved absolute. */
+/** The project-local credential path (`./.xano/auth.json`), resolved absolute. */
 export function localAuthFilePath(): string {
   return resolve(DEFAULT_AUTH_FILE);
 }
 
 /**
- * Resolve the token cache path. Precedence, highest first:
+ * Resolve the credential file path. Precedence, highest first:
  *   1. `--config <path>` / `$XANO_CONFIG` — an explicit path always wins.
  *   2. `--local` — the project-local `./.xano/auth.json` cache.
  *   3. the shared `~/.sidestep/auth.json` global cache (the default).
@@ -315,14 +315,14 @@ function findGitRoot(startDir: string): string | undefined {
 }
 
 /**
- * Ensure the token file is ignored by git. Appends an entry to the project's
+ * Ensure the credential file is ignored by git. Appends an entry to the project's
  * `.gitignore` (creating it if absent) when no existing rule already covers the
  * file. Idempotent. Returns true when `.gitignore` was modified.
  *
  * The entry is the file's containing directory (e.g. `.xano/`) when that dir is
  * below the git root, otherwise the bare filename — so a dedicated `.xano/`
  * cache is ignored wholesale while a root-level custom `--config` ignores
- * just that file. A token file outside the repo tree (e.g. under $HOME) is left
+ * just that file. A credential outside the repo tree (e.g. under $HOME) is left
  * alone: there is nothing to gitignore.
  */
 export function ensureGitignored(authFilePath: string): boolean {

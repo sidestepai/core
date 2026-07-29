@@ -8305,7 +8305,7 @@
         },
         {
           "flag": "--config <path>",
-          "description": "Explicit token cache path (default: $XANO_CONFIG, then the shared ~/.sidestep/auth.json, falling back to ./.xano/auth.json when it exists)."
+          "description": "Explicit credential file path (default: $XANO_CONFIG, then the shared ~/.sidestep/auth.json, falling back to ./.xano/auth.json when it exists). Either credential type is accepted."
         },
         {
           "flag": "--local",

@@ -67,7 +67,7 @@ export async function runLoginCommand(args: ParsedArgs): Promise<void> {
   // login (and thus exit non-zero). Warn and continue.
   try {
     if (ensureGitignored(authFilePath)) {
-      detail("Added the token cache to .gitignore");
+      detail("Added the credential file to .gitignore");
     }
   } catch (err) {
     warn(

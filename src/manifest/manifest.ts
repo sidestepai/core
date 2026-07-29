@@ -233,7 +233,7 @@ const CLI_COMMANDS: readonly ManifestCliCommand[] = [
       { flag: "--static-host <name>", description: "Static-host NAME to deploy the frontend to (default `default`). Give each app a DISTINCT host so deploys don't share and overwrite the one `default` host. The host is auto-created on first deploy." },
       { flag: "--static-env KEY=VALUE", description: "Repeatable. Bake extra PUBLIC config into the static build's index.html as `window.<KEY>` globals. Merged over the auto-seeded XANO_HOST; served verbatim, so never put secrets here." },
       { flag: "--no-verify", description: "Skip the post-deploy liveness poll. By default, after a --static upload the CLI polls the deployed URL until the edge is serving THIS build (matching its X-Xano-Canonical), so success means the frontend is actually live — not just that the build was accepted. An unconfirmed poll is a warning, never a failure. Use --no-verify for fast iterative deploys or when the URL isn't reachable from the CLI host." },
-      { flag: "--config <path>", description: "Explicit token cache path (default: $XANO_CONFIG, then the shared ~/.sidestep/auth.json, falling back to ./.xano/auth.json when it exists)." },
+      { flag: "--config <path>", description: "Explicit credential file path (default: $XANO_CONFIG, then the shared ~/.sidestep/auth.json, falling back to ./.xano/auth.json when it exists). Either credential type is accepted." },
       { flag: "--local", description: "Read credentials from the project-local ./.xano/auth.json cache instead of the shared ~/.sidestep/auth.json one. Reads already prefer an existing project-local cache, so this only matters when both exist." },
     ],
     description:

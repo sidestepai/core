@@ -267,7 +267,7 @@ function warnIfLocalShadowsGlobal(args: ParsedArgs, resolved: string, saved: Cre
 }
 
 /**
- * Refresh + persist the token cache while holding a cross-process advisory lock.
+ * Refresh + persist the oauth credential while holding a cross-process advisory lock.
  * After acquiring the lock we RE-READ the cache: if a concurrent `push`
  * refreshed while we waited, we use its result instead of spending our
  * now-stale refresh token a second time.

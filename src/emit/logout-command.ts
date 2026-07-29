@@ -1,18 +1,27 @@
 /**
- * `sidestep logout` — sign out of the shared `~/.sidestep` cache (or the
- * project-local token cache with `--local`).
+ * `sidestep logout` — clear the credential in the shared `~/.sidestep` file (or
+ * the project-local one with `--local`).
  *
- * Mirrors the sidestep dashboard BFF's logout: best-effort REVOKE the refresh
- * token at the authorization server (so a leaked cache file can't be replayed),
- * then delete the local cache. Revocation failure never blocks the local clear —
- * the important half is removing the credentials from disk.
+ * For an `oauth` credential this mirrors the sidestep dashboard BFF's logout:
+ * best-effort REVOKE the refresh token at the authorization server (so a leaked
+ * file can't be replayed), then delete the file. Revocation failure never blocks
+ * the local clear — the important half is removing the credential from disk.
+ *
+ * A hand-authored `token` credential has no session and no authorization server,
+ * so there is nothing to revoke: the delete IS the whole operation.
  *
  * Node-only and lazily imported (like `login`/`push`) so `compile`/`export`
  * never pull in the OAuth stack.
  */
 import type { ParsedArgs } from "./cli.js";
 import { OpenIdProvider } from "../auth/oauth.js";
-import { readCredential, clearCredential, resolveAuthFilePath, globalAuthFilePath } from "../auth/store.js";
+import {
+  readCredential,
+  clearCredential,
+  resolveAuthFilePath,
+  globalAuthFilePath,
+  type CredentialRecord,
+} from "../auth/store.js";
 import { resolveScope } from "../auth/config.js";
 import { success, warn, info, detail, hostLabel } from "./ui.js";
 
@@ -27,7 +36,7 @@ export async function runLogoutCommand(args: ParsedArgs): Promise<void> {
   // A stale/invalid credential must still be removable — that is the whole point
   // of logout. Fall back to a bare delete rather than stranding the user with a
   // read error and a file they cannot clear through the CLI.
-  let saved;
+  let saved: CredentialRecord | null;
   try {
     saved = readCredential(authFilePath);
   } catch (err) {

@@ -108,7 +108,7 @@ export interface ParsedArgs {
   staticHost: string | undefined;
   /** `--origin <origin>`: Xano control-plane OAuth host. Default: $XANO_ORIGIN, then https://app.xano.com. */
   authHost: string | undefined;
-  /** `--config <path>`: project-local token cache. Default: $XANO_CONFIG, then ./.xano/auth.json. */
+  /** `--config <path>`: explicit credential file. Default: $XANO_CONFIG, then ./.xano/auth.json. */
   authFile: string | undefined;
   /**
    * `--local`: use the project-local `./.xano/auth.json` cache instead of the
