@@ -90,6 +90,7 @@ const KIND_CORPUS: Array<{ kind: string; payloadKey: string; name: string; fixtu
 const SCHEMA_DERIVED_CORPUS: Array<{ kind: string; payloadKey: string; name: string; fixture: string }> = [
   { kind: "trigger (realtime server)", payloadKey: "trigger", name: "ex_kind_trigger_on_chat_connect", fixture: "triggers/ex_kind_trigger_on_chat_connect.json" },
   { kind: "trigger (channel)", payloadKey: "trigger", name: "ex_kind_trigger_on_room_join", fixture: "triggers/ex_kind_trigger_on_room_join.json" },
+  { kind: "trigger (channel deliver)", payloadKey: "trigger", name: "ex_kind_trigger_on_room_deliver", fixture: "triggers/ex_kind_trigger_on_room_deliver.json" },
 ];
 
 describe("conformance corpus — kind objects deep-equal their persisted fixture", () => {
@@ -126,6 +127,9 @@ describe("conformance corpus — realtime lifecycle triggers match their SCHEMA-
     const triggerTypes = SCHEMA_DERIVED_CORPUS.filter((r) => r.payloadKey === "trigger").map(
       (r) => (compiled("trigger", r.name) as { obj_type?: string }).obj_type,
     );
-    expect(triggerTypes.sort()).toEqual(["channel", "realtime_server"]);
+    // Two `channel` rows: join (gating) and deliver (gating, per recipient). Their
+    // envelopes differ only inside `meta.channel.action`, which is exactly the field
+    // a hand-minted golden is most likely to get wrong.
+    expect(triggerTypes.sort()).toEqual(["channel", "channel", "realtime_server"]);
   });
 });
