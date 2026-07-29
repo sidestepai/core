@@ -22,13 +22,11 @@
  *    (`message_enabled`/`message_limit`) and it defaults **off** — message
  *    history is a hot path.
  *
- * NOTE ON DEPLOYMENT: the workspace archive now carries realtime sections, so a
- * realtime object in a deployed bundle is imported like any other object — it is
- * no longer inert. What has NOT happened yet is a live round-trip check of the
- * three encoders against what an engine actually persists, so the realtime
- * goldens remain schema-derived (self-consistent by construction) rather than
- * engine-captured. Treat a first deploy of a realtime object as unproven in the
- * details, not as unsupported.
+ * Deploys like any other object: the workspace archive carries realtime sections,
+ * and the round trip is verified against a live engine — the server, its channels,
+ * and its messages import, read back, and re-resolve their cross-references to the
+ * imported rows. The three encoders are byte-verified against engine-captured
+ * goldens.
  */
 import { registerKind } from "./kind.js";
 import type { ObjectKind } from "./kind.js";
