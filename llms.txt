@@ -1,4 +1,4 @@
-# sidestep v4.1.7
+# sidestep v4.1.8
 
 > TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.
 
@@ -104,8 +104,9 @@ live environment and prints its URL. `sidestep init` → `sidestep deploy` → U
   if it expired or was swept, a fresh one is created and the new URL is called
   out. `--dest sandbox` targets your throwaway singleton instead. Every deploy
   is a FULL REPLACE (reset is inherent; there is no opt-out). `--name` sets the
-  ephemeral display, `--workspace` the parent workspace, `--expires-hours` the
-  TTL at create time. `--bundle <path>` uploads an already-exported bundle.
+  ephemeral display and `--expires-hours` the TTL at create time; the parent
+  workspace is the one your credential is bound to, never a flag.
+  `--bundle <path>` uploads an already-exported bundle.
   Nothing from the server is written back into `xano.lock` (the env is a
   separate workspace, so its identities must not pollute it). Deploying an
   ENTRY FILE still updates the local lock via the shared compile step —
@@ -114,7 +115,7 @@ live environment and prints its URL. `sidestep init` → `sidestep deploy` → U
   your main Xano instance for production (COMING SOON — see below).
 - `sidestep release ./index.ts` — promote to your MAIN instance workspace (the
   production target), vs. `deploy`'s disposable env. The target is the workspace
-  your token is scoped to (no override). COMING SOON: currently prints a notice
+  your credential is bound to (no override). COMING SOON: currently prints a notice
   and takes no action, pending a record-preserving import (a release must not
   wipe production table data the way a full replace would).
 - `sidestep ephemeral <list|get|delete|export>` — fully manage those
@@ -164,9 +165,9 @@ live environment and prints its URL. `sidestep init` → `sidestep deploy` → U
   full replace, so send it only to an ephemeral or sandbox env — never a
   workspace holding data you care about.
 - `sidestep workspace <details|export|codegen>` — read the REAL workspace your
-  token is scoped to (`details` shows which one, before you read it; `--workspace
-  <id>` overrides). There is deliberately NO `workspace deploy` — SideStep never
-  writes back to your real workspace.
+  credential is bound to (`details` shows which one, and which credential chose
+  it, before you read it). There is deliberately NO `workspace deploy` —
+  SideStep never writes back to your real workspace.
 - `sidestep sandbox details` — prints the sandbox tenant as JSON, headlined by
   its public `baseUrl` (GET `/api:meta/sandbox/me`). An agent reads `baseUrl` to
   point the frontend at the deployed backend WITHOUT re-running a deploy just to
@@ -221,19 +222,25 @@ hang. Fetch once cache-busted and grep the BARE token — the injected line is b
 exact match wrongly reads as "not injected"): `curl -s "$URL/?nocache=$EPOCH" | grep XANO_HOST`.
 (README covers the exact cache TTL and why the dot form still works in app code.)
 
-Auth is OAuth: run `sidestep login` once (browser consent; you pick the
-instance at consent; tokens cached in the shared `~/.sidestep/auth.json`
-and reused from any project, or in project-local `.xano/auth.json` with
-`--local` — auto-gitignored) — every `deploy` reuses and refreshes them. The target
-instance is always the one the token is bound to (its `aud`); there is no
-instance flag.
+Auth: `auth.json` holds ONE credential, discriminated by `type`. It lives in
+the shared `~/.sidestep/auth.json` (reused from any project) or a
+project-local `.xano/auth.json` (`--local`; auto-gitignored); reads prefer an
+existing local one, and `--config`/`$XANO_CONFIG` always wins.
+  • `type: "oauth"` — run `sidestep login` once (browser consent; you pick
+    the instance and workspace there). Every `deploy` reuses and refreshes it.
+  • `type: "token"` — hand-authored, for meta-API/automation use. Write it
+    yourself: `{ "type": "token", "instance_base_url": "https://…",
+    "workspace_id": <n>, "meta_api_token": "…" }`. No login, no refresh.
+Both PIN the target: the instance and numeric workspace come from the
+credential, and there is no instance flag and no `--workspace` override.
+Run `sidestep workspace details` to see which instance/workspace you are on.
 AGENTS/CI: authenticate with `$XANO_REFRESH_TOKEN` + `$XANO_CLIENT_ID` +
 `deploy` (non-interactive refresh grant; both env vars come from
 `.xano/auth.json`; the instance is read from the token's `aud`) — do NOT run
 `sidestep login`, which blocks on a browser consent no agent can complete.
 Refresh tokens rotate on use (a stored one may be single-use);
 `XANO_NO_BROWSER=1` suppresses the browser spawn for headless login. Sign out
-with `sidestep logout` (revokes the refresh token, deletes the cache).
+with `sidestep logout` (revokes the refresh token, then deletes the file).
 NOTE — `deploy` writes to a live environment (an ephemeral by default, or the
 sandbox with `--dest sandbox`) and is a FULL REPLACE: it clears that
 environment's workspace (objects AND records) before importing. The blast

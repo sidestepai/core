@@ -10,24 +10,29 @@ function archiveResponse(payload: Record<string, unknown>): Response {
 }
 
 describe("parseArgs — validate flags", () => {
-  it("parses the file, --runtime, --capture, --instance, --workspace", () => {
-    const a = parseArgs(["validate", "app.ts", "--runtime", "--capture", "--instance", "https://x.xano.io", "--workspace", "5"]);
+  it("parses the file, --runtime, --capture, --instance", () => {
+    const a = parseArgs(["validate", "app.ts", "--runtime", "--capture", "--instance", "https://x.xano.io"]);
     expect(a.command).toBe("validate");
     expect(a.file).toBe("app.ts");
     expect(a.runtime).toBe(true);
     expect(a.capture).toBe(true);
     expect(a.instance).toBe("https://x.xano.io");
-    expect(a.workspace).toBe(5);
   });
 
-  it("accepts --instance=/--workspace= joined forms", () => {
-    const a = parseArgs(["validate", "app.ts", "--instance=http://localhost:8080", "--workspace=9"]);
+  it("accepts the --instance= joined form", () => {
+    const a = parseArgs(["validate", "app.ts", "--instance=http://localhost:8080"]);
     expect(a.instance).toBe("http://localhost:8080");
-    expect(a.workspace).toBe(9);
   });
 
-  it("rejects a non-integer --workspace", () => {
-    expect(() => parseArgs(["validate", "app.ts", "--workspace", "abc"])).toThrow(/positive integer/);
+  it("rejects the removed --workspace flag in both forms, explaining why", () => {
+    for (const argv of [["validate", "app.ts", "--workspace", "5"], ["validate", "app.ts", "--workspace=9"]]) {
+      expect(() => parseArgs(argv)).toThrow(/`--workspace` was removed/);
+      expect(() => parseArgs(argv)).toThrow(/credential/);
+    }
+  });
+
+  it("still parses --all-workspaces, which selects nothing and must survive", () => {
+    expect(parseArgs(["ephemeral", "list", "--all-workspaces"]).allWorkspaces).toBe(true);
   });
 
   it("defaults the validate flags to false/undefined for other commands", () => {
@@ -36,7 +41,6 @@ describe("parseArgs — validate flags", () => {
     expect(a.capture).toBe(false);
     expect(a.verbose).toBe(false);
     expect(a.instance).toBeUndefined();
-    expect(a.workspace).toBeUndefined();
   });
 });
 

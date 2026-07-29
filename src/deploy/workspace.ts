@@ -15,7 +15,7 @@
  * Lazily imported by the command layer so the browser-safe authoring bundle never
  * pulls this Node-only transport in.
  */
-import type { ResolvedAuth } from "../auth/token.js";
+import type { BearerTarget } from "../auth/token.js";
 
 const RESOLVE_TIMEOUT_MS = 30_000;
 
@@ -24,8 +24,15 @@ interface MembershipWorkspace {
   id?: unknown;
 }
 
-/** Resolve the numeric id of the workspace the token is scoped to (see module header). */
-export async function resolveScopedWorkspaceId(auth: ResolvedAuth): Promise<number> {
+/**
+ * Resolve the numeric id of the workspace the token is scoped to (see module
+ * header). Called in exactly two places: `login` (to pin it) and the
+ * `XANO_REFRESH_TOKEN` CI path (which has no stored record to read it from).
+ *
+ * Takes a `BearerTarget`, not a `ResolvedAuth`: this function *produces* the
+ * workspace id the fuller type carries.
+ */
+export async function resolveScopedWorkspaceId(auth: BearerTarget): Promise<number> {
   const url = new URL("/api:meta/auth/me", auth.instance);
   const res = await fetch(url.href, {
     headers: { Authorization: `Bearer ${auth.access_token}` },
@@ -59,8 +66,9 @@ export async function resolveScopedWorkspaceId(auth: ResolvedAuth): Promise<numb
   if (ids.length === 1) return ids[0]!.id;
 
   throw new Error(
-    `Could not resolve which workspace to use from your token ` +
+    `Could not resolve which workspace this token is scoped to ` +
       `(scoped workspace ${scopedGuid ?? "(none)"} not found among ${ids.length} membership workspaces). ` +
-      `Pass \`--workspace <id>\`, or sign in again with a workspace-scoped token (\`sidestep login\`).`,
+      `Run \`sidestep login\` again and pick a single workspace at the consent screen. ` +
+      `There is no workspace override — a credential addresses exactly one workspace.`,
   );
 }

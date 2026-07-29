@@ -44,7 +44,6 @@ import { decodeBundle, type GeneratedProject } from "../codegen/index.js";
 import { reportMismatches, verifyBundles } from "../codegen/verify.js";
 import type { ExportedBundle } from "../deploy/workspace-export.js";
 import { exportWorkspaceBundle } from "../deploy/workspace-export.js";
-import { resolveScopedWorkspaceId } from "../deploy/workspace.js";
 import { detail, info, step, success, warn, blank, style, stdoutStyle } from "./ui.js";
 import { projectShellFiles, sanitizeAppName } from "./init-command.js";
 import {
@@ -100,12 +99,9 @@ async function fetchBundle(args: ParsedArgs, source: CodegenSource): Promise<Sou
       );
     }
     const auth = await getAccessToken(args);
-    const { parentWorkspace, resolveLive, fetchEphemeralBundle } = await import(
-      "./ephemeral-command.js"
-    );
-    const parentWorkspaceId = await parentWorkspace(args, auth);
+    const { resolveLive, fetchEphemeralBundle } = await import("./ephemeral-command.js");
     // The gone/expired gate first — it is also what yields the env's base URL.
-    const summary = await resolveLive(auth, parentWorkspaceId, name);
+    const summary = await resolveLive(auth, auth.workspaceId, name);
     step(`Reading ephemeral "${name}"`);
     return {
       bundle: await fetchEphemeralBundle(auth, summary, name),
@@ -113,7 +109,7 @@ async function fetchBundle(args: ParsedArgs, source: CodegenSource): Promise<Sou
     };
   }
   const auth = await getAccessToken(args);
-  const workspaceId = args.workspace ?? (await resolveScopedWorkspaceId(auth));
+  const workspaceId = auth.workspaceId;
   step(`Reading workspace ${workspaceId}`);
   return {
     bundle: await exportWorkspaceBundle(auth, {
@@ -128,15 +124,11 @@ async function fetchBundle(args: ParsedArgs, source: CodegenSource): Promise<Sou
 /**
  * Read the caller's real workspace.
  *
- * The workspace id is the one the OAuth token consented to — never a hard-coded
- * 1, since instances number workspaces from their own sequence. `--workspace`
- * overrides it for an account with access to several.
+ * The workspace id is the one the credential is bound to — never a hard-coded 1
+ * (instances number workspaces from their own sequence) and never a flag.
  */
-export async function fetchWorkspaceBundle(
-  args: ParsedArgs,
-  auth: ResolvedAuth,
-): Promise<ExportedBundle> {
-  const workspaceId = args.workspace ?? (await resolveScopedWorkspaceId(auth));
+export async function fetchWorkspaceBundle(auth: ResolvedAuth): Promise<ExportedBundle> {
+  const workspaceId = auth.workspaceId;
   step(`Reading workspace ${workspaceId}`);
   return exportWorkspaceBundle(auth, {
     base: auth.instance,

@@ -60,24 +60,18 @@ function writeTokenFile(dir: string): void {
   writeFileSync(
     join(dir, ".xano", "auth.json"),
     JSON.stringify({
+      type: "oauth",
       access_token: "acc-cached",
       refresh_token: "ref-cached",
       expires_at: Date.now() + 3_600_000,
       scope: "offline_access workspace:write",
       instance: INSTANCE,
+      workspace_id: 42,
       auth_host: "https://app.xano.com",
       client_id: "dcr-abc",
     }),
   );
 }
-
-/** `auth/me`, as `resolveScopedWorkspaceId` reads it. */
-const AUTH_ME = {
-  extras: {
-    oauth: { workspace: "ws-guid" },
-    instance: { membership: { workspace: [{ guid: "ws-guid", id: 42 }] } },
-  },
-};
 
 let dir: string;
 let cwd: string;
@@ -194,18 +188,18 @@ describe("workspace codegen <path> — the real workspace", () => {
   it("reads the workspace the token is scoped to, never a hard-coded id", async () => {
     // Instances number workspaces from their own sequence, so a fixed 1 reads the
     // wrong workspace (or 404s) wherever the primary is not id 1.
-    const fetchSpy = seq(res(AUTH_ME), archive(sampleBundle()));
+    const fetchSpy = seq(archive(sampleBundle()));
     await run(["workspace", "codegen", "out", "--no-install"]);
 
-    const exportCall = fetchSpy.mock.calls[1]![0] as string;
+    const exportCall = fetchSpy.mock.calls[0]![0] as string;
     expect(exportCall).toBe(`${INSTANCE}/api:meta/workspace/42/export`);
     expect(existsSync(join(dir, "out", "xano", "index.ts"))).toBe(true);
   });
 
-  it("honours an explicit --workspace, skipping scope resolution", async () => {
-    const fetchSpy = seq(archive(sampleBundle()));
-    await run(["workspace", "codegen", "out", "--workspace", "9", "--no-install"]);
-    expect(fetchSpy.mock.calls[0]![0]).toBe(`${INSTANCE}/api:meta/workspace/9/export`);
+  it("rejects --workspace instead of reading a workspace the credential does not address", async () => {
+    await expect(run(["workspace", "codegen", "out", "--workspace", "9", "--no-install"])).rejects.toThrow(
+      /`--workspace` was removed/,
+    );
   });
 
   it("needs an output path", async () => {
@@ -215,21 +209,77 @@ describe("workspace codegen <path> — the real workspace", () => {
 
 describe("workspace — the read-only family", () => {
   it("exports the bundle as JSON", async () => {
-    seq(res(AUTH_ME), archive(sampleBundle()));
+    seq(archive(sampleBundle()));
     await run(["workspace", "export", "--path", join(dir, "ws.json")]);
     const written = JSON.parse(readFileSync(join(dir, "ws.json"), "utf8")) as { payload: unknown };
     expect(written.payload).toBeDefined();
   });
 
-  it("reports which workspace the token is scoped to", async () => {
-    seq(res(AUTH_ME), res([{ id: 42, name: "prod", guid: "ws-guid" }]));
+  it("reports the pinned workspace and which credential selected it", async () => {
+    seq(res([{ id: 42, name: "prod", guid: "ws-guid" }]));
     const out: string[] = [];
     vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
       out.push(String(chunk));
       return true;
     });
     await run(["workspace", "details"]);
-    expect(out.join("")).toContain("42");
+    const summary = JSON.parse(out.join("")) as { id: number; name: string; credential: string };
+    expect(summary.id).toBe(42);
+    expect(summary.name).toBe("prod");
+    expect(summary.credential).toBe("oauth");
+  });
+
+  it("names a pinned workspace that does not exist, listing the ones that do", async () => {
+    // The likeliest hand-authoring mistake: a well-formed id that is simply
+    // wrong. Everywhere else it is an opaque 404; here it must be diagnosed.
+    writeFileSync(
+      join(dir, ".xano", "auth.json"),
+      JSON.stringify({
+        type: "token",
+        instance_base_url: INSTANCE,
+        workspace_id: 1,
+        meta_api_token: "meta-tok",
+      }),
+    );
+    seq(res([{ id: 9, name: "real-one" }, { id: 11, name: "other" }]));
+
+    await expect(run(["workspace", "details"])).rejects.toThrow(/Workspace 1 does not exist/);
+  });
+
+  it("points a wrong pinned workspace at the right fix per credential type", async () => {
+    const wrong = { type: "token", instance_base_url: INSTANCE, workspace_id: 1, meta_api_token: "t" };
+    writeFileSync(join(dir, ".xano", "auth.json"), JSON.stringify(wrong));
+    seq(res([{ id: 9, name: "real-one" }]));
+    // A hand-authored credential is fixed by editing the file…
+    await expect(run(["workspace", "details"])).rejects.toThrow(/Fix `workspace_id`/);
+
+    // …an oauth one by signing in again.
+    writeTokenFile(dir);
+    seq(res([{ id: 9, name: "real-one" }])); // pinned id is 42, absent from the list
+    await expect(run(["workspace", "details"])).rejects.toThrow(/sidestep login/);
+  });
+
+  it("reports a meta API token credential as the source of the workspace", async () => {
+    writeFileSync(
+      join(dir, ".xano", "auth.json"),
+      JSON.stringify({
+        type: "token",
+        instance_base_url: INSTANCE,
+        workspace_id: 7,
+        meta_api_token: "meta-tok",
+      }),
+    );
+    seq(res([{ id: 7, name: "via-token", guid: "ws-guid" }]));
+    const out: string[] = [];
+    vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      out.push(String(chunk));
+      return true;
+    });
+
+    await run(["workspace", "details"]);
+    const summary = JSON.parse(out.join("")) as { id: number; credential: string };
+    expect(summary.id).toBe(7);
+    expect(summary.credential).toBe("token");
   });
 
   it("says plainly that there is no workspace deploy", async () => {
@@ -267,7 +317,7 @@ describe("sandbox and ephemeral codegen", () => {
       state: "ok",
       ephemeral_expires_at: "2999-01-01 00:00:00+0000",
     };
-    seq(res(AUTH_ME), res(live), archive(sampleBundle()));
+    seq(res(live), archive(sampleBundle()));
 
     await run(["ephemeral", "codegen", "e4f2", "out", "--no-install"]);
     expect(existsSync(join(dir, "out", "xano", "index.ts"))).toBe(true);
@@ -282,7 +332,7 @@ describe("sandbox and ephemeral codegen", () => {
       state: "ok",
       ephemeral_expires_at: "2999-01-01 00:00:00+0000",
     };
-    seq(res(AUTH_ME), res(live), archive(sampleBundle()));
+    seq(res(live), archive(sampleBundle()));
     await expect(run(["ephemeral", "codegen", "e4f2", "--no-install"])).rejects.toThrow(/needs an output path/);
   });
 });
@@ -356,7 +406,7 @@ describe("codegen writes a project (U3)", () => {
         existsSync(join(dir, target, f)),
       );
 
-    seq(res(AUTH_ME), archive(sampleBundle()));
+    seq(archive(sampleBundle()));
     await run(["workspace", "codegen", "ws-out", "--no-install"]);
     expect(shape("ws-out")).toBe(true);
 

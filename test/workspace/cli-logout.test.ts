@@ -23,10 +23,12 @@ function oauthJson(body: unknown): Response {
 function writeTokenFile(dir: string, withRefresh: boolean): string {
   const path = join(dir, ".xano", "auth.json");
   const record: Record<string, unknown> = {
+    type: "oauth",
     access_token: "acc",
     expires_at: Date.now() + 3_600_000,
     scope: "offline_access workspace:write",
     instance: "https://x8ki.xano.io",
+    workspace_id: 42,
     auth_host: "https://app.xano.com",
     client_id: "dcr-abc",
   };
@@ -126,9 +128,11 @@ describe("sidestep logout", () => {
     writeFileSync(
       globalPath,
       JSON.stringify({
+        type: "oauth",
         access_token: "acc",
         refresh_token: "shared-ref",
         instance: "https://x8ki.xano.io",
+        workspace_id: 42,
         auth_host: "https://app.xano.com",
         client_id: "dcr-abc",
       }),
@@ -152,5 +156,65 @@ describe("sidestep logout", () => {
     expect(stderr.join("")).toContain("Signed out");
     // The user is warned that clearing the shared cache signs them out everywhere.
     expect(stderr.join("")).toMatch(/every project/i);
+  });
+  // ── the hand-authored meta API token arm ──
+
+  function writeMetaTokenFile(dir: string, path = join(dir, ".xano", "auth.json")): string {
+    mkdirSync(join(path, ".."), { recursive: true });
+    writeFileSync(
+      path,
+      JSON.stringify({
+        type: "token",
+        instance_base_url: "https://x8ki.xano.io",
+        workspace_id: 7,
+        meta_api_token: "meta-tok",
+      }),
+    );
+    return path;
+  }
+
+  it("deletes a meta API token credential without attempting any revoke", async () => {
+    // There is no authorization server behind a hand-authored token and nothing
+    // to revoke — any network call here would be a bug.
+    const authFile = writeMetaTokenFile(dir);
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+
+    await run(["logout", "--config", authFile]);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(existsSync(authFile)).toBe(false);
+  });
+
+  it("says the file was removed — not that the token was revoked", async () => {
+    const authFile = writeMetaTokenFile(dir);
+    await run(["logout", "--config", authFile]);
+    const out = stderr.join("");
+    expect(out).toMatch(/Removed the meta API token credential/i);
+    expect(out).toMatch(/still valid/i);
+    expect(out).not.toMatch(/Signed out/i);
+  });
+
+  it("still warns about the blast radius when the global credential is a token", async () => {
+    const globalPath = join(dir, "global-auth.json");
+    writeMetaTokenFile(dir, globalPath);
+    process.env.XANO_GLOBAL_CONFIG = globalPath;
+    try {
+      await run(["logout"]);
+    } finally {
+      delete process.env.XANO_GLOBAL_CONFIG;
+    }
+    expect(existsSync(globalPath)).toBe(false);
+    expect(stderr.join("")).toMatch(/every project/i);
+  });
+
+  it("can still remove a stale legacy credential it refuses to read", async () => {
+    // The format break must not leave a file only `rm` can clear.
+    const authFile = join(dir, ".xano", "auth.json");
+    mkdirSync(join(dir, ".xano"), { recursive: true });
+    writeFileSync(authFile, JSON.stringify({ access_token: "old", instance: "https://old.xano.io" }));
+
+    await run(["logout", "--config", authFile]);
+    expect(existsSync(authFile)).toBe(false);
+    expect(stderr.join("")).toMatch(/unreadable credential/i);
   });
 });

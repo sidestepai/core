@@ -14,11 +14,13 @@ function writeTokenFile(dir: string): string {
   writeFileSync(
     path,
     JSON.stringify({
+      type: "oauth",
       access_token: "acc-cached",
       refresh_token: "ref-cached",
       expires_at: Date.now() + 3_600_000,
       scope: "workspace:read",
       instance: INSTANCE,
+      workspace_id: 42,
       auth_host: "https://app.xano.com",
       client_id: "dcr-abc",
     }),
@@ -109,5 +111,45 @@ describe("sidestep profile me", () => {
     await expect(
       fetchProfile(parseArgs(["profile", "me", "--config", authFile])),
     ).rejects.toThrow(/profile me failed \(401/);
+  });
+  // ── under a hand-authored meta API token credential ──
+
+  function writeMetaTokenFile(dir: string): string {
+    const path = join(dir, ".xano", "auth.json");
+    mkdirSync(join(dir, ".xano"), { recursive: true });
+    writeFileSync(
+      path,
+      JSON.stringify({
+        type: "token",
+        instance_base_url: INSTANCE,
+        workspace_id: 7,
+        meta_api_token: "meta-tok",
+      }),
+    );
+    return path;
+  }
+
+  it("sends the meta API token as the bearer and reports the credential's instance", async () => {
+    const authFile = writeMetaTokenFile(dir);
+    const m = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(ME_BODY, { status: 200 }));
+
+    const profile = await fetchProfile(parseArgs(["profile", "me", "--config", authFile]));
+
+    const [url, init] = m.mock.calls[0]!;
+    expect(String(url)).toBe(`${INSTANCE}/api:meta/auth/me`);
+    expect((init!.headers as Record<string, string>).Authorization).toBe("Bearer meta-tok");
+    // The headline instance comes from the credential, not the response body.
+    expect(profile.instance).toBe(INSTANCE);
+  });
+
+  it("renders unknown user fields rather than failing when the response omits them", async () => {
+    // A meta API token is not an OAuth session; what `auth/me` returns for one is
+    // upstream behaviour we do not control, so absent fields must not throw.
+    const authFile = writeMetaTokenFile(dir);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+
+    const profile = await fetchProfile(parseArgs(["profile", "me", "--config", authFile]));
+    expect(profile.instance).toBe(INSTANCE);
+    expect(profile.user).toEqual({ id: undefined, name: undefined, email: undefined });
   });
 });

@@ -24,7 +24,7 @@ import * as client from "openid-client";
 import type { ParsedArgs } from "./cli.js";
 import { OpenIdProvider, oauthErrorCode, decodeAudience, CALLBACK_PATH, DEFAULT_PORT } from "../auth/oauth.js";
 import { startCallbackServer, openBrowser } from "../auth/loopback.js";
-import { writeTokens, ensureGitignored, resolveAuthFilePath, globalAuthFilePath, type TokenRecord } from "../auth/store.js";
+import { writeCredential, ensureGitignored, resolveAuthFilePath, globalAuthFilePath, type OAuthCredential } from "../auth/store.js";
 import { resolveAuthHost, resolveScope, assertHttpsOrigin } from "../auth/config.js";
 import { step, success, warn, detail, blank, hostLabel } from "./ui.js";
 
@@ -36,7 +36,7 @@ export async function runLoginCommand(args: ParsedArgs): Promise<void> {
 
   step(`Signing in to ${hostLabel(authHost)}`);
 
-  let record: TokenRecord;
+  let record: OAuthCredential;
   try {
     record = await attemptLogin({ authHost, scope, port });
   } catch (err) {
@@ -49,11 +49,12 @@ export async function runLoginCommand(args: ParsedArgs): Promise<void> {
   }
 
   const authFilePath = resolveAuthFilePath(args, "write");
-  writeTokens(authFilePath, record);
+  writeCredential(authFilePath, record);
 
   blank();
   success(`Signed in to ${hostLabel(record.instance)}`);
-  detail(`Tokens saved to ${authFilePath}`);
+  detail(`Workspace ${record.workspace_id} (pinned — every command acts on this one)`);
+  detail(`Credentials saved to ${authFilePath}`);
   // Scope line keys on the resolved path, not the flag: an explicit `--config`
   // path is neither cache, so it gets no (potentially false) scope claim.
   if (authFilePath === globalAuthFilePath()) {
@@ -66,7 +67,7 @@ export async function runLoginCommand(args: ParsedArgs): Promise<void> {
   // login (and thus exit non-zero). Warn and continue.
   try {
     if (ensureGitignored(authFilePath)) {
-      detail("Added the token cache to .gitignore");
+      detail("Added the credential file to .gitignore");
     }
   } catch (err) {
     warn(
@@ -92,7 +93,7 @@ async function attemptLogin(p: {
   authHost: string;
   scope: string;
   port: number;
-}): Promise<TokenRecord> {
+}): Promise<OAuthCredential> {
   const verifier = client.randomPKCECodeVerifier();
   const state = client.randomState();
 
@@ -151,12 +152,27 @@ async function attemptLogin(p: {
     );
   }
 
+  // PIN the numeric workspace now, once. The token carries the workspace *guid*
+  // it consented to, not its id, so this is the one place the mapping is read.
+  // Every later command reads the pinned value — there is no per-run override
+  // and no per-run lookup. A failure here is fatal by design: a record without a
+  // pinned workspace is exactly the stale shape the store rejects on read, so we
+  // must not write one.
+  const { resolveScopedWorkspaceId } = await import("../deploy/workspace.js");
+  detail("Resolving the workspace this token is scoped to…");
+  const workspaceId = await resolveScopedWorkspaceId({
+    access_token: tokens.access_token,
+    instance: boundInstance,
+  });
+
   return {
+    type: "oauth",
     access_token: tokens.access_token,
     refresh_token: tokens.refresh_token,
     expires_at: Date.now() + (tokens.expires_in ?? 0) * 1000,
     scope: tokens.scope ?? p.scope,
     instance: boundInstance,
+    workspace_id: workspaceId,
     auth_host: p.authHost,
     // Record exactly which client minted the token — required to refresh/revoke
     // it later. Resolved already (buildAuthUrl awaited the config).

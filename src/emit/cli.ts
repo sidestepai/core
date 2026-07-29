@@ -108,7 +108,7 @@ export interface ParsedArgs {
   staticHost: string | undefined;
   /** `--origin <origin>`: Xano control-plane OAuth host. Default: $XANO_ORIGIN, then https://app.xano.com. */
   authHost: string | undefined;
-  /** `--config <path>`: project-local token cache. Default: $XANO_CONFIG, then ./.xano/auth.json. */
+  /** `--config <path>`: explicit credential file. Default: $XANO_CONFIG, then ./.xano/auth.json. */
   authFile: string | undefined;
   /**
    * `--local`: use the project-local `./.xano/auth.json` cache instead of the
@@ -139,8 +139,6 @@ export interface ParsedArgs {
   verbose: boolean;
   /** `validate --instance <url>`: override XANO_VALIDATE_INSTANCE for this run. */
   instance: string | undefined;
-  /** `validate --workspace <id>`: override XANO_VALIDATE_WORKSPACE_ID for this run. */
-  workspace: number | undefined;
   /** `sandbox export --format <json|multidoc>`: which artifact to emit (validated at parse time). */
   format: "json" | "multidoc" | undefined;
   /** `sandbox export --path <p>`: output location (`-` for stdout; a dir or a full file path). */
@@ -213,7 +211,6 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let capture = false;
   let verbose = false;
   let instance: string | undefined;
-  let workspace: number | undefined;
   let format: "json" | "multidoc" | undefined;
   let path: string | undefined;
   let name: string | undefined;
@@ -300,10 +297,6 @@ export function parseArgs(argv: string[]): ParsedArgs {
       instance = rest[++i];
     } else if (arg.startsWith("--instance=")) {
       instance = arg.slice("--instance=".length);
-    } else if (arg === "--workspace") {
-      workspace = parseWorkspaceId(rest[++i]);
-    } else if (arg.startsWith("--workspace=")) {
-      workspace = parseWorkspaceId(arg.slice("--workspace=".length));
     } else if (arg === "--format") {
       format = parseFormat(rest[++i]);
     } else if (arg.startsWith("--format=")) {
@@ -335,6 +328,15 @@ export function parseArgs(argv: string[]): ParsedArgs {
       throw new Error(
         `\`--profile\` was removed — push now authenticates via OAuth. ` +
           `Run \`sidestep login\` once (or set XANO_REFRESH_TOKEN for CI).`,
+      );
+    } else if (arg === "--workspace" || arg.startsWith("--workspace=")) {
+      // Removed: a credential addresses exactly one workspace. Fail loudly
+      // rather than silently ignoring the flag and acting on a different one
+      // than the caller asked for.
+      throw new Error(
+        `\`--workspace\` was removed. Every command acts on the workspace its credential is ` +
+          `bound to — pinned at \`sidestep login\`, or set as \`workspace_id\` in a meta API ` +
+          `token credential. Run \`sidestep workspace details\` to see which one that is.`,
       );
     } else if (
       arg === "--prune" ||
@@ -384,7 +386,6 @@ export function parseArgs(argv: string[]): ParsedArgs {
     capture,
     verbose,
     instance,
-    workspace,
     format,
     path,
     name,
@@ -393,15 +394,6 @@ export function parseArgs(argv: string[]): ParsedArgs {
     noInstall,
     noVerify,
   };
-}
-
-/** Parse a `--workspace` value, rejecting non-positive-integers so config never gets NaN. */
-function parseWorkspaceId(raw: string | undefined): number {
-  const n = Number(raw);
-  if (!Number.isInteger(n) || n < 1) {
-    throw new Error(`--workspace must be a positive integer (got "${raw ?? ""}").`);
-  }
-  return n;
 }
 
 /** Parse a `--format` value, rejecting anything but the two supported artifacts. */

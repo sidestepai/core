@@ -1,8 +1,17 @@
 /**
- * Node-only token cache for OAuth credentials. Reads/writes a project-local
- * JSON file (default `./.xano/auth.json`) with owner-only permissions, and
- * keeps that file out of git. Never reachable from the browser-safe `index.ts`
- * surface — imported only by the CLI's `login`/`push` command modules.
+ * Node-only credential store for the CLI. Reads/writes a JSON file (the shared
+ * `~/.sidestep/auth.json`, or a project-local `./.xano/auth.json`) with
+ * owner-only permissions, and keeps that file out of git. Never reachable from
+ * the browser-safe `index.ts` surface — imported only by the CLI's command
+ * modules.
+ *
+ * The file holds ONE credential, discriminated by `type`:
+ *   • `"oauth"` — written by `sidestep login`; refreshes and rotates.
+ *   • `"token"` — hand-authored; a meta-API bearer token plus the instance and
+ *     workspace it addresses. Never minted, refreshed, or rotated by the CLI.
+ *
+ * Both arms pin `workspace_id`, so `(instance, workspace)` is knowable from disk
+ * alone and no command needs a runtime workspace lookup.
  *
  * The write mirrors `src/lock/io.ts` `writeLockFile` (temp-file + rename so a
  * crash can't leave a half-written credential file) and adds mode 0600 and a
@@ -14,8 +23,9 @@ import { dirname, join, relative, resolve } from "node:path";
 import { atomicWrite } from "../util/atomic-write.js";
 import type { ParsedArgs } from "../emit/cli.js";
 
-/** One instance's cached OAuth credentials. */
-export interface TokenRecord {
+/** Credentials minted by `sidestep login` (OAuth 2.1 + PKCE). */
+export interface OAuthCredential {
+  type: "oauth";
   access_token: string;
   /** Present only when `offline_access` was granted. Rotated on every refresh. */
   refresh_token?: string;
@@ -25,11 +35,31 @@ export interface TokenRecord {
   scope?: string;
   /** Instance origin the token is bound to (read from the token's `aud` claim). */
   instance: string;
+  /** Numeric workspace the token consented to, pinned at login. */
+  workspace_id: number;
   /** Xano control-plane OAuth host the token was minted by (for refresh). */
   auth_host: string;
   /** OAuth client_id the token was minted under — required to refresh it. */
   client_id: string;
 }
+
+/**
+ * A hand-authored meta-API credential. Carries the same binding an OAuth record
+ * does — one instance, one workspace — but the token is opaque, long-lived, and
+ * user-managed: the CLI reads it and sends it, never refreshes or revokes it.
+ */
+export interface TokenCredential {
+  type: "token";
+  /** Instance origin the meta API is served from, normalized to a bare origin. */
+  instance_base_url: string;
+  /** Numeric workspace every command acts on. */
+  workspace_id: number;
+  /** Bearer token for `/api:meta` routes. */
+  meta_api_token: string;
+}
+
+/** The credential stored in `auth.json`, discriminated by `type`. */
+export type CredentialRecord = OAuthCredential | TokenCredential;
 
 /** Default project-local cache path. Resolved against the current directory. */
 const DEFAULT_AUTH_FILE = join(".xano", "auth.json");
@@ -43,13 +73,13 @@ export function globalAuthFilePath(): string {
   return process.env.XANO_GLOBAL_CONFIG ?? join(homedir(), ".sidestep", "auth.json");
 }
 
-/** The project-local token cache path (`./.xano/auth.json`), resolved absolute. */
+/** The project-local credential path (`./.xano/auth.json`), resolved absolute. */
 export function localAuthFilePath(): string {
   return resolve(DEFAULT_AUTH_FILE);
 }
 
 /**
- * Resolve the token cache path. Precedence, highest first:
+ * Resolve the credential file path. Precedence, highest first:
  *   1. `--config <path>` / `$XANO_CONFIG` — an explicit path always wins.
  *   2. `--local` — the project-local `./.xano/auth.json` cache.
  *   3. the shared `~/.sidestep/auth.json` global cache (the default).
@@ -79,11 +109,15 @@ export function resolveAuthFilePath(args: ParsedArgs, mode: "read" | "write" = "
 }
 
 /**
- * Read the cached credentials. Returns `null` — not a throw — when the file is
+ * Read the stored credential. Returns `null` — not a throw — when the file is
  * absent, so callers can emit an actionable "run `sidestep login`" message rather
  * than surfacing an opaque ENOENT.
+ *
+ * Anything present but unrecognized is a hard error naming the fix. A `token`
+ * record is hand-authored, so every field is validated here: a typo should fail
+ * at the file, not as a 404 deep inside a meta call.
  */
-export function readTokens(path: string): TokenRecord | null {
+export function readCredential(path: string): CredentialRecord | null {
   if (!existsSync(path)) return null;
   const text = readFileSync(path, "utf8");
   let parsed: unknown;
@@ -91,25 +125,132 @@ export function readTokens(path: string): TokenRecord | null {
     parsed = JSON.parse(text);
   } catch {
     throw new Error(
-      `Token cache at ${path} is corrupt (invalid JSON). Delete it and run \`sidestep login\` again.`,
+      `Credential file at ${path} is corrupt (invalid JSON). Delete it and run \`sidestep login\` again.`,
     );
   }
-  if (!isTokenRecord(parsed)) {
-    throw new Error(
-      `Token cache at ${path} is missing expected fields. Delete it and run \`sidestep login\` again.`,
-    );
-  }
-  return parsed;
+  return parseCredential(parsed, path);
 }
 
-/** Minimal structural check that a parsed value is a token record. */
-function isTokenRecord(v: unknown): v is TokenRecord {
-  return (
-    typeof v === "object" &&
-    v !== null &&
-    typeof (v as TokenRecord).access_token === "string" &&
-    typeof (v as TokenRecord).instance === "string"
+/**
+ * Is this parsed value a sidestep credential file — including a stale one?
+ *
+ * Used only by the write/delete guards, which answer "is this file OURS", not
+ * "is this file valid". A pre-typed record (no `type`, but the old
+ * `access_token` + `instance` shape) is ours: `login` must be able to overwrite
+ * it and `logout` to delete it, or the format break would strand users needing a
+ * manual `rm`. Reading it still fails loudly — see `parseCredential`.
+ */
+function isCredentialRecord(v: unknown): boolean {
+  if (typeof v !== "object" || v === null) return false;
+  const record = v as Record<string, unknown>;
+  if (record.type === "oauth" || record.type === "token") return true;
+  // Legacy (pre-`type`) OAuth cache.
+  return typeof record.access_token === "string" && typeof record.instance === "string";
+}
+
+/** Validate a parsed value into a credential, or throw naming the exact problem. */
+function parseCredential(v: unknown, path: string): CredentialRecord {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) {
+    throw new Error(`Credential file at ${path} is not a JSON object. ${REAUTH_HINT}`);
+  }
+  const record = v as Record<string, unknown>;
+  const type = record.type;
+
+  if (type === undefined) {
+    throw new Error(
+      `Credential file at ${path} has no \`type\` field — it predates the typed credential ` +
+        `format. Run \`sidestep login\` again to replace it.`,
+    );
+  }
+  if (type === "oauth") return parseOAuth(record, path);
+  if (type === "token") return parseToken(record, path);
+  throw new Error(
+    `Credential file at ${path} has an unrecognized \`type\` (${JSON.stringify(type)}). ` +
+      `Expected "oauth" or "token".`,
   );
+}
+
+const REAUTH_HINT = "Delete it and run `sidestep login` again.";
+
+function parseOAuth(record: Record<string, unknown>, path: string): OAuthCredential {
+  const at = `in the "oauth" credential at ${path}`;
+  if (typeof record.access_token !== "string" || record.access_token === "") {
+    throw new Error(`Missing \`access_token\` ${at}. ${REAUTH_HINT}`);
+  }
+  if (typeof record.instance !== "string" || record.instance === "") {
+    throw new Error(`Missing \`instance\` ${at}. ${REAUTH_HINT}`);
+  }
+  if (record.workspace_id === undefined) {
+    throw new Error(
+      `Missing \`workspace_id\` ${at} — it predates workspace pinning at login. ${REAUTH_HINT}`,
+    );
+  }
+  // `login` always writes both, and a refresh cannot be attempted without them —
+  // an empty default here would surface much later as an unintelligible URL
+  // error instead of "your credential is broken, sign in again".
+  if (typeof record.auth_host !== "string" || record.auth_host === "") {
+    throw new Error(`Missing \`auth_host\` ${at}. ${REAUTH_HINT}`);
+  }
+  if (typeof record.client_id !== "string" || record.client_id === "") {
+    throw new Error(`Missing \`client_id\` ${at}. ${REAUTH_HINT}`);
+  }
+  return {
+    type: "oauth",
+    access_token: record.access_token,
+    refresh_token: typeof record.refresh_token === "string" ? record.refresh_token : undefined,
+    // A missing expiry reads as "already expired", which triggers a refresh
+    // rather than handing out a token we cannot vouch for.
+    expires_at: typeof record.expires_at === "number" ? record.expires_at : 0,
+    scope: typeof record.scope === "string" ? record.scope : undefined,
+    instance: record.instance,
+    workspace_id: requireWorkspaceId(record.workspace_id, at),
+    auth_host: record.auth_host,
+    client_id: record.client_id,
+  };
+}
+
+function parseToken(record: Record<string, unknown>, path: string): TokenCredential {
+  const at = `in the "token" credential at ${path}`;
+  const raw = record.instance_base_url;
+  if (typeof raw !== "string" || raw === "") {
+    throw new Error(
+      `Missing \`instance_base_url\` ${at}. It must be the instance URL, ` +
+        `e.g. "https://your-instance.xano.io".`,
+    );
+  }
+  let origin: string;
+  try {
+    origin = new URL(raw).origin;
+  } catch {
+    throw new Error(
+      `\`instance_base_url\` ${at} is not a valid URL ("${raw}"), ` +
+        `e.g. "https://your-instance.xano.io".`,
+    );
+  }
+  const token = record.meta_api_token;
+  if (typeof token !== "string" || token.trim() === "") {
+    throw new Error(`Missing \`meta_api_token\` ${at}. It must be a meta API bearer token.`);
+  }
+  if (record.workspace_id === undefined) {
+    throw new Error(`Missing \`workspace_id\` ${at}. It must be the numeric workspace id.`);
+  }
+  return {
+    type: "token",
+    instance_base_url: origin,
+    workspace_id: requireWorkspaceId(record.workspace_id, at),
+    // A pasted token routinely carries stray whitespace or a newline.
+    meta_api_token: token.trim(),
+  };
+}
+
+/** A workspace id is a positive integer — never a numeric string, zero, or a float. */
+function requireWorkspaceId(value: unknown, at: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    throw new Error(
+      `\`workspace_id\` ${at} must be a positive integer (got ${JSON.stringify(value)}).`,
+    );
+  }
+  return value;
 }
 
 /**
@@ -117,47 +258,47 @@ function isTokenRecord(v: unknown): v is TokenRecord {
  * staged in a per-pid temp file (created mode 0600) and renamed into place, so
  * a crash never leaves a half-written or world-readable credential file.
  */
-export function writeTokens(path: string, tokens: TokenRecord): void {
+export function writeCredential(path: string, credential: CredentialRecord): void {
   // Guard against an `--config` typo clobbering an unrelated file (e.g.
-  // package.json): if the target already exists, it must already be a token
-  // cache before we overwrite it.
-  if (existsSync(path)) {
-    let existing: unknown;
-    try {
-      existing = JSON.parse(readFileSync(path, "utf8"));
-    } catch {
-      existing = undefined;
-    }
-    if (!isTokenRecord(existing)) {
-      throw new Error(
-        `Refusing to overwrite ${path}: it exists but is not a sidestep token cache. ` +
-          `Choose a different --config/$XANO_CONFIG path.`,
-      );
-    }
-  }
+  // package.json): if the target already exists, it must already be a sidestep
+  // credential before we overwrite it.
+  assertOursIfPresent(path, "overwrite");
   mkdirSync(dirname(path), { recursive: true });
-  atomicWrite(path, JSON.stringify(tokens, null, 2) + "\n", { mode: 0o600 });
+  atomicWrite(path, JSON.stringify(credential, null, 2) + "\n", { mode: 0o600 });
 }
 
 /**
- * Delete the token cache (logout). Returns true when a file was removed, false
- * when there was nothing to remove. Refuses to delete a file that isn't a
- * sidestep token cache, so a `--config` typo can't `rm` an unrelated file.
+ * Refuse to touch a file that exists but isn't one of ours, so a `--config`
+ * typo can't clobber or `rm` an unrelated file. Deliberately checks only the
+ * discriminator: a credential that fails full validation is still OURS, and
+ * must stay overwritable (by `login`) and deletable (by `logout`) — otherwise a
+ * stale pre-typed record would be unrecoverable without a manual `rm`.
  */
-export function clearTokens(path: string): boolean {
-  if (!existsSync(path)) return false;
+function assertOursIfPresent(path: string, verb: "overwrite" | "delete"): void {
+  if (!existsSync(path)) return;
   let existing: unknown;
   try {
     existing = JSON.parse(readFileSync(path, "utf8"));
   } catch {
+    // Unparseable: we can't prove it's ours, so treat it as someone else's.
     existing = undefined;
   }
-  if (!isTokenRecord(existing)) {
+  if (!isCredentialRecord(existing)) {
     throw new Error(
-      `Refusing to delete ${path}: it exists but is not a sidestep token cache. ` +
+      `Refusing to ${verb} ${path}: it exists but is not a sidestep credential file. ` +
         `Choose a different --config/$XANO_CONFIG path.`,
     );
   }
+}
+
+/**
+ * Delete the credential file (logout). Returns true when a file was removed,
+ * false when there was nothing to remove. Refuses to delete a file that isn't a
+ * sidestep credential, so a `--config` typo can't `rm` an unrelated file.
+ */
+export function clearCredential(path: string): boolean {
+  if (!existsSync(path)) return false;
+  assertOursIfPresent(path, "delete");
   rmSync(path);
   return true;
 }
@@ -174,14 +315,14 @@ function findGitRoot(startDir: string): string | undefined {
 }
 
 /**
- * Ensure the token file is ignored by git. Appends an entry to the project's
+ * Ensure the credential file is ignored by git. Appends an entry to the project's
  * `.gitignore` (creating it if absent) when no existing rule already covers the
  * file. Idempotent. Returns true when `.gitignore` was modified.
  *
  * The entry is the file's containing directory (e.g. `.xano/`) when that dir is
  * below the git root, otherwise the bare filename — so a dedicated `.xano/`
  * cache is ignored wholesale while a root-level custom `--config` ignores
- * just that file. A token file outside the repo tree (e.g. under $HOME) is left
+ * just that file. A credential outside the repo tree (e.g. under $HOME) is left
  * alone: there is nothing to gitignore.
  */
 export function ensureGitignored(authFilePath: string): boolean {

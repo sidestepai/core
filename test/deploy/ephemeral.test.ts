@@ -11,7 +11,12 @@ import {
   tenantBaseUrl,
 } from "../../src/deploy/ephemeral.js";
 
-const AUTH = { access_token: "acc-1", instance: "https://inst.example.com" };
+const AUTH = {
+  access_token: "acc-1",
+  instance: "https://inst.example.com",
+  workspaceId: 5,
+  credentialType: "oauth" as const,
+};
 
 function stub(body: unknown, status = 200) {
   const text = typeof body === "string" ? body : JSON.stringify(body);

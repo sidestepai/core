@@ -160,6 +160,15 @@ describe("sidestep login (end-to-end)", () => {
       if (url.includes("/.well-known/")) return oauthJson(DISCOVERY);
       if (url.includes("/oauth/register")) return oauthJson({ client_id: "dcr-xyz" });
       if (url.includes("/oauth/token")) return oauthJson({ token_type: "bearer", ...tokenBody });
+      // login PINS the numeric workspace, so it reads the guid→id mapping once.
+      if (url.includes("/api:meta/auth/me")) {
+        return oauthJson({
+          extras: {
+            oauth: { workspace: "ws-guid" },
+            instance: { membership: { workspace: [{ guid: "ws-guid", id: 42 }] } },
+          },
+        });
+      }
       throw new Error(`unexpected fetch in login test: ${url}`);
     });
   }
@@ -251,7 +260,7 @@ describe("sidestep login (end-to-end)", () => {
     await hitCallback(`${authUrl.searchParams.get("redirect_uri")}?code=c&state=${authUrl.searchParams.get("state")}`);
     await p;
     const out = stderr.join("");
-    expect(out).toMatch(new RegExp(`Tokens saved to ${authPath.replace(/[.\\/]/g, "\\$&")}`));
+    expect(out).toMatch(new RegExp(`Credentials saved to ${authPath.replace(/[.\\/]/g, "\\$&")}`));
     // The explicit path is neither the shared nor the project-local cache, so no scope claim.
     expect(out).not.toMatch(/shared ~\/\.sidestep cache/);
     expect(out).not.toMatch(/project-local \.xano cache/);

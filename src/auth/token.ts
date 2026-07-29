@@ -11,13 +11,14 @@ import lockfile from "proper-lockfile";
 import type { ParsedArgs } from "../emit/cli.js";
 import { OpenIdProvider, oauthErrorCode, decodeAudience, type RawTokens } from "./oauth.js";
 import {
-  readTokens,
-  writeTokens,
-  clearTokens,
+  readCredential,
+  writeCredential,
+  clearCredential,
   resolveAuthFilePath,
   globalAuthFilePath,
   localAuthFilePath,
-  type TokenRecord,
+  type CredentialRecord,
+  type OAuthCredential,
 } from "./store.js";
 import { resolveAuthHost, resolveScope, assertHttpsOrigin } from "./config.js";
 import { detail, warn, hostLabel } from "../emit/ui.js";
@@ -36,11 +37,34 @@ const REFRESH_LOCK_OPTS = {
   stale: 20_000,
 };
 
-/** A usable access token plus the instance it authorizes against. */
-export interface ResolvedAuth {
+/**
+ * The minimum any meta-API call needs: a bearer plus the origin it is valid for.
+ * Transports that address a route directly (deploy POSTs, the workspace-id
+ * lookup) take THIS, not {@link ResolvedAuth} — they have no business reading a
+ * workspace id, and one of them is what derives it.
+ */
+export interface BearerTarget {
   access_token: string;
   /** Instance origin the token is bound to (also the push URL host). */
   instance: string;
+}
+
+/**
+ * A usable bearer token plus the exact target it authorizes against.
+ *
+ * `workspaceId` is part of the credential, not a per-command choice: there is no
+ * `--workspace` flag and no other way to reach a workspace id, so a command
+ * physically cannot act on a workspace the credential is not bound to.
+ */
+export interface ResolvedAuth extends BearerTarget {
+  /** Numeric workspace every command acts on. */
+  workspaceId: number;
+  /**
+   * Which credential produced this. Reported by `workspace details` so a user
+   * can see what they are acting under before a command acts. `"oauth"` covers
+   * the CI refresh-grant path too — it is the same credential, minted per-run.
+   */
+  credentialType: "oauth" | "token";
 }
 
 /** Stamp an absolute `expires_at` onto a token-endpoint response (mirrors what the old hand-rolled `postToken` did). */
@@ -103,14 +127,18 @@ async function refreshWithRetry(
 }
 
 /**
- * Resolve an OAuth access token and the target instance. The instance is always
- * the one the token is bound to — chosen at consent during `login`, never a
- * flag.
+ * Resolve a bearer token and the target it authorizes against. The instance and
+ * workspace always come from the credential — chosen at consent during `login`
+ * or hand-authored in a `"token"` record. Never a flag.
  *
- * CI path: `XANO_REFRESH_TOKEN` set → exchange it; the target instance is read
- * back from the fresh token's `aud`. Nothing is read from or written to disk.
- * Interactive path: read the `login` token cache, refreshing + persisting the
- * rotated refresh token when the cached access token is stale.
+ * Three paths:
+ *   • CI (`XANO_REFRESH_TOKEN`) — exchange it; the instance is read back from
+ *     the fresh token's `aud` and the workspace resolved from the meta API,
+ *     since there is no stored record to read either from. No disk I/O.
+ *   • `"oauth"` credential — refresh + persist the rotated refresh token when
+ *     the cached access token is stale; the workspace was pinned at login.
+ *   • `"token"` credential — everything is already on disk. No refresh, no
+ *     network call, no write.
  */
 export async function getAccessToken(args: ParsedArgs): Promise<ResolvedAuth> {
   const envRefresh = process.env.XANO_REFRESH_TOKEN;
@@ -145,69 +173,116 @@ export async function getAccessToken(args: ParsedArgs): Promise<ResolvedAuth> {
       );
     }
     assertHttpsOrigin(instance, "instance");
-    return { access_token: set.access_token, instance };
+    // No stored record on this path, so the workspace must be resolved live.
+    const { resolveScopedWorkspaceId } = await import("../deploy/workspace.js");
+    const workspaceId = await resolveScopedWorkspaceId({ access_token: set.access_token, instance });
+    return { access_token: set.access_token, instance, workspaceId, credentialType: "oauth" };
   }
 
   const authFilePath = resolveAuthFilePath(args);
-  const saved = readTokens(authFilePath);
+  const saved = readCredential(authFilePath);
   if (!saved) {
     throw new Error(
-      `Not signed in (no token cache at ${authFilePath}). ` +
+      `Not signed in (no credential at ${authFilePath}). ` +
         `Run \`sidestep login\` first, or set XANO_REFRESH_TOKEN for CI.`,
     );
   }
 
   warnIfLocalShadowsGlobal(args, authFilePath, saved);
 
+  // A hand-authored meta-API token is already complete: it never expires from
+  // our point of view, never refreshes, and is never written back.
+  if (saved.type === "token") {
+    assertHttpsOrigin(saved.instance_base_url, "instance_base_url");
+    return {
+      access_token: saved.meta_api_token,
+      instance: saved.instance_base_url,
+      workspaceId: saved.workspace_id,
+      credentialType: "token",
+    };
+  }
+
   const instance = saved.instance;
   assertHttpsOrigin(instance, "instance");
 
   if (Date.now() < saved.expires_at - EXPIRY_SKEW_MS) {
-    return { access_token: saved.access_token, instance };
+    return {
+      access_token: saved.access_token,
+      instance,
+      workspaceId: saved.workspace_id,
+      credentialType: "oauth",
+    };
   }
 
   return refreshUnderLock(authFilePath, saved);
 }
 
+/** The `(instance, workspace)` a credential addresses, regardless of arm. */
+function targetOf(credential: CredentialRecord): { instance: string; workspaceId: number } {
+  return credential.type === "token"
+    ? { instance: credential.instance_base_url, workspaceId: credential.workspace_id }
+    : { instance: credential.instance, workspaceId: credential.workspace_id };
+}
+
 /**
- * Loud guard against a stale project-local cache silently shadowing the global
- * default. Pre-4.1.0 releases wrote `./.xano/auth.json` by default, so an old
- * project dir can still hold a leftover local cache; read mode prefers it over
- * the global one, which — if the two are bound to DIFFERENT instances — would
- * point a full-replace deploy at the wrong instance with no visible sign.
+ * Loud guard against a project-local credential silently shadowing the global
+ * default. Read mode prefers a local `./.xano/auth.json` over the global one,
+ * which — if the two address DIFFERENT targets — would point a full-replace
+ * deploy at the wrong place with no visible sign.
+ *
+ * Compares the whole `(instance, workspace)` target, across arms: a local
+ * `"token"` credential shadowing a global `"oauth"` one is the same hazard, and
+ * is now more likely since both types share the file. A divergent workspace on
+ * the same instance is just as damaging as a divergent instance.
  *
  * Only fires for the *default* resolution (no `--config`/`$XANO_CONFIG`, no
- * `--local`) that landed on the local cache while a divergent global cache also
+ * `--local`) that landed on the local file while a divergent global one also
  * exists. An explicit path or `--local` is a deliberate choice and stays quiet.
  */
-function warnIfLocalShadowsGlobal(args: ParsedArgs, resolved: string, saved: TokenRecord): void {
+function warnIfLocalShadowsGlobal(args: ParsedArgs, resolved: string, saved: CredentialRecord): void {
   const isDefaultResolution = args.authFile === undefined && process.env.XANO_CONFIG === undefined && !args.local;
   if (!isDefaultResolution || resolved !== localAuthFilePath()) return;
   const globalPath = globalAuthFilePath();
   if (globalPath === resolved) return;
-  const globalSaved = readTokens(globalPath);
-  if (globalSaved && globalSaved.instance !== saved.instance) {
-    warn(
-      `Using project-local ${resolved} (bound to ${hostLabel(saved.instance)}), but a global ` +
-        `cache bound to ${hostLabel(globalSaved.instance)} also exists — the local cache wins. ` +
-        `Remove ./.xano/auth.json (or pass --config) to use the global credential instead.`,
-    );
+
+  // A broken/stale global credential must not blow up a run that isn't using it.
+  let globalSaved: CredentialRecord | null = null;
+  try {
+    globalSaved = readCredential(globalPath);
+  } catch {
+    return;
   }
+  if (!globalSaved) return;
+
+  const here = targetOf(saved);
+  const there = targetOf(globalSaved);
+  if (here.instance === there.instance && here.workspaceId === there.workspaceId) return;
+
+  warn(
+    `Using project-local ${resolved} (${hostLabel(here.instance)}, workspace ${here.workspaceId}), ` +
+      `but a global credential for ${hostLabel(there.instance)}, workspace ${there.workspaceId} ` +
+      `also exists — the local one wins. Remove ./.xano/auth.json (or pass --config) to use the ` +
+      `global credential instead.`,
+  );
 }
 
 /**
- * Refresh + persist the token cache while holding a cross-process advisory lock.
+ * Refresh + persist the oauth credential while holding a cross-process advisory lock.
  * After acquiring the lock we RE-READ the cache: if a concurrent `push`
  * refreshed while we waited, we use its result instead of spending our
  * now-stale refresh token a second time.
  */
-async function refreshUnderLock(authFilePath: string, saved: TokenRecord): Promise<ResolvedAuth> {
+async function refreshUnderLock(authFilePath: string, saved: OAuthCredential): Promise<ResolvedAuth> {
   const release = await lockfile.lock(authFilePath, REFRESH_LOCK_OPTS);
   try {
-    const current = readTokens(authFilePath) ?? saved;
+    // Re-read, but only trust it if it's still the same arm: a concurrent
+    // process could have replaced the file with a hand-authored credential.
+    const reread = readCredential(authFilePath);
+    const current = reread?.type === "oauth" ? reread : saved;
     const instance = current.instance;
+    const workspaceId = current.workspace_id;
     if (Date.now() < current.expires_at - EXPIRY_SKEW_MS) {
-      return { access_token: current.access_token, instance };
+      return { access_token: current.access_token, instance, workspaceId, credentialType: "oauth" };
     }
     if (!current.refresh_token) {
       throw new Error(
@@ -225,7 +300,7 @@ async function refreshUnderLock(authFilePath: string, saved: TokenRecord): Promi
       // spent credentials so the next run starts a clean login rather than
       // retrying with a token the AS will keep rejecting.
       if (oauthErrorCode(err) === "invalid_grant") {
-        clearTokens(authFilePath);
+        clearCredential(authFilePath);
         throw new Error(
           `Session for ${instance} has expired or was revoked (the refresh token was rejected). ` +
             `Run \`sidestep login\` to sign in again.`,
@@ -249,14 +324,14 @@ async function refreshUnderLock(authFilePath: string, saved: TokenRecord): Promi
     }
     const stamped = stampExpiry(set);
     // Persist the rotated refresh token — the old one is now spent.
-    writeTokens(authFilePath, {
+    writeCredential(authFilePath, {
       ...current,
       access_token: stamped.access_token,
       refresh_token: stamped.refresh_token ?? current.refresh_token,
       expires_at: stamped.expires_at,
       scope: stamped.scope ?? current.scope,
     });
-    return { access_token: stamped.access_token, instance };
+    return { access_token: stamped.access_token, instance, workspaceId, credentialType: "oauth" };
   } finally {
     await release();
   }

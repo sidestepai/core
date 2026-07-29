@@ -12,23 +12,47 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  readTokens,
-  writeTokens,
+  readCredential,
+  writeCredential,
+  clearCredential,
   resolveAuthFilePath,
   ensureGitignored,
-  type TokenRecord,
+  type OAuthCredential,
+  type TokenCredential,
 } from "../../src/auth/store.js";
 import { parseArgs } from "../../src/emit/cli.js";
 
-const record: TokenRecord = {
+const record: OAuthCredential = {
+  type: "oauth",
   access_token: "acc",
   refresh_token: "ref",
   expires_at: 1_700_000_000_000,
   scope: "offline_access workspace:write",
   instance: "https://x8ki.xano.io",
+  workspace_id: 12,
   auth_host: "https://app.xano.com",
   client_id: "dcr-abc",
 };
+
+const tokenRecord: TokenCredential = {
+  type: "token",
+  instance_base_url: "https://x8ki.xano.io",
+  workspace_id: 7,
+  meta_api_token: "meta-abc",
+};
+
+/** Write a raw JSON body to `path` — the hand-authored / stale-file cases. */
+function writeRaw(path: string, body: unknown): string {
+  writeFileSync(path, JSON.stringify(body));
+  return path;
+}
+
+/** A copy of `record` with one field dropped — the "missing field" cases. */
+function without<T extends object>(record: T, key: keyof T): Partial<T> {
+  const copy = { ...record };
+  delete copy[key];
+  return copy;
+}
 
 describe("auth store", () => {
   let dir: string;
@@ -43,56 +67,178 @@ describe("auth store", () => {
     delete process.env.XANO_GLOBAL_CONFIG;
   });
 
-  it("round-trips a token record through write/read", () => {
+  it("round-trips an oauth credential through write/read", () => {
     const path = join(dir, ".xano", "auth.json");
-    writeTokens(path, record);
-    expect(readTokens(path)).toEqual(record);
+    writeCredential(path, record);
+    expect(readCredential(path)).toEqual(record);
   });
 
-  it("creates the token file with 0600 permissions", () => {
+  it("round-trips a token credential through write/read", () => {
     const path = join(dir, ".xano", "auth.json");
-    writeTokens(path, record);
+    writeCredential(path, tokenRecord);
+    expect(readCredential(path)).toEqual(tokenRecord);
+  });
+
+  it("creates the credential file with 0600 permissions", () => {
+    const path = join(dir, ".xano", "auth.json");
+    writeCredential(path, record);
     expect(statSync(path).mode & 0o777).toBe(0o600);
   });
 
   it("leaves no temp residue after an overwrite", () => {
     const path = join(dir, "auth.json");
-    writeTokens(path, record);
-    writeTokens(path, { ...record, access_token: "acc2" });
-    expect(readTokens(path)?.access_token).toBe("acc2");
+    writeCredential(path, record);
+    writeCredential(path, { ...record, access_token: "acc2" });
+    const read = readCredential(path);
+    expect(read?.type === "oauth" && read.access_token).toBe("acc2");
     const leftovers = readdirSync(dir).filter((f) => f.includes(".tmp-"));
     expect(leftovers).toEqual([]);
   });
 
   it("returns null for a missing file", () => {
-    expect(readTokens(join(dir, "nope.json"))).toBeNull();
+    expect(readCredential(join(dir, "nope.json"))).toBeNull();
   });
 
-  it("throws an actionable error on a corrupt token file", () => {
+  it("throws an actionable error on a corrupt credential file", () => {
     const path = join(dir, "auth.json");
     writeFileSync(path, "{ not json");
-    expect(() => readTokens(path)).toThrow(/corrupt/i);
+    expect(() => readCredential(path)).toThrow(/corrupt/i);
   });
 
-  it("throws when a token file is valid JSON but missing required fields", () => {
-    const path = join(dir, "auth.json");
-    writeFileSync(path, JSON.stringify({ hello: "world" }));
-    expect(() => readTokens(path)).toThrow(/missing expected fields/i);
+  it("rejects a legacy untyped record, naming `sidestep login` as the fix", () => {
+    // A pre-4.1.8 cache: valid JSON, right fields, but no `type` discriminator.
+    const path = writeRaw(join(dir, "auth.json"), {
+      access_token: "acc",
+      instance: "https://x8ki.xano.io",
+      expires_at: 1,
+    });
+    expect(() => readCredential(path)).toThrow(/no `type` field/);
+    expect(() => readCredential(path)).toThrow(/sidestep login/);
   });
 
-  it("refuses to overwrite an existing non-token-cache file", () => {
+  it("rejects an unrecognized `type`", () => {
+    const path = writeRaw(join(dir, "auth.json"), { type: "saml", instance: "https://x.xano.io" });
+    expect(() => readCredential(path)).toThrow(/unrecognized `type`/);
+  });
+
+  it("rejects a non-object credential file", () => {
+    const path = writeRaw(join(dir, "auth.json"), ["not", "an", "object"]);
+    expect(() => readCredential(path)).toThrow(/not a JSON object/);
+  });
+
+  describe("oauth arm validation", () => {
+    it("rejects an oauth record with no workspace_id (predates pinning)", () => {
+      const path = writeRaw(join(dir, "auth.json"), without(record, "workspace_id"));
+      expect(() => readCredential(path)).toThrow(/workspace_id/);
+      expect(() => readCredential(path)).toThrow(/sidestep login/);
+    });
+
+    it.each(["auth_host", "client_id"] as const)(
+      "rejects an oauth record missing %s — a refresh could not be attempted without it",
+      (field) => {
+        const path = writeRaw(join(dir, `${field}.json`), without(record, field));
+        expect(() => readCredential(path)).toThrow(new RegExp(field));
+      },
+    );
+
+    it("rejects an oauth record missing access_token or instance", () => {
+      const a = writeRaw(join(dir, "a.json"), without(record, "access_token"));
+      expect(() => readCredential(a)).toThrow(/access_token/);
+      const b = writeRaw(join(dir, "b.json"), without(record, "instance"));
+      expect(() => readCredential(b)).toThrow(/instance/);
+    });
+  });
+
+  describe("token arm validation", () => {
+    it.each(["meta_api_token", "instance_base_url", "workspace_id"] as const)(
+      "rejects a token record missing %s, naming the field",
+      (field) => {
+        const path = writeRaw(join(dir, `${field}.json`), without(tokenRecord, field));
+        expect(() => readCredential(path)).toThrow(new RegExp(field));
+      },
+    );
+
+    it("rejects an unparseable instance_base_url", () => {
+      const path = writeRaw(join(dir, "auth.json"), {
+        ...tokenRecord,
+        instance_base_url: "x8ki.xano.io",
+      });
+      expect(() => readCredential(path)).toThrow(/not a valid URL/);
+    });
+
+    it("normalizes instance_base_url to a bare origin", () => {
+      const path = writeRaw(join(dir, "auth.json"), {
+        ...tokenRecord,
+        instance_base_url: "https://x8ki.xano.io/api:meta/?x=1",
+      });
+      const read = readCredential(path);
+      expect(read?.type === "token" && read.instance_base_url).toBe("https://x8ki.xano.io");
+    });
+
+    it("trims whitespace off a pasted meta_api_token", () => {
+      const path = writeRaw(join(dir, "auth.json"), {
+        ...tokenRecord,
+        meta_api_token: "  meta-abc\n",
+      });
+      const read = readCredential(path);
+      expect(read?.type === "token" && read.meta_api_token).toBe("meta-abc");
+    });
+
+    it("rejects a blank meta_api_token", () => {
+      const path = writeRaw(join(dir, "auth.json"), { ...tokenRecord, meta_api_token: "   " });
+      expect(() => readCredential(path)).toThrow(/meta_api_token/);
+    });
+  });
+
+  it.each([0, -1, 1.5, "3", null])("rejects workspace_id %o", (workspace_id) => {
+    const path = writeRaw(join(dir, "auth.json"), { ...tokenRecord, workspace_id });
+    expect(() => readCredential(path)).toThrow(/positive integer/);
+  });
+
+  it("refuses to overwrite or delete an existing non-credential file", () => {
     const path = join(dir, "package.json");
     writeFileSync(path, JSON.stringify({ name: "important" }));
-    expect(() => writeTokens(path, record)).toThrow(/not a sidestep token cache/i);
+    expect(() => writeCredential(path, record)).toThrow(/not a sidestep credential file/i);
+    expect(() => clearCredential(path)).toThrow(/not a sidestep credential file/i);
     // The original file is untouched.
     expect(JSON.parse(readFileSync(path, "utf8")).name).toBe("important");
   });
 
-  it("overwrites an existing token cache in place", () => {
+  it("refuses to overwrite an unparseable file it cannot prove is ours", () => {
+    const path = join(dir, "mystery.bin");
+    // Deliberately not text: we cannot prove it is ours, so we must not touch it.
+    writeFileSync(path, Buffer.from([0x00, 0x01, 0x02]));
+    expect(() => writeCredential(path, record)).toThrow(/not a sidestep credential file/i);
+  });
+
+  it("lets `login` overwrite — and `logout` delete — a stale legacy record", () => {
+    // The format break must not strand users needing a manual `rm`: reading it
+    // fails loudly, but the file is still recognizably ours.
+    const path = writeRaw(join(dir, "auth.json"), {
+      access_token: "old",
+      instance: "https://old.xano.io",
+    });
+    writeCredential(path, record);
+    expect(readCredential(path)).toEqual(record);
+
+    writeRaw(path, { access_token: "old", instance: "https://old.xano.io" });
+    expect(clearCredential(path)).toBe(true);
+    expect(existsSync(path)).toBe(false);
+  });
+
+  it("clearCredential removes a token credential and reports a missing file", () => {
     const path = join(dir, "auth.json");
-    writeTokens(path, record);
-    writeTokens(path, { ...record, access_token: "acc2" });
-    expect(readTokens(path)?.access_token).toBe("acc2");
+    writeCredential(path, tokenRecord);
+    expect(clearCredential(path)).toBe(true);
+    expect(existsSync(path)).toBe(false);
+    expect(clearCredential(path)).toBe(false);
+  });
+
+  it("overwrites an existing credential in place", () => {
+    const path = join(dir, "auth.json");
+    writeCredential(path, record);
+    writeCredential(path, tokenRecord);
+    expect(readCredential(path)).toEqual(tokenRecord);
   });
 
   it("resolveAuthFilePath honors flag > env > --local > default (global)", () => {
@@ -132,11 +278,11 @@ describe("auth store", () => {
       expect(resolveAuthFilePath(parseArgs(["push"]))).toBe(globalPath);
 
       // Only the global cache exists → use it.
-      writeTokens(globalPath, record);
+      writeCredential(globalPath, record);
       expect(resolveAuthFilePath(parseArgs(["push"]))).toBe(globalPath);
 
       // A project-local cache takes precedence over the global one.
-      writeTokens(localPath, record);
+      writeCredential(localPath, record);
       expect(resolveAuthFilePath(parseArgs(["push"]))).toBe(localPath);
 
       // …but an explicit --local always targets the project cache.

@@ -49,11 +49,13 @@ function writeTokenFile(dir: string): string {
   writeFileSync(
     path,
     JSON.stringify({
+      type: "oauth",
       access_token: "acc-cached",
       refresh_token: "ref-cached",
       expires_at: Date.now() + 3_600_000,
       scope: "workspace:read",
       instance: INSTANCE,
+      workspace_id: 42,
       auth_host: "https://app.xano.com",
       client_id: "dcr-abc",
     }),
@@ -109,7 +111,7 @@ describe("resolveOutputTarget", () => {
 describe("fetchSandboxMultidoc", () => {
   afterEach(() => vi.restoreAllMocks());
 
-  const auth = { access_token: "acc-1", instance: INSTANCE };
+  const auth = { access_token: "acc-1", instance: INSTANCE, workspaceId: 5, credentialType: "oauth" as const };
 
   it("GETs /api:meta/sandbox/multidoc with a bearer token and no query params, returning the raw body", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(MULTIDOC, { status: 200 }));

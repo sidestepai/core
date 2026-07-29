@@ -2,7 +2,12 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { importWorkspaceArchive } from "../../src/deploy/import.js";
 import { encodeWorkspaceArchive } from "../../src/validate/archive.js";
 
-const AUTH = { access_token: "acc-1", instance: "https://parent.example.com" };
+const AUTH = {
+  access_token: "acc-1",
+  instance: "https://parent.example.com",
+  workspaceId: 5,
+  credentialType: "oauth" as const,
+};
 const archive = encodeWorkspaceArchive(JSON.stringify({ app: "xano", type: "workspace", payload: {} }));
 
 function stub(body: string, status = 200) {
