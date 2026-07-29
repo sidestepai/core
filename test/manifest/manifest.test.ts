@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildManifest, renderLlmsTxt, OVERRIDDEN_SURFACES } from "../../src/manifest/manifest.js";
+import { buildManifest, renderLlmsTxt, OVERRIDDEN_SURFACES, KIND_DESCRIPTORS } from "../../src/manifest/manifest.js";
 import { s } from "../../src/statements/s.js";
 import { GENERATED_SPECS } from "../../src/statements/generated/specs.generated.js";
 import { registeredKinds } from "../../src/kinds/kind.js";
@@ -43,7 +43,11 @@ describe("manifest", () => {
 
   it("reports honest coverage", () => {
     expect(m.coverage.statements).toEqual({ implemented: TOTAL_STATEMENTS, total: TOTAL_STATEMENTS });
-    expect(m.coverage.objectKinds).toEqual({ implemented: 12, total: 24 });
+    // 12 published kinds. The realtime family is built and registered but
+    // carries `unpublished: true`, so it is deliberately absent from the
+    // catalog and from this numerator until it ships.
+    // 30 = the engine catalog after the realtime kinds landed upstream (was 24).
+    expect(m.coverage.objectKinds).toEqual({ implemented: 12, total: 30 });
   });
 
   it("every statement sPath resolves to a real callable leaf under s", () => {
@@ -81,7 +85,31 @@ describe("manifest", () => {
       expect(k.registered).toBe(true);
       expect(registered.get(k.kind)).toBe(k.payloadKey);
     }
-    expect(m.objectKinds).toHaveLength(registered.size);
+    // The published catalog plus the withheld descriptors must together account
+    // for every registered kind — that is what keeps the drift guard meaningful
+    // while a kind is unpublished. A kind registered with NO descriptor at all
+    // still fails here.
+    const withheld = KIND_DESCRIPTORS.filter((d) => d.unpublished);
+    expect(m.objectKinds.length + withheld.length).toBe(registered.size);
+    for (const d of withheld) {
+      expect(registered.has(d.kind), `withheld kind ${d.kind} is not registered`).toBe(true);
+    }
+  });
+
+  it("withholds exactly the kinds that are not ready to ship, and leaks none of them", () => {
+    // The guard on the release gate itself: an accidental publish (or an
+    // accidental withholding) shows up here rather than in a shipped llms.txt.
+    const withheld = KIND_DESCRIPTORS.filter((d) => d.unpublished).map((d) => d.kind);
+    expect(withheld.sort()).toEqual(["channel", "message", "realtime_server"]);
+
+    const llms = renderLlmsTxt(m);
+    const published = JSON.stringify(m) + llms;
+    for (const factory of ["realtimeServer", "realtimeChannel", "realtimeMessage", "realtimeServerTrigger", "channelTrigger"]) {
+      expect(published, `${factory} must not reach the published surface`).not.toContain(factory);
+    }
+    for (const method of ["registerRealtimeServers", "registerRealtimeChannels", "registerRealtimeMessages"]) {
+      expect(published).not.toContain(method);
+    }
   });
 
   it("every object kind carries a non-empty description, rendered into the llms.txt catalog", () => {

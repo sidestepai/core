@@ -23,8 +23,13 @@ import {
 // drives the agent-grounding manifest); re-exported here for the coverage tests.
 export { STATEMENT_SURFACES, TOTAL_STATEMENTS, IMPLEMENTED_STATEMENTS };
 
-/** Engine catalog sizes (cloud-client: script/kind/schema/{core,statement}). */
-export const TOTAL_OBJECT_KINDS = 24;
+/**
+ * Engine catalog sizes. The kind total moved 24 -> 30 when the realtime family
+ * landed upstream (a realtime server, a channel, a message, and their lifecycle
+ * trigger types). The denominator tracks the platform, not this SDK — leaving it
+ * at 24 would have quietly inflated the coverage claim.
+ */
+export const TOTAL_OBJECT_KINDS = 30;
 
 /** Object kinds sidestep implements (each registered + tested). */
 export const IMPLEMENTED_KINDS = [
@@ -40,6 +45,9 @@ export const IMPLEMENTED_KINDS = [
   "middleware",
   "addon",
   "workspace",
+  "realtime_server",
+  "channel",
+  "message",
 ];
 
 export interface CoverageReport {

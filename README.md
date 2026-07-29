@@ -1498,7 +1498,7 @@ the real Xano engine golden fixtures, and a coverage report prints on every test
 
 | Surface | Coverage |
 |---|---|
-| Object kinds | **12 / 24** — `function`, `table`, `query`, `api_group`, all 6 `trigger`s, `tool`, `mcp_server`, `agent`, `task`, `middleware`, `addon`, `workspace` |
+| Object kinds | **12 / 30** — `function`, `table`, `query`, `api_group`, all 6 `trigger`s, `tool`, `mcp_server`, `agent`, `task`, `middleware`, `addon`, `workspace` |
 | Statements (via `s`) | **214 / 214 (100%)** — every engine statement surface has a factory |
 
 The statement catalog is generated from the engine's own schema YAMLs (`npm run codegen`),

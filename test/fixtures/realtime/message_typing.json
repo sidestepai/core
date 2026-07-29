@@ -1,0 +1,31 @@
+{
+  "name": "typing",
+  "description": "Ephemeral typing indicator",
+  "active": true,
+  "channel": {
+    "id": "9bb29e80f77fab4de53acde9fbd3b925"
+  },
+  "server": {
+    "id": "ffbd76434e93bfccd084347fd40922bb"
+  },
+  "auth": false,
+  "deliver_to": "others",
+  "input": [],
+  "output": [],
+  "middleware": {
+    "pre_customize": false,
+    "post_customize": false,
+    "pre": [],
+    "post": []
+  },
+  "run": [],
+  "result": [],
+  "history": {
+    "inherit": true,
+    "enabled": false,
+    "limit": 100
+  },
+  "disabled": false,
+  "tag": [],
+  "guid": "55c316092217c707a00da8f5731b0567"
+}

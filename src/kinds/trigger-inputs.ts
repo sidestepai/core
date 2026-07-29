@@ -21,12 +21,21 @@ import { input, encodeInput } from "../inputs/input.js";
 import type { InputDescriptor } from "../inputs/input.js";
 import { f } from "../fields/catalog.js";
 
-/** The five stored trigger `obj_type`s. `agent`/`mcpServer` both map to `toolset`. */
+/**
+ * The stored trigger `obj_type`s. `agent`/`mcpServer` both map to `toolset`.
+ *
+ * `workspace_realtime_channel` is the LEGACY realtime channel trigger and stays
+ * as-is; `realtime_server` and `channel` are the current realtime lifecycle
+ * types (server connect/disconnect, channel join/leave). They are distinct
+ * obj_types, not a replacement — v1 and v2 coexist.
+ */
 export type TriggerInputObjType =
   | "database"
   | "toolset"
   | "workspace"
   | "workspace_realtime_channel"
+  | "realtime_server"
+  | "channel"
   | "error";
 
 /**
@@ -40,6 +49,21 @@ const ERROR_EVENT_DESCRIPTION =
   'snapshot dedup window). "regression" fires when a previously-fixed signature ' +
   "re-occurs (the fix didn't hold, or the same bug regressed back). \"fixed\" " +
   "fires when a user marks a signature as fixed.";
+
+/**
+ * The connecting-client input shared by both realtime lifecycle trigger types
+ * (`realtime_server` connect/disconnect and `channel` join/leave). `permissions`
+ * is what gates the client's realtime row/table access.
+ */
+function realtimeClientInput(): InputDescriptor {
+  return input.object(
+    {
+      extras: f.json(),
+      permissions: f.object({ dbo_id: f.int(), row_id: f.text() }, { required: true }),
+    },
+    { required: true },
+  );
+}
 
 /** Named descriptor map → encoded input array (in declared order). */
 function encodeAll(map: Record<string, InputDescriptor>): InputXdo[] {
@@ -102,6 +126,24 @@ const CATALOG: Record<TriggerInputObjType, () => Record<string, InputDescriptor>
     ),
     options: input.object({ authenticated: f.bool(), channel: f.text() }),
     payload: input.json({ required: true, nullable: true }),
+  }),
+
+  // Realtime SERVER lifecycle trigger — connect/disconnect on a realtime server.
+  // Mirrors the engine's stored input array exactly: the action enum carries NO
+  // default (unlike the legacy channel trigger's `"message"`), and `client` is
+  // the same connecting-client object both realtime lifecycle types use.
+  realtime_server: () => ({
+    action: input.enum(["connect", "disconnect"], { required: true }),
+    realtime_server: input.text({ required: true }),
+    client: realtimeClientInput(),
+  }),
+
+  // Realtime CHANNEL lifecycle trigger — join/leave on a channel. Same shape as
+  // the server type with the addressed channel path in place of the server name.
+  channel: () => ({
+    action: input.enum(["join", "leave"], { required: true }),
+    channel: input.text({ required: true }),
+    client: realtimeClientInput(),
   }),
 
   // Error trigger — the error signature schema (verbatim from buildErrorTriggerInputSchema).

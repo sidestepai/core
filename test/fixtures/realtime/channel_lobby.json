@@ -1,0 +1,34 @@
+{
+  "name": "lobby",
+  "description": "The single shared lobby",
+  "active": true,
+  "server": {
+    "id": "ffbd76434e93bfccd084347fd40922bb"
+  },
+  "input": [],
+  "anonymous_clients": false,
+  "presence": true,
+  "publish": {
+    "who": "authenticated",
+    "direct": false
+  },
+  "conversation": {
+    "enabled": false,
+    "limit": 0,
+    "ttl": 0
+  },
+  "delivery": {
+    "guarantee": "at_most_once",
+    "per_recipient": false
+  },
+  "rate_limit": {
+    "messages_per_minute": 0
+  },
+  "history": {
+    "inherit": true,
+    "message_enabled": false,
+    "message_limit": 100
+  },
+  "tag": [],
+  "guid": "f5bbe2e120f164841c2916a3daa7c66c"
+}

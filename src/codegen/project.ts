@@ -77,6 +77,9 @@ const RESERVED_SYMBOLS: readonly string[] = [
   "agent",
   "workspaceConfig",
   "addon",
+  "realtimeServer",
+  "realtimeChannel",
+  "realtimeMessage",
   "workspace",
   // value helpers emitted inside def literals
   "s",
@@ -501,7 +504,14 @@ function barrel(
 
   for (const decoder of KIND_DECODERS) {
     if (decoder.name === "workspace") continue;
-    const members = placements.filter((p) => p.object.kind === decoder.name);
+    // Register in PAYLOAD order, not placement order. `placements` is grouped by
+    // file, so every `_shared.ts` member of a kind would otherwise be registered
+    // ahead of the members that got their own file — silently reordering that
+    // payload section on re-export. It only ever went unnoticed because the
+    // shared member of each kind also happened to come first in its section.
+    const members = placements
+      .filter((p) => p.object.kind === decoder.name)
+      .sort((a, b) => a.object.position - b.object.position);
     if (members.length === 0) continue;
     for (const member of members) {
       imports.use(`./${member.path.replace(/\.ts$/, ".js")}`, member.symbol);

@@ -26,8 +26,22 @@ import { defaultHistory } from "./common.js";
 /** The scalar authoring surface for request history. Omit to inherit. */
 export type HistoryInput = boolean | number | "all";
 
-/** Container-tier prefixes: an API group parents queries, a toolset parents tools. */
-export type ContainerPrefix = "query" | "tool";
+/**
+ * Container-tier prefixes: an API group parents queries, a toolset parents
+ * tools, and a realtime server / channel parents messages.
+ */
+export type ContainerPrefix = "query" | "tool" | "message";
+
+/**
+ * Whether a container tier is ON when nothing is authored. Query and tool
+ * containers default on; the realtime tier defaults **off** — message history
+ * is a hot path, so the engine keeps it opt-in.
+ */
+export const CONTAINER_DEFAULT_ENABLED: Readonly<Record<ContainerPrefix, boolean>> = {
+  query: true,
+  tool: true,
+  message: false,
+};
 
 /**
  * A container tier's stored history block — `{ inherit, <prefix>_enabled,
@@ -83,9 +97,9 @@ export function encodeHistory(objType: string, input?: HistoryInput): HistoryBlo
 
 /**
  * Container-tier history block (`{ inherit, <prefix>_enabled, <prefix>_limit }`).
- * Both container types (query via app, tool via toolset) default ON, so the
- * omit path emits `inherit:true, <prefix>_enabled:true, <prefix>_limit:100`
- * (which normalizes away — byte-identical to the previous hardcoded defaults).
+ * The omit path emits `inherit:true` plus the tier's own engine default (see
+ * {@link CONTAINER_DEFAULT_ENABLED}) at `limit:100` — on for query (via app) and
+ * tool (via toolset), off for message (via realtime server / channel).
  */
 export function encodeContainerHistory<P extends ContainerPrefix>(
   prefix: P,
@@ -93,7 +107,7 @@ export function encodeContainerHistory<P extends ContainerPrefix>(
 ): ContainerHistoryBlock<P> {
   const { inherit, enabled, limit } =
     input === undefined
-      ? { inherit: true, enabled: true, limit: 100 }
+      ? { inherit: true, enabled: CONTAINER_DEFAULT_ENABLED[prefix], limit: 100 }
       : { inherit: false, ...scalarToEnabledLimit(input) };
   return {
     inherit,

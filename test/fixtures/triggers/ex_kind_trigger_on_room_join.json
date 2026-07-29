@@ -1,0 +1,307 @@
+{
+  "name": "ex_kind_trigger_on_room_join",
+  "active": true,
+  "description": "",
+  "obj_id": "9bb29e80f77fab4de53acde9fbd3b925",
+  "obj_type": "channel",
+  "history": {
+    "inherit": true,
+    "enabled": false,
+    "limit": 100
+  },
+  "output": [],
+  "meta": {
+    "channel": {
+      "action": {
+        "join": true,
+        "leave": false
+      }
+    }
+  },
+  "tag": [],
+  "input": [
+    {
+      "name": "action",
+      "type": "enum",
+      "_xsid": "",
+      "nullable": false,
+      "default": "",
+      "merge": false,
+      "hidden": [],
+      "override": [],
+      "customize": {},
+      "required": true,
+      "values": [
+        "join",
+        "leave"
+      ],
+      "mode": "",
+      "format": "",
+      "sensitive": false,
+      "list": {
+        "min": "",
+        "max": ""
+      },
+      "vector": {
+        "size": 3
+      },
+      "access": "public",
+      "style": {
+        "type": "single"
+      },
+      "children": [],
+      "methods": [],
+      "market_item": {
+        "id": 0,
+        "version": 0,
+        "guid": ""
+      },
+      "is_settings_registry": false,
+      "description": ""
+    },
+    {
+      "name": "channel",
+      "type": "text",
+      "_xsid": "",
+      "nullable": false,
+      "default": "",
+      "merge": false,
+      "hidden": [],
+      "override": [],
+      "customize": {},
+      "required": true,
+      "values": [],
+      "mode": "",
+      "format": "",
+      "sensitive": false,
+      "list": {
+        "min": "",
+        "max": ""
+      },
+      "vector": {
+        "size": 3
+      },
+      "access": "public",
+      "style": {
+        "type": "single"
+      },
+      "children": [],
+      "methods": [],
+      "market_item": {
+        "id": 0,
+        "version": 0,
+        "guid": ""
+      },
+      "is_settings_registry": false,
+      "description": ""
+    },
+    {
+      "name": "client",
+      "type": "obj",
+      "_xsid": "",
+      "nullable": false,
+      "default": "",
+      "merge": false,
+      "hidden": [],
+      "override": [],
+      "customize": {},
+      "required": true,
+      "values": [],
+      "mode": "",
+      "format": "",
+      "sensitive": false,
+      "list": {
+        "min": "",
+        "max": ""
+      },
+      "vector": {
+        "size": 3
+      },
+      "access": "public",
+      "style": {
+        "type": "single"
+      },
+      "children": [
+        {
+          "name": "extras",
+          "type": "json",
+          "_xsid": "",
+          "nullable": false,
+          "default": "",
+          "merge": false,
+          "hidden": [],
+          "override": [],
+          "customize": {},
+          "required": false,
+          "values": [],
+          "mode": "",
+          "format": "",
+          "sensitive": false,
+          "list": {
+            "min": "",
+            "max": ""
+          },
+          "vector": {
+            "size": 3
+          },
+          "access": "public",
+          "style": {
+            "type": "single"
+          },
+          "children": [],
+          "methods": [],
+          "market_item": {
+            "id": 0,
+            "version": 0,
+            "guid": ""
+          },
+          "is_settings_registry": false,
+          "description": ""
+        },
+        {
+          "name": "permissions",
+          "type": "obj",
+          "_xsid": "",
+          "nullable": false,
+          "default": "",
+          "merge": false,
+          "hidden": [],
+          "override": [],
+          "customize": {},
+          "required": true,
+          "values": [],
+          "mode": "",
+          "format": "",
+          "sensitive": false,
+          "list": {
+            "min": "",
+            "max": ""
+          },
+          "vector": {
+            "size": 3
+          },
+          "access": "public",
+          "style": {
+            "type": "single"
+          },
+          "children": [
+            {
+              "name": "dbo_id",
+              "type": "int",
+              "_xsid": "",
+              "nullable": false,
+              "default": "",
+              "merge": false,
+              "hidden": [],
+              "override": [],
+              "customize": {},
+              "required": false,
+              "values": [],
+              "mode": "",
+              "format": "",
+              "sensitive": false,
+              "list": {
+                "min": "",
+                "max": ""
+              },
+              "vector": {
+                "size": 3
+              },
+              "access": "public",
+              "style": {
+                "type": "single"
+              },
+              "children": [],
+              "methods": [],
+              "market_item": {
+                "id": 0,
+                "version": 0,
+                "guid": ""
+              },
+              "is_settings_registry": false,
+              "description": ""
+            },
+            {
+              "name": "row_id",
+              "type": "text",
+              "_xsid": "",
+              "nullable": false,
+              "default": "",
+              "merge": false,
+              "hidden": [],
+              "override": [],
+              "customize": {},
+              "required": false,
+              "values": [],
+              "mode": "",
+              "format": "",
+              "sensitive": false,
+              "list": {
+                "min": "",
+                "max": ""
+              },
+              "vector": {
+                "size": 3
+              },
+              "access": "public",
+              "style": {
+                "type": "single"
+              },
+              "children": [],
+              "methods": [],
+              "market_item": {
+                "id": 0,
+                "version": 0,
+                "guid": ""
+              },
+              "is_settings_registry": false,
+              "description": ""
+            }
+          ],
+          "methods": [],
+          "market_item": {
+            "id": 0,
+            "version": 0,
+            "guid": ""
+          },
+          "is_settings_registry": false,
+          "description": ""
+        }
+      ],
+      "methods": [],
+      "market_item": {
+        "id": 0,
+        "version": 0,
+        "guid": ""
+      },
+      "is_settings_registry": false,
+      "description": ""
+    }
+  ],
+  "run": [
+    {
+      "as": "",
+      "name": "mvp:debug_log",
+      "_xsid": "",
+      "addon": [],
+      "input": [],
+      "mocks": {},
+      "output": {
+        "items": [],
+        "filters": [],
+        "customize": false
+      },
+      "context": {
+        "value": "channel",
+        "tag": "input",
+        "filters": []
+      },
+      "runtime": null,
+      "disabled": false,
+      "description": "",
+      "settings_registry": null
+    }
+  ],
+  "result": [],
+  "guid": "2495edcf4e1b595c455142d0c6cd1588"
+}

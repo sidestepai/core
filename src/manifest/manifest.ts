@@ -28,7 +28,7 @@ import { FILTER_NAMES, FILTER_SPECS } from "../values/generated/filters.generate
 import { FIELD_METHODS } from "../fields/generated/field-methods.generated.js";
 
 /** Total engine object kinds. */
-export const TOTAL_OBJECT_KINDS = 24;
+export const TOTAL_OBJECT_KINDS = 30;
 
 /** A statement field, flattened from its generated spec rule. */
 export interface ManifestField {
@@ -81,6 +81,8 @@ export interface ManifestSubKind {
   objType: string;
   /** Rich "what this primitive does" descriptor, in the style of a top-level kind. */
   description: string;
+  /** Built and registered, but withheld from the published catalog — see {@link ManifestKind.unpublished}. */
+  unpublished?: boolean;
 }
 
 /** One top-level object kind. */
@@ -104,6 +106,17 @@ export interface ManifestKind {
    * `trigger` uses this today.
    */
   subKinds?: ManifestSubKind[];
+  /**
+   * Built and registered, but deliberately withheld from the published agent
+   * surface — kept out of the emitted manifest, out of `llms.txt`, and out of
+   * the coverage numerator.
+   *
+   * This is a *release* gate, not a completeness gate. The kind still has a
+   * descriptor here so the "descriptors match the live kind registry" drift
+   * guard keeps covering it; it just does not ship in the catalog yet. Flip the
+   * flag off to publish — nothing else needs to change.
+   */
+  unpublished?: boolean;
 }
 
 /** A value constructor / helper. */
@@ -340,7 +353,7 @@ const CLI_COMMANDS: readonly ManifestCliCommand[] = [
  * manifest test asserts payload keys match `registeredKinds()`. `mcp_server` and
  * `agent` are distinct kinds that both persist under the `toolset` payload key.
  */
-const KIND_DESCRIPTORS: ReadonlyArray<Omit<ManifestKind, "registered">> = [
+export const KIND_DESCRIPTORS: ReadonlyArray<Omit<ManifestKind, "registered">> = [
   { kind: "function", payloadKey: "function", authorFactory: "defineFunction", description: "Reusable server-side logic (a custom function) callable from any stack via `s.function.run`.", registerMethod: "registerFunctions" },
   { kind: "table", payloadKey: "dbo", authorFactory: "table", description: "A database table: typed columns (`f.*`), indexes, and views; the schema other kinds read and write.", registerMethod: "registerTables" },
   { kind: "query", payloadKey: "query", authorFactory: "query", description: "An HTTP API endpoint (verb + path) bound to an API group; the main request/response surface.", registerMethod: "registerQueries" },
@@ -354,6 +367,8 @@ const KIND_DESCRIPTORS: ReadonlyArray<Omit<ManifestKind, "registered">> = [
     subKinds: [
       { authorFactory: "tableTrigger", objType: "database", description: "Fires when rows change on a bound table (insert/update/delete/truncate). The changed row is exposed as `t.new`/`t.old`, typed to the table when a `table()` handle is bound. Config-only (no response)." },
       { authorFactory: "realtimeTrigger", objType: "workspace_realtime_channel", description: "Fires on realtime channel activity (message/join); inspect the channel, connecting client, options, and payload via `t`. Response-bearing — defaults to echoing the payload." },
+      { authorFactory: "realtimeServerTrigger", objType: "realtime_server", description: "Fires when a client connects to or disconnects from a realtime server; inspect the connecting client and its permissions via `t`. Bind with `realtimeServer`. Response-bearing.", unpublished: true },
+      { authorFactory: "channelTrigger", objType: "channel", description: "Fires when a client joins or leaves a channel; inspect the addressed channel path and the client via `t`. Bind with a `realtimeChannel()` handle (a bare path is ambiguous across servers). Response-bearing.", unpublished: true },
       { authorFactory: "mcpServerTrigger", objType: "toolset", description: "Fires when an MCP client connects to a bound MCP server; gate or annotate the exposed tools via `t.toolset`/`t.tools`. Response-bearing." },
       { authorFactory: "agentTrigger", objType: "toolset", description: "Fires when a client connects to a bound agent; gate or annotate its toolset via `t.toolset`/`t.tools`. Response-bearing." },
       { authorFactory: "workspaceTrigger", objType: "workspace", description: "Fires on branch lifecycle events (branch new/merge/live); inspect the from/to branch and action via `t`. Config-only." },
@@ -366,6 +381,9 @@ const KIND_DESCRIPTORS: ReadonlyArray<Omit<ManifestKind, "registered">> = [
   { kind: "task", payloadKey: "task", authorFactory: "task", description: "A scheduled background job (cron/interval) that runs a stack on a timer.", registerMethod: "registerTasks" },
   { kind: "middleware", payloadKey: "middleware", authorFactory: "middleware", description: "A reusable pre/post stack attached to a query/function/task/tool/API group to run before or after its own logic.", registerMethod: "registerMiddleware" },
   { kind: "addon", payloadKey: "addon", authorFactory: "addon", description: "A reusable read fragment that enriches a query result by joining related table data.", registerMethod: "registerAddons" },
+  { kind: "realtime_server", payloadKey: "realtime_server", authorFactory: "realtimeServer", description: "A realtime (websocket) server: the canonical-addressed container that owns realtime channels. Off until `enabled: true`.", registerMethod: "registerRealtimeServers", unpublished: true },
+  { kind: "channel", payloadKey: "channel", authorFactory: "realtimeChannel", description: "A realtime channel: a joinable path on a realtime server (`rooms/{room_id}`) with typed path params, join/publish policy, a client-visible conversation transcript, and delivery semantics. Owns message handlers.", registerMethod: "registerRealtimeChannels", unpublished: true },
+  { kind: "message", payloadKey: "message", authorFactory: "realtimeMessage", description: "A realtime message handler: a named message type on a channel with its own typed payload and stack — the realtime analogue of a query. Pass the `realtimeChannel()` handle as `channel` and the owning server comes with it.", registerMethod: "registerRealtimeMessages", unpublished: true },
   { kind: "workspace", payloadKey: "workspace", authorFactory: "workspaceConfig", description: "Workspace-level configuration such as default middleware chains and request-history defaults per host kind.", registerMethod: "registerWorkspace" },
 ];
 
@@ -517,9 +535,14 @@ function fieldsOf(spec: StatementSpec): ManifestField[] {
 
 /** Build the full authoring manifest from the SDK's sources of truth. */
 export function buildManifest(opts: { version?: string } = {}): Manifest {
-  const objectKinds: ManifestKind[] = KIND_DESCRIPTORS.map((d) => ({
+  // `unpublished` descriptors are dropped here, so they reach neither the
+  // emitted manifest, nor `llms.txt`, nor the coverage numerator below.
+  const objectKinds: ManifestKind[] = KIND_DESCRIPTORS.filter((d) => !d.unpublished).map((d) => ({
     ...d,
     registered: isRegisteredKind(d.kind),
+    // A published kind can still have unpublished sub-kinds (the two realtime
+    // lifecycle trigger types under `trigger`), so filter that level too.
+    ...(d.subKinds ? { subKinds: d.subKinds.filter((sub) => !sub.unpublished) } : {}),
   }));
 
   const statements: ManifestStatement[] = STATEMENT_SURFACES.map(([surface, storedName]) => {

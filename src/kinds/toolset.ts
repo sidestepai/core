@@ -39,8 +39,7 @@ import { resolveRef } from "../refs/guid.js";
 import type { ObjectRef } from "../refs/guid.js";
 import { resolveAuthRef } from "../refs/auth.js";
 import type { AuthRef } from "../refs/auth.js";
-import { lockKey } from "../lock/lock.js";
-import { getLockedCanonical } from "../lock/store.js";
+import { resolveCanonicalToken } from "./canonical.js";
 
 // ---------- tool ----------
 
@@ -230,19 +229,7 @@ export function resolveToolsetCanonical(
   def: { name: string; canonical?: string },
   override?: string,
 ): string {
-  if (override) return override;
-  if (typeof def.canonical === "string" && def.canonical !== "") return def.canonical;
-  const locked = getLockedCanonical(lockKey("toolset", def.name));
-  if (locked) return locked;
-  throw new Error(
-    `toolset "${def.name}": cannot resolve the \`canonical\` URL token. ` +
-      `Set an explicit \`canonical\` in code, or run \`sidestep export --lock\` once (it ` +
-      `mints a unique canonical and freezes it in xano.lock) and seed that lock before ` +
-      `importing defs — the CLI does this automatically. As a last resort pass one ` +
-      `directly (e.g. \`getPath({ canonical: "..." })\`). (Minting here is unsafe — ` +
-      `canonicals must be unique per instance across all workspaces, so they are only ` +
-      `generated at locked export.)`,
-  );
+  return resolveCanonicalToken("toolset", "toolset", "getPath", def, override);
 }
 
 /**

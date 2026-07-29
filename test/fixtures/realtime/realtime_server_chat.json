@@ -1,0 +1,13 @@
+{
+  "name": "ex_kind_chat_server",
+  "description": "Team chat over websockets",
+  "canonical": "",
+  "enabled": true,
+  "history": {
+    "inherit": true,
+    "message_enabled": false,
+    "message_limit": 100
+  },
+  "tag": [],
+  "guid": "ffbd76434e93bfccd084347fd40922bb"
+}

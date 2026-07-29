@@ -13,7 +13,14 @@ import { middlewareEntryGuid, stackReferencesAuth } from "../kinds/middleware-at
 import { deriveGuid, resolveRef, REFERENCEABLE_KINDS } from "../refs/guid.js";
 import { buildBundle } from "./export.js";
 import type { Bundle, BundleType, PayloadArrayKey } from "./export.js";
-import { lockKey, mintCanonical, recordObserved, WORKSPACE_KEY, WORKSPACE_REALTIME_KEY } from "../lock/lock.js";
+import {
+  CANONICAL_PAYLOAD_KEYS,
+  lockKey,
+  mintCanonical,
+  recordObserved,
+  WORKSPACE_KEY,
+  WORKSPACE_REALTIME_KEY,
+} from "../lock/lock.js";
 import type { LockExportContext } from "../lock/lock.js";
 import type { FunctionDef } from "../function/define.js";
 import type { TableDef } from "../kinds/table.js";
@@ -60,9 +67,13 @@ export class Xano {
       // rename / matches an existing workspace object); otherwise derive a
       // stable one from the display name. Guid type is the migrate type
       // (== payloadKey), e.g. table → "dbo".
+      // A kind whose identity is not `md5("<payloadKey>:<name>")` declares
+      // `guidOf` (the realtime family — a channel path is unique only per
+      // server, a message name only per channel, so the name alone would make
+      // two distinct objects share one guid and collapse onto one row).
       const explicit = (def as { guid?: string }).guid;
       if (obj.guid === undefined && typeof obj.name === "string") {
-        obj.guid = explicit ?? deriveGuid(kind.payloadKey, obj.name);
+        obj.guid = explicit ?? kind.guidOf?.(def) ?? deriveGuid(kind.payloadKey, obj.name);
       }
     }
     return encoded;
@@ -149,6 +160,18 @@ export class Xano {
 
   registerAddons(defs: unknown[]): this {
     return this.register("addon", defs);
+  }
+
+  registerRealtimeServers(defs: unknown[]): this {
+    return this.register("realtime_server", defs);
+  }
+
+  registerRealtimeChannels(defs: unknown[]): this {
+    return this.register("channel", defs);
+  }
+
+  registerRealtimeMessages(defs: unknown[]): this {
+    return this.register("message", defs);
   }
 
   /**
@@ -393,7 +416,9 @@ export class Xano {
       }
       return undefined;
     };
-    for (const key of ["app", "toolset"] as const) {
+    // Driven by the shared canonical-bearing set rather than a literal list, so
+    // a kind that gains a canonical participates in minting automatically.
+    for (const key of CANONICAL_PAYLOAD_KEYS as Set<PayloadArrayKey>) {
       for (const obj of sections[key] ?? []) {
         if (!obj || typeof obj !== "object") continue;
         const o = obj as { name?: unknown; guid?: unknown; canonical?: unknown };

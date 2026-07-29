@@ -39,10 +39,14 @@ import { buildTriggerHandle } from "./trigger-handle.js";
 import type {
   FieldAccessor,
   RealtimeInputs,
+  RealtimeServerTriggerInputs,
+  ChannelTriggerInputs,
   ToolsetInputs,
   WorkspaceInputs,
   ErrorInputs,
 } from "./trigger-handle.js";
+import { realtimeChannelGuid } from "./realtime-channel.js";
+import type { RealtimeChannelDef } from "./realtime-channel.js";
 
 /** The stored trigger `obj_type` (identical set to {@link TriggerInputObjType}). */
 export type TriggerObjType = TriggerInputObjType;
@@ -61,6 +65,16 @@ export interface WorkspaceActions {
 export interface RealtimeActions {
   message?: boolean;
   join?: boolean;
+}
+/** Realtime SERVER lifecycle actions (obj_type=realtime_server). */
+export interface RealtimeServerActions {
+  connect?: boolean;
+  disconnect?: boolean;
+}
+/** Realtime CHANNEL lifecycle actions (obj_type=channel). */
+export interface ChannelActions {
+  join?: boolean;
+  leave?: boolean;
 }
 
 // --- Database handle typing (U4) ---
@@ -262,6 +276,91 @@ export function realtimeTrigger(
     stack: args.stack?.(t) ?? [],
     // Xano default (updateResult): echo the `payload` input back.
     response: args.response ? args.response(t) : inp("payload"),
+  };
+}
+
+/**
+ * Realtime server lifecycle trigger (obj_type=realtime_server) — fires when a
+ * client connects to or disconnects from a realtime server. Response-bearing.
+ *
+ * Bind the target with `realtimeServer` (a `realtimeServer()` handle or its
+ * name); it resolves to the server's guid at export, so the binding survives a
+ * `--reset` deploy. A raw numeric `objId` stays the escape hatch.
+ *
+ * Its `meta` carries only its own action group — unlike the four-group skeleton
+ * the pre-realtime trigger types emit. That is the engine's stored shape for
+ * this type, verified against its own record, not an omission.
+ */
+export function realtimeServerTrigger(
+  args: CommonArgs & {
+    realtimeServer?: ObjectRef;
+    actions?: RealtimeServerActions;
+    stack?: (t: RealtimeServerTriggerInputs) => Statement[];
+    response?: (t: RealtimeServerTriggerInputs) => ResponseDef;
+  },
+): TriggerDef {
+  const t = buildTriggerHandle("realtime_server") as unknown as RealtimeServerTriggerInputs;
+  return {
+    name: args.name,
+    guid: args.guid,
+    description: args.description,
+    active: args.active,
+    tags: args.tags,
+    objId:
+      args.realtimeServer !== undefined
+        ? resolveRef("realtime_server", args.realtimeServer)
+        : args.objId,
+    objType: "realtime_server",
+    hasResult: true,
+    meta: {
+      realtime_server: {
+        action: {
+          connect: args.actions?.connect ?? false,
+          disconnect: args.actions?.disconnect ?? false,
+        },
+      },
+    },
+    stack: args.stack?.(t) ?? [],
+    response: args.response?.(t),
+  };
+}
+
+/**
+ * Realtime channel lifecycle trigger (obj_type=channel) — fires when a client
+ * joins or leaves a channel. Response-bearing.
+ *
+ * Bind the target with `channel` (a `realtimeChannel()` handle, which also
+ * carries its server) — a bare channel path is NOT accepted here, because a
+ * path is unique only within a server and would bind ambiguously.
+ */
+export function channelTrigger(
+  args: CommonArgs & {
+    channel?: RealtimeChannelDef;
+    actions?: ChannelActions;
+    stack?: (t: ChannelTriggerInputs) => Statement[];
+    response?: (t: ChannelTriggerInputs) => ResponseDef;
+  },
+): TriggerDef {
+  const t = buildTriggerHandle("channel") as unknown as ChannelTriggerInputs;
+  return {
+    name: args.name,
+    guid: args.guid,
+    description: args.description,
+    active: args.active,
+    tags: args.tags,
+    objId: args.channel !== undefined ? realtimeChannelGuid(args.channel) : args.objId,
+    objType: "channel",
+    hasResult: true,
+    meta: {
+      channel: {
+        action: {
+          join: args.actions?.join ?? false,
+          leave: args.actions?.leave ?? false,
+        },
+      },
+    },
+    stack: args.stack?.(t) ?? [],
+    response: args.response?.(t),
   };
 }
 

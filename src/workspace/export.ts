@@ -36,6 +36,12 @@ export const PAYLOAD_ARRAY_KEYS = [
   "tool",
   "toolset",
   "app",
+  // Realtime, in dependency order: a channel resolves its server, and a message
+  // resolves both. They sit after `app` so every object they can reference
+  // (tables for auth, api groups) is already in place.
+  "realtime_server",
+  "channel",
+  "message",
   "vault",
   "market_item",
   "run_install",

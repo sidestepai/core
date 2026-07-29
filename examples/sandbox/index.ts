@@ -23,6 +23,15 @@ import { nightlyCleanup } from "./kinds/task.js";
 import { rateLimit, publicRateLimit } from "./kinds/middleware.js";
 import { authorAddon } from "./kinds/addon.js";
 import { wsConfig } from "./kinds/workspaceConfig.js";
+import {
+  chatServer,
+  lobbyChannel,
+  roomChannel,
+  sendMessage,
+  typingMessage,
+  onChatConnect,
+  onRoomJoin,
+} from "./kinds/realtime.js";
 
 // The examples span many def-object kinds; register* buckets are typed per kind.
 const defs = (xs: unknown[]) => xs as never[];
@@ -33,10 +42,13 @@ export default workspace("sidestep-examples")
   .registerTables(defs([users, posts, productTable, ...autoTables]))
   .registerFunctions(defs([doubleFn, addFunction, ...autoFunctions]))
   .registerQueries(defs([getUserQuery, askAssistant, classifyTicket, ...autoQueries]))
-  .registerTriggers(defs([onUserInsert, onMessage, onBranchLive]))
+  .registerTriggers(defs([onUserInsert, onMessage, onBranchLive, onChatConnect, onRoomJoin]))
   .registerTools(defs([searchTool]))
   .registerMcpServers(defs([exampleMcpServer]))
   .registerAgents(defs([assistant, classifier]))
   .registerTasks(defs([nightlyCleanup]))
   .registerMiddleware(defs([rateLimit, publicRateLimit]))
-  .registerAddons(defs([authorAddon]));
+  .registerAddons(defs([authorAddon]))
+  .registerRealtimeServers(defs([chatServer]))
+  .registerRealtimeChannels(defs([lobbyChannel, roomChannel]))
+  .registerRealtimeMessages(defs([sendMessage, typingMessage]));

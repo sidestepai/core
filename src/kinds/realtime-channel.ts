@@ -1,0 +1,213 @@
+/**
+ * Realtime channel (`channel`) — the middle tier of
+ * `realtime_server -> channel -> message`, the realtime analogue of an API
+ * group.
+ *
+ * A channel is addressed by a PATH, not a plain name: `"rooms"` is one channel,
+ * `"rooms/{room_id}"` is one channel per room whose `room_id` is bound and
+ * validated at join time exactly as a query's path parameters are. Both may
+ * coexist under one server, and a literal segment beats a parameter when a join
+ * is matched — so `"rooms/lobby"` and `"rooms/{room_id}"` are two distinct
+ * channels, not a conflict.
+ *
+ * The `input` map here types the channel PATH parameters. It is NOT the message
+ * payload — that is `realtimeMessage({ input })`. Both reach the stack.
+ *
+ * A channel path is unique only WITHIN its server, so `server` is required and
+ * is part of the channel's identity (see `realtimeChannelSeedName`).
+ */
+import type { InputXdo } from "../types/xdo.js";
+import { encodeInput } from "../inputs/input.js";
+import type { InputDescriptor } from "../inputs/input.js";
+import { registerKind } from "./kind.js";
+import type { ObjectKind } from "./kind.js";
+import { encodeTags } from "./common.js";
+import {
+  encodeContainerHistory,
+  type ContainerHistoryBlock,
+  type HistoryInput,
+} from "./history.js";
+import { deriveGuid, realtimeChannelSeedName } from "../refs/guid.js";
+import type { RealtimeServerDef } from "./realtime-server.js";
+
+/** A reference to the owning realtime server: its `realtimeServer()` handle, or its name. */
+export type RealtimeServerRef = string | (Pick<RealtimeServerDef, "name"> & { guid?: string });
+
+/** The name of the referenced server — the component channel/message identity is composed from. */
+export function realtimeServerRefName(context: string, server: RealtimeServerRef): string {
+  const name = typeof server === "string" ? server : server?.name;
+  if (!name) {
+    throw new Error(`${context}: \`server\` is required — a channel path is unique only within its realtime server.`);
+  }
+  return name;
+}
+
+/** Resolve the owning server reference to its guid (an explicit `guid` on the handle wins). */
+export function resolveRealtimeServerRef(context: string, server: RealtimeServerRef): string {
+  if (typeof server !== "string" && server?.guid) return server.guid;
+  return deriveGuid("realtime_server", realtimeServerRefName(context, server));
+}
+
+/** Who may publish to a channel. */
+export type ChannelPublishWho = "nobody" | "anyone" | "authenticated";
+
+/**
+ * Delivery guarantee. `at_least_once` changes the TRANSPORT — a briefly
+ * disconnected client must not miss messages, which fire-and-forget pub/sub
+ * cannot provide — so it is a meaningfully heavier setting than a flag.
+ */
+export type ChannelDeliveryGuarantee = "at_most_once" | "at_least_once";
+
+export interface ChannelPublishDef {
+  /** Who may publish. Defaults to `"nobody"`. */
+  who?: ChannelPublishWho;
+  /** Whether clients may address each other directly. Defaults to `false`. */
+  direct?: boolean;
+}
+
+/**
+ * The client-visible TRANSCRIPT — "I rejoined `rooms/42`, send me the last 50
+ * messages". A joiner always receives the retained transcript when this is
+ * enabled; there is deliberately no separate replay toggle.
+ *
+ * Distinct from `history`, which is EXECUTION history for the debugger.
+ */
+export interface ChannelConversationDef {
+  /** Retain and replay a transcript. Defaults to `false`. */
+  enabled?: boolean;
+  /** Messages retained. `0` (the default) retains none. */
+  limit?: number;
+  /** Seconds before a retained message expires. `0` (the default) means no expiry. */
+  ttl?: number;
+}
+
+export interface ChannelDeliveryDef {
+  /** Defaults to `"at_most_once"`. */
+  guarantee?: ChannelDeliveryGuarantee;
+  /**
+   * Run the before-deliver hook once PER RECIPIENT — a stack on the hot path,
+   * on every node that holds a recipient. Off by default; the cost is real.
+   */
+  perRecipient?: boolean;
+}
+
+export interface ChannelRateLimitDef {
+  /** `0` (the default) means unlimited. */
+  messagesPerMinute?: number;
+}
+
+export interface RealtimeChannelDef<I extends Record<string, InputDescriptor> = Record<string, InputDescriptor>> {
+  /**
+   * The channel PATH, e.g. `"rooms"` or `"rooms/{room_id}"`. A `{param}`
+   * segment makes the channel dynamic; declare each such segment in `input`.
+   */
+  name: string;
+  /** Explicit Xano `guid` (this object's identity). Defaults to a guid derived from `<server>|<path>`. */
+  guid?: string;
+  /** The owning realtime server — a `realtimeServer()` handle, or its name. Required. */
+  server: RealtimeServerRef;
+  description?: string;
+  /** Whether the channel accepts joins. Defaults to `true`. */
+  active?: boolean;
+  /**
+   * Typed PATH parameters, bound at join time. Joining `"rooms/42"` against
+   * `"rooms/{room_id}"` yields `room_id = 42`, coerced and validated by the
+   * declared type. Distinct from a message's `input`, which types the payload.
+   */
+  input?: I;
+  /** Admit clients with no auth token. Defaults to `false`. */
+  anonymousClients?: boolean;
+  /** Track and expose channel membership. Defaults to `false`. */
+  presence?: boolean;
+  publish?: ChannelPublishDef;
+  conversation?: ChannelConversationDef;
+  delivery?: ChannelDeliveryDef;
+  rateLimit?: ChannelRateLimitDef;
+  /**
+   * Channel-level message-history default — the container tier this channel's
+   * messages inherit (stored `message_enabled`/`message_limit`). Omit to
+   * inherit from the server, then branch/workspace. Defaults **off**.
+   */
+  history?: HistoryInput;
+  /** Workspace tags (stored `tag: [{tag}]`). */
+  tags?: string[];
+}
+
+export interface RealtimeChannelXdo {
+  name: string;
+  description: string;
+  active: boolean;
+  /** The owning server — `id` carries the resolved guid (the engine remaps it on import). */
+  server: { id: number | string };
+  input: InputXdo[];
+  anonymous_clients: boolean;
+  presence: boolean;
+  publish: { who: ChannelPublishWho; direct: boolean };
+  conversation: { enabled: boolean; limit: number; ttl: number };
+  delivery: { guarantee: ChannelDeliveryGuarantee; per_recipient: boolean };
+  rate_limit: { messages_per_minute: number };
+  history: ContainerHistoryBlock<"message">;
+  tag: Array<{ tag: string }>;
+}
+
+export function encodeRealtimeChannel(def: RealtimeChannelDef): RealtimeChannelXdo {
+  if (!def.name) throw new Error("realtimeChannel: `name` is required (the channel path).");
+  const context = `realtimeChannel "${def.name}"`;
+  return {
+    name: def.name,
+    description: def.description ?? "",
+    active: def.active ?? true,
+    server: { id: resolveRealtimeServerRef(context, def.server) },
+    input: Object.entries(def.input ?? {}).map(([name, d]) => encodeInput(name, d)),
+    anonymous_clients: def.anonymousClients ?? false,
+    presence: def.presence ?? false,
+    publish: {
+      who: def.publish?.who ?? "nobody",
+      direct: def.publish?.direct ?? false,
+    },
+    conversation: {
+      enabled: def.conversation?.enabled ?? false,
+      limit: def.conversation?.limit ?? 0,
+      ttl: def.conversation?.ttl ?? 0,
+    },
+    delivery: {
+      guarantee: def.delivery?.guarantee ?? "at_most_once",
+      per_recipient: def.delivery?.perRecipient ?? false,
+    },
+    rate_limit: { messages_per_minute: def.rateLimit?.messagesPerMinute ?? 0 },
+    history: encodeContainerHistory("message", def.history),
+    tag: encodeTags(def.tags),
+  };
+}
+
+export const realtimeChannelKind: ObjectKind<RealtimeChannelDef, RealtimeChannelXdo> = {
+  name: "channel",
+  payloadKey: "channel",
+  encode: encodeRealtimeChannel,
+  guidOf: (def) => realtimeChannelGuid(def),
+};
+registerKind(realtimeChannelKind);
+
+/**
+ * Author a realtime channel — a joinable path on a realtime server that owns
+ * message handlers.
+ *
+ * Pass the returned handle (not a bare path) to `realtimeMessage({ channel })`:
+ * the handle carries the owning server, so the message resolves both refs
+ * without repeating it.
+ */
+export function realtimeChannel<const I extends Record<string, InputDescriptor>>(
+  def: RealtimeChannelDef<I>,
+): RealtimeChannelDef<I> {
+  return def;
+}
+
+/** The guid a channel def resolves to — composed from its server and its path. */
+export function realtimeChannelGuid(def: Pick<RealtimeChannelDef, "name" | "server" | "guid">): string {
+  if (def.guid) return def.guid;
+  const context = `realtimeChannel "${def.name}"`;
+  return deriveGuid(
+    "channel",
+    realtimeChannelSeedName(realtimeServerRefName(context, def.server), def.name),
+  );
+}
