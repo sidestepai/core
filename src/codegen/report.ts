@@ -32,22 +32,59 @@ export type ReportCategory =
    * a decode failure, and without a line here the only way to tell them apart is
    * to go read the workspace.
    */
-  | "empty-source";
+  | "empty-source"
+  /**
+   * The stored form was a superseded one and the tree emits the CURRENT form
+   * instead. Not a failure and not a silent cleanup: the whole reason this has
+   * its own category is that a modernization can change what a value evaluates
+   * to, so it has to be visible without being alarming. Warning severity —
+   * "read this line and confirm you want it", not "this output is broken".
+   */
+  | "modernized";
+
+/**
+ * How much a category should worry the reader.
+ *
+ * The report used to carry categories only, which left every consumer to invent
+ * its own split — the CLI hardcoded "everything except expected-omission is a
+ * problem", and the sweep tool kept a second list that could disagree with it.
+ * Severity is that judgment, made once, here.
+ */
+export type ReportSeverity =
+  /** The generated tree does not reproduce its source. Acting on it is unsafe. */
+  | "error"
+  /** Faithful, but degraded or changed in a way that wants a human glance. */
+  | "warning"
+  /** Purely informational — nothing to decide, nothing to fix. */
+  | "notice";
 
 /**
  * Category display order and label — ordered by severity, so the entries that
  * mean "this output is wrong" sit above the ones that mean "this output is ugly".
  * Stable regardless of insertion order.
  */
-const CATEGORY_LABELS: ReadonlyArray<readonly [ReportCategory, string]> = [
-  ["verify-mismatch", "Round-trip mismatches"],
-  ["unresolved-ref", "References that could not be resolved"],
-  ["raw-fallback", "Statements emitted as raw() passthroughs"],
-  ["unsupported-section", "Unsupported payload sections"],
-  ["value-fallback", "Values emitted as annotated literals"],
-  ["expected-omission", "Deliberately not carried into the tree"],
-  ["empty-source", "Objects that were already empty in the source"],
+const CATEGORY_LABELS: ReadonlyArray<readonly [ReportCategory, string, ReportSeverity]> = [
+  ["verify-mismatch", "Round-trip mismatches", "error"],
+  ["unresolved-ref", "References that could not be resolved", "error"],
+  ["raw-fallback", "Statements emitted as raw() passthroughs", "warning"],
+  ["unsupported-section", "Unsupported payload sections", "warning"],
+  ["value-fallback", "Values emitted as annotated literals", "warning"],
+  ["modernized", "Updated to the current form (evaluates differently)", "warning"],
+  ["expected-omission", "Deliberately not carried into the tree", "notice"],
+  ["empty-source", "Objects that were already empty in the source", "notice"],
 ];
+
+/** How each severity is prefixed in the two renderings. */
+const SEVERITY_LABEL: Readonly<Record<ReportSeverity, string>> = {
+  error: "ERROR",
+  warning: "WARN",
+  notice: "note",
+};
+
+/** Severity for a category — the single source both the CLI and tooling read. */
+export function severityOf(category: ReportCategory): ReportSeverity {
+  return CATEGORY_LABELS.find(([c]) => c === category)?.[2] ?? "warning";
+}
 
 /** One thing the decoder could not represent faithfully. */
 export interface ReportEntry {
@@ -63,6 +100,7 @@ export interface ReportEntry {
 export interface ReportGroup {
   readonly category: ReportCategory;
   readonly label: string;
+  readonly severity: ReportSeverity;
   readonly count: number;
   readonly entries: readonly ReportEntry[];
 }
@@ -70,6 +108,8 @@ export interface ReportGroup {
 /** The single computed view every rendering derives from. */
 export interface ReportSummary {
   readonly total: number;
+  /** Counts by severity, so a caller never has to enumerate categories itself. */
+  readonly bySeverity: Readonly<Record<ReportSeverity, number>>;
   /** Non-empty categories only, in `CATEGORY_LABELS` order. */
   readonly byCategory: readonly ReportGroup[];
 }
@@ -109,11 +149,14 @@ export class DecodeReport {
   /** Group and count. The one computation both renderings read. */
   summarize(): ReportSummary {
     const byCategory: ReportGroup[] = [];
-    for (const [category, label] of CATEGORY_LABELS) {
+    const bySeverity: Record<ReportSeverity, number> = { error: 0, warning: 0, notice: 0 };
+    for (const [category, label, severity] of CATEGORY_LABELS) {
       const entries = this.#entries.filter((e) => e.category === category);
-      if (entries.length > 0) byCategory.push({ category, label, count: entries.length, entries });
+      if (entries.length === 0) continue;
+      byCategory.push({ category, label, severity, count: entries.length, entries });
+      bySeverity[severity] += entries.length;
     }
-    return { total: this.#entries.length, byCategory };
+    return { total: this.#entries.length, bySeverity, byCategory };
   }
 
   /** The generated README's report section. Empty string when there is nothing to say. */
@@ -122,7 +165,7 @@ export class DecodeReport {
     if (summary.total === 0) return "";
     const lines: string[] = ["## What did not round-trip cleanly", ""];
     for (const group of summary.byCategory) {
-      lines.push(`### ${group.label} [${group.category}=${group.count}]`, "");
+      lines.push(`### ${SEVERITY_LABEL[group.severity]} ${group.label} [${group.category}=${group.count}]`, "");
       for (const entry of group.entries) lines.push(`- \`${location(entry)}\` — ${entry.detail}`);
       lines.push("");
     }
@@ -135,7 +178,7 @@ export class DecodeReport {
     if (summary.total === 0) return "";
     const lines: string[] = [];
     for (const group of summary.byCategory) {
-      lines.push(`  ${group.label} [${group.category}=${group.count}]`);
+      lines.push(`  ${SEVERITY_LABEL[group.severity]} ${group.label} [${group.category}=${group.count}]`);
       for (const entry of group.entries) lines.push(`    ${location(entry)} — ${entry.detail}`);
     }
     return lines.join("\n");

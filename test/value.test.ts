@@ -76,6 +76,22 @@ describe("c.* constant constructors", () => {
   });
 });
 
+describe("c.obj() with no argument", () => {
+  it("defaults to the empty object, matching the editor's default for a new object variable", () => {
+    expect(c.obj()).toEqual({ value: "{}", tag: "const:obj", filters: [] });
+    expect(c.obj()).toEqual(c.obj({}));
+  });
+
+  it("is NOT the blank const:obj some older workspaces hold", () => {
+    // Live-verified: a blank `const:obj` (value "" or null) evaluates to null,
+    // while "{}" evaluates to an empty object. They are different values, so the
+    // authoring default must never be able to produce the blank form — codegen
+    // carries those through verbatim instead.
+    expect(c.obj().value).toBe("{}");
+    expect(c.obj().value).not.toBe("");
+  });
+});
+
 describe("c.obj/c.array reject nested tagged Values (issue #42)", () => {
   it("rejects a nested tagged Value at the type level", () => {
     // Type-only, never invoked: the @ts-expect-error markers ARE the assertions

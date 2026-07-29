@@ -377,14 +377,17 @@ function summarize(
   info(`Decoded ${counts.map(([key, n]) => `${n} ${key}`).join(", ")} from ${describeOrigin(origin)}`);
 
   // Derived from the same computed report the README renders, so the two can
-  // never disagree about how many problems there were.
-  const groups = project.report.summarize().byCategory;
+  // never disagree about how many problems there were. Severity comes from the
+  // report itself rather than a category list restated here — that duplication
+  // is exactly how a "problem" count drifts from what the entries actually say.
+  const summary = project.report.summarize();
+  const groups = summary.byCategory;
   const omitted = groups.find((g) => g.category === "expected-omission")?.count ?? 0;
-  const problems = groups.reduce((n, g) => (g.category === "expected-omission" ? n : n + g.count), 0);
+  const problems = summary.bySeverity.error + summary.bySeverity.warning;
   const rendered = project.report.renderCli();
   if (rendered !== "") {
-    // A run whose only entries are deliberate omissions DID round-trip cleanly —
-    // saying otherwise trains users to ignore the one header that matters.
+    // A run whose only entries are notices DID round-trip cleanly — saying
+    // otherwise trains users to ignore the one header that matters.
     warn(
       problems > 0
         ? "Not everything round-tripped cleanly:"

@@ -93,6 +93,15 @@ const REGEX_PATTERN_FILTERS = new Set([
   "regex_get_first_match",
 ]);
 
+/**
+ * A `const:obj` stored with no content at all: `""` (most of them) or `null`.
+ * Both are the pre-`{}` empty form — see the decode branch for what happens to
+ * them and why it is reported.
+ */
+export function isBlankObject(value: unknown): boolean {
+  return value === "" || value === null;
+}
+
 /** Split a `/body/flags` literal. Null when the value is not in that form. */
 function splitSlashRegex(value: string): { body: string; flags: string } | null {
   const m = /^\/(.*)\/([a-zA-Z]*)$/s.exec(value);
@@ -149,6 +158,16 @@ function decodeBase(v: TaggedValue, regexPiped: boolean): Candidate | null {
       return propose(call("c.now"), c.now(), "c");
     case "const:array":
     case "const:obj": {
+      // A BLANK object constant — `value:""` or `value:null` — is the shape the
+      // editor stopped writing long ago; a new object variable starts at `{}`
+      // today. It comes back as `c.obj()`, the current default. That is a real
+      // change (the engine evaluates a blank one to null and `{}` to an empty
+      // object — both live-verified), which is why `decodeValue` reports it
+      // under `modernized` instead of letting it pass silently. `normalize`
+      // treats the two as one value, so the round trip still verifies.
+      if (v.tag === "const:obj" && isBlankObject(v.value)) {
+        return propose(call("c.obj"), attempt(() => c.obj()), "c");
+      }
       const parsed = attempt(() => JSON.parse(v.value) as unknown);
       if (parsed === null && v.value !== "null") return null;
       const isArray = Array.isArray(parsed);
@@ -312,6 +331,18 @@ function fallbackExpr(v: TaggedValue): Expr {
 export function decodeValue(ctx: DecodeContext, v: TaggedValue): Expr {
   const candidate = decodeValueCandidate(v);
   if (candidate) {
+    // Flagged, not silent: this one is faithful to intent but NOT byte-identical,
+    // and it evaluates differently (blank → null, `{}` → empty object). A reader
+    // has to be able to see every place it happened.
+    if (v.tag === "const:obj" && isBlankObject(v.value)) {
+      ctx.problem(
+        "modernized",
+        `blank const:obj (value ${v.value === "" ? '""' : "null"}) updated to c.obj() — the ` +
+          `current default for an object value. It EVALUATES DIFFERENTLY: the blank form ` +
+          `yields null, {} yields an empty object. Confirm nothing downstream depended on ` +
+          `that null`,
+      );
+    }
     for (const symbol of candidate.symbols) ctx.use(CORE_MODULE, symbol);
     return candidate.expr;
   }

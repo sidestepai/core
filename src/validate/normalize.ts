@@ -294,6 +294,18 @@ export function normalize<T>(value: T): T {
   }
   if (value !== null && typeof value === "object") {
     const out: Record<string, unknown> = {};
+    // A `const:obj` stored blank (`value:""` or `value:null`) is the empty
+    // object written by an older editor generation; today it writes `{}`, and
+    // that is the only form this SDK emits. Canonicalize forward so the two
+    // compare equal — same rule as `customize`, and the reason a decoded blank
+    // object can come back as `c.obj()` and still round-trip. The decoder
+    // reports every such site under `modernized`, because unlike `customize`
+    // this one does change what the value evaluates to.
+    const blankObj =
+      (value as { tag?: unknown }).tag === "const:obj" &&
+      "value" in (value as object) &&
+      ((value as { value?: unknown }).value === "" ||
+        (value as { value?: unknown }).value === null);
     // A table (`dbo`) object carries a `schema` array but no `context`. Older
     // golden export fixtures store a top-level `as:<name>` on tables; live
     // `mvp_dbo` never does (a table returns nothing). Drop it on both sides.
@@ -341,6 +353,10 @@ export function normalize<T>(value: T): T {
       // deeper fix is to stringify temperature in the encoder once goldens for the
       // other providers confirm the same (agent objects aren't capturable via the
       // function-only round-trip path today).
+      if (k === "value" && blankObj) {
+        out[k] = "{}";
+        continue;
+      }
       out[k] =
         (k === "value" || k === "temperature") && typeof v === "number" ? String(v) : normalize(v);
     }

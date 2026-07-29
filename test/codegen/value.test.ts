@@ -15,6 +15,7 @@ import { rawValue } from "../../src/values/raw-value.js";
 import { DecodeContext } from "../../src/codegen/context.js";
 import { printExpr } from "../../src/codegen/print.js";
 import { decodeValue } from "../../src/codegen/value.js";
+import { severityOf } from "../../src/codegen/report.js";
 import { normalize } from "../../src/validate/normalize.js";
 
 /** Decode a stored value to source text, keeping the context for import/report checks. */
@@ -133,6 +134,31 @@ describe("decodeValue — tag coverage", () => {
     // decoder must not take the readable path here.
     const source = roundTrip({ value: "007", tag: "const:int", filters: [] });
     expect(source).toContain("rawValue");
+  });
+
+  it("updates a blank const:obj to c.obj(), and flags it as a change in behavior", () => {
+    // The editor stopped writing blank object constants long ago — a new object
+    // variable starts at `{}`. Decoding brings them to that current default,
+    // which is NOT a no-op: blank evaluates to null, `{}` to an empty object
+    // (both live-verified). So it is reported — `modernized`, warning severity:
+    // worth a look, not a failure.
+    for (const blank of ["", null]) {
+      const ctx = new DecodeContext();
+      const stored = { value: blank, tag: "const:obj", filters: [] } as unknown as TaggedValue;
+      expect(roundTrip(stored, ctx)).toBe("c.obj()");
+      expect(ctx.report.entries).toHaveLength(1);
+      expect(ctx.report.entries[0]!.category).toBe("modernized");
+      expect(ctx.report.entries[0]!.detail).toContain("EVALUATES DIFFERENTLY");
+      expect(severityOf("modernized")).toBe("warning");
+    }
+  });
+
+  it("leaves a populated object constant alone", () => {
+    // The modernization is scoped to genuinely blank values; anything with
+    // content still decodes normally and reports nothing.
+    const ctx = new DecodeContext();
+    expect(roundTrip({ value: '{"a":1}', tag: "const:obj", filters: [] }, ctx)).toContain("c.obj(");
+    expect(ctx.report.entries).toEqual([]);
   });
 
   it("falls back to a literal when a JSON constant would not restringify byte-for-byte", () => {

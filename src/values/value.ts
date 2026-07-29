@@ -255,10 +255,17 @@ export const c = {
    * representation the engine can't decode. For a computed/multi-key object
    * response use a record of values (`response: { key: value }`), not `c.obj`.
    * See issue #42.
+   *
+   * Called with no argument it is the **empty object**, `{}` — the same default
+   * the editor gives a new object variable, and the only empty form this SDK
+   * writes. (Older workspaces can hold a `const:obj` stored blank, `""` or
+   * `null`, which the engine evaluates to `null` rather than `{}`. Codegen
+   * brings those to `c.obj()` and reports each one, since that changes what they
+   * evaluate to.)
    */
-  obj<const T>(o: T & RejectValues<T>): Value {
-    assertPlainJson(o);
-    return val(JSON.stringify(o), "const:obj");
+  obj<const T>(o?: T & RejectValues<T>): Value {
+    assertPlainJson(o ?? {});
+    return val(JSON.stringify(o ?? {}), "const:obj");
   },
   /**
    * Array constant → JSON-string value with `tag:"const:array"`. Takes **plain

@@ -30,6 +30,8 @@
  *
  * Output:
  *   <out>/warnings.csv   one row per report entry + one per hard failure
+ *                        (severity: error | warning | notice, from the SDK's
+ *                        own category catalog — see codegen/report.ts)
  *   <out>/summary.json   per-workspace status and counts
  *   <out>/projects/<id>-<slug>/  the generated tree for that workspace
  *
@@ -43,6 +45,7 @@ import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { decodeBundle, type GeneratedProject } from "../src/codegen/index.js";
 import type { ReportEntry } from "../src/codegen/index.js";
+import { severityOf } from "../src/codegen/report.js";
 import { reportMismatches, verifyBundles } from "../src/codegen/verify.js";
 import { exportWorkspaceBundle } from "../src/deploy/workspace-export.js";
 import type { ExportedBundle } from "../src/deploy/workspace-export.js";
@@ -50,9 +53,6 @@ import { resolveValidateConfig } from "../src/validate/config.js";
 
 const REPO = resolve(import.meta.dirname, "..");
 const LIST_TIMEOUT_MS = 30_000;
-
-/** Categories that mean "this output is wrong", not "this is informational". */
-const INFORMATIONAL = new Set(["expected-omission", "empty-source"]);
 
 interface Options {
   out: string;
@@ -274,12 +274,15 @@ async function sweepWorkspace(
     const index = fileIndex(project);
     const byCategory: Record<string, number> = {};
     for (const e of project.report.entries as readonly ReportEntry[]) {
-      const informational = INFORMATIONAL.has(e.category);
-      if (informational) result.informational++;
+      // Severity comes from the report's own catalog rather than a list kept
+      // here — a second list is a second thing to forget to update, and this
+      // tool's whole job is to be trusted about what counts as a problem.
+      const severity = severityOf(e.category);
+      if (severity === "notice") result.informational++;
       else result.problems++;
       byCategory[e.category] = (byCategory[e.category] ?? 0) + 1;
       emit(
-        informational ? "info" : "problem",
+        severity,
         e.category,
         e.object,
         e.path ?? "",
