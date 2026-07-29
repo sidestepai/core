@@ -1,13 +1,13 @@
 /**
- * `sidestep workspace <details|export|codegen>` — read the workspace your OAuth
- * token is scoped to.
+ * `sidestep workspace <details|export|codegen>` — read the workspace your
+ * credential is bound to.
  *
- * This is the *real* workspace, not a throwaway: the instance the token is bound
- * to, at the workspace id it consented to. The family deliberately mirrors
- * `sandbox`, since the two answer the same three questions about different
- * environments —
+ * This is the *real* workspace, not a throwaway: the instance and workspace the
+ * credential pins (at consent for `login`, or `workspace_id` for a hand-authored
+ * meta API token). The family deliberately mirrors `sandbox`, since the two
+ * answer the same three questions about different environments —
  *
- *   sidestep workspace details          which workspace am I actually scoped to?
+ *   sidestep workspace details          which workspace am I actually bound to?
  *   sidestep workspace export           give me its bundle JSON
  *   sidestep workspace codegen <path>   give me its bundle as SideStep TypeScript
  *
@@ -16,8 +16,8 @@
  * writing back to a workspace holding real data is not something this CLI offers.
  * The loop is: pull from here, edit, deploy to an ephemeral or sandbox env.
  *
- * `--workspace <id>` overrides the scoped id for an account with access to
- * several. Node-only (fetch/fs + OAuth); lazily imported by the command layer.
+ * There is no workspace override: a credential addresses exactly one workspace.
+ * Node-only (fetch/fs + OAuth); lazily imported by the command layer.
  */
 import { writeFileSync } from "node:fs";
 import type { ParsedArgs } from "./cli.js";
@@ -73,22 +73,46 @@ async function fetchWorkspaces(auth: ResolvedAuth): Promise<Array<Record<string,
 }
 
 /**
- * `workspace details` — which workspace the token is scoped to, and where.
+ * `workspace details` — which workspace the credential is bound to, and where.
  *
  * Worth its own verb because every other command in this family silently acts on
- * that scoped id; a user about to run `workspace codegen` should be able to check
- * what it will read before it reads it.
+ * that pinned id; a user about to run `workspace codegen` should be able to check
+ * what it will read before it reads it. It is also the only place a wrong
+ * `workspace_id` in a hand-authored credential is diagnosed rather than 404ing.
  */
 async function runDetails(args: ParsedArgs): Promise<void> {
   const auth = await getAccessToken(args);
   const workspaceId = auth.workspaceId;
-  const match = (await fetchWorkspaces(auth)).find((w) => w.id === workspaceId);
+  const all = await fetchWorkspaces(auth);
+  const match = all.find((w) => w.id === workspaceId);
+
+  // A well-formed but WRONG `workspace_id` is the likeliest hand-authoring
+  // mistake, and it is invisible everywhere else: other commands surface it as
+  // an opaque 404 from the engine, and this one would otherwise print a
+  // half-empty record that reads like a successful answer. Since this verb
+  // exists to answer "what am I bound to", say plainly that the answer is
+  // nothing — and list the ids that would work.
+  if (!match) {
+    const known = all
+      .filter((w) => typeof w.id === "number")
+      .map((w) => `  ${String(w.id).padStart(3)}  ${typeof w.name === "string" ? w.name : "(unnamed)"}`)
+      .join("\n");
+    const source =
+      auth.credentialType === "token"
+        ? `Fix \`workspace_id\` in your credential file`
+        : `Run \`sidestep login\` again to re-pin it`;
+    throw new Error(
+      `Workspace ${workspaceId} does not exist on ${new URL(auth.instance).host} ` +
+        `(or your credential cannot see it).\n${source}.` +
+        (known === "" ? "" : `\n\nWorkspaces you can reach:\n${known}`),
+    );
+  }
 
   const summary = {
     instance: auth.instance,
     id: workspaceId,
-    name: typeof match?.name === "string" ? match.name : undefined,
-    guid: typeof match?.guid === "string" ? match.guid : undefined,
+    name: typeof match.name === "string" ? match.name : undefined,
+    guid: typeof match.guid === "string" ? match.guid : undefined,
     /** Which credential this command is acting under — the only thing that selects a workspace. */
     credential: auth.credentialType,
   };

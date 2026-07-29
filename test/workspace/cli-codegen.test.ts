@@ -229,6 +229,36 @@ describe("workspace — the read-only family", () => {
     expect(summary.credential).toBe("oauth");
   });
 
+  it("names a pinned workspace that does not exist, listing the ones that do", async () => {
+    // The likeliest hand-authoring mistake: a well-formed id that is simply
+    // wrong. Everywhere else it is an opaque 404; here it must be diagnosed.
+    writeFileSync(
+      join(dir, ".xano", "auth.json"),
+      JSON.stringify({
+        type: "token",
+        instance_base_url: INSTANCE,
+        workspace_id: 1,
+        meta_api_token: "meta-tok",
+      }),
+    );
+    seq(res([{ id: 9, name: "real-one" }, { id: 11, name: "other" }]));
+
+    await expect(run(["workspace", "details"])).rejects.toThrow(/Workspace 1 does not exist/);
+  });
+
+  it("points a wrong pinned workspace at the right fix per credential type", async () => {
+    const wrong = { type: "token", instance_base_url: INSTANCE, workspace_id: 1, meta_api_token: "t" };
+    writeFileSync(join(dir, ".xano", "auth.json"), JSON.stringify(wrong));
+    seq(res([{ id: 9, name: "real-one" }]));
+    // A hand-authored credential is fixed by editing the file…
+    await expect(run(["workspace", "details"])).rejects.toThrow(/Fix `workspace_id`/);
+
+    // …an oauth one by signing in again.
+    writeTokenFile(dir);
+    seq(res([{ id: 9, name: "real-one" }])); // pinned id is 42, absent from the list
+    await expect(run(["workspace", "details"])).rejects.toThrow(/sidestep login/);
+  });
+
   it("reports a meta API token credential as the source of the workspace", async () => {
     writeFileSync(
       join(dir, ".xano", "auth.json"),
