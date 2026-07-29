@@ -257,11 +257,14 @@ describe("decodeValue — regex values (issue #128 guard)", () => {
 
 describe("decodeValue — reporting and imports", () => {
   it("reports exactly one entry for a value it could not express", () => {
+    // `response` is an engine-side tag with no authoring constructor — the
+    // remaining shape of "genuinely not expressible". (The expression tags used
+    // to stand in here; they decode through c.expression now.)
     const ctx = new DecodeContext();
-    roundTrip({ value: '{"op":"+"}', tag: "const:expr", filters: [] }, ctx);
+    roundTrip({ value: "body", tag: "response", filters: [] }, ctx);
     expect(ctx.report.entries).toHaveLength(1);
     expect(ctx.report.entries[0]!.category).toBe("value-fallback");
-    expect(ctx.report.entries[0]!.detail).toContain("const:expr");
+    expect(ctx.report.entries[0]!.detail).toContain("response");
   });
 
   it("reports nothing for values it decodes cleanly", () => {
@@ -284,7 +287,7 @@ describe("decodeValue — reporting and imports", () => {
   it("imports rawValue from the codegen entry, not from the authoring entry", () => {
     const ctx = new DecodeContext();
     ctx.beginFile();
-    decodeValue(ctx, { value: "x", tag: "const:expr", filters: [] });
+    decodeValue(ctx, { value: "body", tag: "response", filters: [] });
     expect(ctx.imports.toStatements()).toEqual([
       { kind: "import", module: "@sidestep/core/codegen", symbols: ["rawValue"] },
     ]);

@@ -9,9 +9,12 @@
  * fidelity — and the same check absorbs the encoder's own guards (the issue #128
  * regex-pattern throw, the `c.obj` nested-value rejection) without restating them.
  *
- * Structured decoding of `const:expr` / `const:expr2` trees is deliberately out of
- * scope: those go to the literal fallback and are counted in the report, so the
- * real fallback rate is visible before anyone builds an expression decoder.
+ * Expression values (`const:expr` / `const:expr2`) are decoded as SOURCE, not as
+ * structure: `obj()` is tried first because it is the checked form, and anything
+ * else comes back through `c.expression` / `c.expressionLegacy`, which carry the
+ * expression string verbatim. Exact either way — the difference is only whether
+ * the emitted call type-checks its contents. A structured decoder for the
+ * expression grammar remains out of scope.
  */
 import type { FilterXdo, TaggedValue } from "../types/xdo.js";
 import { TAGS } from "../types/xdo.js";
@@ -174,11 +177,11 @@ function decodeBase(v: TaggedValue, regexPiped: boolean): Candidate | null {
         ? propose(call("env", lit(v.value)), env(v.value), "env")
         : propose(call("setting", lit(v.value)), setting(v.value), "setting");
     }
-    // `const:expr` is deliberately absent: `obj()` — the only authoring
-    // constructor for a dynamic object — always emits `const:expr2`, so an
-    // `obj({…})` call could never reproduce a `const:expr` tag. The engine
-    // normalizes expr2 → expr at evaluation time, but the stored bytes differ,
-    // and matching bytes is the contract. Such a value stays a `rawValue`.
+    // The older expression form. `obj()` always emits `const:expr2`, so no
+    // object-building path can reproduce this tag — but `c.expressionLegacy` carries
+    // the source verbatim, which is both exact and readable.
+    case "const:expr":
+      return propose(call("c.expressionLegacy", lit(v.value)), attempt(() => c.expressionLegacy(v.value)), "c");
     case "const:expr2": {
       // A dynamic object, stored as its rendered XanoScript expression string.
       // `obj()` is the authoring constructor, so the inverse is a parse — scoped
@@ -189,9 +192,17 @@ function decodeBase(v: TaggedValue, regexPiped: boolean): Candidate | null {
       // parser that mis-reads an expression yields `null` and falls back to
       // `rawValue` rather than emitting a plausible-but-different value.
       const parsed = parseObjExpr(v.value);
-      if (!parsed) return null;
-      const built = attempt(() => objValue(parsed.built));
-      return propose(parsed.expr, built, ...parsed.symbols);
+      if (parsed) {
+        const built = attempt(() => objValue(parsed.built));
+        const candidate = propose(parsed.expr, built, ...parsed.symbols);
+        if (candidate) return candidate;
+      }
+      // Not the object grammar (or the parse did not prove out): the expression
+      // is some other expression-engine source — `~` concatenation, arithmetic,
+      // a conditional. `c.expression` carries it verbatim, which beats
+      // `rawValue` on readability and is exactly as faithful. `obj()` stays
+      // preferred above because it is the CHECKED form; this is the passthrough.
+      return propose(call("c.expression", lit(v.value)), attempt(() => c.expression(v.value)), "c");
     }
     default:
       // `env`, `response`, `trycatch`, `toolset` — engine-side tags with no
