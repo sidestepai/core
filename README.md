@@ -193,6 +193,10 @@ sidestep ephemeral codegen pr-42 my-app  # a named ephemeral (tenant first, path
 sidestep codegen ws.json my-app          # a bundle already on disk — offline, no login
 ```
 
+A pull reads **configuration, not table rows** — schemas, endpoints, functions, tasks,
+agents. Your data stays where it is, which is also why pulling a workspace with big
+tables is quick.
+
 Inside, `xano/` is shaped like a hand-written backend: per-kind directories, a
 `_shared.ts` for tables and anything referenced from more than one file, a barrel
 `xano/index.ts`, and `xano/README.md` listing anything that did not translate cleanly.
