@@ -1,6 +1,6 @@
 {
   "name": "@sidestep/core",
-  "version": "4.1.10",
+  "version": "4.1.11",
   "description": "Sidestep — your Xano backend as TypeScript. `sidestep deploy` ships your typed workspace (and an optional static frontend) to a live, auto-expiring ephemeral environment and prints its URL. init → deploy → URL.",
   "keywords": [
     "sidestep",
@@ -58,6 +58,7 @@
     "codegen": "tsx scripts/codegen.ts",
     "codegen:filters": "tsx scripts/codegen-filters.ts",
     "codegen:methods": "tsx scripts/codegen-field-methods.ts",
+    "codegen:sweep": "tsx scripts/codegen-sweep.ts",
     "manifest": "tsx scripts/manifest.ts",
     "measure:llms": "tsx scripts/measure-llms.ts",
     "typecheck": "tsc --noEmit",

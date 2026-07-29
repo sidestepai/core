@@ -534,10 +534,14 @@ method. Payload keys use the engine's singular names.
 | `task({ schedule, ... })` | `registerTasks` | `task` |
 | `middleware({ resultStrategy, ... })` | `registerMiddleware` | `middleware` |
 | `addon({...})` | `registerAddons` | `addon` |
+| `realtimeServer({ enabled, ... })` | `registerRealtimeServers` | `realtime_server` |
+| `realtimeChannel({ server, ... })` | `registerRealtimeChannels` | `channel` |
+| `realtimeMessage({ channel, ... })` | `registerRealtimeMessages` | `message` |
 | `workspaceConfig({...})` | `registerWorkspace` | `workspace` |
 
-**Triggers** — six first-class root factories that share one envelope discriminated by
-`obj_type` + a per-type `meta`: `tableTrigger` (db), `realtimeTrigger`, `mcpServerTrigger`,
+**Triggers** — eight first-class root factories that share one envelope discriminated by
+`obj_type` + a per-type `meta`: `tableTrigger` (db), `realtimeTrigger`,
+`realtimeServerTrigger`, `realtimeChannelTrigger`, `mcpServerTrigger`,
 `agentTrigger`, `workspaceTrigger`, `errorTrigger`. **A trigger's `stack` is a callback — `stack: (t) => [...]`,
 not the plain `stack: []` array the other kinds use.** A trigger's inputs are **implied by type**
 (fixed by Xano, not editable) and injected automatically — so triggers take no `input` field, and
@@ -565,7 +569,45 @@ realtimeTrigger({
 });
 ```
 
-Per-type inputs: **table** `new`/`old`/`action`/`datasource`; **realtime** `action`/`channel`/`client`/`options`/`payload`; **mcpServer**/**agent** `toolset`/`tools`; **workspace** `to_branch`/`from_branch`/`action`; **error** `event`/`id`/`signature`/`error`/`caller`/`statement`/`actor`/`count`/`first_seen`/`last_seen`/`fixed_at`.
+Per-type inputs: **table** `new`/`old`/`action`/`datasource`; **realtime** `action`/`channel`/`client`/`options`/`payload`; **realtimeServer** `action`/`realtime_server`/`client`; **realtimeChannel** `action`/`channel`/`client`; **mcpServer**/**agent** `toolset`/`tools`; **workspace** `to_branch`/`from_branch`/`action`; **error** `event`/`id`/`signature`/`error`/`caller`/`statement`/`actor`/`count`/`first_seen`/`last_seen`/`fixed_at`.
+
+**Realtime** — the websocket family, and the only three-level containment chain in the
+SDK: `realtimeServer` owns `realtimeChannel`s, which own `realtimeMessage` handlers (a
+message is the realtime analogue of a query — its own typed payload and stack). Pass the
+**handle**, not a name: a channel path is unique only within its server, so
+`realtimeChannel({ server: chatServer })` and `realtimeMessage({ channel: roomChannel })`
+are what make the binding unambiguous. A channel's `input` types its **path** params
+(`rooms/{room_id}`); a message's `input` types the message **payload**. A server is off
+until `enabled: true`. Lifecycle events are triggers: `realtimeServerTrigger` (client
+connect/disconnect) and `realtimeChannelTrigger` (join/leave).
+
+```ts
+const chat = realtimeServer({ name: "chat", enabled: true });
+
+const room = realtimeChannel({
+  name: "rooms/{room_id}",           // `input` types the PATH params
+  server: chat,
+  input: { room_id: input.int() },
+  publish: { who: "authenticated" },
+  // The client-visible transcript a rejoining client is sent.
+  conversation: { enabled: true, limit: 50 },
+});
+
+realtimeMessage({
+  name: "send",                      // `input` types the message PAYLOAD
+  channel: room,                     // the handle carries the server too
+  input: { body: input.text({ required: true }) },
+  deliverTo: "channel",              // or "sender" (request/response) / "others"
+  stack: [s.debug.log({ value: inp("body") })],
+});
+
+realtimeChannelTrigger({
+  name: "on-room-join",
+  channel: room,                     // a handle — a bare path is ambiguous
+  actions: { join: true },
+  stack: (t) => [s.debug.log({ value: t.channel })],
+});
+```
 
 **MCP servers & agents** — two first-class root primitives. Both persist under the
 `toolset` payload key (obj_type=`toolset`), so an `mcpServer` and an `agent` **sharing a
@@ -1077,7 +1119,7 @@ enrich / lean envelope).
   `unknown`. Unlike `get`, `edit`/`del` **throw** `NotFound` (404) when nothing matches.
 
 **Values** — `c.int/text/bool/decimal/null/obj/array`, `c.now()` (current time as
-epoch-ms; a filtered value — hoist it into an `s.set_var` before a `where`/`cmp`),
+epoch-ms — the engine-native constant; valid inline in a `where`/`cmp`),
 `ref(var)`, `inp(input)`,
 `col(name)`, plus context refs `auth(path?)`, `env(name)`, `setting(name)`, `sys.*()`
 (built-in request/system vars — see below), `out(name)`
