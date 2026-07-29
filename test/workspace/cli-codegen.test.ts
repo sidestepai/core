@@ -196,6 +196,30 @@ describe("workspace codegen <path> — the real workspace", () => {
     expect(existsSync(join(dir, "out", "xano", "index.ts"))).toBe(true);
   });
 
+  it("asks the server to skip table rows — a pull decodes configuration only", async () => {
+    // The server pages through every row of every table before it emits a byte,
+    // so on a workspace holding real data the export outlasts any client-side
+    // timeout. None of it is read: the decode direction takes `workspace.json`
+    // and ignores the archive's `content/` entries.
+    const fetchSpy = seq(archive(sampleBundle()));
+    await run(["workspace", "codegen", "out", "--no-install"]);
+
+    const body = JSON.parse(String((fetchSpy.mock.calls[0]![1] as RequestInit).body)) as {
+      records: boolean;
+    };
+    expect(body.records).toBe(false);
+  });
+
+  it("still exports rows for `workspace export` — that bundle is the data, not a tree", async () => {
+    const fetchSpy = seq(archive(sampleBundle()));
+    await run(["workspace", "export", "--path", join(dir, "ws.json")]);
+
+    const body = JSON.parse(String((fetchSpy.mock.calls[0]![1] as RequestInit).body)) as {
+      records: boolean;
+    };
+    expect(body.records).toBe(true);
+  });
+
   it("rejects --workspace instead of reading a workspace the credential does not address", async () => {
     await expect(run(["workspace", "codegen", "out", "--workspace", "9", "--no-install"])).rejects.toThrow(
       /`--workspace` was removed/,

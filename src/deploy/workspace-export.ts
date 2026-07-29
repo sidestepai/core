@@ -40,10 +40,18 @@ export interface ExportedBundle {
  * `label` names the caller in errors, since the same failure means different
  * things per environment ("run `sidestep deploy` first" vs "your token is scoped
  * elsewhere").
+ *
+ * `records: false` asks the server to skip every table's rows and return the
+ * configuration alone. Table content is data the decode direction never reads —
+ * `decodeWorkspaceArchive` takes `workspace.json` and ignores the archive's
+ * `content/` entries — while the server pages through every row of every table
+ * before it emits a byte, so a workspace holding real data can outlast any
+ * client-side bound. It is a hint, not a contract: an instance predating the
+ * flag ignores the field and returns the same full archive it always did.
  */
 export async function exportWorkspaceBundle(
   auth: ResolvedAuth,
-  opts: { base: string; workspaceId: number; label: string },
+  opts: { base: string; workspaceId: number; label: string; records?: boolean },
 ): Promise<ExportedBundle> {
   const base = opts.base.replace(/\/$/, "");
   const res = await fetch(`${base}/api:meta/workspace/${opts.workspaceId}/export`, {
@@ -51,7 +59,7 @@ export async function exportWorkspaceBundle(
     headers: { Authorization: `Bearer ${auth.access_token}`, "Content-Type": "application/json" },
     // The endpoint requires both fields; the defaults mean "current branch, no
     // archive password".
-    body: JSON.stringify({ branch: "", password: "" }),
+    body: JSON.stringify({ branch: "", password: "", records: opts.records ?? true }),
     signal: AbortSignal.timeout(EXPORT_TIMEOUT_MS),
   });
   if (!res.ok) {
