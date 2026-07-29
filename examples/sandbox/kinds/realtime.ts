@@ -24,7 +24,7 @@ import {
   realtimeChannel,
   realtimeMessage,
   realtimeServerTrigger,
-  channelTrigger,
+  realtimeChannelTrigger,
   input,
   s,
   c,
@@ -98,7 +98,7 @@ export const onChatConnect = realtimeServerTrigger({
 });
 
 /** Channel lifecycle trigger — fires on join/leave of a specific channel. */
-export const onRoomJoin = channelTrigger({
+export const onRoomJoin = realtimeChannelTrigger({
   name: "ex_kind_trigger_on_room_join",
   channel: roomChannel,
   actions: { join: true },

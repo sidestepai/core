@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   realtimeServerTrigger,
-  channelTrigger,
+  realtimeChannelTrigger,
   realtimeTrigger,
   encodeTrigger,
 } from "../../src/kinds/trigger.js";
@@ -76,10 +76,10 @@ describe("realtimeServerTrigger", () => {
   });
 });
 
-describe("channelTrigger", () => {
+describe("realtimeChannelTrigger", () => {
   it("encodes its own obj_type, action meta, and implied inputs", () => {
     const t = encodeTrigger(
-      channelTrigger({ name: "on_join", channel: rooms, actions: { join: true, leave: true } }),
+      realtimeChannelTrigger({ name: "on_join", channel: rooms, actions: { join: true, leave: true } }),
     );
     expect(t.obj_type).toBe("channel");
     expect(t.meta).toEqual({ channel: { action: { join: true, leave: true } } });
@@ -87,13 +87,13 @@ describe("channelTrigger", () => {
   });
 
   it("carries the join/leave action enum", () => {
-    const t = encodeTrigger(channelTrigger({ name: "t", channel: rooms }));
+    const t = encodeTrigger(realtimeChannelTrigger({ name: "t", channel: rooms }));
     const action = t.input[0] as { values?: string[] };
     expect(action.values).toEqual(["join", "leave"]);
   });
 
   it("binds the host to the channel's composite guid", () => {
-    expect(encodeTrigger(channelTrigger({ name: "t", channel: rooms })).obj_id).toBe(
+    expect(encodeTrigger(realtimeChannelTrigger({ name: "t", channel: rooms })).obj_id).toBe(
       realtimeChannelGuid(rooms),
     );
   });
@@ -103,13 +103,13 @@ describe("channelTrigger", () => {
       name: "rooms/{room_id}",
       server: realtimeServer({ name: "auction" }),
     });
-    expect(encodeTrigger(channelTrigger({ name: "t", channel: rooms })).obj_id).not.toBe(
-      encodeTrigger(channelTrigger({ name: "t", channel: other })).obj_id,
+    expect(encodeTrigger(realtimeChannelTrigger({ name: "t", channel: rooms })).obj_id).not.toBe(
+      encodeTrigger(realtimeChannelTrigger({ name: "t", channel: other })).obj_id,
     );
   });
 
   it("encodes both actions off when none are given", () => {
-    expect(encodeTrigger(channelTrigger({ name: "t", channel: rooms })).meta).toEqual({
+    expect(encodeTrigger(realtimeChannelTrigger({ name: "t", channel: rooms })).meta).toEqual({
       channel: { action: { join: false, leave: false } },
     });
   });

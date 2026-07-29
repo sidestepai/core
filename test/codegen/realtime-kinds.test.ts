@@ -14,7 +14,7 @@ import "../../src/index.js"; // register kinds
 import { realtimeServer } from "../../src/kinds/realtime-server.js";
 import { realtimeChannel } from "../../src/kinds/realtime-channel.js";
 import { realtimeMessage } from "../../src/kinds/realtime-message.js";
-import { realtimeServerTrigger, channelTrigger } from "../../src/kinds/trigger.js";
+import { realtimeServerTrigger, realtimeChannelTrigger } from "../../src/kinds/trigger.js";
 import sandbox from "../../examples/sandbox/index.js";
 
 const chat = realtimeServer({ name: "chat", enabled: true });
@@ -146,7 +146,7 @@ describe("realtime lifecycle triggers — decode", () => {
             realtimeServer: chat,
             actions: { connect: true },
           }),
-          channelTrigger({ name: "on_join", channel: rich, actions: { join: true } }),
+          realtimeChannelTrigger({ name: "on_join", channel: rich, actions: { join: true } }),
         ]),
     );
     const connect = sourceOf(project, "on_connect");
