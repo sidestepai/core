@@ -323,11 +323,12 @@ describe("db.query (mvp:dbo_view) emit shape", () => {
     expect(stmt.right).toEqual({ operand: "pat", tag: "var", filters: [] });
   });
 
-  // #145: the reported trap was `c.now()` (a filtered value) used inline as a
-  // `where` operand — pitched as "compiles but fails at export (#120)". That no
-  // longer reproduces: it exports cleanly through the FULL workspace export
-  // (not just encodeStatement) and the `to_epoch_ms` filter survives. This locks
-  // that in at the export layer so the stale "hoist first" claim can't creep back.
+  // #145: the reported trap was `c.now()` used inline as a `where` operand —
+  // pitched as "compiles but fails at export (#120)". That no longer reproduces:
+  // it exports cleanly through the FULL workspace export (not just
+  // encodeStatement). This locks that in at the export layer so the stale "hoist
+  // first" claim can't creep back. (`c.now()` is no longer even a filtered value
+  // — it emits the engine's native `const:epochms` constant.)
   it("c.now() inline as a where operand exports cleanly through full export() (#145)", async () => {
     const { Xano, query, apiGroup } = await import("../../src/index.js");
     const grp = apiGroup({ name: "g", canonical: "abc123" });
@@ -343,8 +344,8 @@ describe("db.query (mvp:dbo_view) emit shape", () => {
       .registerTables([note])
       .registerQueries([q])
       .export();
-    // Export did not throw, and the now-chain filter is present in the emitted bundle.
-    expect(JSON.stringify(bundle)).toContain("to_epoch_ms");
+    // Export did not throw, and the current-time constant is in the emitted bundle.
+    expect(JSON.stringify(bundle)).toContain("const:epochms");
   });
 
   it("or() emits a group node; second child carries or:true", () => {

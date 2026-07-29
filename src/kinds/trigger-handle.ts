@@ -64,7 +64,7 @@ export interface RealtimeServerTriggerInputs {
 }
 
 /** Realtime channel lifecycle trigger inputs (join / leave). */
-export interface ChannelTriggerInputs {
+export interface RealtimeChannelTriggerInputs {
   /** The membership action (`"join"` | `"leave"`). */
   action: Value;
   /** The channel path the client addressed. */

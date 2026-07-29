@@ -6,7 +6,7 @@
  * tests guard is a README that says "3 raw fallbacks" while the CLI says 4.
  */
 import { describe, it, expect } from "vitest";
-import { DecodeReport } from "../../src/codegen/report.js";
+import { DecodeReport, severityOf } from "../../src/codegen/report.js";
 import { CODEGEN_MODULE, CORE_MODULE, DecodeContext, ImportCollector } from "../../src/codegen/context.js";
 
 /** Pull every `<category>=<count>` pair out of a rendered surface. */
@@ -174,5 +174,49 @@ describe("DecodeContext", () => {
     expect(ctx.imports.toStatements()).toHaveLength(1);
     ctx.beginFile();
     expect(ctx.imports.toStatements()).toEqual([]);
+  });
+});
+
+describe("severity", () => {
+  it("splits categories into error / warning / notice", () => {
+    // The report is the single place this judgment lives. Before, every consumer
+    // invented its own split — the CLI hardcoded "everything but
+    // expected-omission is a problem" and the sweep tool kept a second list that
+    // could disagree with it.
+    expect(severityOf("verify-mismatch")).toBe("error");
+    expect(severityOf("unresolved-ref")).toBe("error");
+    expect(severityOf("raw-fallback")).toBe("warning");
+    expect(severityOf("value-fallback")).toBe("warning");
+    expect(severityOf("unsupported-section")).toBe("warning");
+    expect(severityOf("modernized")).toBe("warning");
+    expect(severityOf("expected-omission")).toBe("notice");
+    expect(severityOf("empty-source")).toBe("notice");
+  });
+
+  it("counts by severity, and carries it on every group", () => {
+    const report = new DecodeReport();
+    report.add({ category: "verify-mismatch", object: "function:a", detail: "x" });
+    report.add({ category: "raw-fallback", object: "function:a", detail: "y" });
+    report.add({ category: "modernized", object: "function:a", detail: "z" });
+    report.add({ category: "expected-omission", object: "function:a", detail: "w" });
+
+    const summary = report.summarize();
+    expect(summary.bySeverity).toEqual({ error: 1, warning: 2, notice: 1 });
+    for (const group of summary.byCategory) {
+      expect(group.severity).toBe(severityOf(group.category));
+    }
+  });
+
+  it("prefixes both renderings so a reader can triage without a legend", () => {
+    const report = new DecodeReport();
+    report.add({ category: "verify-mismatch", object: "function:a", detail: "x" });
+    report.add({ category: "modernized", object: "function:b", detail: "y" });
+    report.add({ category: "expected-omission", object: "function:c", detail: "z" });
+
+    for (const rendered of [report.renderCli(), report.renderMarkdown()]) {
+      expect(rendered).toContain("ERROR");
+      expect(rendered).toContain("WARN");
+      expect(rendered).toContain("note");
+    }
   });
 });

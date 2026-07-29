@@ -9,7 +9,7 @@ import { registeredKinds } from "../../src/kinds/kind.js";
 import { TAGS } from "../../src/types/xdo.js";
 import { TOTAL_STATEMENTS } from "../../src/statements/surfaces.js";
 import { FILTER_NAMES } from "../../src/values/generated/filters.generated.js";
-import { sys } from "../../src/values/value.js";
+import { c, sys } from "../../src/values/value.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { version: string };
@@ -43,11 +43,10 @@ describe("manifest", () => {
 
   it("reports honest coverage", () => {
     expect(m.coverage.statements).toEqual({ implemented: TOTAL_STATEMENTS, total: TOTAL_STATEMENTS });
-    // 12 published kinds. The realtime family is built and registered but
-    // carries `unpublished: true`, so it is deliberately absent from the
-    // catalog and from this numerator until it ships.
+    // 15 published kinds — the realtime family (server/channel/message) shipped,
+    // so nothing is withheld any more.
     // 30 = the engine catalog after the realtime kinds landed upstream (was 24).
-    expect(m.coverage.objectKinds).toEqual({ implemented: 12, total: 30 });
+    expect(m.coverage.objectKinds).toEqual({ implemented: 15, total: 30 });
   });
 
   it("every statement sPath resolves to a real callable leaf under s", () => {
@@ -96,20 +95,50 @@ describe("manifest", () => {
     }
   });
 
-  it("withholds exactly the kinds that are not ready to ship, and leaks none of them", () => {
-    // The guard on the release gate itself: an accidental publish (or an
-    // accidental withholding) shows up here rather than in a shipped llms.txt.
+  it("withholds nothing, and publishes the whole realtime family", () => {
+    // The guard on the release gate itself, now pointed the other way: the
+    // realtime kinds shipped, so an accidental *re*-withholding shows up here
+    // rather than as a silently missing primitive in llms.txt. Any future kind
+    // that lands behind the gate also fails here until this list says so.
     const withheld = KIND_DESCRIPTORS.filter((d) => d.unpublished).map((d) => d.kind);
-    expect(withheld.sort()).toEqual(["channel", "message", "realtime_server"]);
+    expect(withheld).toEqual([]);
 
     const llms = renderLlmsTxt(m);
     const published = JSON.stringify(m) + llms;
-    for (const factory of ["realtimeServer", "realtimeChannel", "realtimeMessage", "realtimeServerTrigger", "channelTrigger"]) {
-      expect(published, `${factory} must not reach the published surface`).not.toContain(factory);
+    for (const factory of [
+      "realtimeServer",
+      "realtimeChannel",
+      "realtimeMessage",
+      "realtimeServerTrigger",
+      "realtimeChannelTrigger",
+    ]) {
+      expect(published, `${factory} must reach the published surface`).toContain(factory);
     }
     for (const method of ["registerRealtimeServers", "registerRealtimeChannels", "registerRealtimeMessages"]) {
-      expect(published).not.toContain(method);
+      expect(published).toContain(method);
     }
+  });
+
+  it("names legacy constructors in the Legacy index and nowhere an agent picks from", () => {
+    // The legacy split has to hold in BOTH directions, and each direction fails
+    // a different way. Leaking into `## Values` puts a superseded paradigm in
+    // the list an agent builds from; dropping out of `## Legacy` entirely leaves
+    // an agent unable to recognize it in pulled code, which is how a working
+    // decoded value gets "fixed" into a broken one.
+    const legacy = m.values.constructors.filter((v) => v.legacy);
+    expect(legacy.map((v) => v.name)).toEqual(["c.expressionLegacy"]);
+
+    const llms = renderLlmsTxt(m);
+    const valuesSection = llms.slice(llms.indexOf("## Values"), llms.indexOf("## Fields"));
+    const legacySection = llms.slice(llms.indexOf("## Legacy"));
+    for (const v of legacy) {
+      expect(valuesSection, `${v.name} must not be selectable`).not.toContain(v.name);
+      expect(legacySection, `${v.name} must stay recognizable`).toContain(v.name);
+      // Named, never specified — a signature is an invitation to call it.
+      expect(legacySection).not.toContain(`${v.name}${v.signature}`);
+    }
+    // It stays a real export regardless — codegen emits it for pulled workspaces.
+    expect(typeof c.expressionLegacy).toBe("function");
   });
 
   it("every object kind carries a non-empty description, rendered into the llms.txt catalog", () => {

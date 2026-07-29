@@ -285,7 +285,7 @@ export {
   tableTrigger,
   realtimeTrigger,
   realtimeServerTrigger,
-  channelTrigger,
+  realtimeChannelTrigger,
   mcpServerTrigger,
   agentTrigger,
   workspaceTrigger,
@@ -301,7 +301,7 @@ export type {
   WorkspaceActions,
   RealtimeActions,
   RealtimeServerActions,
-  ChannelActions,
+  RealtimeChannelActions,
   DatabaseInputs,
 } from "./kinds/trigger.js";
 // Typed input handles passed to a trigger's `stack`/`response` callback.
@@ -310,7 +310,7 @@ export type {
   RealtimeInputs,
   RealtimeClient,
   RealtimeServerTriggerInputs,
-  ChannelTriggerInputs,
+  RealtimeChannelTriggerInputs,
   ToolsetInputs,
   WorkspaceInputs,
   ErrorInputs,

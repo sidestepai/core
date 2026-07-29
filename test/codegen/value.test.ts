@@ -15,6 +15,8 @@ import { rawValue } from "../../src/values/raw-value.js";
 import { DecodeContext } from "../../src/codegen/context.js";
 import { printExpr } from "../../src/codegen/print.js";
 import { decodeValue } from "../../src/codegen/value.js";
+import { severityOf } from "../../src/codegen/report.js";
+import { normalize } from "../../src/validate/normalize.js";
 
 /** Decode a stored value to source text, keeping the context for import/report checks. */
 function decodeToSource(v: TaggedValue, ctx = new DecodeContext()): { source: string; ctx: DecodeContext } {
@@ -40,11 +42,19 @@ function evaluate(source: string): TaggedValue {
   return fn(c, ref, inp, col, auth, env, setting, out, withFilters, fl, rawValue) as TaggedValue;
 }
 
-/** Decode → print → evaluate → compare. Returns the emitted source for inspection. */
+/**
+ * Decode → print → evaluate → compare. Returns the emitted source for inspection.
+ *
+ * Compared under `normalize` — the round-trip contract's own comparator, and the
+ * same one the decoder proves each candidate against. Byte equality would be a
+ * stricter claim than the SDK makes anywhere else, and it is not one a real
+ * workspace can satisfy: an older-vintage value stores a numeric `value` or a
+ * filter without `disabled`, and the SDK canonicalizes both forward on re-export.
+ */
 function roundTrip(v: TaggedValue, ctx = new DecodeContext()): string {
   const { source } = decodeToSource(v, ctx);
   const reencoded = evaluate(source);
-  expect({ ...reencoded }, `source: ${source}`).toEqual({ ...v });
+  expect(normalize({ ...reencoded }), `source: ${source}`).toEqual(normalize({ ...v }));
   return source;
 }
 
@@ -57,6 +67,7 @@ const PER_TAG: Record<string, TaggedValue> = {
   "const:array": { value: "[1,2,3]", tag: "const:array", filters: [] },
   "const:obj": { value: '{"a":1}', tag: "const:obj", filters: [] },
   "const:null": { value: "null", tag: "const:null", filters: [] },
+  "const:epochms": { value: "now", tag: "const:epochms", filters: [] },
   "const:expr": { value: '{"op":"+","l":1,"r":2}', tag: "const:expr", filters: [] },
   "const:expr2": { value: "1 + 2", tag: "const:expr2", filters: [] },
   var: { value: "user", tag: "var", filters: [] },
@@ -125,6 +136,31 @@ describe("decodeValue — tag coverage", () => {
     expect(source).toContain("rawValue");
   });
 
+  it("updates a blank const:obj to c.obj(), and flags it as a change in behavior", () => {
+    // The editor stopped writing blank object constants long ago — a new object
+    // variable starts at `{}`. Decoding brings them to that current default,
+    // which is NOT a no-op: blank evaluates to null, `{}` to an empty object
+    // (both live-verified). So it is reported — `modernized`, warning severity:
+    // worth a look, not a failure.
+    for (const blank of ["", null]) {
+      const ctx = new DecodeContext();
+      const stored = { value: blank, tag: "const:obj", filters: [] } as unknown as TaggedValue;
+      expect(roundTrip(stored, ctx)).toBe("c.obj()");
+      expect(ctx.report.entries).toHaveLength(1);
+      expect(ctx.report.entries[0]!.category).toBe("modernized");
+      expect(ctx.report.entries[0]!.detail).toContain("EVALUATES DIFFERENTLY");
+      expect(severityOf("modernized")).toBe("warning");
+    }
+  });
+
+  it("leaves a populated object constant alone", () => {
+    // The modernization is scoped to genuinely blank values; anything with
+    // content still decodes normally and reports nothing.
+    const ctx = new DecodeContext();
+    expect(roundTrip({ value: '{"a":1}', tag: "const:obj", filters: [] }, ctx)).toContain("c.obj(");
+    expect(ctx.report.entries).toEqual([]);
+  });
+
   it("falls back to a literal when a JSON constant would not restringify byte-for-byte", () => {
     const source = roundTrip({ value: '{ "a" : 1 }', tag: "const:obj", filters: [] });
     expect(source).toContain("rawValue");
@@ -143,8 +179,8 @@ describe("decodeValue — filter chains", () => {
     roundTrip(withFilters(ref("total"), fl.add(withFilters(inp("qty"), fl.mul(c.int(2))))));
   });
 
-  it("decodes c.now()'s filtered form exactly", () => {
-    roundTrip(c.now());
+  it("decodes c.now() back to c.now(), not to a rawValue", () => {
+    expect(roundTrip(c.now())).toBe("c.now()");
   });
 
   it("degrades only the filter for a disabled one, which fl.* cannot express", () => {
@@ -173,10 +209,13 @@ describe("decodeValue — filter chains", () => {
     expect(source).not.toContain("rawValue");
   });
 
-  it("degrades only the filter when the engine stored no `disabled` key", () => {
+  it("decodes a chain whose filters were stored without `disabled`", () => {
     // The real-workspace shape: Xano's editor omits `disabled` at its default
-    // (`disabled?=false`), while `filter()` always writes it. Before, this
-    // collapsed the whole value — including a perfectly good `ref()` — to rawValue.
+    // (`disabled?=false`), while `filter()` always writes it. An absent key IS
+    // that default, so the whole chain decodes to `fl.*` calls and re-exports
+    // the current form — it does not degrade to a verbatim filter literal, and
+    // it certainly does not collapse the value (including a perfectly good
+    // `ref()`) to `rawValue`.
     const stored = {
       value: "answers",
       tag: "var",
@@ -186,8 +225,20 @@ describe("decodeValue — filter chains", () => {
       ],
     } as unknown as TaggedValue;
     const source = roundTrip(stored);
-    expect(source).toContain('ref("answers")');
-    expect(source).not.toContain("rawValue");
+    expect(source).toBe('withFilters(ref("answers"), fl.array_shuffle(), fl.first())');
+  });
+
+  it("still degrades a filter the engine stored as disabled", () => {
+    // `disabled: true` is a real, authored state with no `fl.*` form — the
+    // tolerance above is for an ABSENT key, not for a truthy one.
+    const stored = {
+      value: "answers",
+      tag: "var",
+      filters: [{ name: "first", disabled: true, arg: [] }],
+    } as unknown as TaggedValue;
+    const { source } = decodeToSource(stored);
+    expect(source).toContain("disabled: true");
+    expect(source).not.toContain("fl.first()");
   });
 });
 
@@ -232,11 +283,14 @@ describe("decodeValue — regex values (issue #128 guard)", () => {
 
 describe("decodeValue — reporting and imports", () => {
   it("reports exactly one entry for a value it could not express", () => {
+    // `response` is an engine-side tag with no authoring constructor — the
+    // remaining shape of "genuinely not expressible". (The expression tags used
+    // to stand in here; they decode through c.expression now.)
     const ctx = new DecodeContext();
-    roundTrip({ value: '{"op":"+"}', tag: "const:expr", filters: [] }, ctx);
+    roundTrip({ value: "body", tag: "response", filters: [] }, ctx);
     expect(ctx.report.entries).toHaveLength(1);
     expect(ctx.report.entries[0]!.category).toBe("value-fallback");
-    expect(ctx.report.entries[0]!.detail).toContain("const:expr");
+    expect(ctx.report.entries[0]!.detail).toContain("response");
   });
 
   it("reports nothing for values it decodes cleanly", () => {
@@ -259,7 +313,7 @@ describe("decodeValue — reporting and imports", () => {
   it("imports rawValue from the codegen entry, not from the authoring entry", () => {
     const ctx = new DecodeContext();
     ctx.beginFile();
-    decodeValue(ctx, { value: "x", tag: "const:expr", filters: [] });
+    decodeValue(ctx, { value: "body", tag: "response", filters: [] });
     expect(ctx.imports.toStatements()).toEqual([
       { kind: "import", module: "@sidestep/core/codegen", symbols: ["rawValue"] },
     ]);

@@ -1,10 +1,10 @@
 {
   "name": "sidestep",
-  "version": "4.1.10",
+  "version": "4.1.11",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
-      "implemented": 12,
+      "implemented": 15,
       "total": 30
     },
     "statements": {
@@ -46,7 +46,7 @@
       {
         "name": "c.obj",
         "signature": "(o: Json) => Value",
-        "description": "Object constant (JSON string) → tag \"const:obj\". Plain JSON literals only — a nested tagged value (inp/ref/auth/c.*) is rejected; for a computed object response use a record of values, not c.obj (issue #42)."
+        "description": "Object constant (JSON string) → tag \"const:obj\". No argument = the empty object {}, the editor default. Plain JSON literals only — a nested tagged value (inp/ref/auth/c.*) is rejected; for a computed object response use a record of values, not c.obj (issue #42)."
       },
       {
         "name": "c.array",
@@ -54,9 +54,20 @@
         "description": "Array constant (JSON string) → tag \"const:array\". Plain JSON literals only — a nested tagged value is rejected, same as c.obj (issue #42)."
       },
       {
+        "name": "c.expression",
+        "signature": "(source: string) => Value",
+        "description": "Xano Expression Engine source, passed through VERBATIM → tag \"const:expr2\". The string IS the expression: c.expression('\"Hi, \" ~ $input.name'), c.expression(\"$var.price * $var.qty\"). ⚠️ NOT VALIDATED — never parsed or type-checked, invisible to InferResponse, and untouched by a rename that updates every typed ref(); a typo surfaces at runtime or as a wrong answer. Use it ONLY for syntax the typed surfaces cannot express (~ concatenation, inline arithmetic, conditionals) — prefer ref/inp/col, withFilters+fl.*, and obj() (which BUILDS a checked expression). Not the expr() condition builder."
+      },
+      {
+        "name": "c.expressionLegacy",
+        "signature": "(source: string) => Value",
+        "legacy": true,
+        "description": "the older `const:expr` expression form, emitted by codegen for workspaces that still hold one — author `c.expression` instead."
+      },
+      {
         "name": "c.now",
         "signature": "() => Value",
-        "description": "Current time as epoch-ms — the text(\"now\") |to_epoch_ms chain. A FILTERED value, valid inline as a where/cmp operand. For cutoff math (cutoff = now - max_age) either compare inline or, for reuse/readability, hoist it into an s.set_var and compare against the var (issue #120)."
+        "description": "Current time as epoch-ms — the engine-native const:epochms constant (no filter). Valid inline as a where/cmp operand. For cutoff math (cutoff = now - max_age) either compare inline or, for reuse/readability, hoist it into an s.set_var and compare against the var (issue #120)."
       },
       {
         "name": "obj",
@@ -122,6 +133,7 @@
       "const:array",
       "const:obj",
       "const:null",
+      "const:epochms",
       "const:expr",
       "const:expr2",
       "var",
@@ -172,7 +184,7 @@
     {
       "kind": "trigger",
       "payloadKey": "trigger",
-      "authorFactory": "{tableTrigger,realtimeTrigger,mcpServerTrigger,agentTrigger,workspaceTrigger,errorTrigger}",
+      "authorFactory": "{tableTrigger,realtimeTrigger,realtimeServerTrigger,realtimeChannelTrigger,mcpServerTrigger,agentTrigger,workspaceTrigger,errorTrigger}",
       "description": "An event-driven handler fired by a DB write, realtime channel, MCP/agent connection, branch lifecycle, or error — inputs are implied by type and arrive on the `t` handle.",
       "registerMethod": "registerTriggers",
       "subKinds": [
@@ -185,6 +197,16 @@
           "authorFactory": "realtimeTrigger",
           "objType": "workspace_realtime_channel",
           "description": "Fires on realtime channel activity (message/join); inspect the channel, connecting client, options, and payload via `t`. Response-bearing — defaults to echoing the payload."
+        },
+        {
+          "authorFactory": "realtimeServerTrigger",
+          "objType": "realtime_server",
+          "description": "Fires when a client connects to or disconnects from a realtime server; inspect the connecting client and its permissions via `t`. Bind with `realtimeServer`. Response-bearing."
+        },
+        {
+          "authorFactory": "realtimeChannelTrigger",
+          "objType": "channel",
+          "description": "Fires when a client joins or leaves a channel; inspect the addressed channel path and the client via `t`. Bind with a `realtimeChannel()` handle (a bare path is ambiguous across servers). Response-bearing."
         },
         {
           "authorFactory": "mcpServerTrigger",
@@ -255,6 +277,30 @@
       "authorFactory": "addon",
       "description": "A reusable read fragment that enriches a query result by joining related table data.",
       "registerMethod": "registerAddons",
+      "registered": true
+    },
+    {
+      "kind": "realtime_server",
+      "payloadKey": "realtime_server",
+      "authorFactory": "realtimeServer",
+      "description": "A realtime (websocket) server: the canonical-addressed container that owns realtime channels. Off until `enabled: true`.",
+      "registerMethod": "registerRealtimeServers",
+      "registered": true
+    },
+    {
+      "kind": "channel",
+      "payloadKey": "channel",
+      "authorFactory": "realtimeChannel",
+      "description": "A realtime channel: a joinable path on a realtime server (`rooms/{room_id}`) with typed path params, join/publish policy, a client-visible conversation transcript, and delivery semantics. Owns message handlers.",
+      "registerMethod": "registerRealtimeChannels",
+      "registered": true
+    },
+    {
+      "kind": "message",
+      "payloadKey": "message",
+      "authorFactory": "realtimeMessage",
+      "description": "A realtime message handler: a named message type on a channel with its own typed payload and stack — the realtime analogue of a query. Pass the `realtimeChannel()` handle as `channel` and the owning server comes with it.",
+      "registerMethod": "registerRealtimeMessages",
       "registered": true
     },
     {

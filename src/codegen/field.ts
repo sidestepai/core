@@ -104,9 +104,14 @@ function deepEqual(a: unknown, b: unknown): boolean {
  * Stored keys with no authoring surface that this field sets to a non-default.
  *
  * `customize` and `market_item` come from the {@link FieldContext} rather than a
- * constant, so they are checked against the context in force. An older-vintage
- * column storing `customize: ""` lands here: the current encoder emits `{}` for
- * every context, so nothing this decoder can emit reproduces it.
+ * constant, so they are checked against the context in force.
+ *
+ * The comparison runs under `normalize` — the round-trip contract's own
+ * comparator — not raw equality, so a legacy `customize:""` counts as the empty
+ * customization it is rather than as an unrepresentable shape. Comparing raw
+ * made this function contradict the oracle the decode is proven against: the
+ * catalog call it refused reproduces the field exactly under the only
+ * comparison anyone actually runs.
  */
 function unrepresentableKeys(stored: FieldXdo, context: FieldContext): string[] {
   const record = stored as unknown as Record<string, unknown>;
@@ -117,8 +122,16 @@ function unrepresentableKeys(stored: FieldXdo, context: FieldContext): string[] 
     ...ENCODER_FIXED,
     ["customize", context.customize],
   ];
+  // Each side is normalized as a one-key OBJECT, not as a bare value: the rules
+  // that canonicalize the empty `customize` forms (and that drop a member
+  // sitting at its engine default) are keyed off the member NAME, so they only
+  // fire when the key is there to be seen.
   return fixed
-    .filter(([key, value]) => Object.hasOwn(record, key) && !deepEqual(record[key], value))
+    .filter(
+      ([key, value]) =>
+        Object.hasOwn(record, key) &&
+        !deepEqual(normalize({ [key]: record[key] }), normalize({ [key]: value })),
+    )
     .map(([key]) => key);
 }
 
@@ -146,8 +159,11 @@ function colonForm(name: string, args: readonly (string | number)[]): string | n
 function recoverMethods(stored: readonly MethodXdo[]): MethodSpec[] | null {
   const out: MethodSpec[] = [];
   for (const method of stored) {
-    // `encodeMethods` always writes `disabled: false`; a disabled method has no form.
-    if (method.disabled !== false) return null;
+    // `encodeMethods` always writes `disabled: false`; a disabled method has no
+    // authoring form. An ABSENT `disabled` is the older engine generation's way
+    // of writing the same default (see the lean field envelope in
+    // `normalize`) — only an explicit `true` is a real disabled method.
+    if ((method.disabled ?? false) !== false) return null;
     const args = method.arg ?? [];
     // Prefer the colon shorthand (`"min:8"`) — it is what an author writes, and
     // the object form turns a three-rule password column into fifteen lines.

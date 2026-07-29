@@ -40,7 +40,7 @@ import type {
   FieldAccessor,
   RealtimeInputs,
   RealtimeServerTriggerInputs,
-  ChannelTriggerInputs,
+  RealtimeChannelTriggerInputs,
   ToolsetInputs,
   WorkspaceInputs,
   ErrorInputs,
@@ -72,7 +72,7 @@ export interface RealtimeServerActions {
   disconnect?: boolean;
 }
 /** Realtime CHANNEL lifecycle actions (obj_type=channel). */
-export interface ChannelActions {
+export interface RealtimeChannelActions {
   join?: boolean;
   leave?: boolean;
 }
@@ -333,15 +333,15 @@ export function realtimeServerTrigger(
  * carries its server) — a bare channel path is NOT accepted here, because a
  * path is unique only within a server and would bind ambiguously.
  */
-export function channelTrigger(
+export function realtimeChannelTrigger(
   args: CommonArgs & {
     channel?: RealtimeChannelDef;
-    actions?: ChannelActions;
-    stack?: (t: ChannelTriggerInputs) => Statement[];
-    response?: (t: ChannelTriggerInputs) => ResponseDef;
+    actions?: RealtimeChannelActions;
+    stack?: (t: RealtimeChannelTriggerInputs) => Statement[];
+    response?: (t: RealtimeChannelTriggerInputs) => ResponseDef;
   },
 ): TriggerDef {
-  const t = buildTriggerHandle("channel") as unknown as ChannelTriggerInputs;
+  const t = buildTriggerHandle("channel") as unknown as RealtimeChannelTriggerInputs;
   return {
     name: args.name,
     guid: args.guid,

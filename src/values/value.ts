@@ -232,21 +232,21 @@ export const c = {
     return val(`/${escapeRegexSlashes(body)}/${raw}`, "const");
   },
   /**
-   * Current time as an **epoch-milliseconds** value — the runtime-verified chain
-   * `text("now") |to_epoch_ms`. Xano has no `$now` *setting*, so this lives on
+   * Current time as an **epoch-milliseconds** value — the engine's native
+   * `const:epochms` constant. Xano has no `$now` *setting*, so this lives on
    * `c.*` (a current-time literal) rather than {@link sys} (which emits
    * `setting("$…")` and would reference a dead `$now` var).
    *
-   * It returns a **filtered** value, which is valid inline as a `where`/`cmp`
-   * operand — filtered operands pass through in every condition/`where` surface
-   * (the old #118 rejection no longer reproduces; verified through full `export()`
-   * and live, #145). For readability/reuse when the same cutoff is reused, hoist
-   * it into a stack var — `s.set_var({ name: "cutoff", value: withFilters(c.now(),
-   * fl.epochms_add_ms(c.int(-maxAgeMs))) })` — and compare `col("created_at")`
-   * against `ref("cutoff")`. (issue #120)
+   * Emits `{tag:"const:epochms", value:"now"}` — an UNFILTERED value, valid
+   * inline as a `where`/`cmp` operand. It previously emitted the equivalent
+   * `text("now") |to_epoch_ms` chain; both evaluate to the same epoch-ms number
+   * on a live engine, and both persist verbatim, but the native tag is what the
+   * editor writes and needs no filter to get there. Chain math onto it as usual:
+   * `withFilters(c.now(), fl.epochms_add_ms(c.int(-maxAgeMs)))`. (issues #120,
+   * #145)
    */
   now(): Value {
-    return withFilters(val("now", "const"), filter("to_epoch_ms"));
+    return val("now", "const:epochms");
   },
   /**
    * Object constant → JSON-string value with `tag:"const:obj"`. Takes **plain
@@ -255,10 +255,17 @@ export const c = {
    * representation the engine can't decode. For a computed/multi-key object
    * response use a record of values (`response: { key: value }`), not `c.obj`.
    * See issue #42.
+   *
+   * Called with no argument it is the **empty object**, `{}` — the same default
+   * the editor gives a new object variable, and the only empty form this SDK
+   * writes. (Older workspaces can hold a `const:obj` stored blank, `""` or
+   * `null`, which the engine evaluates to `null` rather than `{}`. Codegen
+   * brings those to `c.obj()` and reports each one, since that changes what they
+   * evaluate to.)
    */
-  obj<const T>(o: T & RejectValues<T>): Value {
-    assertPlainJson(o);
-    return val(JSON.stringify(o), "const:obj");
+  obj<const T>(o?: T & RejectValues<T>): Value {
+    assertPlainJson(o ?? {});
+    return val(JSON.stringify(o ?? {}), "const:obj");
   },
   /**
    * Array constant → JSON-string value with `tag:"const:array"`. Takes **plain
@@ -269,7 +276,83 @@ export const c = {
     assertPlainJson(a);
     return val(JSON.stringify(a), "const:array");
   },
+  /**
+   * A **Xano Expression Engine** expression, passed through verbatim →
+   * `tag:"const:expr2"`. The string IS the expression, exactly as it would be
+   * typed into the expression editor:
+   *
+   *   c.expression('"Hello, " ~ $input.name')
+   *   c.expression("$var.price * $var.qty")
+   *   c.expression("{ id: $var.user.id, tier: $var.plan }")
+   *
+   * ⚠️ **THE STRING IS NOT VALIDATED.** SideStep does not parse it, does not
+   * type-check it, and cannot tell a working expression from a typo — the whole
+   * string is handed to the engine as-is. Nothing here participates in
+   * `InferResponse`, so a var referenced inside it is invisible to the type
+   * system, and a rename that updates every typed `ref()` will NOT update this.
+   * A malformed expression surfaces at RUNTIME, and one that is merely wrong
+   * (`$var.tota1`) surfaces as a wrong answer, not an error. Play at your own
+   * risk until validation exists.
+   *
+   * Prefer the typed surfaces whenever they cover the case: `ref`/`inp`/`col`
+   * for references, `withFilters(..., fl.*)` for transforms, {@link obj} for a
+   * dynamic object (it BUILDS a checked expression for you). Reach for this only
+   * for expression-engine syntax the typed surfaces cannot express — string
+   * concatenation with `~`, inline arithmetic, conditionals.
+   *
+   * NOT the `expr()` condition builder. `expr(col("id"), "=", inp("id"))` builds
+   * a comparison for a `where`; this builds a VALUE from raw expression source.
+   */
+  expression(source: string): Value {
+    assertExpressionSource(source, "c.expression");
+    return val(source, "const:expr2");
+  },
+  /**
+   * The **older** expression form → `tag:"const:expr"`, kept because real
+   * workspaces still hold values stored that way and codegen has to bring them
+   * back as something readable. New code wants {@link expression}, which is what
+   * the expression editor writes today.
+   *
+   * ⚠️ Unvalidated passthrough, exactly like {@link expression} — see the
+   * warning there. This one additionally uses the older syntax generation, so an
+   * expression copied out of the current editor may not mean the same thing
+   * here.
+   */
+  expressionLegacy(source: string): Value {
+    assertExpressionSource(source, "c.expressionLegacy");
+    return val(source, "const:expr");
+  },
 };
+
+/**
+ * Guard the two raw-expression constructors.
+ *
+ * The type signature already says `string`, but the failure this catches is the
+ * one the type system cannot: `c.expression` sits one keystroke from `expr()`,
+ * the condition builder, and a caller reaching for the wrong one passes a
+ * `Value` or a comparison. Silently stringifying that would ship `[object
+ * Object]` into an expression the engine evaluates at runtime, so it throws
+ * here, pointing at the surface that was actually wanted.
+ */
+function assertExpressionSource(source: string, fn: string): void {
+  if (typeof source !== "string") {
+    const tagged = isTaggedValue(source);
+    throw new Error(
+      `${fn}() takes the expression SOURCE as a string, got ${tagged ? "a Value" : typeof source}. ` +
+        (tagged
+          ? `To reference a value inside an expression, write its path into the string ` +
+            `(e.g. ${fn}("$var.total * 2")). For a comparison in a where/condition use ` +
+            `expr(left, op, right) or cmp(...), not ${fn}().`
+          : `Pass expression-engine source, e.g. ${fn}('"Hi, " ~ $input.name').`),
+    );
+  }
+  if (source === "") {
+    throw new Error(
+      `${fn}() was given an empty string, which the engine cannot evaluate. ` +
+        `Pass expression source, or use c.text("") for an empty string constant.`,
+    );
+  }
+}
 
 /** Options for {@link ref}. */
 export interface RefOptions {

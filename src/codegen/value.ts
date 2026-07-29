@@ -9,9 +9,12 @@
  * fidelity — and the same check absorbs the encoder's own guards (the issue #128
  * regex-pattern throw, the `c.obj` nested-value rejection) without restating them.
  *
- * Structured decoding of `const:expr` / `const:expr2` trees is deliberately out of
- * scope: those go to the literal fallback and are counted in the report, so the
- * real fallback rate is visible before anyone builds an expression decoder.
+ * Expression values (`const:expr` / `const:expr2`) are decoded as SOURCE, not as
+ * structure: `obj()` is tried first because it is the checked form, and anything
+ * else comes back through `c.expression` / `c.expressionLegacy`, which carry the
+ * expression string verbatim. Exact either way — the difference is only whether
+ * the emitted call type-checks its contents. A structured decoder for the
+ * expression grammar remains out of scope.
  */
 import type { FilterXdo, TaggedValue } from "../types/xdo.js";
 import { TAGS } from "../types/xdo.js";
@@ -22,6 +25,7 @@ import { obj as objValue } from "../values/obj.js";
 import { parseObjExpr } from "./obj-expr.js";
 import { CODEGEN_MODULE, CORE_MODULE, type DecodeContext } from "./context.js";
 import { call, lit, obj, type Expr } from "./print.js";
+import { normalize } from "../validate/normalize.js";
 
 /** A proposed decoding: the source to emit, what it re-encodes to, and its imports. */
 interface Candidate {
@@ -58,6 +62,26 @@ function attempt<T>(fn: () => T): T | null {
   }
 }
 
+/**
+ * Value/filter equality under the round-trip contract's own comparator.
+ *
+ * The proof this decoder rests on is "the constructor reproduces what was
+ * stored" — and what counts as reproduced is `normalize`, the same oracle
+ * `sidestep validate` and codegen verification use. Comparing raw instead made
+ * the decoder stricter than the contract, and two generational artifacts it
+ * already absorbs were enough to send an otherwise-decodable value to
+ * `rawValue()`:
+ *
+ * - a numeric `value` (`{value: 12, tag:"const:int"}`) where the SDK writes the
+ *   string form — the single most common shape in the wild;
+ * - a filter stored without `disabled`, which `filter()` always writes. That one
+ *   is doubly costly: it also fails the whole-chain check below, so ONE
+ *   old-vintage filter dragged its entire value down with it.
+ */
+function sameValue(a: unknown, b: unknown): boolean {
+  return deepEqual(normalize(a), normalize(b));
+}
+
 /** The pattern-piped regex filters — the ones whose piped value IS the pattern. */
 const REGEX_PATTERN_FILTERS = new Set([
   "regex_test",
@@ -68,6 +92,15 @@ const REGEX_PATTERN_FILTERS = new Set([
   "regex_get_all_matches",
   "regex_get_first_match",
 ]);
+
+/**
+ * A `const:obj` stored with no content at all: `""` (most of them) or `null`.
+ * Both are the pre-`{}` empty form — see the decode branch for what happens to
+ * them and why it is reported.
+ */
+export function isBlankObject(value: unknown): boolean {
+  return value === "" || value === null;
+}
 
 /** Split a `/body/flags` literal. Null when the value is not in that form. */
 function splitSlashRegex(value: string): { body: string; flags: string } | null {
@@ -85,7 +118,7 @@ function splitSlashRegex(value: string): { body: string; flags: string } | null 
 function decodeBase(v: TaggedValue, regexPiped: boolean): Candidate | null {
   const bare = { value: v.value, tag: v.tag, filters: [] };
   const propose = (expr: Expr, built: Value | null, ...symbols: string[]): Candidate | null =>
-    built && deepEqual(built, bare) ? { expr, value: built, symbols } : null;
+    built && sameValue(built, bare) ? { expr, value: built, symbols } : null;
 
   switch (v.tag) {
     case "const": {
@@ -117,8 +150,24 @@ function decodeBase(v: TaggedValue, regexPiped: boolean): Candidate | null {
     }
     case "const:null":
       return propose(call("c.null"), c.null(), "c");
+    // The engine's native current-time constant. `c.now()` is the only authoring
+    // form, and it only reproduces `value:"now"` — every occurrence in a real
+    // workspace is exactly that, and any other value falls through to `rawValue`
+    // rather than being decoded as a "now" it is not.
+    case "const:epochms":
+      return propose(call("c.now"), c.now(), "c");
     case "const:array":
     case "const:obj": {
+      // A BLANK object constant — `value:""` or `value:null` — is the shape the
+      // editor stopped writing long ago; a new object variable starts at `{}`
+      // today. It comes back as `c.obj()`, the current default. That is a real
+      // change (the engine evaluates a blank one to null and `{}` to an empty
+      // object — both live-verified), which is why `decodeValue` reports it
+      // under `modernized` instead of letting it pass silently. `normalize`
+      // treats the two as one value, so the round trip still verifies.
+      if (v.tag === "const:obj" && isBlankObject(v.value)) {
+        return propose(call("c.obj"), attempt(() => c.obj()), "c");
+      }
       const parsed = attempt(() => JSON.parse(v.value) as unknown);
       if (parsed === null && v.value !== "null") return null;
       const isArray = Array.isArray(parsed);
@@ -147,11 +196,11 @@ function decodeBase(v: TaggedValue, regexPiped: boolean): Candidate | null {
         ? propose(call("env", lit(v.value)), env(v.value), "env")
         : propose(call("setting", lit(v.value)), setting(v.value), "setting");
     }
-    // `const:expr` is deliberately absent: `obj()` — the only authoring
-    // constructor for a dynamic object — always emits `const:expr2`, so an
-    // `obj({…})` call could never reproduce a `const:expr` tag. The engine
-    // normalizes expr2 → expr at evaluation time, but the stored bytes differ,
-    // and matching bytes is the contract. Such a value stays a `rawValue`.
+    // The older expression form. `obj()` always emits `const:expr2`, so no
+    // object-building path can reproduce this tag — but `c.expressionLegacy` carries
+    // the source verbatim, which is both exact and readable.
+    case "const:expr":
+      return propose(call("c.expressionLegacy", lit(v.value)), attempt(() => c.expressionLegacy(v.value)), "c");
     case "const:expr2": {
       // A dynamic object, stored as its rendered XanoScript expression string.
       // `obj()` is the authoring constructor, so the inverse is a parse — scoped
@@ -162,9 +211,17 @@ function decodeBase(v: TaggedValue, regexPiped: boolean): Candidate | null {
       // parser that mis-reads an expression yields `null` and falls back to
       // `rawValue` rather than emitting a plausible-but-different value.
       const parsed = parseObjExpr(v.value);
-      if (!parsed) return null;
-      const built = attempt(() => objValue(parsed.built));
-      return propose(parsed.expr, built, ...parsed.symbols);
+      if (parsed) {
+        const built = attempt(() => objValue(parsed.built));
+        const candidate = propose(parsed.expr, built, ...parsed.symbols);
+        if (candidate) return candidate;
+      }
+      // Not the object grammar (or the parse did not prove out): the expression
+      // is some other expression-engine source — `~` concatenation, arithmetic,
+      // a conditional. `c.expression` carries it verbatim, which beats
+      // `rawValue` on readability and is exactly as faithful. `obj()` stays
+      // preferred above because it is the CHECKED form; this is the passthrough.
+      return propose(call("c.expression", lit(v.value)), attempt(() => c.expression(v.value)), "c");
     }
     default:
       // `env`, `response`, `trycatch`, `toolset` — engine-side tags with no
@@ -201,7 +258,7 @@ function decodeFilter(stored: FilterXdo): Candidate | null {
   const known = (FILTER_NAMES as readonly string[]).includes(stored.name);
   // `filter()` hard-codes `disabled: false`, so a filter stored without that key
   // — or with it true — has no `fl.*` form and rides through verbatim instead.
-  if (!known || stored.disabled !== false || !Array.isArray(stored.arg)) {
+  if (!known || (stored.disabled ?? false) !== false || !Array.isArray(stored.arg)) {
     return literalFilter(stored);
   }
 
@@ -218,7 +275,7 @@ function decodeFilter(stored: FilterXdo): Candidate | null {
 
   const factory = (fl as Record<string, (...a: Value[]) => FilterXdo>)[stored.name];
   const encoded = factory ? attempt(() => factory(...built)) : null;
-  if (!encoded || !deepEqual(encoded, stored)) return literalFilter(stored);
+  if (!encoded || !sameValue(encoded, stored)) return literalFilter(stored);
   return {
     expr: call(filterCallee(stored.name), ...args),
     // A filter is not a value; the caller only reads `expr`/`symbols` here.
@@ -249,7 +306,7 @@ function decodeValueCandidate(v: TaggedValue): Candidate | null {
   // `withFilters` can refuse the chain outright (the regex-pattern guard); when it
   // does, there is no source form that both compiles and re-encodes to this value.
   const built = attempt(() => withFilters(base.value, ...builtFilters));
-  if (!built || !deepEqual(built, v)) return null;
+  if (!built || !sameValue(built, v)) return null;
   return {
     expr: call("withFilters", base.expr, ...filterExprs),
     value: built,
@@ -274,6 +331,18 @@ function fallbackExpr(v: TaggedValue): Expr {
 export function decodeValue(ctx: DecodeContext, v: TaggedValue): Expr {
   const candidate = decodeValueCandidate(v);
   if (candidate) {
+    // Flagged, not silent: this one is faithful to intent but NOT byte-identical,
+    // and it evaluates differently (blank → null, `{}` → empty object). A reader
+    // has to be able to see every place it happened.
+    if (v.tag === "const:obj" && isBlankObject(v.value)) {
+      ctx.problem(
+        "modernized",
+        `blank const:obj (value ${v.value === "" ? '""' : "null"}) updated to c.obj() — the ` +
+          `current default for an object value. It EVALUATES DIFFERENTLY: the blank form ` +
+          `yields null, {} yields an empty object. Confirm nothing downstream depended on ` +
+          `that null`,
+      );
+    }
     for (const symbol of candidate.symbols) ctx.use(CORE_MODULE, symbol);
     return candidate.expr;
   }

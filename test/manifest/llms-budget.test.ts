@@ -19,8 +19,13 @@ import { measureCommittedLlms } from "../../scripts/measure-llms.js";
 // CLI direction is exactly the "legitimate critical addition" this rule means.
 // Raised again from 25.2k when the realtime family landed: three new object
 // kinds plus two lifecycle trigger types are authoring-critical grounding.
-// Ratchet it back down after any real reduction, per the inverse rule.)
-const CEILING_TOKENS = 25_800;
+// Ratchet it back down after any real reduction, per the inverse rule.
+// Raised again from 25.8k for `c.expression`: a new authoring constructor whose
+// entire point is a safety warning — an unvalidated passthrough an agent must be
+// told not to reach for by default — plus the `## Legacy` index that keeps
+// superseded paradigms recognizable without making them selectable. Cutting
+// either to fit would delete exactly the grounding this doc exists to carry.)
+const CEILING_TOKENS = 26_000;
 
 describe("llms.txt token budget", () => {
   it("stays under the bloat-tripwire ceiling", () => {

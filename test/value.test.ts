@@ -60,20 +60,35 @@ describe("c.* constant constructors", () => {
     expect(() => c.regex("foo", "/")).toThrow(/flags must be letters/);
   });
 
-  it("c.now emits the runtime-verified text('now') |to_epoch_ms chain (issue #120)", () => {
-    expect(c.now()).toEqual({
-      value: "now",
-      tag: "const",
-      filters: [{ name: "to_epoch_ms", disabled: false, arg: [] }],
-    });
+  it("c.now emits the engine's native const:epochms constant (issues #120, #145)", () => {
+    // Live-verified: this and the older `text("now") |to_epoch_ms` chain return
+    // the same epoch-ms number, and the engine persists each verbatim. The
+    // native tag is what the editor writes and needs no filter to get there.
+    expect(c.now()).toEqual({ value: "now", tag: "const:epochms", filters: [] });
   });
 
-  it("c.now is a filtered value that is valid inline in a where/cmp (#118 fixed, #145)", () => {
+  it("c.now is an unfiltered value, valid inline in a where/cmp (#118 fixed, #145)", () => {
     const v = c.now();
-    expect(v.filters).toHaveLength(1);
-    // Not col-branded — its footgun is the filter chain, not row-write misuse.
+    expect(v.filters).toHaveLength(0);
+    // Not col-branded — it is a constant, not a row-write target.
     expect("__col" in v).toBe(false);
     expectTypeOf(c.now()).toMatchTypeOf<Value>();
+  });
+});
+
+describe("c.obj() with no argument", () => {
+  it("defaults to the empty object, matching the editor's default for a new object variable", () => {
+    expect(c.obj()).toEqual({ value: "{}", tag: "const:obj", filters: [] });
+    expect(c.obj()).toEqual(c.obj({}));
+  });
+
+  it("is NOT the blank const:obj some older workspaces hold", () => {
+    // Live-verified: a blank `const:obj` (value "" or null) evaluates to null,
+    // while "{}" evaluates to an empty object. They are different values, so the
+    // authoring default must never be able to produce the blank form — codegen
+    // carries those through verbatim instead.
+    expect(c.obj().value).toBe("{}");
+    expect(c.obj().value).not.toBe("");
   });
 });
 
