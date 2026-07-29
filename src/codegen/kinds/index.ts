@@ -614,7 +614,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
         ["objType", lit(a.stored.obj_type)],
         plain(a.stored, "active", true),
         plain(a.stored, "description", ""),
-        plain(a.stored, "obj_id", 0, "objId"),
+        triggerObjId(a),
         history(a, "trigger"),
         ["meta", lit(a.stored.meta)],
         tags(a.stored),
@@ -777,9 +777,21 @@ function authRef(a: KindDecodeArgs, stored: unknown): DefEntry | null {
 
 /**
  * A realtime parent binding (`server.id` / `channel.id`): a guid reference back
- * to the parent's handle, or the numeric escape hatch. Unlike a query's api
- * group these are required, so a `0`/absent id is dropped rather than silently
- * emitting `0` — the resulting def then fails its own encoder check loudly.
+ * to the parent's handle, or the numeric escape hatch.
+ *
+ * Unlike a query's api group these are **required**, so an absent / `0` / blank
+ * id cannot be emitted — `0` would silently bind to nothing and a blank is not a
+ * reference at all. It is dropped, and {@link missingRealtimeRef} records why, so
+ * the gap arrives as a report line instead of as a def that mysteriously fails
+ * its own encoder check.
+ *
+ * The blank case is not hypothetical. The engine's export-side reference remap
+ * degrades to `""` when the target sits outside the export's scope (a
+ * schema-scoped export carries triggers but not the realtime objects they point
+ * at) rather than aborting the whole export. SideStep's own reads always include
+ * realtime objects, so its own bundles never hit this — but nothing stops a user
+ * pulling from an archive produced by a narrower export, and silently dropping a
+ * required binding there produces a def whose cause is upstream and invisible.
  */
 function realtimeHostBinding(
   a: KindDecodeArgs,
@@ -787,12 +799,72 @@ function realtimeHostBinding(
   defKey: string,
 ): DefEntry | null {
   const id = (a.stored[storedKey] as { id?: unknown } | undefined)?.id;
-  if (id === undefined || id === 0 || id === "") return null;
+  if (id === undefined || id === 0 || id === "") {
+    missingRealtimeRef(a, defKey, id);
+    return null;
+  }
   if (typeof id === "number") return [defKey, lit(id)];
   return [
     defKey,
     resolveReference(a.ctx, a.refs, String(id), { ...a.resolve, unresolved: "object-ref" }),
   ];
+}
+
+/**
+ * The two trigger `obj_type`s whose `obj_id` the engine remaps through the
+ * realtime guid helpers — and therefore the two that can arrive blank when the
+ * source export's scope did not include the object they point at.
+ */
+const REALTIME_TRIGGER_OBJ_TYPES = new Set(["channel", "realtime_server"]);
+
+/**
+ * A trigger's `obj_id` — the target it fires for.
+ *
+ * Identical to `plain(a.stored, "obj_id", 0, "objId")` for every trigger type but
+ * the two realtime lifecycle ones, where a blank has to be caught. `plain` would
+ * emit `objId: ""` verbatim: it compiles (a raw `objId` is the escape hatch, typed
+ * `number | string`) and then binds the trigger to nothing, which is the worst of
+ * the three possible outcomes — no compile error, no report line, no working
+ * trigger. Dropping it instead leaves `objId` absent, which the trigger factories
+ * already reject when no handle was passed either.
+ *
+ * Scoped to the realtime pair deliberately. The engine applies the same
+ * degrade-to-blank contract to its table and toolset reference remaps, so those
+ * obj_types can carry a blank `obj_id` for the same reason — but that predates
+ * this change and is left alone here rather than folded in silently.
+ */
+function triggerObjId(a: KindDecodeArgs): DefEntry | null {
+  const objType = a.stored.obj_type;
+  const objId = a.stored.obj_id;
+  if (typeof objType === "string" && REALTIME_TRIGGER_OBJ_TYPES.has(objType) && objId === "") {
+    missingRealtimeRef(a, "objId", objId);
+    return null;
+  }
+  return plain(a.stored, "obj_id", 0, "objId");
+}
+
+/**
+ * Record a required realtime reference that arrived with nothing usable in it.
+ *
+ * Filed as `unresolved-ref` (error severity) because the outcome is the same as a
+ * guid missing from the bundle: the generated tree does not reproduce its source.
+ * The detail distinguishes the two shapes it comes in, since they have different
+ * causes and different fixes — a blank points upstream at the export's scope, a
+ * `0`/absent one points at the object itself.
+ *
+ * Deliberately not a throw. The engine degrades rather than aborting an export
+ * for exactly this case, and throwing here would make such an archive
+ * un-pullable — strictly worse than a pull that completes with the loss named.
+ */
+function missingRealtimeRef(a: KindDecodeArgs, defKey: string, id: unknown): void {
+  const cause =
+    id === ""
+      ? "blanked by the source export — its scope did not include the referenced object"
+      : "absent or 0 in the source object";
+  a.ctx.problem(
+    "unresolved-ref",
+    `required realtime reference \`${defKey}\` is ${cause}; the generated def omits it and will not encode until it is supplied`,
+  );
 }
 
 /**
