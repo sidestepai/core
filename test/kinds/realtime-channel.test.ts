@@ -46,6 +46,7 @@ describe("realtimeChannel", () => {
     const c = encodeRealtimeChannel({
       name: "rooms/{room_id}",
       server: chat,
+      input: { room_id: input.int() },
       description: "one channel per room",
       active: false,
       anonymousClients: true,

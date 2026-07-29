@@ -25,7 +25,7 @@
  */
 import type { DecodeContext } from "../context.js";
 import { CORE_MODULE } from "../context.js";
-import { arr, id, lit, obj, type Expr } from "../print.js";
+import { arr, call, id, lit, obj, type Expr } from "../print.js";
 import type { RefIndex, ResolveOptions } from "../ref-index.js";
 import { resolveReference } from "../ref-index.js";
 import { decodeFieldMap, decodeResponse, deepEqual } from "../field.js";
@@ -36,6 +36,7 @@ import { isDefaultEnvelopeMember, isEmptyOutput } from "../../validate/normalize
 // copy that drifted would elide a customized tier as though it were the default.
 import { CONTAINER_DEFAULT_ENABLED } from "../../kinds/history.js";
 import type { ContainerPrefix } from "../../kinds/history.js";
+import { parsePathParams } from "../../kinds/path-params.js";
 
 /** One `key: value` pair of a generated def literal. */
 export type DefEntry = readonly [string, Expr];
@@ -213,6 +214,59 @@ function inputs(args: KindDecodeArgs): DefEntry | null {
   if (!Array.isArray(stored) || stored.length === 0) return null;
   args.ctx.use(CORE_MODULE, "input");
   return ["input", decodeFieldMap(args.ctx, args.refs, stored as never, "input", args.resolve)];
+}
+
+/**
+ * `input: {…}` for the two kinds whose `name` is a PATH (query, channel), with
+ * one deliberate infidelity: a `{param}` segment that binds to nothing upstream
+ * gets an `input.text()` synthesized for it.
+ *
+ * Xano allows an unbound `{param}` — it is inert route text until an input of
+ * that name exists — but SideStep refuses to author one, so emitting the source
+ * faithfully would produce a tree that throws the moment it is imported. Adding
+ * the input is the only outcome that both builds and round-trips, and it is
+ * reported every time because re-deploying the generated tree BINDS a segment
+ * that was previously inert.
+ *
+ * A name whose markers are malformed by SideStep's grammar (`post-{slug}`) can't
+ * be repaired this way — there is no param to bind. That decodes faithfully and
+ * is reported, so the reader learns why the generated file will not import.
+ */
+function pathAwareInputs(args: KindDecodeArgs): DefEntry | null {
+  const stored = (Array.isArray(args.stored.input) ? args.stored.input : []) as Array<{
+    name?: unknown;
+  }>;
+  const name = typeof args.stored.name === "string" ? args.stored.name : "";
+  let params: string[] = [];
+  try {
+    params = parsePathParams("path", name);
+  } catch (error) {
+    args.ctx.problem(
+      "path-param-bound",
+      `the path "${name}" has a {param} marker SideStep cannot parse (${
+        error instanceof Error ? error.message.replace(/^path: /, "") : String(error)
+      }). Emitted as-is — the generated file will not import until the object is renamed upstream.`,
+    );
+    return inputs(args);
+  }
+  const bound = new Set(stored.map((field) => field.name));
+  const missing = params.filter((param) => !bound.has(param));
+  if (missing.length === 0) return inputs(args);
+
+  args.ctx.problem(
+    "path-param-bound",
+    `${missing.map((p) => `{${p}}`).join(", ")} in "${name}" ${
+      missing.length === 1 ? "binds" : "bind"
+    } to nothing upstream — declared as input.text() so the tree builds. ` +
+      `Re-deploying this def BINDS the segment, which the source endpoint did not do.`,
+  );
+  args.ctx.use(CORE_MODULE, "input");
+  const decoded =
+    stored.length > 0
+      ? decodeFieldMap(args.ctx, args.refs, stored as never, "input", args.resolve)
+      : obj([]);
+  const existing = decoded.kind === "object" ? decoded.entries : [];
+  return ["input", obj([...existing, ...missing.map((p) => [p, call("input.text")] as const)])];
 }
 
 /** `response:`, elided when the object declares none. */
@@ -442,7 +496,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
         middleware(a),
         tags(a.stored),
         history(a, "query"),
-        inputs(a),
+        pathAwareInputs(a),
         response(a),
         stack(a),
       ]),
@@ -501,7 +555,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
         realtimeHostBinding(a, "server", "server"),
         plain(a.stored, "description", ""),
         plain(a.stored, "active", true),
-        inputs(a),
+        pathAwareInputs(a),
         plain(a.stored, "anonymous_clients", false, "anonymousClients"),
         plain(a.stored, "presence", false),
         // Nested blocks elide as WHOLES — a per-member comparison would fill a

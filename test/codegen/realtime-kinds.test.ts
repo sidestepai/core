@@ -10,6 +10,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { decodeBundle } from "../../src/codegen/index.js";
 import type { GeneratedProject } from "../../src/codegen/index.js";
 import { Xano } from "../../src/workspace/xano.js";
+import { input } from "../../src/inputs/input.js";
 import "../../src/index.js"; // register kinds
 import { realtimeServer } from "../../src/kinds/realtime-server.js";
 import { realtimeChannel } from "../../src/kinds/realtime-channel.js";
@@ -22,6 +23,7 @@ const bare = realtimeChannel({ name: "lobby", server: chat });
 const rich = realtimeChannel({
   name: "rooms/{room_id}",
   server: chat,
+  input: { room_id: input.int() },
   publish: { who: "authenticated" },
   conversation: { enabled: true, limit: 50 },
   delivery: { perRecipient: true },

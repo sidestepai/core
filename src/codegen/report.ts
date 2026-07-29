@@ -40,7 +40,19 @@ export type ReportCategory =
    * to, so it has to be visible without being alarming. Warning severity —
    * "read this line and confirm you want it", not "this output is broken".
    */
-  | "modernized";
+  | "modernized"
+  /**
+   * A `{param}` segment in an object's path had no input bound to it upstream,
+   * and the generated def declares one so the tree builds.
+   *
+   * Xano treats an unbound `{param}` as an inert part of the route string, so
+   * this is legal upstream — but SideStep refuses to author it, and emitting it
+   * faithfully would produce a project that throws on import. The synthesized
+   * input is the one place codegen deliberately does NOT reproduce its source,
+   * which is exactly why it gets a line: deploying the generated tree back BINDS
+   * that segment, and the reader has to know that.
+   */
+  | "path-param-bound";
 
 /**
  * How much a category should worry the reader.
@@ -70,6 +82,7 @@ const CATEGORY_LABELS: ReadonlyArray<readonly [ReportCategory, string, ReportSev
   ["unsupported-section", "Unsupported payload sections", "warning"],
   ["value-fallback", "Values emitted as annotated literals", "warning"],
   ["modernized", "Updated to the current form (evaluates differently)", "warning"],
+  ["path-param-bound", "Unbound {param} segments given an input", "warning"],
   ["expected-omission", "Deliberately not carried into the tree", "notice"],
   ["empty-source", "Objects that were already empty in the source", "notice"],
 ];

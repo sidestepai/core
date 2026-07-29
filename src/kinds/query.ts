@@ -24,6 +24,13 @@ import { resolveRef } from "../refs/guid.js";
 import { resolveAuthRef } from "../refs/auth.js";
 import { lockKey } from "../lock/lock.js";
 import { getLockedCanonical } from "../lock/store.js";
+import {
+  parsePathParams,
+  assertPathParamInputs,
+  fillPathParams,
+  type IsStaticPath,
+  type PathParamValues,
+} from "./path-params.js";
 
 export type HttpVerb = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
 
@@ -41,8 +48,24 @@ export interface QueryDef<
   Res = never,
   Resp extends ResponseDef = ResponseDef,
   S extends readonly Statement[] = readonly Statement[],
+  N extends string = string,
 > {
-  name: string;
+  /**
+   * The endpoint path within its api group — the last segment(s) of
+   * `/api:<canonical>/<name>`.
+   *
+   * A `{param}` segment makes it a URL PATH PARAM: `"blog/{slug}"` binds the
+   * segment to the `slug` input, and segments chain
+   * (`"blog/{slug}/review/{review_id}"`). Every `{param}` MUST have a matching
+   * `input` entry declared `required: true` with a scalar type, or `query()`
+   * throws — a marker with no input deploys as a permanently-broken route. There
+   * are no wildcards or patterns, and a `{param}` is always a whole segment
+   * (`"post-{slug}"` is an error). Inputs that are not in the path are ordinary
+   * query-string/body params and need nothing special.
+   *
+   * Captured as a literal so `getPath({ params })` types its keys from it.
+   */
+  name: N;
   /** Explicit Xano `guid` (this object's identity). Defaults to a guid derived from `name`; set it to keep identity across a rename or to match an existing object. */
   guid?: string;
   verb: HttpVerb;
@@ -133,16 +156,18 @@ export interface QueryDef<
 }
 
 /**
- * A `query()` handle: the def plus a `getPath()` method. It stays a plain data
- * descriptor with one added method — the method is dropped by `JSON.stringify`
- * and ignored by `encodeQuery`, so serialization and conformance are unaffected.
+ * A `query()` handle: the def plus `getPath()` and `toSearchParams()`. It stays
+ * a plain data descriptor with two added methods — they are dropped by
+ * `JSON.stringify` and ignored by `encodeQuery`, so serialization and
+ * conformance are unaffected.
  */
 export type QueryHandle<
   I extends Record<string, InputDescriptor> = Record<string, InputDescriptor>,
   Res = never,
   Resp extends ResponseDef = ResponseDef,
   S extends readonly Statement[] = readonly Statement[],
-> = QueryDef<I, Res, Resp, S> & {
+  N extends string = string,
+> = QueryDef<I, Res, Resp, S, N> & {
     /**
      * The endpoint's **group-relative** URL path — `/api:<canonical>/<name>` —
      * ready to prepend a host and drop into `fetch`. The api group's `canonical`
@@ -150,8 +175,26 @@ export type QueryHandle<
      * throws if neither is available (an empty canonical is minted into
      * `xano.lock` at export and is not knowable from the def alone). The HTTP
      * verb is available separately as `<query>.verb`.
+     *
+     * When the name carries `{param}` segments, `params` is REQUIRED and its
+     * keys are exactly those params — `getPath({ params: { slug: "hello" } })`
+     * → `/api:blog/blog/hello`. It throws on a missing, empty, or unknown param,
+     * and on a value containing `/` (which would address a different route).
      */
-    getPath(opts?: { canonical?: string }): string;
+    getPath: IsStaticPath<N> extends true
+      ? (opts?: { canonical?: string }) => string
+      : (opts: { canonical?: string; params: PathParamValues<N> }) => string;
+    /**
+     * Serialize this endpoint's inputs into a GET query string, dropping the
+     * ones bound to `{param}` path segments — those already ride in the path via
+     * {@link getPath}, and sending them twice is how `?slug=` ends up alongside
+     * `/blog/hello`. Otherwise identical to the free {@link toSearchParams}
+     * (which has no view of the route and so keeps every key).
+     */
+    toSearchParams: {
+      (input: Record<string, SearchParamValue>): URLSearchParams;
+      (input: Record<string, unknown>): URLSearchParams;
+    };
   };
 
 export interface QueryXdo {
@@ -209,9 +252,27 @@ function resolveAuth(name: string, auth: QueryDef["auth"]): false | number | str
   return resolveAuthRef("query", name, auth);
 }
 
+/**
+ * Validate the endpoint path against the input map and return the `{param}`
+ * names it declares. Shared by `query()` (authoring time — the error fires on
+ * the line the author wrote) and `encodeQuery` (the backstop).
+ */
+function assertQueryPathParams(
+  def: Pick<QueryDef<Record<string, InputDescriptor>, unknown>, "name" | "input">,
+): string[] {
+  const context = `query "${def.name}"`;
+  const params = parsePathParams(context, def.name);
+  assertPathParamInputs(context, params, def.input);
+  return params;
+}
+
 export function encodeQuery(def: QueryDef<Record<string, InputDescriptor>, unknown>): QueryXdo {
   if (!def.name) throw new Error("query: `name` is required.");
   if (!def.verb) throw new Error("query: `verb` is required.");
+  // Re-check the path↔input contract here, not just in `query()`: `QueryDef` is
+  // public and the kind registry encodes plain objects, so a hand-built def must
+  // not be able to route around the guard.
+  assertQueryPathParams(def);
   warnUnboundReturn("query", def.name, def.stack, def.response);
   return {
     name: def.name,
@@ -315,13 +376,26 @@ function queryImpl<
   Res = never,
   Resp extends ResponseDef = ResponseDef,
   const S extends readonly Statement[] = readonly Statement[],
->(def: QueryDef<I, Res, Resp, S>): QueryHandle<I, Res, Resp, S> {
-  // The path segment is invariant across calls; only the canonical can vary
-  // (via an override), so normalize the name once here.
+  const N extends string = string,
+>(def: QueryDef<I, Res, Resp, S, N>): QueryHandle<I, Res, Resp, S, N> {
+  // Fail on the line the author wrote, before export and before deploy: a
+  // {param} with no matching required scalar input is a broken route.
+  const params = assertQueryPathParams(def as QueryDef<Record<string, InputDescriptor>, unknown>);
+  const context = `query "${def.name}"`;
+  // The path segment is invariant across calls; only the canonical and the
+  // param values can vary, so normalize the name once here.
   const path = pathSegment(def.name);
-  const getPath = (opts?: { canonical?: string }): string =>
-    `/api:${resolveCanonical(def, opts?.canonical)}/${path}`;
-  return { ...def, getPath };
+  const getPath = (opts?: { canonical?: string; params?: Record<string, string | number> }): string =>
+    `/api:${resolveCanonical(def, opts?.canonical)}/${
+      params.length ? fillPathParams(context, "getPath()", path, opts?.params) : path
+    }`;
+  const search = (values: Record<string, unknown>): URLSearchParams =>
+    toSearchParams(
+      params.length
+        ? Object.fromEntries(Object.entries(values).filter(([key]) => !params.includes(key)))
+        : values,
+    );
+  return { ...def, getPath, toSearchParams: search } as QueryHandle<I, Res, Resp, S, N>;
 }
 
 /**

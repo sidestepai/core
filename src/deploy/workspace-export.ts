@@ -75,12 +75,46 @@ export async function exportWorkspaceBundle(
     signal: AbortSignal.timeout(EXPORT_TIMEOUT_MS),
   });
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`${opts.label} failed (${res.status} ${res.statusText}):\n${text}`);
+    throw new Error(
+      `${opts.label} failed (${res.status} ${res.statusText}):\n${describeErrorBody(
+        new Uint8Array(await res.arrayBuffer()),
+        res.headers.get("content-type"),
+      )}`,
+    );
   }
   const bundle = decodeWorkspaceArchive(new Uint8Array(await res.arrayBuffer()));
   if (bundle === null || typeof bundle !== "object" || !("payload" in bundle)) {
     throw new Error(`${opts.label}: the exported archive carried no \`payload\` — not a workspace bundle.`);
   }
   return bundle as ExportedBundle;
+}
+
+/**
+ * Render a failed export's body for a terminal.
+ *
+ * This route answers with an ARCHIVE, and at least one instance has been seen
+ * returning `500` with a complete `.tar.gz` in the body. Piping those bytes
+ * straight to stderr — which the plain `res.text()` this replaces did — floods
+ * the terminal with mojibake and can abort whatever is downstream of the pipe.
+ * So: text bodies print as text (the useful case — a JSON or plain-text error),
+ * and anything binary is described instead of dumped.
+ */
+function describeErrorBody(bytes: Uint8Array, contentType: string | null): string {
+  const type = contentType ? ` (content-type: ${contentType})` : "";
+  const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+  // A replacement char or a C0 control (tab/newline/CR excepted) means these
+  // bytes were never text to begin with.
+  // eslint-disable-next-line no-control-regex
+  const NOT_TEXT = /[\uFFFD\u0000-\u0008\u000B\u000C\u000E-\u001F]/;
+  if (bytes.length > 0 && !NOT_TEXT.test(text)) {
+    return text.length > 2000 ? `${text.slice(0, 2000)}\n… (${text.length} chars, truncated)` : text;
+  }
+  const gzip = bytes[0] === 0x1f && bytes[1] === 0x8b;
+  return (
+    `<${bytes.length} bytes of ${gzip ? "gzip data" : "binary"}, not text${type}>` +
+    (gzip
+      ? ` — the body looks like a workspace archive, so the instance answered with a payload AND an error status. ` +
+        `The status is what SideStep goes by; re-run the export, and if it persists the instance is failing mid-export.`
+      : "")
+  );
 }

@@ -104,29 +104,44 @@ describe("realtimeChannel().getChannel()", () => {
   });
 
   it("fills several params, in any argument order", () => {
-    const c = realtimeChannel({ name: "org/{org_id}/room/{room_id}", server });
+    const c = realtimeChannel({
+      name: "org/{org_id}/room/{room_id}",
+      server,
+      input: { org_id: input.int(), room_id: input.int() },
+    });
     expect(c.getChannel({ room_id: 3, org_id: 7 })).toBe("org/7/room/3");
   });
 
   it("throws on a missing or empty param", () => {
-    const room = realtimeChannel({ name: "rooms/{room_id}", server });
+    const room = realtimeChannel({ name: "rooms/{room_id}", server, input: { room_id: input.int() } });
+    // @ts-expect-error — a parameterized path requires its params at the type level too
     expect(() => room.getChannel()).toThrow(/needs a value for the path param `room_id`/);
     expect(() => room.getChannel({ room_id: "" })).toThrow(/needs a value for the path param `room_id`/);
   });
 
   it("throws on an unknown param — a silent no-op would join the wrong channel", () => {
-    const room = realtimeChannel({ name: "rooms/{room_id}", server });
-    expect(() => room.getChannel({ room_id: 1, roomId: 2 })).toThrow(/not a {param} segment/);
-    expect(() => realtimeChannel({ name: "lobby", server }).getChannel({ x: 1 })).toThrow(/path is static/);
+    const room = realtimeChannel({ name: "rooms/{room_id}", server, input: { room_id: input.int() } });
+    expect(() =>
+      room.getChannel({ room_id: 1, roomId: 2 } as unknown as { room_id: number }),
+    ).toThrow(/not a {param} segment/);
+    expect(() =>
+      realtimeChannel({ name: "lobby", server }).getChannel({ x: 1 } as unknown as Record<string, never>),
+    ).toThrow(/path is static/);
   });
 
   it("throws on a param value containing a slash", () => {
-    const room = realtimeChannel({ name: "rooms/{room_id}", server });
+    const room = realtimeChannel({ name: "rooms/{room_id}", server, input: { room_id: input.int() } });
     expect(() => room.getChannel({ room_id: "42/admin" })).toThrow(/cannot contain "\/"/);
   });
 
+  it("throws when a {param} segment has no input to bind it to", () => {
+    expect(() => realtimeChannel({ name: "rooms/{room_id}", server })).toThrow(
+      /no `room_id` input/,
+    );
+  });
+
   it("keeps the accessor off the encoded payload and out of JSON", () => {
-    const bare = { name: "rooms/{room_id}", server, presence: true };
+    const bare = { name: "rooms/{room_id}", server, presence: true, input: { room_id: input.int() } };
     const room = realtimeChannel(bare);
     expect(encodeRealtimeChannel(room)).toEqual(encodeRealtimeChannel(bare));
     expect(JSON.parse(JSON.stringify(room)).getChannel).toBeUndefined();
