@@ -133,3 +133,24 @@ export const onRoomJoin = realtimeChannelTrigger({
   actions: { join: true },
   stack: (t) => [s.debug.log({ value: t.channel })],
 });
+
+/**
+ * The channel's third action, and the one with a different posture: `deliver`
+ * runs once per RECIPIENT of a message, not once per channel event.
+ *
+ * `join` gates the join and `leave` only observes, but `deliver` gates each
+ * individual delivery — its return rewrites that recipient's copy of the payload,
+ * drops the message for that recipient, or passes the original through. That makes
+ * it the tool for per-viewer redaction ("hide the author's address from everyone
+ * but the author"), and also the most expensive action here by a wide margin: a
+ * stack per recipient per message.
+ *
+ * Kept as its own trigger rather than folded into `onRoomJoin` because the two
+ * fire at unrelated moments and want unrelated stacks.
+ */
+export const onRoomDeliver = realtimeChannelTrigger({
+  name: "ex_kind_trigger_on_room_deliver",
+  channel: roomChannel,
+  actions: { deliver: true },
+  stack: (t) => [s.debug.log({ value: t.action })],
+});

@@ -30,6 +30,7 @@ import {
   typingMessage,
   onChatConnect,
   onRoomJoin,
+  onRoomDeliver,
 } from "./kinds/realtime.js";
 
 // A query with a CUSTOMIZED (inherit:false) request-history block — the golden
@@ -51,7 +52,7 @@ export default workspace("sidestep-capture-kinds")
   .registerApiGroups(defs([api]))
   .registerTables(defs([users, posts, productTable, fieldTableRef]))
   .registerQueries(defs([getUserQuery, askAssistant, historyQuery]))
-  .registerTriggers(defs([onUserInsert, onMessage, onBranchLive, onChatConnect, onRoomJoin]))
+  .registerTriggers(defs([onUserInsert, onMessage, onBranchLive, onChatConnect, onRoomJoin, onRoomDeliver]))
   .registerTools(defs([searchTool]))
   .registerMcpServers(defs([exampleMcpServer]))
   .registerAgents(defs([assistant]))

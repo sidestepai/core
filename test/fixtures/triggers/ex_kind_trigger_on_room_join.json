@@ -14,7 +14,8 @@
     "channel": {
       "action": {
         "join": true,
-        "leave": false
+        "leave": false,
+        "deliver": false
       }
     }
   },
@@ -33,7 +34,8 @@
       "required": true,
       "values": [
         "join",
-        "leave"
+        "leave",
+        "deliver"
       ],
       "mode": "",
       "format": "",

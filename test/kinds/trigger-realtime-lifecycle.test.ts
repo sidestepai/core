@@ -83,14 +83,44 @@ describe("realtimeChannelTrigger", () => {
       realtimeChannelTrigger({ name: "on_join", channel: rooms, actions: { join: true, leave: true } }),
     );
     expect(t.obj_type).toBe("channel");
-    expect(t.meta).toEqual({ channel: { action: { join: true, leave: true } } });
+    expect(t.meta).toEqual({ channel: { action: { join: true, leave: true, deliver: false } } });
     expect(t.input.map((i) => i.name)).toEqual(["action", "channel", "client"]);
   });
 
-  it("carries the join/leave action enum", () => {
+  it("carries the join/leave/deliver action enum", () => {
+    // All three actions the engine declares, regardless of which a given trigger
+    // enables: the enum says what `action` can hold at runtime, `meta` says which
+    // ones fire.
     const t = encodeTrigger(realtimeChannelTrigger({ name: "t", channel: rooms }));
     const action = t.input[0] as { values?: string[] };
-    expect(action.values).toEqual(["join", "leave"]);
+    expect(action.values).toEqual(["join", "leave", "deliver"]);
+  });
+
+  it("encodes the deliver action, alone and alongside the other two", () => {
+    expect(
+      encodeTrigger(realtimeChannelTrigger({ name: "t", channel: rooms, actions: { deliver: true } }))
+        .meta,
+    ).toEqual({ channel: { action: { join: false, leave: false, deliver: true } } });
+
+    // Independent booleans, not a mode — all three may fire from one trigger.
+    expect(
+      encodeTrigger(
+        realtimeChannelTrigger({
+          name: "t",
+          channel: rooms,
+          actions: { join: true, leave: true, deliver: true },
+        }),
+      ).meta,
+    ).toEqual({ channel: { action: { join: true, leave: true, deliver: true } } });
+  });
+
+  it("still requires a channel HANDLE for a deliver-only trigger", () => {
+    // A bare path is unique only within its server, so it cannot bind — the
+    // deliver action does not create an exception to that.
+    expect(() =>
+      // @ts-expect-error — a bare path is deliberately not assignable
+      realtimeChannelTrigger({ name: "t", channel: "rooms/{room_id}", actions: { deliver: true } }),
+    ).toThrow();
   });
 
   it("binds the host to the channel's composite guid", () => {
@@ -110,9 +140,9 @@ describe("realtimeChannelTrigger", () => {
     );
   });
 
-  it("encodes both actions off when none are given", () => {
+  it("encodes all three actions off when none are given", () => {
     expect(encodeTrigger(realtimeChannelTrigger({ name: "t", channel: rooms })).meta).toEqual({
-      channel: { action: { join: false, leave: false } },
+      channel: { action: { join: false, leave: false, deliver: false } },
     });
   });
 });

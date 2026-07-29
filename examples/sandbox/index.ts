@@ -31,6 +31,7 @@ import {
   typingMessage,
   onChatConnect,
   onRoomJoin,
+  onRoomDeliver,
 } from "./kinds/realtime.js";
 
 // The examples span many def-object kinds; register* buckets are typed per kind.
@@ -42,7 +43,7 @@ export default workspace("sidestep-examples")
   .registerTables(defs([users, posts, productTable, ...autoTables]))
   .registerFunctions(defs([doubleFn, addFunction, ...autoFunctions]))
   .registerQueries(defs([getUserQuery, userPostQuery, askAssistant, classifyTicket, ...autoQueries]))
-  .registerTriggers(defs([onUserInsert, onMessage, onBranchLive, onChatConnect, onRoomJoin]))
+  .registerTriggers(defs([onUserInsert, onMessage, onBranchLive, onChatConnect, onRoomJoin, onRoomDeliver]))
   .registerTools(defs([searchTool]))
   .registerMcpServers(defs([exampleMcpServer]))
   .registerAgents(defs([assistant, classifier]))

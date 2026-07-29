@@ -138,10 +138,15 @@ const CATALOG: Record<TriggerInputObjType, () => Record<string, InputDescriptor>
     client: realtimeClientInput(),
   }),
 
-  // Realtime CHANNEL lifecycle trigger — join/leave on a channel. Same shape as
-  // the server type with the addressed channel path in place of the server name.
+  // Realtime CHANNEL lifecycle trigger — join/leave/deliver on a channel. Same
+  // shape as the server type with the addressed channel path in place of the
+  // server name.
+  //
+  // The action enum carries all THREE actions the engine declares for this type,
+  // regardless of which ones a given trigger enables: the enum describes what
+  // `action` can hold at runtime, and the per-trigger selection lives in `meta`.
   channel: () => ({
-    action: input.enum(["join", "leave"], { required: true }),
+    action: input.enum(["join", "leave", "deliver"], { required: true }),
     channel: input.text({ required: true }),
     client: realtimeClientInput(),
   }),

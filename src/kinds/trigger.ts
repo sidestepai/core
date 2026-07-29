@@ -66,15 +66,34 @@ export interface RealtimeActions {
   message?: boolean;
   join?: boolean;
 }
-/** Realtime SERVER lifecycle actions (obj_type=realtime_server). */
+/**
+ * Realtime SERVER lifecycle actions (obj_type=realtime_server).
+ *
+ * `connect` GATES the connection — the stack's return admits or denies it, and it
+ * is fail-closed. `disconnect` is OBSERVATIONAL: its return is ignored.
+ */
 export interface RealtimeServerActions {
   connect?: boolean;
   disconnect?: boolean;
 }
-/** Realtime CHANNEL lifecycle actions (obj_type=channel). */
+/**
+ * Realtime CHANNEL lifecycle actions (obj_type=channel). Independent booleans,
+ * not a mode — one trigger may carry any combination.
+ *
+ * The three do NOT share a posture, and the difference decides what a stack
+ * should return:
+ *  - `join` GATES the join (return admits or denies; fail-closed).
+ *  - `leave` is OBSERVATIONAL (return ignored).
+ *  - `deliver` GATES delivery PER RECIPIENT — it runs once for each client the
+ *    message is about to reach, and its return rewrites the payload for that one
+ *    recipient, drops the message for that recipient, or passes the original
+ *    through untouched. It is the heaviest of the three by a wide margin: a
+ *    channel with a `deliver` trigger runs a stack per recipient per message.
+ */
 export interface RealtimeChannelActions {
   join?: boolean;
   leave?: boolean;
+  deliver?: boolean;
 }
 
 // --- Database handle typing (U4) ---
@@ -327,11 +346,17 @@ export function realtimeServerTrigger(
 
 /**
  * Realtime channel lifecycle trigger (obj_type=channel) — fires when a client
- * joins or leaves a channel. Response-bearing.
+ * joins or leaves a channel, or when a message is about to be delivered to one.
+ * Response-bearing.
  *
  * Bind the target with `channel` (a `realtimeChannel()` handle, which also
  * carries its server) — a bare channel path is NOT accepted here, because a
  * path is unique only within a server and would bind ambiguously.
+ *
+ * The three actions have three different postures — see
+ * {@link RealtimeChannelActions}. `deliver` is the one worth reading about before
+ * enabling: it runs once per RECIPIENT per message, and its return decides that
+ * recipient's copy of the payload.
  */
 export function realtimeChannelTrigger(
   args: CommonArgs & {
@@ -356,6 +381,7 @@ export function realtimeChannelTrigger(
         action: {
           join: args.actions?.join ?? false,
           leave: args.actions?.leave ?? false,
+          deliver: args.actions?.deliver ?? false,
         },
       },
     },
