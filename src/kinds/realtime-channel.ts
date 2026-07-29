@@ -29,6 +29,13 @@ import {
 } from "./history.js";
 import { deriveGuid, realtimeChannelSeedName } from "../refs/guid.js";
 import type { RealtimeServerDef } from "./realtime-server.js";
+import {
+  parsePathParams,
+  assertPathParamInputs,
+  fillPathParams,
+  type IsStaticPath,
+  type PathParamValues,
+} from "./path-params.js";
 
 /** A reference to the owning realtime server: its `realtimeServer()` handle, or its name. */
 export type RealtimeServerRef = string | (Pick<RealtimeServerDef, "name"> & { guid?: string });
@@ -96,12 +103,20 @@ export interface ChannelRateLimitDef {
   messagesPerMinute?: number;
 }
 
-export interface RealtimeChannelDef<I extends Record<string, InputDescriptor> = Record<string, InputDescriptor>> {
+export interface RealtimeChannelDef<
+  I extends Record<string, InputDescriptor> = Record<string, InputDescriptor>,
+  N extends string = string,
+> {
   /**
    * The channel PATH, e.g. `"rooms"` or `"rooms/{room_id}"`. A `{param}`
-   * segment makes the channel dynamic; declare each such segment in `input`.
+   * segment makes the channel dynamic and MUST have a matching `input` entry
+   * declared `required: true` with a scalar type, or `realtimeChannel()` throws
+   * — the same contract a query's URL path params carry. A `{param}` is always a
+   * whole segment; there are no wildcards or patterns.
+   *
+   * Captured as a literal so `getChannel(params)` types its keys from it.
    */
-  name: string;
+  name: N;
   /** Explicit Xano `guid` (this object's identity). Defaults to a guid derived from `<server>|<path>`. */
   guid?: string;
   /** The owning realtime server — a `realtimeServer()` handle, or its name. Required. */
@@ -153,6 +168,9 @@ export interface RealtimeChannelXdo {
 export function encodeRealtimeChannel(def: RealtimeChannelDef): RealtimeChannelXdo {
   if (!def.name) throw new Error("realtimeChannel: `name` is required (the channel path).");
   const context = `realtimeChannel "${def.name}"`;
+  // The backstop for a hand-built def, mirroring `encodeQuery` — the factory
+  // checks the same contract at authoring time.
+  assertChannelPathParams(def);
   return {
     name: def.name,
     description: def.description ?? "",
@@ -190,7 +208,20 @@ registerKind(realtimeChannelKind);
 
 /** The `{param}` segment names in a channel path, in order (`[]` for a static path). */
 export function channelPathParams(path: string): string[] {
-  return [...path.matchAll(/\{([^{}]+)\}/g)].map((m) => m[1]!);
+  return parsePathParams(`realtimeChannel "${path}"`, path);
+}
+
+/**
+ * Validate the channel path against its input map and return the `{param}` names
+ * it declares. Shared by `realtimeChannel()` (authoring time) and
+ * `encodeRealtimeChannel` (the backstop) — the same contract, and the same
+ * helper, a query's URL path params use.
+ */
+function assertChannelPathParams(def: Pick<RealtimeChannelDef, "name" | "input">): string[] {
+  const context = `realtimeChannel "${def.name}"`;
+  const params = parsePathParams(context, def.name);
+  assertPathParamInputs(context, params, def.input);
+  return params;
 }
 
 /**
@@ -198,17 +229,22 @@ export function channelPathParams(path: string): string[] {
  * path a client actually joins. The accessor is dropped by `JSON.stringify` and
  * ignored by `encodeRealtimeChannel`, so serialization is unaffected.
  */
-export type RealtimeChannelHandle<I extends Record<string, InputDescriptor> = Record<string, InputDescriptor>> =
-  RealtimeChannelDef<I> & {
+export type RealtimeChannelHandle<
+  I extends Record<string, InputDescriptor> = Record<string, InputDescriptor>,
+  N extends string = string,
+> = RealtimeChannelDef<I, N> & {
     /**
      * The concrete channel path to put in a frame's `channel` field —
      * `{param}` segments filled from `params` (`"rooms/{room_id}"` +
-     * `{ room_id: 42 }` → `"rooms/42"`). A static path needs no argument.
+     * `{ room_id: 42 }` → `"rooms/42"`). A static path needs no argument, and a
+     * parameterized one REQUIRES the params, typed to exactly its segments.
      * Throws on a missing, empty, or unknown param, and on a value containing
      * `/` (which would fabricate a path segment and silently join a different
      * channel).
      */
-    getChannel(params?: Record<string, string | number>): string;
+    getChannel: IsStaticPath<N> extends true
+      ? (params?: Record<string, never>) => string
+      : (params: PathParamValues<N>) => string;
   };
 
 /**
@@ -220,42 +256,17 @@ export type RealtimeChannelHandle<I extends Record<string, InputDescriptor> = Re
  * the handle carries the owning server, so the message resolves both refs
  * without repeating it.
  */
-export function realtimeChannel<const I extends Record<string, InputDescriptor>>(
-  def: RealtimeChannelDef<I>,
-): RealtimeChannelHandle<I> {
-  const getChannel = (params?: Record<string, string | number>): string => {
-    const context = `realtimeChannel "${def.name}"`;
-    const declared = channelPathParams(def.name);
-    const given = params ?? {};
-    for (const key of Object.keys(given)) {
-      if (!declared.includes(key)) {
-        throw new Error(
-          `${context}: getChannel() was given \`${key}\`, which is not a {param} segment of the path. ` +
-            (declared.length
-              ? `Expected: ${declared.map((p) => `\`${p}\``).join(", ")}.`
-              : `This path is static — call getChannel() with no arguments.`),
-        );
-      }
-    }
-    return def.name.replace(/\{([^{}]+)\}/g, (_all, key: string) => {
-      const value = given[key];
-      if (value === undefined || value === null || value === "") {
-        throw new Error(
-          `${context}: getChannel() needs a value for the path param \`${key}\` — ` +
-            `pass { ${declared.map((p) => `${p}: … `).join(", ")}}.`,
-        );
-      }
-      const text = String(value);
-      if (text.includes("/")) {
-        throw new Error(
-          `${context}: the path param \`${key}\` cannot contain "/" (got ${JSON.stringify(text)}) — ` +
-            `it would fabricate a path segment and address a different channel.`,
-        );
-      }
-      return text;
-    });
-  };
-  return { ...def, getChannel };
+export function realtimeChannel<
+  const I extends Record<string, InputDescriptor>,
+  const N extends string = string,
+>(def: RealtimeChannelDef<I, N>): RealtimeChannelHandle<I, N> {
+  // Fail on the line the author wrote: a {param} with no matching required
+  // scalar input is a channel nobody can join with a bound value.
+  assertChannelPathParams(def as RealtimeChannelDef);
+  const context = `realtimeChannel "${def.name}"`;
+  const getChannel = (params?: Record<string, string | number>): string =>
+    fillPathParams(context, "getChannel()", def.name, params);
+  return { ...def, getChannel } as RealtimeChannelHandle<I, N>;
 }
 
 /** The guid a channel def resolves to — composed from its server and its path. */

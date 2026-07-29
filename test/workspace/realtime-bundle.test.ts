@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Xano } from "../../src/workspace/xano.js";
+import { input } from "../../src/inputs/input.js";
 import "../../src/index.js"; // register kinds
 import { realtimeServer } from "../../src/kinds/realtime-server.js";
 import { realtimeChannel, realtimeChannelGuid } from "../../src/kinds/realtime-channel.js";
@@ -9,7 +10,7 @@ import { deriveGuid } from "../../src/refs/guid.js";
 
 function build() {
   const chat = realtimeServer({ name: "chat", enabled: true });
-  const rooms = realtimeChannel({ name: "rooms/{room_id}", server: chat });
+  const rooms = realtimeChannel({ name: "rooms/{room_id}", server: chat, input: { room_id: input.int() } });
   const lobby = realtimeChannel({ name: "lobby", server: chat });
   const send = realtimeMessage({ name: "send", channel: rooms });
   const announce = realtimeMessage({ name: "send", channel: lobby });

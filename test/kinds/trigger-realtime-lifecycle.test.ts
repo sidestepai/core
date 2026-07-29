@@ -10,9 +10,10 @@ import { realtimeChannel, realtimeChannelGuid } from "../../src/kinds/realtime-c
 import { deriveGuid } from "../../src/refs/guid.js";
 import { s } from "../../src/statements/s.js";
 import { c } from "../../src/values/value.js";
+import { input } from "../../src/inputs/input.js";
 
 const chat = realtimeServer({ name: "chat" });
-const rooms = realtimeChannel({ name: "rooms/{room_id}", server: chat });
+const rooms = realtimeChannel({ name: "rooms/{room_id}", server: chat, input: { room_id: input.int() } });
 
 describe("realtimeServerTrigger", () => {
   it("encodes its own obj_type, action meta, and implied inputs", () => {
@@ -102,6 +103,7 @@ describe("realtimeChannelTrigger", () => {
     const other = realtimeChannel({
       name: "rooms/{room_id}",
       server: realtimeServer({ name: "auction" }),
+      input: { room_id: input.int() },
     });
     expect(encodeTrigger(realtimeChannelTrigger({ name: "t", channel: rooms })).obj_id).not.toBe(
       encodeTrigger(realtimeChannelTrigger({ name: "t", channel: other })).obj_id,
