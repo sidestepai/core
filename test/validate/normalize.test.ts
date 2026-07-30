@@ -818,7 +818,7 @@ describe("validate normalizer — an unset async runtime binding", () => {
  * `api_request` hoist `verify_host`/`verify_peer` to the front, and one each of
  * the two document statements permute theirs. Every statement on the list was
  * checked against the engine handler, which indexes its arguments by name
- * (`$args["url"]`, `$args["base_url"]`) rather than by position.
+ * by NAME rather than by position, so a reordering cannot change what it does.
  */
 describe("validate normalizer — name-keyed input ordering", () => {
   const entry = (name: string) => ({ name, tag: "const", value: name, filters: [] });

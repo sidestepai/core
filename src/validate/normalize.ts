@@ -176,10 +176,10 @@ const PAGING_INT_KEYS = new Set(["page", "per_page", "offset"]);
  * Statements whose `input[]` entries the engine reads BY NAME, so their stored
  * order carries nothing.
  *
- * Each one is on this list because the engine's own handler indexes its
- * arguments by name (`$args["url"]`, `$args["base_url"]`, …) rather than by
- * position, and because real workspaces store the same entries in more than one
- * order — 3 `api_request`, and one each of the two document statements.
+ * Each one is on this list for two reasons: the engine resolves that statement's
+ * arguments by NAME rather than by position, so a reordering cannot change what
+ * it does; and real workspaces store the same entries in more than one order —
+ * 3 `api_request`, and one each of the two document statements.
  *
  * This is an allowlist and must stay one. Order IS meaningful on other
  * input-routed statements — a row write's columns, and a lookup whose `input[]`
