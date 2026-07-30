@@ -10,6 +10,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { normalize } from "../../src/validate/normalize.js";
+import { encodeApiGroup } from "../../src/kinds/api-group.js";
 
 function loadTable(name: string): Record<string, unknown> {
   const url = new URL(`../fixtures/tables/${name}`, import.meta.url);
@@ -502,5 +503,140 @@ describe("validate normalizer — comparison operand serialization", () => {
     expect(normalize({ left: { tag: "var", operand: "api_1.response.status", filters: [] } })).toEqual(
       { left: { tag: "var", operand: "api_1.response.status" } },
     );
+  });
+});
+
+/**
+ * Object-level default envelope members — the kind-level twin of the statement
+ * rules above, and the largest single cause of round-trip mismatches in a real
+ * sweep (1,716 of 1,744 rows, once mismatches started naming their keys).
+ *
+ * Same generational gap, one level up: an object saved by an older engine
+ * generation omits these keys entirely, while both the current engine and the
+ * SDK always write them at a fixed default. Every default below is evidenced
+ * twice — the engine reads the absent key as this value, and real workspaces
+ * store the key present-at-this-value and absent side by side on the same
+ * instance.
+ *
+ * Every rule is paired with a negative: it drops at the default and PRESERVES
+ * anything authored, so no rule can quietly equalize two different objects.
+ */
+describe("validate normalizer — object-level default envelope members", () => {
+  it("drops a query's default response_type, which the engine reads from an absent key", () => {
+    expect(normalize({ name: "q", response_type: "standard" })).toEqual({ name: "q" });
+  });
+
+  it("keeps a response_type that selects a different behavior", () => {
+    expect(normalize({ name: "q", response_type: "stream" })).toEqual({
+      name: "q",
+      response_type: "stream",
+    });
+  });
+
+  it("drops the empty documentation strings an object carries at rest", () => {
+    expect(normalize({ docs: "", view_alias: "", datasource: "" })).toEqual({});
+    expect(normalize({ docs: "written", datasource: "warm" })).toEqual({
+      docs: "written",
+      datasource: "warm",
+    });
+  });
+
+  it("drops the empty list members, and only when they are empty", () => {
+    expect(normalize({ tag: [], views: [], result: [] })).toEqual({});
+    expect(normalize({ tag: [{ tag: "billing" }] })).toEqual({ tag: [{ tag: "billing" }] });
+    expect(normalize({ result: [{ name: "x" }] })).toEqual({ result: [{ name: "x" }] });
+  });
+
+  it("never touches the `tag` that DISCRIMINATES a tagged value", () => {
+    // The load-bearing negative for the empty-list rule: `tag` is the most
+    // common key in a workspace because every tagged value carries one. There
+    // it is a STRING, so the rule is type-distinct — but a rule on that name
+    // has to prove it, not assert it.
+    expect(normalize({ tag: "const:str", value: "hi" })).toEqual({ tag: "const:str", value: "hi" });
+    expect(normalize({ tag: "input", value: "user_id" })).toEqual({ tag: "input", value: "user_id" });
+  });
+
+  it("drops the two group gates at the value the engine reads from an absent key", () => {
+    // Opposite defaults, and each is what the engine falls back to: a group is
+    // enabled unless it says otherwise, and docs are off unless turned on.
+    expect(normalize({ api_group_enabled: true, swagger: false })).toEqual({});
+    expect(normalize({ api_group_enabled: false, swagger: true })).toEqual({
+      api_group_enabled: false,
+      swagger: true,
+    });
+  });
+
+  it("drops a default documentation block, and keeps one holding a token", () => {
+    expect(normalize({ documentation: { require_token: false, token: "" } })).toEqual({});
+    const authored = { documentation: { require_token: true, token: "C6UYpWv" } };
+    expect(normalize(authored)).toEqual(authored);
+  });
+
+  it("drops a default CORS block, and keeps a configured one", () => {
+    const empty = {
+      mode: "default",
+      allowOrigins: [],
+      allowHeaders: [],
+      allowCredentials: false,
+      maxAge: 0,
+      allowMethods: { delete: false, get: false, head: false, patch: false, post: false, put: false },
+    };
+    expect(normalize({ cors: empty })).toEqual({});
+    const configured = { cors: { ...empty, mode: "custom", maxAge: 3600, allowOrigins: ["x.test"] } };
+    expect(normalize(configured)).toEqual(configured);
+  });
+
+  it("reads an empty middleware block through BOTH of its stored spellings", () => {
+    // The empty-associative-collection artifact again (`mocks`, `customize`, an
+    // empty `context`): the engine hands an empty map back as a JSON array,
+    // while the SDK writes the members out. 173 real API groups store `[]` and
+    // 85 store the object — same "no middleware" either way.
+    expect(normalize({ middleware: [] })).toEqual({});
+    expect(
+      normalize({ middleware: { pre: [], post: [], pre_customize: false, post_customize: false } }),
+    ).toEqual({});
+  });
+
+  it("keeps a middleware block that attaches or customizes anything", () => {
+    const attached = { middleware: { pre: [{ name: "mvp:middleware" }], post: [], pre_customize: true, post_customize: false } };
+    expect(normalize(attached)).toEqual(attached);
+    // A phase explicitly customized to run NOTHING is not the same as
+    // inheriting, so the block survives whole — no member rule empties it, and
+    // that is what keeps `pre: clear()` distinguishable from an absent phase.
+    const cleared = { middleware: { pre: [], post: [], pre_customize: true, post_customize: false } };
+    expect(normalize(cleared)).toEqual(cleared);
+  });
+});
+
+/**
+ * The frozen defaults in the normalizer are literals, because that module sits
+ * UNDER the authoring layer and cannot import an encoder. This is what stops
+ * the two drifting apart: an encoder default that changes without the matching
+ * literal would silently start reporting every API group as a mismatch again.
+ */
+describe("validate normalizer — the frozen object defaults match the encoder", () => {
+  it("collapses an all-default API group to nothing but its identity", () => {
+    const encoded = encodeApiGroup({ name: "public" }) as unknown as Record<string, unknown>;
+    // Everything the encoder writes unconditionally is a default; only the
+    // name and the history block (its own rules) survive.
+    const normalized = normalize(encoded) as Record<string, unknown>;
+    for (const key of ["swagger", "api_group_enabled", "docs", "documentation", "middleware", "tag", "cors"]) {
+      expect(normalized[key], `${key} is written at its default and must drop`).toBeUndefined();
+    }
+    expect(normalized["name"]).toBe("public");
+  });
+
+  it("still reports an API group that configures any of them", () => {
+    const plain = normalize(encodeApiGroup({ name: "public" }));
+    for (const def of [
+      { name: "public", swagger: true },
+      { name: "public", apiGroupEnabled: false },
+      { name: "public", docs: "how to use" },
+      { name: "public", documentation: { require_token: true, token: "t" } },
+      { name: "public", tags: ["billing"] },
+      { name: "public", cors: { mode: "custom" as const, maxAge: 3600 } },
+    ]) {
+      expect(normalize(encodeApiGroup(def)), `${JSON.stringify(def)} must not collapse`).not.toEqual(plain);
+    }
   });
 });

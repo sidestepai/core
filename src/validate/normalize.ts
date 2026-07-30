@@ -181,6 +181,27 @@ const DEFAULT_CONTEXT_SIMPLE_EXTERNAL = {
 };
 
 /**
+ * The engine's default API-group CORS block — every facet off, no origins.
+ *
+ * Frozen here rather than imported from the encoder because this module sits
+ * under the authoring layer, not above it. `test/validate/normalize.test.ts`
+ * pins the literal against what the encoder emits by default, so the two cannot
+ * drift apart silently.
+ */
+const DEFAULT_CORS = {
+  mode: "default",
+  allowOrigins: [],
+  allowHeaders: [],
+  allowCredentials: false,
+  maxAge: 0,
+  allowMethods: { delete: false, get: false, head: false, patch: false, post: false, put: false },
+};
+/** The engine's default API-group `documentation` block — docs open, no token. */
+const DEFAULT_DOCUMENTATION = { require_token: false, token: "" };
+/** An attachment block that attaches nothing and customizes no phase. */
+const DEFAULT_MIDDLEWARE = { pre: [], post: [], pre_customize: false, post_customize: false };
+
+/**
  * Envelope members whose value, when it equals the listed default, is a
  * representational artifact rather than authored data. The SDK now emits the
  * **full** persisted statement/object envelope (every member always present
@@ -206,7 +227,46 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     case "as":
     case "description":
     case "sql_name":
+    // The object-level members below are the same generational gap one level up
+    // — an object saved by an older engine generation omits them, while both the
+    // current engine and the SDK always write them at a fixed default. They were
+    // 1,716 of the 1,744 round-trip mismatches in a 187-workspace sweep, and
+    // each default is evidenced twice: the engine reads the absent key as this
+    // value, and real workspaces store present-at-default and absent side by
+    // side on one instance.
+    case "docs":
+    case "datasource":
+    case "view_alias":
       return v === "";
+    // A query with no declared response type. Type- and value-distinct from the
+    // raw-SQL `response_type`, whose values are `list`/`single`/`count` and
+    // whose own default (`list`) is spelled differently.
+    case "response_type":
+      return v === "standard";
+    // Empty list members. `tag` is the load-bearing one: it is also the
+    // discriminator every tagged value carries, so the rule is restricted to the
+    // ARRAY spelling — a `tag: "const:str"` is a string and never matches.
+    case "tag":
+    case "views":
+    case "result":
+      return isEmptyArray(v);
+    // Two API-group gates with opposite defaults, each the value the engine
+    // falls back to when the key is absent: a group serves unless disabled,
+    // documentation is off unless turned on.
+    case "api_group_enabled":
+      return v === true;
+    case "swagger":
+      return v === false;
+    case "documentation":
+      return deepEqual(normalize(v), normalize(DEFAULT_DOCUMENTATION));
+    case "cors":
+      return deepEqual(normalize(v), normalize(DEFAULT_CORS));
+    // Both stored spellings of "no middleware": the engine hands an empty
+    // associative map back as a JSON array, the same artifact already absorbed
+    // for `mocks`, `customize` and an empty `context`. A phase explicitly
+    // customized to run nothing still compares — that is not inheriting.
+    case "middleware":
+      return isEmptyArray(v) || deepEqual(normalize(v), normalize(DEFAULT_MIDDLEWARE));
     // Two unrelated `offset`s, both at a default. An addon's is the response path
     // its rows are spliced into, `""` when spliced at the root. A list context's
     // paging offset is declared to default to 0. Neither carries information at
