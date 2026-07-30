@@ -814,6 +814,8 @@ const dbQuery: SpecialDecoder = (a) => {
   const pagingRuntime: Record<string, unknown> = {};
   let sortBlock: unknown;
   let distinct: unknown;
+  /** The stored paging gate, for the return types that carry one. */
+  let storedEnabled: boolean | undefined;
 
   if (returnType === "single") {
     sortBlock = getPath(ret, "single.sort");
@@ -821,6 +823,7 @@ const dbQuery: SpecialDecoder = (a) => {
     sortBlock = getPath(ret, "stream.sort");
     distinct = getPath(ret, "stream.distinct");
     const block = (getPath(ret, "stream.paging") ?? {}) as Record<string, unknown>;
+    if (typeof block.enabled === "boolean") storedEnabled = block.enabled;
     const paging = decodePaging(a, block, simple, [
       ["page", 1],
       ["per_page", 25],
@@ -834,6 +837,7 @@ const dbQuery: SpecialDecoder = (a) => {
     sortBlock = getPath(ret, "list.sort");
     distinct = getPath(ret, "list.distinct");
     const block = (getPath(ret, "list.paging") ?? {}) as Record<string, unknown>;
+    if (typeof block.enabled === "boolean") storedEnabled = block.enabled;
     const paging = decodePaging(a, block, simple, [
       ["page", 1],
       ["per_page", 25],
@@ -861,6 +865,24 @@ const dbQuery: SpecialDecoder = (a) => {
       return declineHere(`db.query: context.simpleExternal.${key} is not a tagged value`);
     pagingEntries.push([key, decodeValue(a.ctx, value)]);
     pagingRuntime[key] = value;
+  }
+
+  // The gate is DERIVED by the encoder (a page field or an `external` blob turns it
+  // on), so it is authored back only when the stored value disagrees — which real
+  // workspaces routinely do: they persist a non-default `per_page` with the gate
+  // off. Emitting it unconditionally would be noise on every query; not emitting it
+  // at all is what cost ~158 statements their readability, since the same
+  // derivation also decides where addons graft (`items[]`).
+  if (storedEnabled !== undefined) {
+    const derived =
+      pagingRuntime.page !== undefined ||
+      pagingRuntime.per_page !== undefined ||
+      pagingRuntime.offset !== undefined ||
+      context.external !== undefined;
+    if (storedEnabled !== derived) {
+      pagingEntries.push(["enabled", lit(storedEnabled)]);
+      pagingRuntime.enabled = storedEnabled;
+    }
   }
 
   if (returnType !== "aggregate") {

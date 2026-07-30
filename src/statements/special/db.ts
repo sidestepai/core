@@ -1211,6 +1211,25 @@ export interface DbPaging {
   offset?: number | Value;
   totals?: boolean;
   metadata?: boolean;
+  /**
+   * The engine's paging gate (`context.return.<type>.paging.enabled`).
+   *
+   * **Leave this unset.** It defaults to being DERIVED — on whenever a
+   * `page`/`per_page`/`offset` field or a classic `external` blob is present —
+   * which is what stops a `search`/`sort`-only `paging` from silently truncating a
+   * result to 25 rows (issue #41). Setting it overrides that derivation.
+   *
+   * It exists because a stored query can carry the two apart: real workspaces
+   * persist a non-default `per_page` with the gate OFF, and a derived-only encoder
+   * cannot reproduce that — which cost ~158 `db.query` statements their
+   * readability. So this is here to REPRESENT a stored state faithfully, like
+   * `table: null`; authoring `enabled: false` beside a `per_page` asks the engine
+   * to ignore that `per_page`.
+   *
+   * Note it also moves where addons graft: a metadata paging envelope puts rows
+   * under `items[]`, so the gate and the addon offset stay consistent.
+   */
+  enabled?: boolean;
   /** Dynamic custom-query override (`context.simpleExternal.search`) — a {@link Value}, ANDed onto the static `where`. */
   search?: Value;
   /** Dynamic sort override (`context.simpleExternal.sort`) — a {@link Value}; replaces the static sort at runtime. */
@@ -1222,12 +1241,23 @@ function isPagingValue(x: unknown): x is Value {
   return typeof x === "object" && x !== null && "tag" in x && "value" in x && "filters" in x;
 }
 
-/** Whether a `paging` arg carries a page/per_page/offset field (static or `Value`) — the engine's paging gate. */
+/** Whether a `paging` arg carries a page/per_page/offset field (static or `Value`). */
 function hasPageField(paging?: DbPaging): boolean {
   return (
     !!paging &&
     (paging.page !== undefined || paging.per_page !== undefined || paging.offset !== undefined)
   );
+}
+
+/**
+ * The engine's paging gate: an explicit {@link DbPaging.enabled} when authored,
+ * otherwise derived from a page field or a classic `external` blob.
+ *
+ * Both the return block's `enabled` and the addon graft offset read this, so the
+ * two cannot disagree about whether rows are wrapped in a paging envelope.
+ */
+function pagingEnabled(paging: DbPaging | undefined, forceEnabled: boolean): boolean {
+  return paging?.enabled ?? (hasPageField(paging) || forceEnabled);
 }
 
 /**
@@ -1393,7 +1423,7 @@ function encodeReturn(
   // `search`/`sort`-only `paging` must NOT flip it on (else default pagination
   // truncates the result to 25 rows). A classic `external` blob (forceEnabled)
   // also needs the gate on for its page/per_page to take effect.
-  const enabled = hasPageField(paging) || forceEnabled;
+  const enabled = pagingEnabled(paging, forceEnabled);
   const staticInt = (v: number | Value | undefined, def: number): number =>
     typeof v === "number" ? v : def;
   if (returnType === "stream") {
@@ -1593,7 +1623,7 @@ export function dbQuery<
   // frontend's return-type editor applies the identical `items[]` prefix.
   const usesPagingEnvelope =
     returnType === "list" &&
-    (hasPageField(args.paging) || args.external !== undefined) &&
+    pagingEnabled(args.paging, args.external !== undefined) &&
     (args.paging?.metadata ?? true);
   return {
     name: "mvp:dbo_view",

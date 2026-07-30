@@ -174,6 +174,51 @@ describe("db.query (mvp:dbo_view) emit shape", () => {
     expect(ctx.simpleExternal.sort).toEqual({ value: "s", tag: "input", filters: [] });
   });
 
+  it("an explicit paging.enabled overrides the derivation, in both directions", () => {
+    // Added so a decoder can reproduce a stored query that carries a non-default
+    // `per_page` with the gate OFF — real workspaces persist exactly that, and a
+    // derive-only encoder could not express it. It is an override, not a new
+    // default: every derivation assertion above is unchanged.
+    const off = encodeStatement(dbQuery({ table: note, paging: { per_page: 10, enabled: false } }));
+    const offPaging = (off.context as { return: { list: { paging: { enabled: boolean; per_page: number } } } })
+      .return.list.paging;
+    expect(offPaging.enabled).toBe(false); // derivation would have said true
+    expect(offPaging.per_page).toBe(10); // and the value it gates still persists
+
+    const on = encodeStatement(dbQuery({ table: note, paging: { search: inp("q"), enabled: true } }));
+    const onPaging = (on.context as { return: { list: { paging: { enabled: boolean } } } })
+      .return.list.paging;
+    expect(onPaging.enabled).toBe(true); // derivation would have said false (#41)
+  });
+
+  it("the gate and the addon graft offset stay consistent under an override", () => {
+    // The gate also decides whether rows sit under `items[]`, so the two read the
+    // same value — a query whose gate is forced off must not graft addons into a
+    // paging envelope that will not exist.
+    const enc = encodeStatement(
+      dbQuery({
+        table: note,
+        paging: { per_page: 10, enabled: false },
+        addon: [{ addon: { name: "author", guid: "3333000000000000000000000000cccc" }, as: "_author" }],
+      }),
+    );
+    const [attached] = (enc as { addon: Array<{ offset?: string; as: string }> }).addon;
+    // No envelope, so no `items[]` prefix — the offset is simply absent, which is
+    // the same state as the `""` a pulled workspace carries (normalize drops both).
+    expect(attached?.offset).not.toBe("items[]");
+    expect(attached?.as).toBe("_author");
+
+    // And with the gate left to derive, the same addon DOES graft under the envelope.
+    const derived = encodeStatement(
+      dbQuery({
+        table: note,
+        paging: { per_page: 10 },
+        addon: [{ addon: { name: "author", guid: "3333000000000000000000000000cccc" }, as: "_author" }],
+      }),
+    );
+    expect((derived as { addon: Array<{ offset?: string }> }).addon[0]?.offset).toBe("items[]");
+  });
+
   it("all-static paging emits no simpleExternal (byte-identical to today)", () => {
     const enc = encodeStatement(dbQuery({ table: note, paging: { page: 2, per_page: 10 } }));
     expect(enc.context).not.toHaveProperty("simpleExternal");

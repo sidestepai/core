@@ -980,6 +980,37 @@ describe("db.query", () => {
       expect(source).not.toContain("table: null");
     });
 
+    it("authors the paging gate back when the encoder's derivation disagrees", () => {
+      // Real workspaces persist a non-default `per_page` with the gate OFF, which a
+      // derive-only encoder cannot reproduce. ~158 of the remaining `db.query`
+      // mismatches traced to this one thing, because the same derivation also
+      // decides where addons graft (`items[]`).
+      const derived = encodeStatement(
+        s.db.query({ table: POSTS, paging: { per_page: 10 }, as: "rows" }),
+      );
+      const ret = (derived.context as { return: { list: { paging: Record<string, unknown> } } }).return;
+      const stored = {
+        ...derived,
+        context: {
+          ...(derived.context as Record<string, unknown>),
+          return: { ...ret, list: { ...ret.list, paging: { ...ret.list.paging, enabled: false } } },
+        },
+      } as StackItemXdo;
+      const source = decode(stored);
+      expect(source).toContain("enabled: false");
+      expect(source).toContain("per_page: 10");
+      expect(source).not.toContain("raw(");
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+    });
+
+    it("stays silent about the gate when the derivation already agrees", () => {
+      // The paired negative for readability: the gate must not appear on every
+      // query just because it is now expressible.
+      const source = dbRoundTrip(s.db.query({ table: POSTS, paging: { per_page: 10 }, as: "rows" }));
+      expect(source).toContain("per_page: 10");
+      expect(source).not.toContain("enabled");
+    });
+
     it("falls back to raw() rather than dropping a search it cannot read", () => {
       // The load-bearing negative: the rule above must not become a licence to
       // discard a filter. A malformed operand is unreadable, and a query whose
