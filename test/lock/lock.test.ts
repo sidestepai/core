@@ -137,18 +137,23 @@ describe("lock file model", () => {
     expect(lock.objects["function:a"]).toEqual({ guid });
   });
 
-  it("accepts fixed workspace keys and rejects workspace:<name> style keys", () => {
-    const ok = {
-      version: 1,
-      objects: {
-        workspace: { canonical: "Tok1" },
-        "workspace:realtime": { canonical: "Tok2" },
-      },
-    };
+  it("accepts the fixed workspace key and rejects workspace:<name> style keys", () => {
+    const ok = { version: 1, objects: { workspace: { canonical: "Tok1" } } };
     expect(() => parseLock(JSON.stringify(ok))).not.toThrow();
     expect(() =>
       parseLock(`{"version":1,"objects":{"workspace:my-app":{"canonical":"Tok3"}}}`),
     ).toThrow(/not a lockable workspace identity/);
+  });
+
+  it("tells a stale lock that workspace:realtime is retired, not that it is a typo", () => {
+    // The key this build used to write deserves a specific diagnosis — otherwise a
+    // lock written by an older version reads as a hand-edit mistake.
+    expect(() =>
+      parseLock(`{"version":1,"objects":{"workspace:realtime":{"canonical":"Tok2"}}}`),
+    ).toThrow(/retired/);
+    expect(() =>
+      parseLock(`{"version":1,"objects":{"workspace:realtime":{"canonical":"Tok2"}}}`),
+    ).toThrow(/Remove the entry/);
   });
 
   it("rejects keys with unknown payload prefixes or missing names", () => {

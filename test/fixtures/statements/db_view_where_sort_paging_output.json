@@ -1,5 +1,5 @@
 {
-  "_derived_from": "DERIVED, not a captured golden. Shape source: cloud-client extensions/MVP/includes/xano/xs/type/mvp/{Context,Search,Expression,Statement,ReturnSection,Sort}.php + statement/mvp/View.php + helper/MVP.php::convertContextToConfig. Behavior verified by the live cross-user repro (issue #41). See docs/plans/2026-07-19-003-fix-db-query-where-sort-operational-plan.md.",
+  "_derived_from": "DERIVED, not a captured golden. Shape source: the engine's own declared statement schema (search/expression/statement, context, return-section, sort) and the converter it reads them through. Behavior verified by the live cross-user repro (issue #41). See docs/plans/2026-07-19-003-fix-db-query-where-sort-operational-plan.md.",
   "name": "mvp:dbo_view",
   "as": "rows",
   "input": [],
@@ -8,42 +8,79 @@
     "customize": true,
     "filters": [],
     "items": [
-      { "name": "id", "children": [] },
-      { "name": "title", "children": [] }
+      {
+        "name": "id",
+        "children": []
+      },
+      {
+        "name": "title",
+        "children": []
+      }
     ]
   },
   "context": {
-    "dbo": { "id": "PLACEHOLDER" },
+    "dbo": {
+      "id": "PLACEHOLDER"
+    },
     "search": {
       "expression": [
         {
           "type": "statement",
           "or": false,
-          "group": { "expression": [] },
+          "group": {
+            "expression": []
+          },
           "statement": {
             "op": "=",
-            "left": { "operand": "user_id", "tag": "col", "filters": [] },
-            "right": { "operand": "id", "tag": "auth", "filters": [] }
+            "left": {
+              "operand": "user_id",
+              "tag": "col",
+              "filters": []
+            },
+            "right": {
+              "operand": "id",
+              "tag": "auth",
+              "filters": []
+            }
           }
         },
         {
           "type": "statement",
           "or": false,
-          "group": { "expression": [] },
+          "group": {
+            "expression": []
+          },
           "statement": {
             "op": "!=",
-            "left": { "operand": "title", "tag": "col", "filters": [] },
-            "right": { "operand": "", "tag": "const", "filters": [] }
+            "left": {
+              "operand": "title",
+              "tag": "col",
+              "filters": []
+            },
+            "right": {
+              "operand": "",
+              "tag": "const",
+              "filters": []
+            }
           }
         }
       ]
     },
-    "lock": { "value": "true", "tag": "const:bool", "filters": [] },
+    "lock": {
+      "value": "true",
+      "tag": "const:bool",
+      "filters": []
+    },
     "return": {
       "type": "list",
       "list": {
         "distinct": "auto",
-        "sort": [{ "sortBy": "created_at", "orderBy": "desc" }],
+        "sort": [
+          {
+            "sortBy": "created_at",
+            "orderBy": "desc"
+          }
+        ],
         "paging": {
           "enabled": true,
           "page": 1,

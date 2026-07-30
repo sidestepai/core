@@ -54,7 +54,15 @@ export type ContainerHistoryBlock<P extends ContainerPrefix> = { inherit: boolea
 > &
   Record<`${P}_limit`, number>;
 
-/** Object types the workspace-tier map carries a history pair for. */
+/**
+ * Object types the workspace-tier map carries a history pair for.
+ *
+ * `message` is the realtime tier and defaults off, like `function`, `middleware`,
+ * and `trigger`. It belongs here because the engine stores a pair for it at the
+ * workspace tier too — omitting it made the SDK emit a 12-key map against the
+ * engine's 14, so `workspace.history` mismatched on every real workspace and no
+ * workspace could round-trip clean.
+ */
 export const WORKSPACE_HISTORY_TYPES = [
   "query",
   "function",
@@ -62,13 +70,14 @@ export const WORKSPACE_HISTORY_TYPES = [
   "tool",
   "trigger",
   "middleware",
+  "message",
 ] as const;
 export type WorkspaceHistoryType = (typeof WORKSPACE_HISTORY_TYPES)[number];
 
 /** The workspace-tier authoring map: a scalar per object type (all optional). */
 export type WorkspaceHistoryDef = Partial<Record<WorkspaceHistoryType, HistoryInput>>;
 
-/** The stored 12-key workspace history map (`{objType}_enabled`/`{objType}_limit`, no `inherit`). */
+/** The stored 14-key workspace history map (`{objType}_enabled`/`{objType}_limit`, no `inherit`). */
 export type WorkspaceHistoryXdo = Record<`${WorkspaceHistoryType}_enabled`, boolean> &
   Record<`${WorkspaceHistoryType}_limit`, number>;
 
@@ -119,7 +128,7 @@ export function encodeContainerHistory<P extends ContainerPrefix>(
 /**
  * Workspace-tier flat map (terminal fallback — no `inherit`). Wholesale: every
  * object type is emitted; a type absent from `map` falls back to its engine
- * default (`enabled` per the kind rule, `limit:100`). Matches the 12-key stored
+ * default (`enabled` per the kind rule, `limit:100`). Matches the 14-key stored
  * shape in `test/fixtures/misc/workspace.json`.
  */
 export function buildWorkspaceHistory(map: WorkspaceHistoryDef): WorkspaceHistoryXdo {

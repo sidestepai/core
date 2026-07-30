@@ -21,11 +21,13 @@
  * that elision is verified rather than assumed.
  */
 import type { StackItemXdo, TaggedValue } from "../../types/xdo.js";
+import { isDefaultEnvelopeMember } from "../../validate/normalize.js";
+import { outputPaths } from "../../statements/special/output-select.js";
 import { arr, lit, obj, type Expr } from "../print.js";
-import { resolveReference } from "../ref-index.js";
+import { isBoundNumericId, isReferenceId, isUnboundId, resolveReference } from "../ref-index.js";
 import { decodeValue } from "../value.js";
 import { decodeCondition } from "../expression.js";
-import { getPath, prove, type SpecialArgs, type SpecialDecoder } from "./prove.js";
+import { declineHere, getPath, prove, type SpecialArgs, type SpecialDecoder } from "./prove.js";
 
 /** Coerce a stored `{value, tag, filters}` block to a tagged value. */
 function toValue(raw: unknown): TaggedValue | null {
@@ -39,11 +41,35 @@ function toValue(raw: unknown): TaggedValue | null {
   };
 }
 
+/**
+ * True when a stored `context` member holds the empty default the engine writes
+ * unconditionally, so authoring nothing re-encodes to the same bytes.
+ *
+ * The engine fills `search` / `bind` / `eval` on a query that filters, joins, and
+ * computes nothing; the SDK's encoder omits them (`if (search !== undefined)`).
+ * `normalize` already reconciles that by dropping such a member from **both**
+ * sides, so the only correct reading of one is "not authored" — and the test is
+ * delegated to the normalizer rather than restated here, which is what keeps the
+ * decoder and the comparison it will be judged by from drifting apart.
+ *
+ * Reading them as a filter this decoder failed to parse is what cost 113 of 201
+ * fallen-back `db.query` statements their readability.
+ */
+function isUnauthored(key: string, value: unknown): boolean {
+  return value === undefined || isDefaultEnvelopeMember(key, value);
+}
+
 /** A stored `const:bool` with no filter chain, as a plain boolean. */
 function plainBool(raw: unknown): boolean | null {
   const value = toValue(raw);
   if (!value || value.tag !== "const:bool" || value.filters.length > 0) return null;
   return value.value === "true";
+}
+
+/** A recovered `table:` argument — a bound reference, or `null` when unbound. */
+interface TableArg {
+  readonly expr: Expr;
+  readonly runtime: { name: string; guid: string } | null;
 }
 
 /**
@@ -55,12 +81,49 @@ function plainBool(raw: unknown): boolean | null {
  * indexed name still rides along: `db.add_or_edit` stores it as `context.dbo.as`
  * and `db.query` uses it to alias-qualify aggregate columns.
  */
-function tableArg(a: SpecialArgs, guid: string): { expr: Expr; runtime: { name: string; guid: string } } {
+function tableArg(a: SpecialArgs, guid: string): TableArg {
   const target = a.refs.lookup(guid);
   return {
     expr: resolveReference(a.ctx, a.refs, guid, { ...a.resolve, unresolved: "object-ref" }),
     runtime: { name: target?.name ?? "", guid },
   };
+}
+
+/**
+ * A blank `context.dbo.id` — recovered as `table: null`, and REPORTED.
+ *
+ * The bytes are faithful either way (`raw()` would carry the same blank), and the
+ * authoring surface models the unbound state deliberately as `table: null` — the
+ * same contract an addon's `table` has carried all along. Reading it as "nothing
+ * to recover" degraded 83 db statements to `raw()` across the sweep.
+ *
+ * **But a blank reference has two indistinguishable causes, and only one of them
+ * is benign**, which is why this reports rather than emitting quietly:
+ *
+ *  - the target was deleted, or was never bound — a defect in the workspace, and
+ *    exactly what `table: null` is for;
+ *  - the export-side reference remap could not resolve the target because it sat
+ *    outside the export's scope, and blanked it rather than failing the export. The
+ *    reference still EXISTS upstream. Emitting `table: null` silently would present
+ *    a real lost binding as a deliberate one — a wrong default making authored data
+ *    invisible, which is worse than no rule.
+ *
+ * A narrower export is the ordinary way to hit the second case, so the report line
+ * names both and leaves the judgement to whoever reads it. Same contract the
+ * realtime kinds already hold blank bindings to (`test/codegen/realtime-blank-refs`),
+ * applied consistently here.
+ *
+ * The alias is left to {@link aliasEntry}, which reads `dbo.as` by presence: a
+ * deleted table's alias frequently outlives it (`{as: "user", id: ""}`).
+ */
+function unboundTableArg(a: SpecialArgs, what: string): TableArg {
+  a.ctx.problem(
+    "unresolved-ref",
+    `${what} has a blank table reference, recovered as \`table: null\`; the table was ` +
+      "deleted or unbound, OR it sits outside this export's scope and was blanked on the " +
+      "way out — re-pull with the table in scope to tell the two apart",
+  );
+  return { expr: lit(null), runtime: null };
 }
 
 /**
@@ -78,35 +141,102 @@ function aliasEntry(stored: unknown): { entry: [string, Expr]; runtime: string }
   return { entry: ["tableAlias", lit(alias)], runtime: alias };
 }
 
-/** One parsed `input[]` entry. */
+/** One parsed `input[]` entry, with the sub-entries of an expanded one. */
 interface InputEntry {
   readonly name: string;
   readonly value: TaggedValue;
   readonly ignore: boolean;
+  readonly children: InputEntry[];
 }
 
-/** Parse `input[]` into name/value/ignore triples, or null if any entry is malformed. */
+/**
+ * Parse `input[]` into name/value/ignore entries, recursing into the `children`
+ * of an expanded one, or null if any entry is malformed.
+ *
+ * `expand` and `children` must agree, because the encoder derives `expand` from
+ * "has children" and so cannot reproduce a tree where they disagree. Neither
+ * disagreeing combination occurs in the wild; declining keeps them recorded as
+ * `raw()` rather than re-encoded into a shape that differs from what is stored.
+ */
 function inputEntries(stored: StackItemXdo): InputEntry[] | null {
-  const list = Array.isArray(stored.input) ? stored.input : [];
+  return parseEntries(stored.input, "input[]");
+}
+
+function parseEntries(list: unknown, path: string): InputEntry[] | null {
   const out: InputEntry[] = [];
-  for (const raw of list) {
+  for (const raw of Array.isArray(list) ? list : []) {
     const value = toValue(raw);
     const name = (raw as { name?: unknown }).name;
-    if (!value || typeof name !== "string") return null;
-    out.push({ name, value, ignore: (raw as { ignore?: unknown }).ignore === true });
+    if (!value || typeof name !== "string")
+      return declineHere(`${path}: entry is not a named tagged value`);
+    const rawChildren = (raw as { children?: unknown }).children;
+    const expand = (raw as { expand?: unknown }).expand === true;
+    const hasChildren = Array.isArray(rawChildren) && rawChildren.length > 0;
+    if (expand !== hasChildren)
+      return declineHere(`${path}: "expand" disagrees with "children"`);
+    const children = hasChildren ? parseEntries(rawChildren, `${path}.children[]`) : [];
+    if (!children) return null;
+    out.push({
+      name,
+      value,
+      ignore: (raw as { ignore?: unknown }).ignore === true,
+      children,
+    });
   }
   return out;
 }
 
-/** The column whitelist a statement's `output` envelope carries, if it is customized. */
+/**
+ * The column whitelist a statement's `output` envelope carries, if it is
+ * customized — as the dotted paths that re-encode to the stored tree, so a
+ * nested selection (sub-keys of an object column) survives the round trip.
+ * `undefined` for an uncustomized block; a customized block the path form cannot
+ * express returns `undefined` too, which leaves the block unaccounted and lets
+ * `prove` decline rather than emitting a selection that drops keys.
+ */
 function outputCols(stored: StackItemXdo): string[] | undefined {
   const output = (stored as { output?: unknown }).output as
     | { customize?: unknown; items?: unknown }
     | undefined;
   if (!output || output.customize !== true) return undefined;
-  const items = Array.isArray(output.items) ? output.items : [];
-  const names = items.map((item) => (item as { name?: unknown }).name);
-  return names.every((n) => typeof n === "string") ? (names as string[]) : undefined;
+  return outputPaths(output.items ?? []) ?? undefined;
+}
+
+/**
+ * Only row-data entries have an authored home for sub-entries. A lookup or named
+ * entry that carries them would re-encode without them, so this declines with a
+ * label rather than letting `prove` report it as an anonymous byte difference.
+ */
+function unexpanded(row: InputEntry, path: string): boolean {
+  if (row.children.length === 0) return true;
+  declineHere(`${path}: "${row.name}" carries sub-entries, which only row data can hold`);
+  return false;
+}
+
+/**
+ * One row-write entry as authored `data:` — `{name, value}`, plus `ignore` when
+ * set and `children` when the entry is expanded. Shared by every op that carries
+ * row data so the nested form cannot decode one way here and another there.
+ */
+function rowCell(
+  a: SpecialArgs,
+  row: InputEntry,
+): { expr: Expr; runtime: Record<string, unknown> } {
+  const fields: Array<[string, Expr]> = [
+    ["name", lit(row.name)],
+    ["value", decodeValue(a.ctx, row.value)],
+  ];
+  const runtime: Record<string, unknown> = { name: row.name, value: row.value };
+  if (row.ignore) {
+    fields.push(["ignore", lit(true)]);
+    runtime.ignore = true;
+  }
+  if (row.children.length > 0) {
+    const children = row.children.map((child) => rowCell(a, child));
+    fields.push(["children", arr(children.map((child) => child.expr))]);
+    runtime.children = children.map((child) => child.runtime);
+  }
+  return { expr: obj(fields), runtime };
 }
 
 /** Decode one stored addon attachment, recursing into `children`. */
@@ -114,11 +244,13 @@ function decodeAddonSpec(
   a: SpecialArgs,
   stored: unknown,
 ): { expr: Expr; runtime: Record<string, unknown> } | null {
-  if (stored === null || typeof stored !== "object") return null;
+  if (stored === null || typeof stored !== "object")
+    return declineHere("addon[]: attachment is not an object");
   const block = stored as Record<string, unknown>;
   const guid = block.id;
   const alias = block.as;
-  if (typeof guid !== "string" || typeof alias !== "string") return null;
+  if (typeof guid !== "string" || typeof alias !== "string")
+    return declineHere("addon[]: attachment has no id or no as");
 
   // The encoder splits the authored destination at its last dot into
   // `offset` + `as`; rejoining them recovers exactly what was authored, including
@@ -143,7 +275,8 @@ function decodeAddonSpec(
     for (const raw of inputList) {
       const value = toValue(raw);
       const name = (raw as { name?: unknown }).name;
-      if (!value || typeof name !== "string") return null;
+      if (!value || typeof name !== "string")
+        return declineHere("addon[].input[]: entry is not a named tagged value");
       cells.push([name, decodeValue(a.ctx, value)]);
       inputRuntime[name] = value;
     }
@@ -153,11 +286,11 @@ function decodeAddonSpec(
 
   const output = block.output as { customize?: unknown; items?: unknown } | undefined;
   if (output?.customize === true) {
-    const items = Array.isArray(output.items) ? output.items : [];
-    const names = items.map((item) => (item as { name?: unknown }).name);
-    if (!names.every((n) => typeof n === "string")) return null;
-    entries.push(["output", lit(names)]);
-    runtime.output = names;
+    const paths = outputPaths(output.items ?? []);
+    if (!paths)
+      return declineHere("addon[].output.items[]: column selection is not a name tree");
+    entries.push(["output", lit(paths)]);
+    runtime.output = paths;
   }
 
   const children = Array.isArray(block.children) ? block.children : [];
@@ -190,7 +323,7 @@ function decodeSort(list: unknown): { expr: Expr; runtime: unknown[] } | null {
   for (const raw of list) {
     const sortBy = (raw as { sortBy?: unknown }).sortBy;
     const orderBy = (raw as { orderBy?: unknown }).orderBy;
-    if (typeof sortBy !== "string") return null;
+    if (typeof sortBy !== "string") return declineHere("sort[]: entry has no sortBy");
     const cells: Array<[string, Expr]> = [["sortBy", lit(sortBy)]];
     const entry: Record<string, unknown> = { sortBy };
     // `asc` is the encoder's default, so stating it would be noise.
@@ -222,7 +355,8 @@ function decodeEvals(
   const prefix = stripAlias ? `${stripAlias}.` : "";
   for (const raw of list) {
     const block = raw as { as?: unknown; name?: unknown; filters?: unknown };
-    if (typeof block.as !== "string" || typeof block.name !== "string") return null;
+    if (typeof block.as !== "string" || typeof block.name !== "string")
+      return declineHere("eval[]: entry has no name or no as");
     const name = prefix && block.name.startsWith(prefix) ? block.name.slice(prefix.length) : block.name;
     const cells: Array<[string, Expr]> = [
       ["name", lit(name)],
@@ -236,13 +370,15 @@ function decodeEvals(
       const filterRuntime: unknown[] = [];
       for (const step of filters) {
         const stepBlock = step as { name?: unknown; arg?: unknown; disabled?: unknown };
-        if (typeof stepBlock.name !== "string") return null;
+        if (typeof stepBlock.name !== "string")
+          return declineHere("eval[].filters[]: step has no name");
         const stepCells: Array<[string, Expr]> = [["name", lit(stepBlock.name)]];
         const stepEntry: Record<string, unknown> = { name: stepBlock.name };
         const args = Array.isArray(stepBlock.arg) ? stepBlock.arg : [];
         if (args.length > 0) {
           const values = args.map(toValue);
-          if (values.some((v) => v === null)) return null;
+          if (values.some((v) => v === null))
+            return declineHere("eval[].filters[].arg[]: argument is not a tagged value");
           stepCells.push(["arg", arr(values.map((v) => decodeValue(a.ctx, v!)))]);
           stepEntry.arg = values;
         }
@@ -298,12 +434,17 @@ interface DboOpShape {
 /** Build a decoder for one uniform `context.dbo.id` + `input[]` operation. */
 function dboOp(shape: DboOpShape): SpecialDecoder {
   return (a) => {
-    const guid = getPath(a.stored.context, "dbo.id");
-    if (typeof guid !== "string" || guid === "") return null;
+    const storedId = getPath(a.stored.context, "dbo.id");
+    if (!isReferenceId(storedId))
+      return declineHere(`${shape.path}: context.dbo.id is not a reference id`);
+    if (isBoundNumericId(storedId))
+      return declineHere(`${shape.path}: context.dbo.id is a numeric object reference`);
     const entriesIn = inputEntries(a.stored);
     if (!entriesIn) return null;
 
-    const table = tableArg(a, guid);
+    const table = isUnboundId(storedId)
+      ? unboundTableArg(a, shape.path)
+      : tableArg(a, String(storedId));
     const entries: Array<[string, Expr]> = [["table", table.expr]];
     const runtime: Record<string, unknown> = { table: table.runtime };
     const alias = aliasEntry(a.stored.context);
@@ -316,8 +457,11 @@ function dboOp(shape: DboOpShape): SpecialDecoder {
     if (shape.lookup) {
       const fieldName = entriesIn[cursor++];
       const fieldValue = entriesIn[cursor++];
-      if (fieldName?.name !== "field_name" || fieldValue?.name !== "field_value") return null;
-      if (fieldName.value.tag !== "const" || fieldName.value.filters.length > 0) return null;
+      if (fieldName?.name !== "field_name" || fieldValue?.name !== "field_value")
+        return declineHere(`${shape.path}: input[] does not lead with field_name/field_value`);
+      if (fieldName.value.tag !== "const" || fieldName.value.filters.length > 0)
+        return declineHere(`${shape.path}: field_name is not a bare constant`);
+      if (!unexpanded(fieldName, shape.path) || !unexpanded(fieldValue, shape.path)) return null;
       // `id` is the encoder's default lookup column, so naming it adds nothing.
       if (fieldName.value.value !== "id") {
         entries.push(["fieldName", lit(fieldName.value.value)]);
@@ -332,12 +476,14 @@ function dboOp(shape: DboOpShape): SpecialDecoder {
       if (found?.name !== spec.entry) {
         // An optional entry the engine omitted: skip it without consuming a slot.
         if (spec.optional) continue;
-        return null;
+        return declineHere(`${shape.path}: input[] is missing required "${spec.entry}"`);
       }
       cursor += 1;
+      if (!unexpanded(found, shape.path)) return null;
       if (spec.bool) {
         const value = plainBool(found.value);
-        if (value === null) return null;
+        if (value === null)
+          return declineHere(`${shape.path}: "${spec.entry}" is not a bare boolean constant`);
         entries.push([spec.arg, lit(value)]);
         runtime[spec.arg] = value;
         continue;
@@ -350,22 +496,19 @@ function dboOp(shape: DboOpShape): SpecialDecoder {
       const rows = entriesIn.slice(cursor);
       cursor = entriesIn.length;
       if (rows.length > 0) {
-        const cells = rows.map((row) => {
-          const fields: Array<[string, Expr]> = [
-            ["name", lit(row.name)],
-            ["value", decodeValue(a.ctx, row.value)],
-          ];
-          if (row.ignore) fields.push(["ignore", lit(true)]);
-          return obj(fields);
-        });
-        entries.push(["data", arr(cells)]);
-        runtime.data = rows.map((row) => ({ name: row.name, value: row.value, ignore: row.ignore }));
+        const cells = rows.map((row) => rowCell(a, row));
+        entries.push(["data", arr(cells.map((cell) => cell.expr))]);
+        runtime.data = cells.map((cell) => cell.runtime);
       }
     }
 
     // A stored entry no rule accounts for means this is not the shape we think
     // it is — fall through rather than silently dropping it.
-    if (cursor !== entriesIn.length) return null;
+    if (cursor !== entriesIn.length)
+      return declineHere(
+        `${shape.path}: input[] carries ${entriesIn.length - cursor} unaccounted entries ` +
+          `(first: "${entriesIn[cursor]?.name ?? ""}")`,
+      );
 
     if (shape.takesOutput) {
       const cols = outputCols(a.stored);
@@ -400,8 +543,11 @@ function dboOp(shape: DboOpShape): SpecialDecoder {
  * why the ref index's name — not an empty placeholder — is what proves here.
  */
 const dbAddOrEdit: SpecialDecoder = (a) => {
-  const guid = getPath(a.stored.context, "dbo.id");
-  if (typeof guid !== "string" || guid === "") return null;
+  const storedId = getPath(a.stored.context, "dbo.id");
+  if (!isReferenceId(storedId))
+    return declineHere("db.add_or_edit: context.dbo.id is not a reference id");
+  if (isBoundNumericId(storedId))
+    return declineHere("db.add_or_edit: context.dbo.id is a numeric object reference");
   // `dbo.as` is read by PRESENCE, like every other db statement: it is authored
   // per statement, so its absence is data. Requiring it here (which this decoder
   // used to) made `add_or_edit` the one db statement that could not decode
@@ -411,14 +557,20 @@ const dbAddOrEdit: SpecialDecoder = (a) => {
   const entriesIn = inputEntries(a.stored);
   if (!entriesIn) return null;
   const [fieldName, fieldValue, ...rows] = entriesIn;
-  if (fieldName?.name !== "field_name" || fieldValue?.name !== "field_value") return null;
-  if (fieldName.value.tag !== "const" || fieldName.value.filters.length > 0) return null;
+  if (fieldName?.name !== "field_name" || fieldValue?.name !== "field_value")
+    return declineHere("db.add_or_edit: input[] does not lead with field_name/field_value");
+  if (fieldName.value.tag !== "const" || fieldName.value.filters.length > 0)
+    return declineHere("db.add_or_edit: field_name is not a bare constant");
+  if (!unexpanded(fieldName, "db.add_or_edit") || !unexpanded(fieldValue, "db.add_or_edit"))
+    return null;
 
-  const target = a.refs.lookup(guid);
-  const entries: Array<[string, Expr]> = [
-    ["table", resolveReference(a.ctx, a.refs, guid, { ...a.resolve, unresolved: "object-ref" })],
-  ];
-  const runtime: Record<string, unknown> = { table: { name: target?.name ?? "", guid } };
+  // Through the shared table argument like the rest of the family, which is what
+  // gives this one the unbound state too — it used to resolve the guid inline.
+  const table = isUnboundId(storedId)
+    ? unboundTableArg(a, "db.add_or_edit")
+    : tableArg(a, String(storedId));
+  const entries: Array<[string, Expr]> = [["table", table.expr]];
+  const runtime: Record<string, unknown> = { table: table.runtime };
   if (alias) {
     entries.push(alias.entry);
     runtime.tableAlias = alias.runtime;
@@ -432,20 +584,9 @@ const dbAddOrEdit: SpecialDecoder = (a) => {
   runtime.fieldValue = fieldValue.value;
 
   if (rows.length > 0) {
-    entries.push([
-      "data",
-      arr(
-        rows.map((row) => {
-          const fields: Array<[string, Expr]> = [
-            ["name", lit(row.name)],
-            ["value", decodeValue(a.ctx, row.value)],
-          ];
-          if (row.ignore) fields.push(["ignore", lit(true)]);
-          return obj(fields);
-        }),
-      ),
-    ]);
-    runtime.data = rows.map((row) => ({ name: row.name, value: row.value, ignore: row.ignore }));
+    const cells = rows.map((row) => rowCell(a, row));
+    entries.push(["data", arr(cells.map((cell) => cell.expr))]);
+    runtime.data = cells.map((cell) => cell.runtime);
   }
 
   const as = (a.stored as { as?: unknown }).as;
@@ -467,7 +608,8 @@ function sqlArgs(
 ): { expr: Expr; runtime: TaggedValue[] } | null {
   const list = Array.isArray(context.arg) ? context.arg : [];
   const values = list.map(toValue);
-  if (values.some((v) => v === null)) return null;
+  if (values.some((v) => v === null))
+    return declineHere("raw SQL: context.arg[] holds a non-tagged value");
   return {
     expr: arr(values.map((v) => decodeValue(a.ctx, v!))),
     runtime: values as TaggedValue[],
@@ -479,7 +621,7 @@ function sqlEntries(
   a: SpecialArgs,
   context: Record<string, unknown>,
 ): { entries: Array<[string, Expr]>; runtime: Record<string, unknown> } | null {
-  if (typeof context.code !== "string") return null;
+  if (typeof context.code !== "string") return declineHere("raw SQL: context.code is not a string");
   const entries: Array<[string, Expr]> = [["sql", lit(context.code)]];
   const runtime: Record<string, unknown> = { sql: context.code };
   // `list` is the encoder's default result shape.
@@ -526,7 +668,8 @@ function externalQuery(engine: string): SpecialDecoder {
     if (!decoded) return null;
     // The connection string rides `connection_string_flex`, not `connection_string`.
     const connection = toValue(context.connection_string_flex);
-    if (!connection) return null;
+    if (!connection)
+      return declineHere("external SQL: context.connection_string_flex is not a tagged value");
     decoded.entries.splice(1, 0, ["connectionString", decodeValue(a.ctx, connection)]);
     decoded.runtime.connectionString = connection;
 
@@ -548,9 +691,14 @@ function externalQuery(engine: string): SpecialDecoder {
 /** `db.bulk.delete` — the one bulk op whose filter rides `context.search`. */
 const dbBulkDelete: SpecialDecoder = (a) => {
   const context = (a.stored.context ?? {}) as Record<string, unknown>;
-  const guid = getPath(context, "dbo.id");
-  if (typeof guid !== "string" || guid === "") return null;
-  const table = tableArg(a, guid);
+  const storedId = getPath(context, "dbo.id");
+  if (!isReferenceId(storedId))
+    return declineHere("db.bulk.delete: context.dbo.id is not a reference id");
+  if (isBoundNumericId(storedId))
+    return declineHere("db.bulk.delete: context.dbo.id is a numeric object reference");
+  const table = isUnboundId(storedId)
+    ? unboundTableArg(a, "db.bulk.delete")
+    : tableArg(a, String(storedId));
   const entries: Array<[string, Expr]> = [["table", table.expr]];
   const runtime: Record<string, unknown> = { table: table.runtime };
   const alias = aliasEntry(context);
@@ -559,7 +707,7 @@ const dbBulkDelete: SpecialDecoder = (a) => {
     runtime.tableAlias = alias.runtime;
   }
 
-  if (context.search !== undefined) {
+  if (!isUnauthored("search", context.search)) {
     const where = decodeWhere(a, context.search);
     if (!where) return null;
     entries.push(["where", where.expr]);
@@ -592,13 +740,23 @@ const dbTransaction: SpecialDecoder = (a) => {
 /**
  * Decode a stored `where`: an `{expression: […]}` tree through the shared
  * boolean-expression inverse, or a raw `Value` escape hatch passed through.
+ *
+ * Null is always fatal for a caller (a search filter cannot be dropped), so the
+ * decline is recorded here rather than at each call site.
  */
 function decodeWhere(a: SpecialArgs, stored: unknown): { expr: Expr; runtime: unknown } | null {
   const condition = decodeCondition(a.ctx, stored);
   if (condition) return { expr: condition.expr, runtime: condition.runtime };
   const value = toValue(stored);
-  if (!value) return null;
+  if (!value) return declineHere("where: neither a decodable condition tree nor a tagged value");
   return { expr: decodeValue(a.ctx, value), runtime: value };
+}
+
+/** A persisted int, whether serialized as a number or as a numeric string. */
+function numberOf(v: unknown): number | undefined {
+  if (typeof v === "number") return Number.isFinite(v) ? v : undefined;
+  if (typeof v === "string" && v !== "" && /^-?\d+$/.test(v)) return Number(v);
+  return undefined;
 }
 
 /** The paging fields a query recovers, split between the static block and `simpleExternal`. */
@@ -615,13 +773,19 @@ function decodePaging(
     // baseline, which stays at its engine default in that case.
     if (simple[key] !== undefined) {
       const value = toValue(simple[key]);
-      if (!value) return null;
+      if (!value)
+        return declineHere(`db.query: context.simpleExternal.${key} is not a tagged value`);
       entries.push([key, decodeValue(a.ctx, value)]);
       runtime[key] = value;
       continue;
     }
-    const stored = block[key];
-    if (typeof stored === "number" && stored !== fallback) {
+    // The engine's schema types these `int`, but a persisted value can arrive as
+    // a numeric STRING — the same serialization artifact `normalize` absorbs for
+    // tagged `value`/`arg`. Requiring a number here silently skipped the field, so
+    // the re-encode fell back to the engine default and the whole query degraded
+    // to `raw()` over a paging size the SDK had read but discarded.
+    const stored = numberOf(block[key]);
+    if (stored !== undefined && stored !== fallback) {
       entries.push([key, lit(stored)]);
       runtime[key] = stored;
     }
@@ -632,11 +796,17 @@ function decodePaging(
 /** `db.query` — the full query-all surface. */
 const dbQuery: SpecialDecoder = (a) => {
   const context = (a.stored.context ?? {}) as Record<string, unknown>;
-  const guid = getPath(context, "dbo.id");
-  if (typeof guid !== "string" || guid === "") return null;
-  if (Array.isArray(a.stored.input) && a.stored.input.length > 0) return null;
+  const storedId = getPath(context, "dbo.id");
+  if (!isReferenceId(storedId))
+    return declineHere("db.query: context.dbo.id is not a reference id");
+  if (isBoundNumericId(storedId))
+    return declineHere("db.query: context.dbo.id is a numeric object reference");
+  if (Array.isArray(a.stored.input) && a.stored.input.length > 0)
+    return declineHere("db.query: statement-level input[] is populated");
 
-  const table = tableArg(a, guid);
+  const table = isUnboundId(storedId)
+    ? unboundTableArg(a, "db.query")
+    : tableArg(a, String(storedId));
   const entries: Array<[string, Expr]> = [["table", table.expr]];
   const runtime: Record<string, unknown> = { table: table.runtime };
   const alias = aliasEntry(context);
@@ -652,26 +822,28 @@ const dbQuery: SpecialDecoder = (a) => {
     runtime.returnType = returnType;
   }
 
-  if (context.search !== undefined) {
+  if (!isUnauthored("search", context.search)) {
     const where = decodeWhere(a, context.search);
     if (!where) return null;
     entries.push(["where", where.expr]);
     runtime.where = where.runtime;
   }
 
-  if (context.bind !== undefined) {
-    if (!Array.isArray(context.bind)) return null;
+  if (!isUnauthored("bind", context.bind)) {
+    if (!Array.isArray(context.bind))
+      return declineHere("db.query: context.bind is present but not an array");
     const bindExprs: Expr[] = [];
     const bindRuntime: unknown[] = [];
     for (const stored of context.bind) {
       const bindGuid = getPath(stored, "dbo.id");
       const bindAlias = getPath(stored, "dbo.as");
-      if (typeof bindGuid !== "string") return null;
+      if (typeof bindGuid !== "string")
+        return declineHere("db.query: a context.bind[] join has no dbo.id");
       const joined = tableArg(a, bindGuid);
       const cells: Array<[string, Expr]> = [["table", joined.expr]];
       const entry: Record<string, unknown> = { table: joined.runtime };
       // The alias defaults to the joined table's own name.
-      if (typeof bindAlias === "string" && bindAlias !== joined.runtime.name) {
+      if (typeof bindAlias === "string" && bindAlias !== joined.runtime?.name) {
         cells.push(["as", lit(bindAlias)]);
         entry.as = bindAlias;
       }
@@ -694,7 +866,7 @@ const dbQuery: SpecialDecoder = (a) => {
     runtime.bind = bindRuntime;
   }
 
-  if (context.eval !== undefined) {
+  if (!isUnauthored("eval", context.eval)) {
     const evals = decodeEvals(a, context.eval);
     if (!evals) return null;
     entries.push(["eval", evals.expr]);
@@ -703,16 +875,27 @@ const dbQuery: SpecialDecoder = (a) => {
 
   if (context.lock !== undefined) {
     const lock = plainBool(context.lock);
-    if (lock === null) return null;
+    if (lock === null)
+      return declineHere("db.query: context.lock is not a bare boolean constant");
     entries.push(["lock", lit(lock)]);
     runtime.lock = lock;
   }
 
-  const simple = (context.simpleExternal ?? {}) as Record<string, unknown>;
+  // Same story as `search`/`eval` above, and it bit harder: the engine writes all
+  // five `simpleExternal` facets at an empty `input` default on a query that binds
+  // none of them. Read as authored, they became five bound paging Values — and
+  // since the engine honors `external` over `simpleExternal`, the SDK forbids
+  // authoring both, so the recovered call did not merely mismatch, it THREW.
+  // Measured: 70 of 230 fallen-back queries stored exactly this pair.
+  const simple = isUnauthored("simpleExternal", context.simpleExternal)
+    ? {}
+    : (context.simpleExternal as Record<string, unknown>);
   const pagingEntries: Array<[string, Expr]> = [];
   const pagingRuntime: Record<string, unknown> = {};
   let sortBlock: unknown;
   let distinct: unknown;
+  /** The stored paging gate, for the return types that carry one. */
+  let storedEnabled: boolean | undefined;
 
   if (returnType === "single") {
     sortBlock = getPath(ret, "single.sort");
@@ -720,6 +903,7 @@ const dbQuery: SpecialDecoder = (a) => {
     sortBlock = getPath(ret, "stream.sort");
     distinct = getPath(ret, "stream.distinct");
     const block = (getPath(ret, "stream.paging") ?? {}) as Record<string, unknown>;
+    if (typeof block.enabled === "boolean") storedEnabled = block.enabled;
     const paging = decodePaging(a, block, simple, [
       ["page", 1],
       ["per_page", 25],
@@ -733,6 +917,7 @@ const dbQuery: SpecialDecoder = (a) => {
     sortBlock = getPath(ret, "list.sort");
     distinct = getPath(ret, "list.distinct");
     const block = (getPath(ret, "list.paging") ?? {}) as Record<string, unknown>;
+    if (typeof block.enabled === "boolean") storedEnabled = block.enabled;
     const paging = decodePaging(a, block, simple, [
       ["page", 1],
       ["per_page", 25],
@@ -756,9 +941,28 @@ const dbQuery: SpecialDecoder = (a) => {
   for (const key of ["search", "sort"] as const) {
     if (simple[key] === undefined) continue;
     const value = toValue(simple[key]);
-    if (!value) return null;
+    if (!value)
+      return declineHere(`db.query: context.simpleExternal.${key} is not a tagged value`);
     pagingEntries.push([key, decodeValue(a.ctx, value)]);
     pagingRuntime[key] = value;
+  }
+
+  // The gate is DERIVED by the encoder (a page field or an `external` blob turns it
+  // on), so it is authored back only when the stored value disagrees — which real
+  // workspaces routinely do: they persist a non-default `per_page` with the gate
+  // off. Emitting it unconditionally would be noise on every query; not emitting it
+  // at all is what cost ~158 statements their readability, since the same
+  // derivation also decides where addons graft (`items[]`).
+  if (storedEnabled !== undefined) {
+    const derived =
+      pagingRuntime.page !== undefined ||
+      pagingRuntime.per_page !== undefined ||
+      pagingRuntime.offset !== undefined ||
+      context.external !== undefined;
+    if (storedEnabled !== derived) {
+      pagingEntries.push(["enabled", lit(storedEnabled)]);
+      pagingRuntime.enabled = storedEnabled;
+    }
   }
 
   if (returnType !== "aggregate") {
@@ -774,7 +978,7 @@ const dbQuery: SpecialDecoder = (a) => {
   }
   if (context.external !== undefined) {
     const external = decodeExternal(a, context.external);
-    if (!external) return null;
+    if (!external) return null; // `decodeExternal` records which part refused
     entries.push(["external", external.expr]);
     runtime.external = external.runtime;
   }
@@ -785,8 +989,10 @@ const dbQuery: SpecialDecoder = (a) => {
   }
 
   if (returnType === "aggregate") {
-    const aggregate = decodeAggregate(a, ret, table.runtime.name, sortBlock);
-    if (!aggregate) return null;
+    // An unbound table contributes no alias to qualify aggregate columns with,
+    // matching the encoder's own `null` branch.
+    const aggregate = decodeAggregate(a, ret, table.runtime?.name ?? "", sortBlock);
+    if (!aggregate) return declineHere("db.query: context.return.aggregate is not decodable");
     entries.push(["aggregate", aggregate.expr]);
     runtime.aggregate = aggregate.runtime;
   }
@@ -815,7 +1021,7 @@ function decodeExternal(
   stored: unknown,
 ): { expr: Expr; runtime: Record<string, unknown> } | null {
   const value = toValue(stored);
-  if (!value) return null;
+  if (!value) return declineHere("db.query: context.external is not a tagged value");
   const entries: Array<[string, Expr]> = [["value", decodeValue(a.ctx, value)]];
   const runtime: Record<string, unknown> = { value };
 
@@ -835,7 +1041,8 @@ function decodeExternal(
     const gates: Record<string, boolean> = {};
     for (const [key, fallback] of defaults) {
       const gate = permissions[key];
-      if (typeof gate !== "boolean") return null;
+      if (typeof gate !== "boolean")
+        return declineHere(`db.query: context.external.permissions.${key} is not a boolean`);
       if (gate !== fallback) {
         cells.push([key, lit(gate)]);
         gates[key] = gate;

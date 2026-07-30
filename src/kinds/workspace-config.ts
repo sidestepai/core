@@ -79,7 +79,27 @@ export interface WorkspaceConfigDef {
    */
   use_xdo?: boolean;
   preferences?: WorkspacePreferences;
-  realtime?: { canonical?: string };
+  /**
+   * The workspace's LEGACY realtime block, carried verbatim.
+   *
+   * Not the realtime primitives this SDK authors — those are `realtimeServer` /
+   * `realtimeChannel` / `realtimeMessage`, each its own object with its own
+   * canonical. This is the older workspace-level block that predates them, and
+   * SideStep models none of its members: whatever the engine stored is round-
+   * tripped as-is, so a pulled workspace keeps it without this SDK taking a
+   * position on a shape it does not author.
+   *
+   * Omit it. It exists so the round trip is honest, not to be authored.
+   */
+  realtime?: Record<string, unknown>;
+  /**
+   * The workspace's public-documentation block, carried verbatim — the token and
+   * whitelist gating the hosted docs. Server-shaped; omit unless round-tripping
+   * a pulled workspace.
+   */
+  documentation?: Record<string, unknown>;
+  /** Whether the workspace publishes a Swagger/OpenAPI spec. */
+  swagger?: boolean;
   /**
    * Workspace-level default middleware chains (the terminal fallback tier).
    * Emitted only when provided — a workspace config without this field leaves
@@ -102,7 +122,7 @@ export interface WorkspaceConfigDef {
    * object/container tiers there is **no `inherit` flag** — the workspace is
    * always terminal.
    *
-   * WHOLESALE, not partial: once set, the full 12-key `{objType}_enabled`/
+   * WHOLESALE, not partial: once set, the full 14-key `{objType}_enabled`/
    * `{objType}_limit` map is emitted and any type you don't list falls back to
    * its engine default (`enabled` per the kind rule, `limit:100`) — deploying
    * `{ query: 100 }` overwrites any UI-configured `function_*`/`task_*`/… values.
@@ -155,13 +175,34 @@ export interface WorkspaceEnvXdo {
   market_item: never[];
 }
 
+/**
+ * The engine's empty LEGACY realtime block — what a workspace that never used the
+ * older workspace-level realtime carries. Emitted when the author omits the
+ * field, so the round trip matches a real export instead of inventing a shape.
+ */
+const LEGACY_REALTIME: Record<string, unknown> = {
+  hash: "",
+  mode: "",
+  enabled: false,
+  channels: [],
+};
+
+/** The engine's default documentation block — docs open, no token, no whitelist. */
+const DEFAULT_DOCUMENTATION: Record<string, unknown> = {
+  token: "",
+  whitelist: {},
+  require_token: false,
+};
+
 export interface WorkspaceConfigXdo {
   name: string;
   description: string;
   canonical: string;
   use_xdo: boolean;
   preferences: WorkspacePreferences;
-  realtime: { canonical: string };
+  realtime: Record<string, unknown>;
+  documentation: Record<string, unknown>;
+  swagger: boolean;
   /** Present only when the author sets `middleware` (author-provided subset). */
   middleware?: WorkspaceMiddlewareXdo;
   /** Present only when the author sets `history` (author-provided subset). */
@@ -212,7 +253,9 @@ export function encodeWorkspaceConfig(def: WorkspaceConfigDef): WorkspaceConfigX
     canonical: def.canonical ?? "",
     use_xdo: def.use_xdo ?? false,
     preferences: def.preferences ?? {},
-    realtime: { canonical: def.realtime?.canonical ?? "" },
+    realtime: def.realtime ?? { ...LEGACY_REALTIME },
+    documentation: def.documentation ?? { ...DEFAULT_DOCUMENTATION },
+    swagger: def.swagger ?? false,
     ...(def.middleware !== undefined
       ? { middleware: encodeWorkspaceMiddleware(def.middleware) }
       : {}),

@@ -95,6 +95,42 @@ describe("verifyBundles", () => {
     expect(result.omissions[0]).toMatchObject({ name: "domain_prefix", reason: "server-managed" });
   });
 
+  it("treats a re-derived workspace guid as an omission, not a mismatch", () => {
+    // The workspace config declares no guid field, so the export path mints one
+    // from the workspace name — it will NEVER equal the instance-assigned guid it
+    // replaced. Reporting that as a failed round trip made every real workspace
+    // mismatch, which buried the genuine per-object diffs underneath it.
+    // A second omitted key is what gets us past the section-level short circuit:
+    // `normalize` strips `guid` *inside* an object, so two workspaces differing
+    // only by guid compare equal as wholes and never reach the per-key loop. A
+    // real workspace always differs by more than one omitted key, as here.
+    const result = verifyBundles(
+      {
+        payload: {
+          workspace: { name: "ws", guid: "PrXBe_AsYkmrFQexcSHLYBxEo8c", secret: "s3cr3t" },
+        },
+      },
+      { payload: { workspace: { name: "ws", guid: "0e5f1a2b3c4d5e6f7a8b9c0d1e2f3a4b" } } },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.mismatches).toEqual([]);
+    expect(result.omissions.map((o) => o.name).sort()).toEqual(["guid", "secret"]);
+    expect(result.omissions.find((o) => o.name === "guid")).toMatchObject({
+      reason: "server-managed",
+    });
+  });
+
+  it("does not extend the derived allowance to any other key", () => {
+    // `derived` is a per-key policy, not a blanket excuse: a differing value on a
+    // key with no policy is still a real divergence.
+    const result = verifyBundles(
+      { payload: { workspace: { name: "ws", description: "before" } } },
+      { payload: { workspace: { name: "ws", description: "after" } } },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.mismatches[0]).toMatchObject({ name: "description" });
+  });
+
   it("treats the deliberately-emptied workspace.env as an omission, verified at top level", () => {
     // A real bundle carries env vars in BOTH workspace.env and top-level
     // payload.env. The encoder hoists to top-level (where the import reads them)

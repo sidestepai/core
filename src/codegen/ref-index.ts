@@ -132,6 +132,50 @@ export interface ResolveOptions {
 }
 
 /**
+ * A stored reference id, in either spelling the engine uses.
+ *
+ * A target is identified by a guid **or** by a numeric id depending on how and
+ * when the referring object was saved, so a decoder that insists on a string
+ * cannot even classify half of them. Read the type, then decide by value.
+ */
+export function isReferenceId(v: unknown): v is string | number {
+  return typeof v === "string" || (typeof v === "number" && Number.isFinite(v));
+}
+
+/**
+ * True when a stored reference id names nothing — the UNBOUND state.
+ *
+ * Both spellings have an empty form and they mean the same thing: a blank guid
+ * (`""`) and a zero numeric id (`0`) are each "no target", never "target zero".
+ * That equivalence is what lets one authored `null` stand for either, and it is
+ * safe to rely on because an id is not byte-compared at all (see
+ * {@link isBoundNumericId}).
+ */
+export function isUnboundId(v: string | number): boolean {
+  return v === "" || v === 0;
+}
+
+/**
+ * True for a reference to a real target recorded as a NUMBER rather than a guid.
+ *
+ * These are not decodable today, and the reason is subtle enough to be worth
+ * stating where it is enforced. `normalize` lists `id` among the server columns it
+ * strips, so a reference id is never byte-compared — which means the proof-carrying
+ * contract, the thing that makes an aggressive decoder safe everywhere else,
+ * cannot catch a wrong one here. A recovered reference re-encodes the guid as a
+ * STRING (`"3"` for a stored `3`), and that type change would sail through the
+ * comparison unexamined.
+ *
+ * So this stays a decline until a reference can carry its stored spelling
+ * (widening an `ObjectRef`'s guid to `string | number`), rather than emitting a
+ * reference nothing can verify. The unbound forms above are unaffected: `null`
+ * means "no target" in either spelling, so nothing is being guessed.
+ */
+export function isBoundNumericId(v: string | number): boolean {
+  return typeof v === "number" && !isUnboundId(v);
+}
+
+/**
  * Render a reference to `guid` at the current decode site.
  *
  * Resolution order: a symbol when one is available, a `{name, guid}` literal when

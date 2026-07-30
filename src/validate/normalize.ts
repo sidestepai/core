@@ -53,12 +53,29 @@ const STRIP_KEYS = new Set([
 function isEmptyObject(v: unknown): boolean {
   return v !== null && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0;
 }
-/** True for the two interchangeable "no customization" forms: `""` and `{}`. */
+/**
+ * True for the interchangeable "no customization" forms: `""`, `{}`, and `[]`.
+ *
+ * `customize` is an associative map of column name → overrides, and an empty
+ * associative collection serializes as a JSON **array** — the same artifact
+ * already absorbed for `mocks` and an empty `context`. Missing the `[]` spelling
+ * here was the single largest cause of `rawField()` in the sweep: 842 of 1,885
+ * fields, 45% of a cluster the plan had classified as a field-authoring design
+ * question rather than a canonicalization gap.
+ */
 function isEmptyCustomize(v: unknown): boolean {
-  return v === "" || isEmptyObject(v);
+  return v === "" || isEmptyObject(v) || isEmptyArray(v);
 }
 function isEmptyArray(v: unknown): boolean {
   return Array.isArray(v) && v.length === 0;
+}
+/**
+ * A persisted int equal to `n`, whether serialized as a number or as a numeric
+ * string. The engine types these `int` but a readback can carry either form —
+ * the same artifact the tagged-`value` coercion below absorbs.
+ */
+function isNumber(v: unknown, n: number): boolean {
+  return v === n || (typeof v === "string" && v !== "" && Number(v) === n);
 }
 
 /** Structural deep-equal for comparing an engine-default subtree to a frozen default. */
@@ -120,6 +137,34 @@ const DEFAULT_CONTEXT_RETURN = {
     paging: { page: 1, enabled: false, metadata: true, per_page: 25 },
   },
 };
+/**
+ * The four result-shape sub-blocks of {@link DEFAULT_CONTEXT_RETURN}, by member
+ * name. The engine writes every one of them on every query; the SDK writes only
+ * the block its `returnType` selects, so each default sibling has to drop on its
+ * own once any one of them is customized.
+ */
+const DEFAULT_RETURN_BLOCKS: Readonly<Record<string, unknown>> = {
+  list: DEFAULT_CONTEXT_RETURN.list,
+  single: DEFAULT_CONTEXT_RETURN.single,
+  stream: DEFAULT_CONTEXT_RETURN.stream,
+  aggregate: DEFAULT_CONTEXT_RETURN.aggregate,
+};
+
+/**
+ * The leanest all-defaults `context.return`: the result type at its declared
+ * default with no sub-block customized. A query saved by an engine generation
+ * that did not expand the whole subtree persists exactly this, and it carries no
+ * more information than {@link DEFAULT_CONTEXT_RETURN} does.
+ */
+const MINIMAL_CONTEXT_RETURN = { type: "list" };
+/**
+ * Return-block paging members the engine declares `int`. A readback can carry
+ * either serialization, and the number is the declared form.
+ */
+const PAGING_INT_KEYS = new Set(["page", "per_page", "offset"]);
+
+/** An expression group that nests nothing — what an omitted group means. */
+const EMPTY_SEARCH = { expression: [] };
 /** The engine's default `context.external` (paged-external input) — SDK omits it. */
 const DEFAULT_CONTEXT_EXTERNAL = {
   tag: "input",
@@ -146,8 +191,10 @@ const DEFAULT_CONTEXT_SIMPLE_EXTERNAL = {
  */
 export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
   switch (key) {
+    // An empty `mocks` arrives as `[]` from the engine and `{}` from the SDK — the
+    // empty-associative-collection artifact again. Both mean "no mocks".
     case "mocks":
-      return isEmptyObject(v);
+      return isEmptyObject(v) || isEmptyArray(v);
     case "runtime":
       return v === null;
     case "settings_registry":
@@ -160,6 +207,55 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     case "description":
     case "sql_name":
       return v === "";
+    // Two unrelated `offset`s, both at a default. An addon's is the response path
+    // its rows are spliced into, `""` when spliced at the root. A list context's
+    // paging offset is declared to default to 0. Neither carries information at
+    // its default; any other value is preserved.
+    case "offset":
+      return v === "" || isNumber(v, 0);
+    // Return-block paging members, each at its declared default. Type-distinct
+    // from their same-named neighbours in a permissions block (`page: true`,
+    // `per_page: false`), which are booleans and so untouched.
+    case "page":
+      return isNumber(v, 1);
+    case "per_page":
+      return isNumber(v, 25);
+    case "metadata":
+      return v === true;
+    case "totals":
+      return v === false;
+    case "distinct":
+      return v === "auto";
+    // A return sub-block whose every member sat at a default. These are checked
+    // against their NORMALIZED form because the member rules above are what empty
+    // them — without this the block survives as `{}` and the whole return envelope
+    // never collapses, which is the only reason it matters.
+    //
+    // `list` also names a foreach's iterated value; a tagged value never
+    // normalizes to empty, so that one is untouched.
+    case "paging":
+      return isEmptyObject(normalize(v));
+    // The same four blocks, plus the residue the member rules above cannot reach.
+    //
+    // The engine writes ALL FOUR result-shape blocks on every query; the SDK writes
+    // only the one its `returnType` selects. Emptiness alone does not collapse a
+    // default sibling, because two of its members have no rule that empties them —
+    // the paging `enabled:false` gate and an aggregate's empty `group`/`index`
+    // lists. So one customized `per_page` left every default sibling mismatching,
+    // and a paged query could never verify.
+    //
+    // Deep-equality against each block's own frozen default is what reaches those
+    // members WITHOUT a global rule on their generic names — `enabled:false` is
+    // meaningful on a history block, and an empty `group` is a condition default
+    // elsewhere. A block with anything authored inside it still compares.
+    case "list":
+    case "single":
+    case "stream":
+    case "aggregate":
+      return (
+        isEmptyObject(normalize(v)) ||
+        deepEqual(normalize(v), normalize(DEFAULT_RETURN_BLOCKS[key]))
+      );
     // Field-envelope members the engine fills with a fixed default on save. A
     // field saved by an older engine generation omits them entirely, while both
     // the current engine and the SDK always write them — the same lean-vs-full
@@ -207,11 +303,14 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     case "filters":
       return isEmptyArray(v);
     // Statement/object input-entry array: the lean parser form omits an empty
-    // `input`; the full persisted form carries `input:[]`. Same generational gap
-    // as the members above — an empty input array is identical to no inputs.
-    // Drop the empty form on both sides; a populated `input` is preserved.
+    // `input`; the full persisted form carries `input:[]`; and the engine writes
+    // `input:null` for a statement that takes no inputs at all. All three are the
+    // same "no inputs" state — the SDK emits the `[]` spelling, so without the
+    // null arm every input-less statement in a pulled workspace fails to prove
+    // and degrades to `raw()`. Drop all three on both sides; a populated `input`
+    // is preserved. Same two-spellings-of-empty shape as `settings_registry`.
     case "input":
-      return isEmptyArray(v);
+      return v === null || isEmptyArray(v);
     case "example":
       return isEmptyObject(v);
     case "shared_workspace":
@@ -264,8 +363,32 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
       return deepEqual(normalize(v), normalize({ tag: "const:bool", value: "" }));
     case "search":
       return deepEqual(normalize(v), normalize({ expression: [] }));
+    // Two spellings of an all-defaults return block. The engine's declared shape
+    // defaults the result type to a list and leaves every sub-block optional, so
+    // a query that customizes nothing persists either the whole subtree (when the
+    // engine filled it on save) or nothing but the type — and the SDK omits it
+    // entirely. Accept both, and preserve any customized paging/sort/distinct.
     case "return":
-      return deepEqual(normalize(v), normalize(DEFAULT_CONTEXT_RETURN));
+      return (
+        deepEqual(normalize(v), normalize(DEFAULT_CONTEXT_RETURN)) ||
+        deepEqual(normalize(v), MINIMAL_CONTEXT_RETURN)
+      );
+    // A condition entry's nested group. The engine declares it optional with no
+    // default, so an entry that nests nothing omits the key while the SDK
+    // materializes an empty search. Same state; drop the empty form on both
+    // sides. A group that actually nests expressions is preserved and compared.
+    case "group":
+      return deepEqual(normalize(v), EMPTY_SEARCH);
+    // A condition entry's or-flag, declared to default false: the persisted form
+    // omits it at the default where the SDK writes it.
+    case "or":
+      return v === false;
+    // Generated-asset visibility, declared to default public wherever it appears.
+    case "access":
+      return v === "public";
+    // A precondition's error class, declared to default to the standard error.
+    case "error_type":
+      return v === "standard";
     case "external":
       return deepEqual(normalize(v), normalize(DEFAULT_CONTEXT_EXTERNAL));
     case "simpleExternal":
@@ -276,13 +399,19 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
 }
 
 /**
- * A statement/object `output` is "empty" — `{filters:[]}` (lean parser form) or
- * `{items:[],filters:[],customize:false}` (full persisted form) are the same
+ * A statement/object `output` is "empty" — `null` (what the engine writes for a
+ * statement that shapes no result), `{filters:[]}` (lean parser form), and
+ * `{items:[],filters:[],customize:false}` (full persisted form) are all the same
  * "no output customization" state. Drop the key from both sides when empty;
  * keep it (and recurse) when it carries selected `items` or `customize:true`.
+ *
+ * The `null` arm matters for the same reason as `input:null`: the SDK emits the
+ * full form, so without it every result-less statement in a pulled workspace
+ * fails its re-encode proof and degrades to `raw()`.
  */
 export function isEmptyOutput(v: unknown): boolean {
-  if (v === null || typeof v !== "object" || Array.isArray(v)) return false;
+  if (v === null) return true;
+  if (typeof v !== "object" || Array.isArray(v)) return false;
   const o = v as { items?: unknown; customize?: unknown };
   const noItems = o.items === undefined || (Array.isArray(o.items) && o.items.length === 0);
   return noItems && o.customize !== true;
@@ -310,6 +439,19 @@ export function normalize<T>(value: T): T {
     // golden export fixtures store a top-level `as:<name>` on tables; live
     // `mvp_dbo` never does (a table returns nothing). Drop it on both sides.
     const isTable = "schema" in (value as object) && !("context" in (value as object));
+    // `mvp:create_auth` stores its four named entries in two different orders —
+    // `dbtable, extras, expiration, id` on 21 of 25 real statements and
+    // `id, dbtable, extras, expiration` on the other 4 — and the SDK can only
+    // write one of them. Ordering them by name on BOTH sides makes the two
+    // spellings compare equal.
+    //
+    // Scoped to this one statement, and only because a live round trip settled
+    // it: both orders mint a token, and the engine persists whichever order it
+    // is handed rather than canonicalizing. The entries are named parameters, so
+    // position carries nothing — but that is a fact about this statement, not a
+    // licence to sort `input[]` anywhere else, where order IS meaningful (a row
+    // write's columns, a lookup's leading field_name/field_value).
+    const sortsInput = (value as { name?: unknown }).name === "mvp:create_auth";
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
       if (STRIP_KEYS.has(k)) continue;
       if (isTable && k === "as") continue;
@@ -338,11 +480,50 @@ export function normalize<T>(value: T): T {
         out[k] = {};
         continue;
       }
+      // An empty `context` arrives as `[]` from the engine and `{}` from the SDK:
+      // an empty associative collection serializes as a JSON array, so the two
+      // are the same "no context" state with no authoring distinction.
+      // Canonicalize forward to `{}` — the form the SDK writes — so the split
+      // does not fail an otherwise-equal statement, and so the `context.*` rules
+      // below always see one shape.
+      //
+      // Scoped to `context` deliberately. A blanket array→object coercion would
+      // corrupt every genuinely-empty list in the envelope.
+      if (sortsInput && k === "input" && Array.isArray(v)) {
+        out[k] = [...v]
+          .sort((a, b) =>
+            String((a as { name?: unknown })?.name ?? "").localeCompare(
+              String((b as { name?: unknown })?.name ?? ""),
+            ),
+          )
+          .map((entry) => normalize(entry));
+        continue;
+      }
+      if (k === "context" && isEmptyArray(v)) {
+        out[k] = {};
+        continue;
+      }
       // `arg` (filter/method arguments) is numeric/string-inconsistent in the
       // corpus (`[8]` vs `["10"]`) — the same artifact as `value`; coerce the
       // numbers to the SDK's string form so the comparison ignores it.
       if (k === "arg" && Array.isArray(v)) {
         out[k] = v.map((e) => (typeof e === "number" ? String(e) : normalize(e)));
+        continue;
+      }
+      // A paging int persisted as a numeric STRING. These coerce toward the NUMBER,
+      // the opposite direction to `value`/`arg` above, because that is what each
+      // form declares: a tagged `value` is a string, `page`/`per_page`/`offset` are
+      // ints. Same artifact, canonicalized toward the declared type in both cases.
+      //
+      // The default-holding forms already reconcile via `isNumber`; this is for a
+      // CUSTOMIZED one, where a stored `"10"` against an encoded `10` cost 11
+      // `db.query` statements their readability.
+      //
+      // An addon's `offset` shares the key name and holds a response PATH
+      // (`"items[]"`), which is not a numeric string and so passes through — the
+      // same coexistence the two `offset` rules already rely on.
+      if (PAGING_INT_KEYS.has(k) && typeof v === "string" && /^-?\d+$/.test(v)) {
+        out[k] = Number(v);
         continue;
       }
       // `value` coercion absorbs a corpus inconsistency (the SDK always emits the
@@ -357,8 +538,29 @@ export function normalize<T>(value: T): T {
         out[k] = "{}";
         continue;
       }
+      // A tagged `value` is declared a STRING (`TaggedValue.value`), and the engine
+      // persists a `const:bool` either way — `value: false` and `value: "false"` are
+      // the same authored boolean. Coerced for the same reason as the numeric form
+      // directly above, and it is what a stored `context.lock` costs otherwise: 25
+      // `db.query` statements degraded to `raw()` over the spelling of one flag.
+      //
+      // Only `true`/`false` under a `value` key. A boolean anywhere else keeps its
+      // type and is still compared.
+      // `operand` is the same tagged value under the name a COMPARISON gives it
+      // (`statement.left` / `statement.right`), and the corpus is inconsistent
+      // there for the same reason: a real workspace stores `const:int` `0` as the
+      // number while the SDK writes the documented string.
+      //
+      // Leaving it out was a silent hole rather than a missing nicety. The
+      // decoders hand `prove` the STORED value object as the factory argument, so
+      // a re-encode reproduces the number and the proof passes — while the source
+      // it emits says `c.int(0)`, which encodes `"0"`. The proof therefore could
+      // not see a difference that `verify` (comparing a real re-export) reports.
       out[k] =
-        (k === "value" || k === "temperature") && typeof v === "number" ? String(v) : normalize(v);
+        (k === "value" || k === "operand" || k === "temperature") &&
+        (typeof v === "number" || typeof v === "boolean")
+          ? String(v)
+          : normalize(v);
     }
     return out as unknown as T;
   }

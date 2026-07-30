@@ -12,7 +12,7 @@ import type { TaggedValue } from "../../types/xdo.js";
 import { arr, lit, obj, type Expr } from "../print.js";
 import { decodeValue } from "../value.js";
 import { decodeCondition } from "../expression.js";
-import { getPath, prove, type SpecialArgs, type SpecialDecoder } from "./prove.js";
+import { declineHere, getPath, prove, type SpecialArgs, type SpecialDecoder } from "./prove.js";
 
 /** Coerce a stored `{value, tag, filters}` block to a tagged value. */
 function toValue(raw: unknown): TaggedValue | null {
@@ -36,7 +36,8 @@ function nested(a: SpecialArgs, path: string): { exprs: Expr[]; statements: unkn
 const setVar: SpecialDecoder = (a) => {
   const value = toValue(a.stored.context);
   const as = (a.stored as { as?: unknown }).as;
-  if (!value || typeof as !== "string" || as === "") return null;
+  if (!value) return declineHere("set_var: context is not a tagged value");
+  if (typeof as !== "string" || as === "") return declineHere("set_var: as is blank");
   return prove(a.ctx, a.stored, "set_var", [as, value], [lit(as), decodeValue(a.ctx, value)]);
 };
 
@@ -45,7 +46,8 @@ const updateVar: SpecialDecoder = (a) => {
   const context = (a.stored.context ?? {}) as Record<string, unknown>;
   const value = toValue(context);
   const name = context.name;
-  if (!value || typeof name !== "string") return null;
+  if (!value) return declineHere("update_var: context is not a tagged value");
+  if (typeof name !== "string") return declineHere("update_var: context.name is not a string");
   return prove(
     a.ctx,
     a.stored,
@@ -59,7 +61,7 @@ const updateVar: SpecialDecoder = (a) => {
 function decodeElifBranch(a: SpecialArgs, branch: unknown): { expr: Expr; runtime: unknown } | null {
   const context = (branch as { context?: unknown }).context;
   const when = decodeCondition(a.ctx, getPath(context, "expr"));
-  if (!when) return null;
+  if (!when) return declineHere("conditional: an elif branch's expr is not a decodable condition");
   const body = a.decodeStack(getPath(context, "if.run"));
   return {
     expr: obj([
@@ -73,7 +75,7 @@ function decodeElifBranch(a: SpecialArgs, branch: unknown): { expr: Expr; runtim
 /** `if (when) { then } [else if …] [else { … }]`. */
 const conditional: SpecialDecoder = (a) => {
   const when = decodeCondition(a.ctx, getPath(a.stored.context, "expr"));
-  if (!when) return null;
+  if (!when) return declineHere("conditional: context.expr is not a decodable condition");
 
   const then = nested(a, "if.run");
   const elseBody = nested(a, "else.run");
@@ -108,14 +110,14 @@ const conditional: SpecialDecoder = (a) => {
 /** `switch (on) { case … default … }`. */
 const switchStatement: SpecialDecoder = (a) => {
   const on = toValue(getPath(a.stored.context, "value"));
-  if (!on) return null;
+  if (!on) return declineHere("switch: context.value is not a tagged value");
 
   const casesStored = getPath(a.stored.context, "elif.run");
   const cases: Array<{ expr: Expr; runtime: unknown }> = [];
   for (const stored of Array.isArray(casesStored) ? casesStored : []) {
     const context = (stored as { context?: Record<string, unknown> }).context ?? {};
     const when = toValue(context.value);
-    if (!when) return null;
+    if (!when) return declineHere("switch: a case's value is not a tagged value");
     const body = a.decodeStack(getPath(context, "if.run"));
     const entries: Array<[string, Expr]> = [
       ["when", decodeValue(a.ctx, when)],
@@ -169,7 +171,8 @@ function loopDecoder(path: string, storedField: string, defField: string): Speci
     const context = (a.stored.context ?? {}) as Record<string, unknown>;
     const as = context.as;
     const value = toValue(context[storedField]);
-    if (typeof as !== "string" || !value) return null;
+    if (typeof as !== "string") return declineHere(`${path}: context.as is not a string`);
+    if (!value) return declineHere(`${path}: context.${storedField} is not a tagged value`);
     const body = a.decodeStack(context.run);
     return prove(
       a.ctx,
@@ -190,7 +193,7 @@ function loopDecoder(path: string, storedField: string, defField: string): Speci
 /** `while (when) { body }`. */
 const whileLoop: SpecialDecoder = (a) => {
   const when = decodeCondition(a.ctx, getPath(a.stored.context, "expr"));
-  if (!when) return null;
+  if (!when) return declineHere("while: context.expr is not a decodable condition");
   const body = a.decodeStack(getPath(a.stored.context, "run"));
   return prove(
     a.ctx,
@@ -218,7 +221,7 @@ function blockDecoder(path: string, runPath = "run"): SpecialDecoder {
 function valueDecoder(path: string): SpecialDecoder {
   return (a) => {
     const value = toValue(a.stored.context);
-    if (!value) return null;
+    if (!value) return declineHere(`${path}: context is not a tagged value`);
     return prove(a.ctx, a.stored, path, [value], [decodeValue(a.ctx, value)]);
   };
 }
@@ -244,7 +247,7 @@ const expectToThrow: SpecialDecoder = (a) => {
 /** `comment` — the text rides the envelope's `description`, not the context. */
 const comment: SpecialDecoder = (a) => {
   const text = (a.stored as { description?: unknown }).description;
-  if (typeof text !== "string") return null;
+  if (typeof text !== "string") return declineHere("comment: description is not a string");
   return prove(
     a.ctx,
     a.stored,
@@ -257,7 +260,7 @@ const comment: SpecialDecoder = (a) => {
 /** `placeholder <name>` — an unconfigured statement slot. */
 const placeholder: SpecialDecoder = (a) => {
   const name = getPath(a.stored.context, "name");
-  if (typeof name !== "string") return null;
+  if (typeof name !== "string") return declineHere("placeholder: context.name is not a string");
   return prove(a.ctx, a.stored, "placeholder", [name], [lit(name)]);
 };
 

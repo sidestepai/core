@@ -49,8 +49,13 @@ export interface PreconditionArgs {
    * client can detect via `res.ok` — unlike `s.throw`, which returns 200.
    */
   error_type?: PreconditionErrorType;
-  /** The error message. */
-  error?: Value;
+  /**
+   * The error message. A bare string is stored bare — the spelling the editor
+   * writes, and the one a pulled workspace carries; a {@link Value} is stored as
+   * a tagged value. The engine keeps whichever it is given (live-verified), so
+   * pick the plain string unless the message has to be computed.
+   */
+  error?: Value | string;
   /** Extra payload attached to the error (for `inputerror`, the offending param). */
   payload?: Value;
 }
@@ -69,7 +74,11 @@ export interface PreconditionArgs {
  * })
  */
 export function precondition(a: PreconditionArgs = {}): Statement {
-  return generated.precondition(a);
+  // The generated signature is typed from the engine's declared schema, which
+  // says `error` is a value. The bare-string spelling is equally real (the
+  // editor writes it and the engine keeps it), and the interpreter handles both,
+  // so only the declared type needs widening here.
+  return generated.precondition(a as Parameters<typeof generated.precondition>[0]);
 }
 
 export interface ThrowArgs {

@@ -109,10 +109,13 @@ describe("addon() typed authoring — encode", () => {
         input: { q: input.text(), uid: input.int() },
       }),
     );
-    const top = (a.context.search as { expression: { type: string; group: { expression: { op?: string; or: boolean }[] } }[] })
-      .expression;
-    expect(top[0]!.type).toBe("group");
-    expect(top[0]!.group.expression[1]!.or).toBe(true);
+    // A root `or(...)` joins the root siblings flat (R-D) — the addon's search
+    // block routes through the same encoder as a query's, so the two cannot
+    // disagree about what `or(...)` means.
+    const top = (a.context.search as { expression: { type: string; or: boolean }[] }).expression;
+    expect(top).toHaveLength(2);
+    expect(top[0]!.type).toBe("statement");
+    expect(top[1]!.or).toBe(true);
   });
 
   it("sort encodes context.sort as {sortBy, orderBy}", () => {

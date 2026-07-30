@@ -40,6 +40,19 @@ describe("db read statement brands (type-level)", () => {
     expectTypeOf(stmt.__shape).toEqualTypeOf<InferRow<typeof user> | null>();
   });
 
+  it("db.get narrows a dotted sub-key selection by its ROOT column", () => {
+    // A dotted path selects sub-keys of an object column. Narrowing by the whole
+    // path would `Pick` a key that does not exist and drop the column from the
+    // response shape entirely — the selection would type as `{}`.
+    const stmt = dbGet({
+      table: user,
+      fieldValue: c.int(1),
+      output: ["id", "email.verified"],
+      as: "u",
+    });
+    expectTypeOf(stmt.__shape).toEqualTypeOf<Pick<InferRow<typeof user>, "id" | "email"> | null>();
+  });
+
   it("db.get with an `output` selection narrows the row shape to those columns `| null` (#105)", () => {
     const stmt = dbGet({ table: user, fieldValue: c.int(1), output: ["id", "username"], as: "u" });
     expectTypeOf(stmt.__shape).toEqualTypeOf<Pick<InferRow<typeof user>, "id" | "username"> | null>();

@@ -144,6 +144,67 @@ describe("expression algebra", () => {
     expect(source).toContain("or(");
   });
 
+  // R-D — a root `or(...)` joins the ROOT siblings rather than wrapping them.
+  // Before this, the flat spelling (which is the only one real workspaces store)
+  // had no authored form, so every statement carrying one fell back to `raw()`.
+  describe("a flat top-level OR", () => {
+    it("round-trips as or(...), not as an ANDed array", () => {
+      // The array form means ANDed, so reading an ORed container back as an array
+      // would quietly invert what the statement matches.
+      const source = roundTrip(
+        s.conditional({
+          when: or(expr(ref("a"), "=", c.int(1)), expr(ref("b"), "=", c.int(2))),
+          then: [s.set_var("hit", c.bool(true))],
+        }),
+      );
+      expect(source).toContain("or(");
+      expect(source).not.toContain("raw(");
+    });
+
+    it("declines a MIXED container, which has no authored form", () => {
+      // `a AND b OR c` cannot be spelled: `or(...)` would re-encode every sibling
+      // as ORed. Emitting it anyway would change what the statement matches, so
+      // it stays raw() — exact, if unreadable.
+      const stored = structuredClone(
+        encodeStatement(
+          s.conditional({
+            when: [
+              expr(ref("a"), "=", c.int(1)),
+              expr(ref("b"), "=", c.int(2)),
+              expr(ref("c"), "=", c.int(3)),
+            ],
+            then: [s.set_var("hit", c.bool(true))],
+          }),
+        ),
+      ) as StackItemXdo;
+      const nodes = (stored.context as { expr: { expression: Array<{ or: boolean }> } }).expr
+        .expression;
+      nodes[2]!.or = true; // a AND b OR c
+
+      const source = printExpr(decodeStatement(new DecodeContext(), EMPTY_REFS, stored));
+      expect(source).toContain("raw(");
+      expect(normalize(encodeStatement(evaluate(source)))).toEqual(normalize(stored));
+    });
+
+    it("declines an `or` flag on the FIRST sibling, which joins to nothing", () => {
+      const stored = structuredClone(
+        encodeStatement(
+          s.conditional({
+            when: or(expr(ref("a"), "=", c.int(1)), expr(ref("b"), "=", c.int(2))),
+            then: [s.set_var("hit", c.bool(true))],
+          }),
+        ),
+      ) as StackItemXdo;
+      const nodes = (stored.context as { expr: { expression: Array<{ or: boolean }> } }).expr
+        .expression;
+      nodes[0]!.or = true;
+
+      const source = printExpr(decodeStatement(new DecodeContext(), EMPTY_REFS, stored));
+      expect(source).toContain("raw(");
+      expect(normalize(encodeStatement(evaluate(source)))).toEqual(normalize(stored));
+    });
+  });
+
   it("round-trips a comparison carrying ignoreEmpty, which expr() cannot express", () => {
     const source = roundTrip(
       s.while({ when: cmp(ref("q"), "like", inp("term"), { ignoreEmpty: true }), body: [] }),
@@ -300,6 +361,45 @@ describe("call family", () => {
       REFS,
       CALL_SYMBOLS,
     );
+  });
+
+  it("decodes an unbound call target as `fn: null`, on both mvp:function surfaces", () => {
+    // A call whose target function was deleted stores a blank `context.function.id`
+    // — an unbound reference, not a decode failure. 17 statements across the sweep.
+    for (const [statement, expected] of [
+      [s.function.run({ fn: { name: "helper", guid: "aaaa000000000000000000000000aaaa" } }), "s.function.run("],
+      [s.service.function.run({ fn: { name: "helper", guid: "aaaa000000000000000000000000aaaa" } }), "s.service.function.run("],
+    ] as const) {
+      const bound = encodeStatement(statement);
+      const stored = {
+        ...bound,
+        context: { ...(bound.context as Record<string, unknown>), function: { id: "" } },
+      } as StackItemXdo;
+      const source = printExpr(decodeStatement(new DecodeContext(), REFS, stored));
+      expect(source).toContain(expected);
+      expect(source).toContain("fn: null");
+      expect(source).not.toContain("raw(");
+      expect(normalize(encodeStatement(evaluate(source, CALL_SYMBOLS)))).toEqual(normalize(stored));
+    }
+  });
+
+  it("does not offer null to a call surface that cannot express it", () => {
+    // `callDecoder` is shared, and only the mvp:function surfaces model the unbound
+    // state. Everything else must keep declining rather than build a call its
+    // factory would throw on — raw() is exact, a thrown factory is just noise.
+    const bound = encodeStatement(
+      s.task.call({ task: { name: "nightly", guid: "cccc000000000000000000000000cccc" } }),
+    );
+    const stored = {
+      ...bound,
+      context: { ...(bound.context as Record<string, unknown>), id: "" },
+    } as StackItemXdo;
+    const source = printExpr(decodeStatement(new DecodeContext(), REFS, stored));
+    expect(source).toContain("raw(");
+    expect(source).not.toContain("s.task.call(");
+    // `task: null` specifically — the raw blob's own `runtime: null` is not that.
+    expect(source).not.toContain("task: null");
+    expect(normalize(encodeStatement(evaluate(source, CALL_SYMBOLS)))).toEqual(normalize(stored));
   });
 
   // The plan's headline discrimination case: one stored name, two surfaces.
@@ -473,6 +573,116 @@ describe("database family", () => {
     );
   });
 
+  // R-C — the two nested shapes. Both were invisible before: neither could be
+  // authored, so 14 row writes and 40 output blocks re-encoded flat and declined.
+  describe("nested values", () => {
+    /** Encode a statement, then hand-edit its stored bytes the way the engine stores them. */
+    function restore(statement: Statement, edit: (stored: StackItemXdo) => void): StackItemXdo {
+      const stored = structuredClone(encodeStatement(statement)) as StackItemXdo;
+      edit(stored);
+      return stored;
+    }
+
+    /** Decode stored bytes straight through, without going via the encoder first. */
+    function decodeSource(stored: StackItemXdo): string {
+      return printExpr(decodeStatement(new DecodeContext(), DB_REFS, stored));
+    }
+
+    it("round-trips a row write whose column is assembled from sub-entries", () => {
+      const source = dbRoundTrip(
+        s.db.edit({
+          table: USERS,
+          fieldValue: inp("id"),
+          data: [
+            { name: "email", value: inp("email") },
+            {
+              name: "magic_link",
+              value: ref("user.magic_link"),
+              children: [
+                { name: "token", value: ref("user.magic_link.token") },
+                { name: "used", value: c.bool(true) },
+              ],
+            },
+          ],
+          as: "updated",
+        }),
+      );
+      expect(source).toContain("children: [");
+      expect(source).not.toContain("raw(");
+    });
+
+    it("declines when `expand` and `children` disagree, rather than re-encoding a third shape", () => {
+      // The encoder derives `expand` from having children, so it cannot reproduce
+      // a tree where they disagree. Neither disagreeing combination occurs in the
+      // wild; `raw()` keeps the stored bytes exactly.
+      const stored = restore(
+        s.db.add({ table: USERS, data: [{ name: "email", value: inp("email") }] }),
+        (bytes) => {
+          (bytes.input as Array<Record<string, unknown>>)[0]!.expand = true;
+        },
+      );
+      const source = decodeSource(stored);
+      expect(source).toContain("raw(");
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+    });
+
+    it("declines sub-entries on a lookup entry, which has no authored home for them", () => {
+      const stored = restore(
+        s.db.get({ table: USERS, fieldValue: inp("id"), as: "user" }),
+        (bytes) => {
+          const entry = (bytes.input as Array<Record<string, unknown>>)[1]!;
+          entry.expand = true;
+          entry.children = [
+            { name: "x", value: "1", tag: "const:int", filters: [], ignore: false, expand: false, children: [] },
+          ];
+        },
+      );
+      const source = decodeSource(stored);
+      expect(source).toContain("raw(");
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+    });
+
+    it("round-trips a nested output selection as dotted paths", () => {
+      const source = dbRoundTrip(
+        s.db.get({
+          table: USERS,
+          fieldValue: inp("id"),
+          output: ["id", "password_reset.token", "password_reset.used"],
+          as: "user",
+        }),
+      );
+      expect(source).toContain('"password_reset.token"');
+      expect(source).not.toContain("raw(");
+    });
+
+    it("round-trips a nested selection inside an addon's own output", () => {
+      const source = dbRoundTrip(
+        s.db.get({
+          table: USERS,
+          fieldValue: inp("id"),
+          addon: [{ addon: AUTHOR_ADDON, as: "_author", output: ["name", "img.url"] }],
+          as: "user",
+        }),
+      );
+      expect(source).toContain('"img.url"');
+      expect(source).not.toContain("raw(");
+    });
+
+    it("declines a selected column whose own name contains a dot", () => {
+      // Emitting it as a path would re-encode as two levels, silently changing
+      // which column is selected — so it stays raw().
+      const stored = restore(
+        s.db.get({ table: USERS, fieldValue: inp("id"), output: ["id"], as: "user" }),
+        (bytes) => {
+          (bytes.output as { items: Array<Record<string, unknown>> }).items[0]!.name = "a.b";
+        },
+      );
+      const source = decodeSource(stored);
+      expect(source).toContain("raw(");
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+    });
+  });
+
   it("round-trips add_or_edit, whose lean shape stores the table name beside the guid", () => {
     dbRoundTrip(
       s.db.add_or_edit({
@@ -549,6 +759,115 @@ describe("database family", () => {
     expect(source).toContain("s.db.transaction(");
     expect(source).toContain("raw(");
     expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+  });
+});
+
+describe("db family — an unbound table", () => {
+  /** Re-point a statement's `context.dbo` at nothing, the way a deleted table leaves it. */
+  function unbind(statement: Statement, dbo: Record<string, unknown> = { id: "" }): StackItemXdo {
+    const stored = encodeStatement(statement);
+    return {
+      ...stored,
+      context: { ...(stored.context as Record<string, unknown>), dbo },
+    } as StackItemXdo;
+  }
+
+  // `dboOp` drives eleven statements off one table-reading path, so the state has
+  // to hold across the shapes: a lookup op, a row-write, and a bulk op.
+  const CASES: ReadonlyArray<readonly [string, Statement]> = [
+    ["s.db.get(", s.db.get({ table: USERS, fieldValue: inp("id"), as: "user" })],
+    ["s.db.del(", s.db.del({ table: USERS, fieldValue: inp("id") })],
+    ["s.db.add(", s.db.add({ table: USERS, data: [{ name: "email", value: inp("email") }] })],
+    ["s.db.edit(", s.db.edit({ table: USERS, fieldValue: inp("id"), data: [{ name: "email", value: inp("email") }] })],
+    ["s.db.bulk.add(", s.db.bulk.add({ table: USERS, items: inp("rows") })],
+  ];
+
+  for (const [surface, statement] of CASES) {
+    it(`decodes ${surface}…) with a blank dbo.id as \`table: null\``, () => {
+      const stored = unbind(statement);
+      const source = printExpr(decodeStatement(new DecodeContext(), DB_REFS, stored));
+      expect(source).toContain(surface);
+      expect(source).toContain("table: null");
+      expect(source).not.toContain("raw(");
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+    });
+  }
+
+  it("keeps every other recovered argument alongside the unbound table", () => {
+    // The table going null must not quietly take the rest of the statement with it.
+    const stored = unbind(
+      s.db.get({ table: USERS, fieldName: "email", fieldValue: inp("email"), as: "user" }),
+    );
+    const source = printExpr(decodeStatement(new DecodeContext(), DB_REFS, stored));
+    expect(source).toContain('fieldName: "email"');
+    expect(source).toContain("fieldValue: inp(");
+    expect(source).toContain('as: "user"');
+    expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+  });
+
+  it("REPORTS a blank table reference rather than presenting it as deliberate", () => {
+    // A blank reference has two indistinguishable causes: a deleted/never-bound
+    // table, or a real one the export-side remap blanked because it sat outside the
+    // export's scope. `table: null` is faithful to the bytes either way, but
+    // emitting it silently would present a lost binding as an intentional one — so
+    // the loss arrives as an error-severity line, the same contract the realtime
+    // kinds already hold blank bindings to.
+    const stored = unbind(s.db.get({ table: USERS, fieldValue: inp("id"), as: "user" }));
+    const ctx = new DecodeContext();
+    const source = printExpr(decodeStatement(ctx, DB_REFS, stored));
+    expect(source).toContain("table: null");
+
+    const unresolved = ctx.report.entries.filter((e) => e.category === "unresolved-ref");
+    expect(unresolved).toHaveLength(1);
+    // The message has to name BOTH causes — the decoder cannot tell them apart, and
+    // guessing one would send the reader down the wrong path.
+    expect(unresolved[0]!.detail).toMatch(/deleted or unbound/);
+    expect(unresolved[0]!.detail).toMatch(/export's scope/);
+  });
+
+  it("reports nothing for a table that resolves", () => {
+    // The paired negative: no false alarm on a healthy reference.
+    const ctx = new DecodeContext();
+    printExpr(
+      decodeStatement(
+        ctx,
+        DB_REFS,
+        encodeStatement(s.db.get({ table: USERS, fieldValue: inp("id"), as: "user" })),
+      ),
+    );
+    expect(ctx.report.entries.filter((e) => e.category === "unresolved-ref")).toEqual([]);
+  });
+
+  it("treats a zero numeric id as unbound, like a blank guid", () => {
+    // A reference id is a guid OR a number depending on how the referring object
+    // was saved, so the empty form has two spellings and both mean "no target".
+    const stored = unbind(s.db.get({ table: USERS, fieldValue: inp("id"), as: "user" }), { id: 0 });
+    const source = printExpr(decodeStatement(new DecodeContext(), DB_REFS, stored));
+    expect(source).toContain("table: null");
+    expect(source).not.toContain("raw(");
+    expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+  });
+
+  it("declines a BOUND numeric reference rather than emit an unverifiable one", () => {
+    // The load-bearing distinction. `normalize` strips `id` as a server column, so
+    // a reference id is never byte-compared — the proof-carrying contract cannot
+    // catch a wrong one here. Recovering `3` would re-encode it as the STRING "3",
+    // a type change that would sail through unexamined, so it stays raw() until a
+    // reference can carry its stored spelling.
+    const stored = unbind(s.db.get({ table: USERS, fieldValue: inp("id"), as: "user" }), { id: 3 });
+    const source = printExpr(decodeStatement(new DecodeContext(), DB_REFS, stored));
+    expect(source).toContain("raw(");
+    expect(source).not.toContain("table: null");
+    expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+  });
+
+  it("throws rather than guess when `row:` needs an unbound table's columns", () => {
+    // `table: null` represents a broken statement; it does not author one. `row:`
+    // expands against the table's schema, so it has nothing to work from — and a
+    // decoded broken statement always carries `data:`, never `row:`.
+    expect(() => s.db.add({ table: null, row: { email: c.text("x@y.z") } })).toThrow(
+      /table` is null/,
+    );
   });
 });
 
@@ -727,6 +1046,188 @@ describe("db.query", () => {
       }),
     );
   });
+
+  /**
+   * The engine writes `search` / `bind` / `eval` unconditionally at their empty
+   * defaults; the SDK's encoder omits them. `normalize` reconciles that by
+   * dropping such a member from both sides, so the only correct reading of one is
+   * "not authored" — but the decoder used to read an empty `search` as a filter it
+   * had failed to parse. Measured on 187 real workspaces, that single
+   * misinterpretation accounted for 113 of 201 fallen-back `db.query` statements.
+   *
+   * Each case here pairs with a negative one proving a POPULATED member is still
+   * decoded rather than swept up by the same rule.
+   */
+  describe("the engine's empty context members", () => {
+    /** A stored query with each member spelled the way the engine persists it. */
+    function engineForm(overrides: Record<string, unknown> = {}): StackItemXdo {
+      const stored = encodeStatement(s.db.query({ table: POSTS, as: "rows" }));
+      return {
+        ...stored,
+        context: {
+          ...(stored.context as Record<string, unknown>),
+          search: { expression: [] },
+          bind: [],
+          eval: [],
+          ...overrides,
+        },
+      } as StackItemXdo;
+    }
+
+    function decode(stored: StackItemXdo): string {
+      return printExpr(decodeStatement(new DecodeContext(), DB_REFS, stored));
+    }
+
+    it("reads an empty search, bind, and eval as unauthored rather than unreadable", () => {
+      const stored = engineForm();
+      const source = decode(stored);
+      expect(source).toContain("s.db.query(");
+      expect(source).not.toContain("raw(");
+      // None of the three may be restated — an empty member carries no information.
+      for (const key of ["where:", "bind:", "eval:"]) expect(source).not.toContain(key);
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+    });
+
+    it("still decodes a populated search on an otherwise engine-spelled query", () => {
+      const withWhere = encodeStatement(
+        s.db.query({ table: POSTS, where: expr(col("published"), "=", c.bool(true)), as: "rows" }),
+      );
+      const stored = engineForm({
+        search: (withWhere.context as { search?: unknown }).search,
+      });
+      const source = decode(stored);
+      expect(source).toContain("where: expr(");
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+    });
+
+    it("still decodes a populated eval on an otherwise engine-spelled query", () => {
+      const withEval = encodeStatement(
+        s.db.query({ table: POSTS, eval: [{ name: "score", as: "s" }], as: "rows" }),
+      );
+      const stored = engineForm({ eval: (withEval.context as { eval?: unknown }).eval });
+      const source = decode(stored);
+      expect(source).toContain("eval:");
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+    });
+
+    it("reads an all-default simpleExternal as unauthored, not as five bound facets", () => {
+      // The engine writes all five paging facets at an empty `input` default. Read
+      // as authored they become bound Values, and because the engine honors
+      // `external` over `simpleExternal` the SDK forbids authoring both — so this
+      // did not merely mismatch, the recovered call THREW inside the factory.
+      const withExternal = encodeStatement(
+        s.db.query({ table: POSTS, external: { value: inp("filters") }, as: "rows" }),
+      );
+      const stored = {
+        ...withExternal,
+        context: {
+          ...(withExternal.context as Record<string, unknown>),
+          simpleExternal: {
+            page: { tag: "input", value: "", filters: [] },
+            sort: { tag: "input", value: "", filters: [] },
+            offset: { tag: "input", value: "", filters: [] },
+            search: { tag: "input", value: "", filters: [] },
+            per_page: { tag: "input", value: "", filters: [] },
+          },
+        },
+      } as StackItemXdo;
+      const source = decode(stored);
+      expect(source).toContain("external:");
+      expect(source).not.toContain("raw(");
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+    });
+
+    it("still decodes genuinely bound paging facets from simpleExternal", () => {
+      // The paired negative: the rule above must not swallow a real input binding.
+      const source = dbRoundTrip(
+        s.db.query({ table: POSTS, paging: { page: inp("page"), per_page: inp("size") }, as: "p" }),
+      );
+      expect(source).toContain("page: inp(");
+      expect(source).toContain("per_page: inp(");
+    });
+
+    it("decodes an unbound table as `table: null` rather than declining", () => {
+      // A statement whose table was deleted stores a blank `context.dbo.id`. That
+      // is a state the authoring surface models deliberately — the same contract
+      // an addon's `table` has always carried — so reading it as "no reference to
+      // recover" degraded 83 db statements to raw() across the sweep.
+      const bound = encodeStatement(s.db.query({ table: POSTS, as: "rows" }));
+      const stored = {
+        ...bound,
+        context: { ...(bound.context as Record<string, unknown>), dbo: { id: "" } },
+      } as StackItemXdo;
+      const source = decode(stored);
+      expect(source).toContain("table: null");
+      expect(source).not.toContain("raw(");
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+    });
+
+    it("keeps an unbound table's surviving alias", () => {
+      // A deleted table's alias routinely outlives it (`{as: "user", id: ""}`), and
+      // it is read by presence like every other `dbo.as`.
+      const bound = encodeStatement(s.db.query({ table: POSTS, as: "rows" }));
+      const stored = {
+        ...bound,
+        context: { ...(bound.context as Record<string, unknown>), dbo: { as: "user", id: "" } },
+      } as StackItemXdo;
+      const source = decode(stored);
+      expect(source).toContain("table: null");
+      expect(source).toContain('tableAlias: "user"');
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+    });
+
+    it("still resolves a bound table to its symbol", () => {
+      // The paired negative: `null` must not become the lazy answer for a table
+      // that is perfectly resolvable.
+      const source = dbRoundTrip(s.db.query({ table: POSTS, as: "rows" }));
+      expect(source).toContain("table: posts");
+      expect(source).not.toContain("table: null");
+    });
+
+    it("authors the paging gate back when the encoder's derivation disagrees", () => {
+      // Real workspaces persist a non-default `per_page` with the gate OFF, which a
+      // derive-only encoder cannot reproduce. ~158 of the remaining `db.query`
+      // mismatches traced to this one thing, because the same derivation also
+      // decides where addons graft (`items[]`).
+      const derived = encodeStatement(
+        s.db.query({ table: POSTS, paging: { per_page: 10 }, as: "rows" }),
+      );
+      const ret = (derived.context as { return: { list: { paging: Record<string, unknown> } } }).return;
+      const stored = {
+        ...derived,
+        context: {
+          ...(derived.context as Record<string, unknown>),
+          return: { ...ret, list: { ...ret.list, paging: { ...ret.list.paging, enabled: false } } },
+        },
+      } as StackItemXdo;
+      const source = decode(stored);
+      expect(source).toContain("enabled: false");
+      expect(source).toContain("per_page: 10");
+      expect(source).not.toContain("raw(");
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+    });
+
+    it("stays silent about the gate when the derivation already agrees", () => {
+      // The paired negative for readability: the gate must not appear on every
+      // query just because it is now expressible.
+      const source = dbRoundTrip(s.db.query({ table: POSTS, paging: { per_page: 10 }, as: "rows" }));
+      expect(source).toContain("per_page: 10");
+      expect(source).not.toContain("enabled");
+    });
+
+    it("falls back to raw() rather than dropping a search it cannot read", () => {
+      // The load-bearing negative: the rule above must not become a licence to
+      // discard a filter. A malformed operand is unreadable, and a query whose
+      // filter cannot be recovered has to stay exact-but-unreadable.
+      const stored = engineForm({
+        search: { expression: [{ statement: { op: "=", left: {}, right: {} } }] },
+      });
+      const source = decode(stored);
+      expect(source).toContain("raw(");
+      expect(source).not.toContain("s.db.query(");
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+    });
+  });
 });
 
 describe("AI agent and cloud jobs", () => {
@@ -830,5 +1331,84 @@ describe("miscellaneous specials", () => {
         as: "result",
       }),
     );
+  });
+});
+
+/**
+ * U5 — the envelope members no factory takes. `description` and `disabled` are
+ * authored in the editor and written by the encoder, but a decoder that rebuilds a
+ * statement by calling its factory cannot reproduce either, so every annotated or
+ * disabled statement used to degrade to `raw()`.
+ *
+ * `disabled` is the engine's commented-out state: the step stays in the stack and
+ * the run engine skips it. Both proof arms are covered — `set_var` and `foreach`
+ * reach a hand-written special, `security.create_uuid` a declarative spec.
+ */
+describe("envelope passthrough — description and disabled", () => {
+  it("round-trips a disabled statement through the specials arm", () => {
+    const source = roundTrip({ ...s.set_var("total", c.int(0)), disabled: true });
+    expect(source).toContain("disabled: true");
+    expect(source).not.toContain("raw(");
+  });
+
+  it("round-trips a disabled statement through the spec arm", () => {
+    const source = roundTrip({ ...s.security.create_uuid({ as: "id" }), disabled: true });
+    expect(source).toContain("disabled: true");
+    expect(source).not.toContain("raw(");
+  });
+
+  it("emits nothing for the default enabled state", () => {
+    const source = roundTrip(s.set_var("total", c.int(0)));
+    expect(source).toBe('s.set_var("total", c.int(0))');
+    expect(source).not.toContain("disabled");
+  });
+
+  it("emits nothing for an explicit disabled:false", () => {
+    // The default is implicit; writing it would be noise the normalizer elides.
+    const source = roundTrip({ ...s.set_var("total", c.int(0)), disabled: false });
+    expect(source).not.toContain("disabled");
+  });
+
+  it("carries description and disabled together, description first", () => {
+    const source = roundTrip({
+      ...s.set_var("total", c.int(0)),
+      description: "skipped for now",
+      disabled: true,
+    });
+    expect(source).toContain('description: "skipped for now"');
+    expect(source).toContain("disabled: true");
+    expect(source.indexOf("description")).toBeLessThan(source.indexOf("disabled"));
+  });
+
+  it("round-trips a disabled statement nested inside a loop", () => {
+    const source = roundTrip(
+      s.foreach({
+        as: "row",
+        list: ref("rows"),
+        body: [{ ...s.set_var("x", c.int(1)), disabled: true }],
+      }),
+    );
+    expect(source).toContain("disabled: true");
+    expect(source).not.toContain("raw(");
+  });
+
+  it("round-trips a disabled statement nested inside a conditional", () => {
+    const source = roundTrip(
+      s.conditional({
+        when: cmp(inp("a"), "==", c.int(1)),
+        then: [{ ...s.set_var("x", c.int(1)), disabled: true }],
+      }),
+    );
+    expect(source).toContain("disabled: true");
+  });
+
+  it("keeps a disabled statement's own arguments intact", () => {
+    // The override must not swallow what the factory built.
+    const source = roundTrip({
+      ...s.set_var("name", withFilters(inp("raw"), fl.trim())),
+      disabled: true,
+    });
+    expect(source).toContain("fl.trim()");
+    expect(source).toContain("disabled: true");
   });
 });

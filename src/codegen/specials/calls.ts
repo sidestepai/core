@@ -10,9 +10,9 @@
  */
 import type { TaggedValue } from "../../types/xdo.js";
 import { lit, obj, type Expr } from "../print.js";
-import { resolveReference } from "../ref-index.js";
+import { isBoundNumericId, isReferenceId, isUnboundId, resolveReference } from "../ref-index.js";
 import { decodeValue } from "../value.js";
-import { getPath, prove, type SpecialArgs, type SpecialDecoder } from "./prove.js";
+import { declineHere, getPath, prove, type SpecialArgs, type SpecialDecoder } from "./prove.js";
 
 /** Coerce a stored `{value, tag, filters}` block to a tagged value. */
 function toValue(raw: unknown): TaggedValue | null {
@@ -34,7 +34,8 @@ function callInput(a: SpecialArgs): { expr: Expr; runtime: Record<string, unknow
   for (const entry of entries) {
     const name = (entry as { name?: unknown }).name;
     const value = toValue(entry);
-    if (typeof name !== "string" || !value) return null;
+    if (typeof name !== "string" || !value)
+      return declineHere("call input[]: entry is not a named tagged value");
     source.push([name, decodeValue(a.ctx, value)]);
     runtime[name] = value;
   }
@@ -51,6 +52,15 @@ interface CallShape {
   readonly idPath: string;
   /** Whether the surface accepts `input` bindings. */
   readonly takesInput?: boolean;
+  /**
+   * The surface's target argument accepts `null`, so a blank stored id decodes as
+   * an unbound reference instead of declining.
+   *
+   * Opt-in per shape because `callDecoder` is shared: only the `mvp:function`
+   * surfaces model the unbound state today (see `FnRef`), and offering `null` to a
+   * factory that does not take it would just abort inside `prove`.
+   */
+  readonly unbindable?: boolean;
   /** Extra entries derived from the stored context (headers, auth, …). */
   readonly extra?: (a: SpecialArgs) => {
     entries: Array<[string, Expr]>;
@@ -61,18 +71,41 @@ interface CallShape {
 /** Build a decoder for one uniform call surface. */
 function callDecoder(shape: CallShape): SpecialDecoder {
   return (a) => {
-    const guid = getPath(a.stored.context, shape.idPath);
-    if (typeof guid !== "string" || guid === "") return null;
+    const stored = getPath(a.stored.context, shape.idPath);
+    if (!isReferenceId(stored))
+      return declineHere(`${shape.path}: context.${shape.idPath} is not a reference id`);
+    // A blank id is an UNBOUND target, not a decode failure — the statement calls
+    // a function that was deleted, or was never bound. Where the surface models
+    // that state it is authored as `null`; elsewhere it stays a decline.
+    const unbound = isUnboundId(stored);
+    if (unbound && shape.unbindable !== true)
+      return declineHere(`${shape.path}: context.${shape.idPath} is blank`);
+    if (isBoundNumericId(stored))
+      return declineHere(`${shape.path}: context.${shape.idPath} is a numeric object reference`);
+    const guid = String(stored);
 
-    const target = resolveReference(a.ctx, a.refs, guid, {
-      ...a.resolve,
-      unresolved: "object-ref",
-    });
+    if (unbound) {
+      // Reported, not emitted quietly: a blank reference is either a deleted or
+      // never-bound target, or a real one the export-side remap blanked because it
+      // sat outside the export's scope. Those are indistinguishable in the bytes, and
+      // presenting the second as a deliberate `null` would hide a lost binding.
+      a.ctx.problem(
+        "unresolved-ref",
+        `${shape.path} has a blank ${shape.arg} reference, recovered as \`${shape.arg}: null\`; ` +
+          "the target was deleted or unbound, OR it sits outside this export's scope and was " +
+          "blanked on the way out — re-pull with the target in scope to tell the two apart",
+      );
+    }
+    const target = unbound
+      ? lit(null)
+      : resolveReference(a.ctx, a.refs, guid, { ...a.resolve, unresolved: "object-ref" });
     // The runtime side references the target by guid directly: `resolveRef`
     // returns an explicit guid verbatim, so proving does not depend on whether a
     // symbol was available at this call site.
     const entries: Array<[string, Expr]> = [[shape.arg, target]];
-    const runtime: Record<string, unknown> = { [shape.arg]: { name: "", guid } };
+    const runtime: Record<string, unknown> = {
+      [shape.arg]: unbound ? null : { name: "", guid },
+    };
 
     const as = (a.stored as { as?: unknown }).as;
     if (typeof as === "string" && as !== "") {
@@ -108,14 +141,14 @@ const apiCallExtra: CallShape["extra"] = (a) => {
 
   const headers = toValue(context.headers);
   if (context.headers !== undefined) {
-    if (!headers) return null;
+    if (!headers) return declineHere("api.call: context.headers is not a tagged value");
     entries.push(["headers", decodeValue(a.ctx, headers)]);
     runtime.headers = headers;
   }
 
   const token = toValue(context.token);
   if (context.token !== undefined) {
-    if (!token) return null;
+    if (!token) return declineHere("api.call: context.token is not a tagged value");
     const authEntries: Array<[string, Expr]> = [["token", decodeValue(a.ctx, token)]];
     const auth: Record<string, unknown> = { token };
     if (context.token_ignore_expiration === true) {
@@ -138,15 +171,22 @@ const functionRunOrService: SpecialDecoder = (a) => {
   const context = (a.stored.context ?? {}) as Record<string, unknown>;
   const isService = context.runtime_mode !== undefined;
   if (!isService) {
-    return callDecoder({ path: "function.run", arg: "fn", idPath: "function.id" })(a);
+    return callDecoder({
+      path: "function.run",
+      arg: "fn",
+      idPath: "function.id",
+      unbindable: true,
+    })(a);
   }
   return callDecoder({
     path: "service.function.run",
     arg: "fn",
     idPath: "function.id",
+    unbindable: true,
     extra: () => {
       const mode = context.runtime_mode;
-      if (typeof mode !== "string") return null;
+      if (typeof mode !== "string")
+        return declineHere("service.function.run: context.runtime_mode is not a string");
       // `"shared"` is the factory default; stating it would be noise.
       return mode === "shared"
         ? { entries: [], runtime: {} }

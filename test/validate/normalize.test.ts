@@ -123,3 +123,384 @@ describe("validate normalizer — per-kind default/serialization rules", () => {
     expect(normalize(custom)).toEqual(custom);
   });
 });
+
+/**
+ * U2: the engine writes `input:null` / `output:null` for a statement that takes no
+ * inputs or shapes no result, while the SDK emits the full envelope (`input:[]`
+ * and `{items:[],filters:[],customize:false}`). Both spell the same empty state,
+ * so the comparison has to treat them as equal — otherwise every input-less
+ * statement in a pulled workspace fails its re-encode proof and degrades to
+ * `raw()`, which was the single largest cause in the codegen sweep.
+ *
+ * Each rule is tested on BOTH sides: it collapses at the empty spellings, and it
+ * PRESERVES a populated value. The negative half is what keeps the rule from
+ * quietly weakening what `sidestep validate` reports to a user.
+ */
+describe("validate normalizer — null vs empty envelope spellings", () => {
+  it("treats input null, [] and absent as the same empty state", () => {
+    expect(normalize({ input: null })).toEqual({});
+    expect(normalize({ input: [] })).toEqual({});
+    expect(normalize({ name: "mvp:uuid4", input: null })).toEqual(
+      normalize({ name: "mvp:uuid4", input: [] }),
+    );
+  });
+
+  it("preserves a populated input rather than collapsing it", () => {
+    const populated = { input: [{ name: "id", value: "1", tag: "const" }] };
+    expect(normalize(populated)).toEqual(populated);
+    // The rule must not make a populated input compare equal to an empty one.
+    expect(normalize(populated)).not.toEqual(normalize({ input: null }));
+  });
+
+  it("treats output null and both empty forms as the same empty state", () => {
+    expect(normalize({ output: null })).toEqual({});
+    expect(normalize({ output: { filters: [] } })).toEqual({});
+    expect(normalize({ output: { items: [], filters: [], customize: false } })).toEqual({});
+    expect(normalize({ output: null })).toEqual(
+      normalize({ output: { items: [], filters: [], customize: false } }),
+    );
+  });
+
+  it("preserves an output carrying selected items", () => {
+    // A kept `output` keeps its members verbatim — only the empty `children` of a
+    // selected item is elided. The selection itself must survive.
+    const selected = { output: { items: [{ name: "id", children: [] }], customize: false } };
+    expect(normalize(selected)).toEqual({ output: { items: [{ name: "id" }], customize: false } });
+    expect(normalize(selected)).not.toEqual(normalize({ output: null }));
+  });
+
+  it("preserves an output that customizes, even with no items", () => {
+    const customized = { output: { items: [], filters: [], customize: true } };
+    expect(normalize(customized)).toEqual({ output: { items: [], customize: true } });
+    expect(normalize(customized)).not.toEqual(normalize({ output: null }));
+  });
+
+  it("collapses a null-envelope statement to the same shape as a full-envelope one", () => {
+    // The engine's lean spelling and the SDK's full spelling of one statement.
+    const stored = { name: "mvp:uuid4", as: "id", input: null, output: null, disabled: true };
+    const encoded = {
+      name: "mvp:uuid4",
+      as: "id",
+      input: [],
+      output: { items: [], filters: [], customize: false },
+      disabled: true,
+      description: "",
+      addon: [],
+      mocks: {},
+      runtime: null,
+      settings_registry: null,
+      _xsid: "",
+    };
+    expect(normalize(encoded)).toEqual(normalize(stored));
+    // `disabled:true` is authored state, not an envelope default — it survives both.
+    expect((normalize(stored) as { disabled?: unknown }).disabled).toBe(true);
+  });
+
+  it("is idempotent over the null spellings", () => {
+    const once = normalize({ input: null, output: null, name: "mvp:uuid4" });
+    expect(normalize(once)).toEqual(once);
+  });
+});
+
+/**
+ * U3: two more empty-vs-absent spellings. An empty `context` arrives as a JSON
+ * array from the engine and an object from the SDK — an empty associative
+ * collection serializes as `[]`. An addon spliced at the root persists
+ * `offset:""` where the SDK omits it.
+ *
+ * Both are tested on both sides. The `context` coercion in particular has to stay
+ * scoped: a blanket array→object rule would corrupt every genuinely-empty list in
+ * the envelope, so that negative case is explicit below.
+ */
+describe("validate normalizer — empty context and addon offset", () => {
+  it("treats an empty context as the same state whether array or object", () => {
+    expect(normalize({ context: [] })).toEqual({ context: {} });
+    expect(normalize({ context: [] })).toEqual(normalize({ context: {} }));
+  });
+
+  it("preserves a populated context rather than collapsing it", () => {
+    // `id` is deliberately absent here — it is a stripped server key, so it would
+    // not survive normalization and would not prove anything about this rule.
+    const populated = { context: { dbo: { as: "user" }, future: true } };
+    expect(normalize(populated)).toEqual(populated);
+    expect(normalize(populated)).not.toEqual(normalize({ context: [] }));
+  });
+
+  it("still normalizes the members of a populated context", () => {
+    // The coercion must not short-circuit recursion: `bind:[]` is an engine
+    // default and still has to drop from inside a kept context.
+    expect(normalize({ context: { bind: [], dbo: { as: "user" } } })).toEqual({
+      context: { dbo: { as: "user" } },
+    });
+  });
+
+  it("does not coerce an empty array outside the context slot", () => {
+    // The rule is scoped by key. Any other empty list stays a list.
+    expect(normalize({ schema: [], items: [] })).toEqual({ schema: [], items: [] });
+    expect(normalize({ addon: [] })).toEqual({}); // dropped by its own rule, not coerced
+  });
+
+  it("treats an empty addon offset as absent, and keeps a real one", () => {
+    expect(normalize({ offset: "" })).toEqual({});
+    expect(normalize({ offset: "items[]" })).toEqual({ offset: "items[]" });
+  });
+
+  it("drops a paging offset at its declared default but keeps a real one", () => {
+    // `offset` is two unrelated things: an addon's splice path (`""` at the root)
+    // and a list context's paging offset, which the engine declares to default to
+    // 0. Both are defaults; a real offset is preserved.
+    expect(normalize({ paging: { offset: 0, page: 1 } })).toEqual({});
+    expect(normalize({ paging: { offset: 40 } })).toEqual({ paging: { offset: 40 } });
+    // The addon ENTRY still exists — only its default offset drops.
+    expect(normalize({ addon: [{ offset: "" }] })).toEqual({ addon: [{}] });
+  });
+
+  it("collapses an addon spliced at the root to match the SDK's omission", () => {
+    const stored = { addon: [{ as: "user", offset: "", input: null }] };
+    const encoded = { addon: [{ as: "user", input: [] }] };
+    expect(normalize(encoded)).toEqual(normalize(stored));
+  });
+});
+
+/**
+ * U4: per-statement `context` defaults. Unlike the empty-collection rules above,
+ * these are values the SDK writes at a default the persisted form omits — each one
+ * checked against the engine's own declared default for that member before being
+ * frozen here, because a guessed default would make a real authored value
+ * invisible to the round-trip diff.
+ */
+describe("validate normalizer — per-statement context defaults", () => {
+  it("drops an all-defaults return block in either spelling", () => {
+    // The lean spelling: result type at its default, no sub-block customized.
+    expect(normalize({ return: { type: "list" } })).toEqual({});
+    // The expanded spelling the engine fills on save was already handled.
+    expect(normalize({ return: { type: "list" } })).toEqual(
+      normalize({
+        return: {
+          list: {
+            sort: [],
+            paging: { page: 1, offset: 0, totals: false, enabled: false, metadata: true, per_page: 25 },
+            distinct: "auto",
+          },
+          type: "list",
+          single: { sort: [] },
+          stream: { sort: [], paging: { page: 1, enabled: false, per_page: 25 }, distinct: "auto" },
+          aggregate: { eval: [], sort: [], group: [], index: [], paging: { page: 1, enabled: false, metadata: true, per_page: 25 } },
+        },
+      }),
+    );
+  });
+
+  it("preserves a non-default result type and customized paging", () => {
+    expect(normalize({ return: { type: "single" } })).toEqual({ return: { type: "single" } });
+    expect(normalize({ return: { type: "count" } })).not.toEqual(normalize({ return: { type: "list" } }));
+    const paged = { return: { type: "list", list: { paging: { enabled: true, per_page: 100 } } } };
+    expect(normalize(paged)).toEqual(paged);
+  });
+
+  it("drops a default sibling result-shape block beside a customized one", () => {
+    // The engine writes all four result-shape blocks on every query; the SDK writes
+    // only the one its `returnType` selects. Emptiness alone did not collapse a
+    // default sibling, because two of its members have no rule that empties them
+    // (the paging `enabled` gate and an aggregate's empty `group`/`index` lists),
+    // so one customized member left every sibling mismatching. Measured on the
+    // sweep, `context.return` was implicated in ALL 174 remaining `db.query`
+    // mismatches and was the sole cause in 87.
+    const engine = {
+      return: {
+        type: "list",
+        list: { sort: [], paging: { page: 1, enabled: true, per_page: 10 }, distinct: "auto" },
+        single: { sort: [] },
+        stream: { sort: [], paging: { page: 1, enabled: false, per_page: 25 }, distinct: "auto" },
+        aggregate: {
+          eval: [], sort: [], group: [], index: [],
+          paging: { page: 1, enabled: false, metadata: true, per_page: 25 },
+        },
+      },
+    };
+    // The three default siblings go; the customized `list` block stays, with its
+    // customization intact.
+    expect(normalize(engine)).toEqual({
+      return: { type: "list", list: { paging: { enabled: true, per_page: 10 } } },
+    });
+  });
+
+  it("preserves a result-shape block that is actually customized", () => {
+    // The load-bearing negatives: the rule compares against each block's own frozen
+    // default, so anything authored inside one still compares unequal.
+    const grouped = {
+      aggregate: {
+        group: [{ name: "posts.author_id", as: "author" }], eval: [], sort: [], index: [],
+        paging: { page: 1, enabled: false, metadata: true, per_page: 25 },
+      },
+    };
+    expect(normalize(grouped)).not.toEqual(normalize({}));
+    expect(JSON.stringify(normalize(grouped))).toContain("author_id");
+
+    const stream = { stream: { sort: [], paging: { page: 2, enabled: true, per_page: 5 }, distinct: "auto" } };
+    expect(normalize(stream)).toEqual({ stream: { paging: { page: 2, enabled: true, per_page: 5 } } });
+
+    const single = { single: { sort: [{ sortBy: "id", orderBy: "desc" }] } };
+    expect(normalize(single)).toEqual(single);
+  });
+
+  it("does not touch a foreach's iterated list value", () => {
+    // `list` is a generic member name, and comparing against the frozen return
+    // sub-default rather than testing for emptiness is what keeps this rule off it:
+    // an iterated list is a tagged value and cannot match the default block.
+    // (The empty `filters` drops by its own long-standing rule — what matters here
+    // is that the `list` MEMBER survives rather than being swept up as a default.)
+    expect(normalize({ list: { tag: "input", value: "rows", filters: [] } })).toEqual({
+      list: { tag: "input", value: "rows" },
+    });
+    expect(normalize({ list: [] })).toEqual({ list: [] });
+  });
+
+  it("drops an expression group that nests nothing", () => {
+    expect(normalize({ group: { expression: [] } })).toEqual({});
+    expect(normalize({ group: { expression: [] } })).toEqual(normalize({}));
+  });
+
+  it("preserves a group that actually nests expressions", () => {
+    const nested = { group: { expression: [{ type: "statement", statement: { op: "=" } }] } };
+    expect(normalize(nested)).toEqual(nested);
+    expect(normalize(nested)).not.toEqual(normalize({ group: { expression: [] } }));
+  });
+
+  it("does not touch an aggregate's empty group array", () => {
+    // `group` is also a sort/grouping LIST under an aggregate return. Only the
+    // nested-search object form is a condition default.
+    expect(normalize({ aggregate: { group: [] } })).toEqual({ aggregate: { group: [] } });
+  });
+
+  it("drops a default-false or-flag and keeps a real one", () => {
+    expect(normalize({ or: false })).toEqual({});
+    expect(normalize({ or: true })).toEqual({ or: true });
+  });
+
+  it("drops default-public asset access and keeps private", () => {
+    expect(normalize({ access: "public" })).toEqual({});
+    expect(normalize({ access: "private" })).toEqual({ access: "private" });
+    expect(normalize({ access: "internal" })).toEqual({ access: "internal" });
+  });
+
+  it("collapses a full condition entry to its persisted-lean twin", () => {
+    const stored = {
+      expression: [{ type: "statement", statement: { op: "=", left: { operand: "a" } } }],
+    };
+    const encoded = {
+      expression: [
+        {
+          type: "statement",
+          or: false,
+          group: { expression: [] },
+          statement: { op: "=", left: { operand: "a", filters: [] } },
+        },
+      ],
+    };
+    expect(normalize(encoded)).toEqual(normalize(stored));
+  });
+});
+
+/**
+ * The return block's paging members, each at the default the engine declares for
+ * it. Two things make these safe to drop by key name: the drop is symmetric (a
+ * customized value is preserved and still compared), and the same-named members of
+ * a permissions block are booleans, so they are type-distinct and untouched.
+ *
+ * A persisted int can arrive as a numeric string, so both forms count as the
+ * default — a real readback carries `per_page: "25"` as readily as `25`.
+ */
+describe("validate normalizer — return-block paging defaults", () => {
+  it("collapses an all-defaults paging block", () => {
+    expect(
+      normalize({ paging: { page: 1, offset: 0, totals: false, metadata: true, per_page: 25 } }),
+    ).toEqual({});
+  });
+
+  it("accepts the numeric-string spelling of each default", () => {
+    expect(normalize({ paging: { page: "1", offset: "0", per_page: "25" } })).toEqual({});
+  });
+
+  it("preserves every customized paging member", () => {
+    expect(normalize({ paging: { per_page: 10 } })).toEqual({ paging: { per_page: 10 } });
+    expect(normalize({ paging: { page: 3 } })).toEqual({ paging: { page: 3 } });
+    expect(normalize({ paging: { totals: true } })).toEqual({ paging: { totals: true } });
+    expect(normalize({ paging: { metadata: false } })).toEqual({ paging: { metadata: false } });
+  });
+
+  it("keeps a numeric-string customized value, canonicalized to its declared int", () => {
+    // The bug this came from: a stored `per_page: "10"` was skipped as "not a
+    // number" and the re-encode fell back to 25. What matters is that a customized
+    // value SURVIVES — it must not drop as a default and must not read as 25.
+    //
+    // It canonicalizes to the number rather than staying a string because that is
+    // what the member declares (`int`), and the two serializations are the same
+    // value: a stored `"10"` against an encoded `10` was costing 11 real `db.query`
+    // statements their readability. Compare against the default to prove the point
+    // of the original bug still holds.
+    expect(normalize({ paging: { per_page: "10" } })).toEqual({ paging: { per_page: 10 } });
+    expect(normalize({ paging: { per_page: "10" } })).not.toEqual(normalize({ paging: {} }));
+    expect(normalize({ paging: { per_page: "10" } })).toEqual(normalize({ paging: { per_page: 10 } }));
+    // The default-holding form still drops in either serialization — and the block
+    // it empties then drops too, by the `paging` rule.
+    expect(normalize({ paging: { per_page: "25" } })).toEqual({});
+    expect(normalize({ paging: { per_page: 25 } })).toEqual({});
+  });
+
+  it("leaves an addon's offset path alone while coercing a paging offset", () => {
+    // `offset` names two unrelated things. An addon's is a response PATH, which is
+    // not a numeric string and so cannot be swept into the int coercion.
+    expect(normalize({ offset: "items[]" })).toEqual({ offset: "items[]" });
+    expect(normalize({ paging: { offset: "40" } })).toEqual({ paging: { offset: 40 } });
+  });
+
+  it("drops a default distinct and keeps an explicit one", () => {
+    expect(normalize({ distinct: "auto" })).toEqual({});
+    expect(normalize({ distinct: "yes" })).toEqual({ distinct: "yes" });
+  });
+
+  it("leaves a permissions block's same-named boolean members alone", () => {
+    // `page`/`per_page` are booleans here, so the numeric-default rules cannot
+    // reach them.
+    const permissions = { permissions: { page: true, sort: true, search: true, per_page: false } };
+    expect(normalize(permissions)).toEqual(permissions);
+  });
+});
+
+/**
+ * A comparison's operands are tagged values under a different key, and the corpus
+ * serializes a `const:int` there as a number or a string interchangeably.
+ *
+ * This one was a silent hole rather than a missing nicety, which is why it has
+ * its own block. The statement decoders hand `prove` the STORED value object as
+ * the factory argument, so a re-encode reproduces whatever the workspace stored
+ * and the proof passes — while the source those decoders emit says `c.int(0)`,
+ * which encodes `"0"`. The proof could not see a difference that a real
+ * re-export does, and 5 queries reported a round-trip mismatch because of it.
+ */
+describe("validate normalizer — comparison operand serialization", () => {
+  it("coerces a numeric operand to its string form, like a tagged `value`", () => {
+    expect(normalize({ right: { tag: "const:int", operand: 0, filters: [] } })).toEqual(
+      normalize({ right: { tag: "const:int", operand: "0", filters: [] } }),
+    );
+  });
+
+  it("still compares operands that genuinely differ", () => {
+    // The paired negative: equalizing the SPELLING must not equalize the VALUE.
+    expect(normalize({ right: { tag: "const:int", operand: 0 } })).not.toEqual(
+      normalize({ right: { tag: "const:int", operand: 1 } })
+    );
+    expect(normalize({ left: { tag: "input", operand: "a" } })).not.toEqual(
+      normalize({ left: { tag: "input", operand: "b" } })
+    );
+  });
+
+  it("leaves a non-numeric operand exactly as stored", () => {
+    // (An empty `filters` drops by its own pre-existing rule; the operand itself
+    // is what this pins.)
+    expect(normalize({ left: { tag: "var", operand: "api_1.response.status", filters: [] } })).toEqual(
+      { left: { tag: "var", operand: "api_1.response.status" } },
+    );
+  });
+});

@@ -118,12 +118,16 @@ function verifySection(
     const right = after[name];
     if (deepEqual(normalize(left), normalize(right))) continue;
 
-    // Only an *absence* can be a deliberate omission — or, for the one key
-    // marked `emptied`, a value the generated tree deliberately blanks. A key
-    // emitted with some *other* value is a real divergence no policy excuses.
+    // Only an *absence* can be a deliberate omission — or, for the key marked
+    // `emptied`, a value the generated tree deliberately blanks, or for the one
+    // marked `derived`, a value it deliberately re-derives. Any other key emitted
+    // with a differing value is a real divergence no policy excuses.
     const candidate = omissionFor(name);
     const policy =
-      candidate && (right === undefined || (candidate.emptied === true && isEmpty(right)))
+      candidate &&
+      (right === undefined ||
+        (candidate.emptied === true && isEmpty(right)) ||
+        candidate.derived === true)
         ? candidate
         : undefined;
     if (policy) {

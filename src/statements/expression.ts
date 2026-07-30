@@ -218,6 +218,28 @@ export function encodeContainer(children: SearchNode[], joinOr: boolean): ExprNo
  */
 export function encodeExpression(input: Condition): { expression: ExprNode[] } {
   const nodes = Array.isArray(input) ? input : [input];
+  // A root `or(...)` joins the ROOT siblings, rather than wrapping them in a
+  // group that is then ANDed against nothing. This is the spelling real
+  // workspaces store, and a group wrapper had no way to produce it.
+  //
+  // Live-verified before landing, because it changes emitted bytes for an
+  // authoring form that already ships: on a real engine the two spellings select
+  // the same rows and take the same branch across the whole truth table of a
+  // two-term OR, in a query's search block and in a runtime conditional alike,
+  // and the flat form survives an export unchanged.
+  //
+  // Only when the root is EXACTLY one ORed group: several root nodes are ANDed
+  // together, so a group among them has to stay wrapped to keep its own join.
+  //
+  // This does make a WRAPPED root OR unauthorable, and that is deliberate rather
+  // than overlooked: across 187 real workspaces, **zero** root containers hold a
+  // single group node — the editor writes root siblings flat — so the form being
+  // given up is one nothing stores, and it still round-trips exactly through
+  // `raw()` if it ever appears.
+  const only = nodes.length === 1 ? nodes[0] : undefined;
+  if (only !== undefined && isGroup(only) && only.or) {
+    return { expression: encodeContainer(only.children, true) };
+  }
   return { expression: encodeContainer(nodes, false) };
 }
 

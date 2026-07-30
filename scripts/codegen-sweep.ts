@@ -28,6 +28,27 @@
  *   --keep-bundles       also write each source bundle.json (big; for repros)
  *   --resume             skip workspaces that already finished in this out dir
  *
+ * Env:
+ *   SIDESTEP_PROVE_DIFF=<file>
+ *       Append one JSON line per *declined* decode, naming the stored statement,
+ *       the arm that declined, and why. This is what makes a `raw-fallback` row
+ *       actionable: the CSV says a statement fell back, this says what stopped it.
+ *
+ *       Three record kinds, distinguished by the `diffs` entries:
+ *         • key paths (`.context.x: encoded=… stored=…`) — a candidate was built
+ *           and re-encoded, and these are the keys where it disagreed.
+ *         • `ABORT: …` — the factory threw, so the recovered arguments were the
+ *           wrong *shape* rather than the wrong value.
+ *         • `GUARD: …` — `arm` is `"guard"`, and the decoder gave up before
+ *           building anything. The label names the decoder and the guard, so
+ *           these cluster directly without touching the key-path clustering.
+ *
+ *       Cluster the `diffs` arrays to find shared gaps — a handful of them account
+ *       for the great majority of fallbacks. But note that a DECLINE IS NOT A
+ *       FALLBACK: every candidate is recorded, including ones a later arm goes on
+ *       to prove, so these counts are an upper bound on the CSV's. Cross-reference
+ *       before drawing a conclusion.
+ *
  * Output:
  *   <out>/warnings.csv   one row per report entry + one per hard failure
  *                        (severity: error | warning | notice, from the SDK's

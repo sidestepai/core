@@ -81,9 +81,9 @@ describe("symbol naming", () => {
     // otherwise produce one binding that shadows the other.
     const project = build({ tables: [table("users", guid(1))], functions: [fn("users", guid(2))] });
     const shared = file(project, "_shared.ts");
-    const functions = file(project, "functions/users_function.ts");
+    const functions = file(project, "functions/usersFunction.ts");
     expect(shared).toContain("export const users =");
-    expect(functions).toContain("export const users_function =");
+    expect(functions).toContain("export const usersFunction =");
   });
 
   it("disambiguates same-kind names that sanitize to the same identifier", () => {
@@ -296,6 +296,99 @@ describe("factory emission", () => {
     const shared = file(project, "_shared.ts");
     expect(shared).toContain('import { f, table } from "@sidestep/core"');
     expect(shared).not.toMatch(/export const table = table\(/);
-    expect(shared).toMatch(/export const table_table = table\(/);
+    expect(shared).toMatch(/export const tableTable = table\(/);
+  });
+});
+
+/**
+ * U6 — a generated tree must parse, whatever an object is named.
+ *
+ * `toSymbol` sanitizes characters but not keywords, so a table called `new` or a
+ * function called `default` reached the file verbatim and the whole project
+ * failed to parse. That is the one failure mode in the codegen sweep that cost
+ * more than verbosity: 15 workspaces produced an unusable tree.
+ *
+ * Every case here parses the emitted source rather than pattern-matching it — a
+ * regression that produces a *differently* invalid identifier still fails.
+ */
+describe("reserved names never break the tree", () => {
+  /** Parse every generated file, failing with the offending source on a syntax error. */
+  async function expectParses(project: GeneratedProject): Promise<void> {
+    const { transform } = await import("esbuild");
+    for (const generated of project.files) {
+      if (!generated.path.endsWith(".ts")) continue;
+      await expect(
+        transform(generated.contents, { loader: "ts", format: "esm" }),
+        `does not parse: ${generated.path}\n${generated.contents}`,
+      ).resolves.toBeDefined();
+    }
+  }
+
+  it("emits a parsing tree for a table named `new`", async () => {
+    const project = build({ tables: [table("new", guid(1))] });
+    await expectParses(project);
+    expect(file(project, "_shared.ts")).toContain("export const newTable =");
+  });
+
+  it("emits a parsing tree for a function named `default`", async () => {
+    const project = build({ functions: [fn("default", guid(1))] });
+    await expectParses(project);
+    expect(file(project, "functions/defaultFunction.ts")).toContain("export const defaultFunction =");
+  });
+
+  it("emits a valid identifier for every reserved word used as a name", async () => {
+    // Table-driven over the whole set, including strict-mode and future-reserved
+    // words — a generated binding is a module-level `const`, so they all apply.
+    const words = [
+      "break", "case", "catch", "class", "const", "continue", "debugger", "default",
+      "delete", "do", "else", "enum", "export", "extends", "false", "finally",
+      "for", "function", "if", "import", "in", "instanceof", "new", "null",
+      "return", "super", "switch", "this", "throw", "true", "try", "typeof",
+      "var", "void", "while", "with", "implements", "interface", "let", "package",
+      "private", "protected", "public", "static", "yield", "await", "arguments",
+      "eval", "undefined", "NaN", "Infinity",
+    ];
+    const project = build({
+      functions: words.map((word, i) => fn(word, guid(i + 1))),
+    });
+    await expectParses(project);
+    const symbols = project.files
+      .flatMap((generated) => [...generated.contents.matchAll(/export const (\w+) =/g)].map((m) => m[1]!))
+      .filter((symbol) => symbol !== "default");
+    expect(symbols).toHaveLength(words.length);
+    for (const symbol of symbols) expect(words).not.toContain(symbol);
+    // Still unique — the postfix must not collapse two words onto one symbol.
+    expect(new Set(symbols).size).toBe(symbols.length);
+  });
+
+  it("still reserves the SDK factory names it imports", async () => {
+    const project = build({ tables: [table("table", guid(1))], functions: [fn("query", guid(2))] });
+    await expectParses(project);
+    expect(file(project, "_shared.ts")).toMatch(/export const tableTable = table\(/);
+    expect(file(project, "functions/queryFunction.ts")).toContain("export const queryFunction =");
+  });
+
+  it("keeps a reserved name unique when two same-kind objects share it", async () => {
+    const project = build({ functions: [fn("new", guid(1)), fn("new", guid(2))] });
+    await expectParses(project);
+    const symbols = project.files
+      .flatMap((generated) => [...generated.contents.matchAll(/export const (\w+) =/g)].map((m) => m[1]!))
+      .sort();
+    // The ordinal builds on the disambiguated symbol, not the bare reserved word.
+    expect(symbols).toEqual(["newFunction", "newFunction_2"]);
+  });
+
+  it("resolves a reserved name that also collides across kinds", async () => {
+    const project = build({ tables: [table("new", guid(1))], functions: [fn("new", guid(2))] });
+    await expectParses(project);
+    const symbols = project.files
+      .flatMap((generated) => [...generated.contents.matchAll(/export const (\w+) =/g)].map((m) => m[1]!))
+      .sort();
+    expect(symbols).toEqual(["newFunction", "newTable"]);
+  });
+
+  it("assembles a reserved-name bundle to byte-identical files twice", () => {
+    const defs = { tables: [table("new", guid(1))], functions: [fn("default", guid(2))] };
+    expect(build(defs).files).toEqual(build(defs).files);
   });
 });

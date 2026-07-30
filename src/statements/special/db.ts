@@ -40,6 +40,8 @@ import type { LeanInput } from "../lean-input.js";
 import { tableColumns } from "../../kinds/table.js";
 import type { ColumnDef, TableDef, InferRow } from "../../kinds/table.js";
 import type { Prettify } from "../../fields/value-types.js";
+import { encodeOutputItems } from "./output-select.js";
+import type { OutputPath, OutputRoot } from "./output-select.js";
 import { encodeSearch, encodeSort, encodeEval, qualifyAggregateEvals } from "./db-search.js";
 import type { DbWhere, SortDirective, DbEval, EvalFields, AggregateRow } from "./db-search.js";
 export type { DbWhere, SortDir, SortDirective, DbEval, DbEvalFilter } from "./db-search.js";
@@ -64,7 +66,7 @@ type RowShapeOf<T extends ObjectRef, Cols extends readonly string[]> = [
   ? unknown
   : Cols["length"] extends 0
     ? InferRow<T>
-    : Pick<InferRow<T>, Extract<Cols[number], keyof InferRow<T>>>;
+    : Pick<InferRow<T>, Extract<OutputRoot<Cols[number]>, keyof InferRow<T>>>;
 
 /**
  * The full-row shape a single-record write binds — `db.add` (inserted row),
@@ -99,9 +101,9 @@ type IsUnknown<T> = 0 extends 1 & T ? false : unknown extends T ? true : false;
 type NarrowGraft<G, O extends readonly string[]> = IsUnknown<G> extends true
   ? unknown
   : G extends readonly (infer E)[]
-    ? Prettify<Pick<E, Extract<O[number], keyof E>>>[]
+    ? Prettify<Pick<E, Extract<OutputRoot<O[number]>, keyof E>>>[]
     : G extends object
-      ? Prettify<Pick<G, Extract<O[number], keyof G>>>
+      ? Prettify<Pick<G, Extract<OutputRoot<O[number]>, keyof G>>>
       : G;
 
 /**
@@ -252,6 +254,27 @@ export interface DbAggregate {
 export type DbJoin = "inner" | "left" | "right";
 
 /**
+ * A db statement's target table — a def handle or name, or `null` for the
+ * engine's own empty binding (`context.dbo.id: ""`).
+ *
+ * ⚠ **Do not author `null`.** It is a BROKEN state in Xano, not a neutral one:
+ * the statement is bound to no table and does nothing wherever it runs. It exists
+ * on these types so `codegen` can represent a broken statement faithfully rather
+ * than degrade the whole thing to `raw()` — a pulled `table: null` is a defect to
+ * fix in the pulled workspace, not a shape to copy.
+ *
+ * It is what a statement degrades to when the table it referenced is deleted, and
+ * also where a freshly-dropped one starts. The engine clears the id rather than
+ * recording a tombstone, so those two are the same bytes: `null` means "unbound",
+ * never "was deleted". The same contract as an addon's `table` (see
+ * {@link addon}), which is where this pattern comes from.
+ *
+ * An unbound table has no schema, so `row:` (which expands the typed row against
+ * the table's columns) is unavailable with it — use `data:`.
+ */
+type DbTableRef<T extends ObjectRef = ObjectRef> = T | null;
+
+/**
  * A join (`context.bind[]`): join `table` (aliased by `as`) with `join` kind and
  * an optional `where` join condition (same search surface as the query). Joins
  * widen what `where`/`sort`/`eval` can address by dotted path (`"author.id"`);
@@ -306,11 +329,27 @@ interface RichInput {
   filters: unknown[];
   ignore: boolean;
   expand: boolean;
-  children: unknown[];
+  children: RichInput[];
 }
 
-function entry(name: string, v: Value, ignore = false): RichInput {
-  return { name, value: v.value, tag: v.tag, filters: v.filters, ignore, expand: false, children: [] };
+/**
+ * One stored input entry. `children` marks the entry **expanded**: the engine
+ * assembles the column's value as an object from the child entries, keyed by
+ * each child's name, recursively. `expand` is not authored separately — it is
+ * exactly "this entry has children", which is the only combination real
+ * workspaces store (an expanded entry always carries children, and an
+ * unexpanded one never does).
+ */
+function entry(name: string, v: Value, ignore = false, children: RichInput[] = []): RichInput {
+  return {
+    name,
+    value: v.value,
+    tag: v.tag,
+    filters: v.filters,
+    ignore,
+    expand: children.length > 0,
+    children,
+  };
 }
 
 /**
@@ -329,9 +368,9 @@ interface EnvelopeOpts {
 
 /**
  * The shared db-op envelope fields (everything except name/context/as/input).
- * `output` switches the output block to the engine's customized form —
- * `{customize:true, items:[{name,children:[]}]}` (byte shape per the engine's
- * persisted golden); omitted, it stays the full-record default.
+ * `output` switches the output block to the engine's customized form (byte shape
+ * per the engine's persisted golden); omitted, it stays the full-record default.
+ * A dotted entry selects sub-keys of an object column ({@link encodeOutputItems}).
  */
 function envelope(
   opts: EnvelopeOpts = {},
@@ -343,7 +382,7 @@ function envelope(
     // An empty selection normalizes to the full-record default — `[]` must not
     // emit the degenerate `{customize:true, items:[]}` shape no golden attests.
     output: outputCols?.length
-      ? { customize: true, filters: [], items: outputCols.map((name) => ({ name, children: [] })) }
+      ? { customize: true, filters: [], items: encodeOutputItems(outputCols) }
       : { customize: false, filters: [], items: [] },
     // `encodeAddons` returns `[]` when omitted, preserving the empty-`addon:[]`
     // default byte-for-byte for statements that attach none.
@@ -399,8 +438,11 @@ function assertNoAddonShadow(table: ObjectRef, addons?: readonly AddonSpec[]): v
  * from the majority exactly as omitting it diverges from the rest. It is
  * authored instead, and absent unless asked for.
  */
-function dboBinding(table: ObjectRef, tableAlias?: string): Record<string, unknown> {
-  const dbo: Record<string, unknown> = { id: resolveRef("dbo", table) };
+function dboBinding(table: ObjectRef | null, tableAlias?: string): Record<string, unknown> {
+  // `null` writes the engine's own empty binding rather than a resolved guid —
+  // `resolveRef` would reject a target with neither a name nor a guid. Same
+  // representation-of-a-broken-state contract as an addon's `table: null`.
+  const dbo: Record<string, unknown> = { id: table === null ? "" : resolveRef("dbo", table) };
   if (tableAlias !== undefined) dbo.as = tableAlias;
   return dbo;
 }
@@ -408,13 +450,13 @@ function dboBinding(table: ObjectRef, tableAlias?: string): Record<string, unkno
 /** Assemble a `!map:dbo` statement: table ref → `context.dbo` + rich envelope. */
 function dboStatement(
   name: string,
-  table: ObjectRef,
+  table: ObjectRef | null,
   as: string | undefined,
   input: RichInput[],
   opts: EnvelopeOpts = {},
   tableAlias?: string,
 ): Statement {
-  assertNoAddonShadow(table, opts.addon);
+  if (table !== null) assertNoAddonShadow(table, opts.addon);
   return {
     name,
     context: { dbo: dboBinding(table, tableAlias) },
@@ -427,7 +469,7 @@ function dboStatement(
 export interface DbGetArgs<
   T extends ObjectRef = ObjectRef,
   As extends string = string,
-  Cols extends readonly ColsOf<T>[] = readonly ColsOf<T>[],
+  Cols extends readonly OutputPath<ColsOf<T>>[] = readonly ColsOf<T>[],
   A extends readonly AddonSpec[] = readonly AddonSpec[],
 > {
   /**
@@ -438,7 +480,7 @@ export interface DbGetArgs<
   tableAlias?: string;
 
   /** The target table (def handle or name). */
-  table: T;
+  table: DbTableRef<T>;
   /** The lookup field (defaults to the primary key `id`). */
   fieldName?: ColsOf<T>;
   /** The value to match. */
@@ -479,7 +521,7 @@ export interface DbGetArgs<
 export function dbGet<
   T extends ObjectRef,
   const As extends string = "",
-  const Cols extends readonly ColsOf<T>[] = readonly [],
+  const Cols extends readonly OutputPath<ColsOf<T>>[] = readonly [],
   const A extends readonly AddonSpec[] = readonly [],
 >(args: DbGetArgs<T, As, Cols, A>): DbResult<As, WithAddons<RowShapeOf<T, Cols>, A> | null> {
   return dboStatement(
@@ -507,7 +549,7 @@ export interface DbDelArgs<T extends ObjectRef = ObjectRef> {
    */
   tableAlias?: string;
 
-  table: T;
+  table: DbTableRef<T>;
   fieldName?: ColsOf<T>;
   fieldValue: Value;
   as?: string;
@@ -544,7 +586,7 @@ export interface DbHasArgs<T extends ObjectRef = ObjectRef, As extends string = 
    */
   tableAlias?: string;
 
-  table: T;
+  table: DbTableRef<T>;
   fieldName?: ColsOf<T>;
   fieldValue: Value;
   /** Capture the existence boolean into this stack variable. Captured literally so
@@ -580,7 +622,7 @@ export interface DbPatchArgs<
    */
   tableAlias?: string;
 
-  table: T;
+  table: DbTableRef<T>;
   fieldName?: ColsOf<T>;
   fieldValue: Value;
   /** The partial row to merge (an object value). */
@@ -625,7 +667,7 @@ export interface DbTruncateArgs {
    */
   tableAlias?: string;
 
-  table: ObjectRef;
+  table: DbTableRef;
   /** Reset auto-increment counters. */
   reset?: boolean;
   as?: string;
@@ -650,10 +692,20 @@ export interface DbField {
   value: Value;
   /** Store with `ignore:true` (system/readonly column not written), e.g. `id`. */
   ignore?: boolean;
+  /**
+   * Sub-entries for an object column: the engine builds the column's value from
+   * these, keyed by each child's name, recursively (stored `expand:true`). The
+   * entry's own `value` is still written — real workspaces carry either an empty
+   * constant or a reference to the object the children were derived from — so it
+   * stays authored rather than derived.
+   */
+  children?: DbField[];
 }
 
 function rowEntries(data: DbField[]): RichInput[] {
-  return data.map((f) => entry(f.name, f.value, f.ignore ?? false));
+  return data.map((f) =>
+    entry(f.name, f.value, f.ignore ?? false, f.children ? rowEntries(f.children) : []),
+  );
 }
 
 /**
@@ -667,11 +719,26 @@ function rowEntries(data: DbField[]): RichInput[] {
 export type RowCell = Value & { readonly __col?: never };
 
 /**
+ * A nested cell: sub-keys written into an object column, keyed by name. Each
+ * leaf is still a {@link RowCell}, so the `col()` guard above holds at every
+ * depth — nesting adds a level, never an escape hatch.
+ *
+ * The column's own stored value is written as an empty constant, which is what
+ * the overwhelming majority of real expanded entries carry. The one shape this
+ * cannot express is an expanded column whose own value is a reference (the
+ * editor seeds the children from it); author that through `data:` with explicit
+ * `children`, which controls every byte.
+ */
+export type NestedCell<C extends string = string> = { readonly [K in C]?: RowCell | NestedCell };
+
+/**
  * A partial row keyed by column name — the values to write. Unspecified columns
  * get a type default on `db.add`; on `db.edit` they are marked `ignore:true` and
  * keep their stored value instead (issue #33 — see `expandRow`).
  */
-export type RowMap<C extends string = string> = Partial<Record<C, RowCell>>;
+export type RowMap<C extends string = string> = Partial<
+  Record<C, RowCell | NestedCell>
+>;
 
 /**
  * Schema-driven row expansion (DX convenience — *reachable, not byte-verified*).
@@ -728,6 +795,26 @@ function columnsOf(table: ObjectRef): ColumnDef[] {
   );
 }
 
+/**
+ * Narrow an unbound (`null`) table where a bound one is structurally required.
+ *
+ * `table: null` exists to REPRESENT a broken statement, not to author one, so the
+ * surfaces that read the table's schema — `row:`'s column expansion — have
+ * nothing to work from. A decoded broken statement always carries `data:` (the
+ * stored `input[]` verbatim) and never `row:`, so this is unreachable from the
+ * read path and only fires on a hand-authored `null`.
+ */
+function requireBoundTable(table: ObjectRef | null, argName: string): ObjectRef {
+  if (table === null) {
+    throw new Error(
+      `db: \`${argName}\` needs the table's columns, but \`table\` is null (an unbound ` +
+        "statement). `table: null` represents a statement whose table was deleted — fix the " +
+        `binding, or pass the row values as \`data:\` instead of \`${argName}:\`.`,
+    );
+  }
+  return table;
+}
+
 function expandRow(table: ObjectRef, row: RowMap, op: "add" | "edit"): DbField[] {
   const cols = columnsOf(table);
   const colNames = new Set(cols.map((col) => col.name));
@@ -739,17 +826,42 @@ function expandRow(table: ObjectRef, row: RowMap, op: "add" | "edit"): DbField[]
   }
   const systemIgnore = SYSTEM_IGNORE[op];
   return cols.map((col) => {
-    const supplied = row[col.name] !== undefined;
+    const cell = row[col.name];
+    const supplied = cell !== undefined;
     // On edit, a column the author didn't mention must be left untouched
     // (`ignore:true`) — otherwise the partial edit overwrites it with a type
     // default, wiping the stored value (issue #33). On add there is nothing to
     // preserve, so unmentioned columns still emit their type default.
     const ignore = systemIgnore.has(col.name) || (op === "edit" && !supplied);
+    if (supplied && isNestedCell(cell)) {
+      return { name: col.name, value: c.text(""), ignore, children: nestedFields(cell) };
+    }
     return {
       name: col.name,
-      value: supplied ? row[col.name]! : defaultCell(col),
+      value: supplied ? (cell as RowCell) : defaultCell(col),
       ignore,
     };
+  });
+}
+
+/**
+ * A cell is nested when it is a plain object that is not a {@link Value}. Tested
+ * against the whole `Value` shape rather than the presence of `tag` alone: a
+ * nested cell's keys are sub-key names, and one of them may well *be* `"tag"` —
+ * but its own value is then a cell (an object), never the string a `Value` holds.
+ */
+function isNestedCell(cell: RowCell | NestedCell): cell is NestedCell {
+  const v = cell as Partial<Value>;
+  return !(typeof v.tag === "string" && typeof v.value === "string" && Array.isArray(v.filters));
+}
+
+/** Expand a nested cell into child entries, recursing through deeper nesting. */
+function nestedFields(cell: NestedCell): DbField[] {
+  return Object.entries(cell).map(([name, value]) => {
+    const child = value as RowCell | NestedCell;
+    return isNestedCell(child)
+      ? { name, value: c.text(""), children: nestedFields(child) }
+      : { name, value: child };
   });
 }
 
@@ -765,7 +877,7 @@ export interface DbAddArgs<
    */
   tableAlias?: string;
 
-  table: T;
+  table: DbTableRef<T>;
   /** The row to insert as explicit entries (exact control over each field + `ignore`). */
   data?: DbField[];
   /** A partial row keyed by column name; expanded against the table's declared columns. */
@@ -788,7 +900,7 @@ export function dbAdd<
   const As extends string = "",
   const A extends readonly AddonSpec[] = readonly [],
 >(args: DbAddArgs<T, As, A>): DbResult<As, WithAddons<FullRowShapeOf<T>, A>> {
-  const data = args.row !== undefined ? expandRow(args.table, args.row, "add") : (args.data ?? []);
+  const data = args.row !== undefined ? expandRow(requireBoundTable(args.table, "row"), args.row, "add") : (args.data ?? []);
   return dboStatement(
     "mvp:dbo_add",
     args.table,
@@ -811,7 +923,7 @@ export interface DbEditArgs<
    */
   tableAlias?: string;
 
-  table: T;
+  table: DbTableRef<T>;
   fieldName?: ColsOf<T>;
   fieldValue: Value;
   /** The new field values as explicit entries (exact control over each field + `ignore`). */
@@ -843,7 +955,7 @@ export function dbEdit<
   const As extends string = "",
   const A extends readonly AddonSpec[] = readonly [],
 >(args: DbEditArgs<T, As, A>): DbResult<As, WithAddons<FullRowShapeOf<T>, A>> {
-  const data = args.row !== undefined ? expandRow(args.table, args.row, "edit") : (args.data ?? []);
+  const data = args.row !== undefined ? expandRow(requireBoundTable(args.table, "row"), args.row, "edit") : (args.data ?? []);
   return dboStatement(
     "mvp:dbo_editby",
     args.table,
@@ -873,7 +985,7 @@ export function dbEdit<
  */
 
 export interface DbAddOrEditArgs<T extends ObjectRef = ObjectRef, As extends string = string> {
-  table: T;
+  table: DbTableRef<T>;
   /** The match field (defaults to the primary key `id`). */
   fieldName?: ColsOf<T>;
   /** The value to match for the edit branch. */
@@ -899,7 +1011,7 @@ export interface DbAddOrEditArgs<T extends ObjectRef = ObjectRef, As extends str
 export function dbAddOrEdit<T extends ObjectRef, const As extends string = "">(
   args: DbAddOrEditArgs<T, As>,
 ): DbResult<As, FullRowShapeOf<T>> {
-  const data = args.row !== undefined ? expandRow(args.table, args.row, "edit") : (args.data ?? []);
+  const data = args.row !== undefined ? expandRow(requireBoundTable(args.table, "row"), args.row, "edit") : (args.data ?? []);
   const input: Array<LeanInput & { ignore?: boolean }> = [
     leanInput("field_name", c.text(args.fieldName ?? "id")),
     leanInput("field_value", args.fieldValue),
@@ -921,7 +1033,7 @@ export interface DbSchemaArgs {
    */
   tableAlias?: string;
 
-  table: ObjectRef;
+  table: DbTableRef;
   /** Dot-path into the schema to read. */
   path: Value;
   as?: string;
@@ -1002,7 +1114,7 @@ export interface DbBulkAddArgs {
    */
   tableAlias?: string;
 
-  table: ObjectRef;
+  table: DbTableRef;
   /** The rows to insert (an array value). */
   items: Value;
   /** Permit explicit `id` values in the rows. */
@@ -1018,7 +1130,7 @@ export interface DbBulkAddArgs {
  */
 function bulkStatement(
   name: string,
-  table: ObjectRef,
+  table: ObjectRef | null,
   as: string | undefined,
   input: LeanInput[],
   tableAlias?: string,
@@ -1045,7 +1157,7 @@ export interface DbBulkDeleteArgs<As extends string = string> {
    */
   tableAlias?: string;
 
-  table: ObjectRef;
+  table: DbTableRef;
   /**
    * Filter selecting which rows to delete — the same `where` surface as
    * `s.db.query`: `expr(...)`/`cmp(...)` comparisons, `and(...)`/`or(...)` groups,
@@ -1095,7 +1207,7 @@ export interface DbBulkWriteArgs<T extends ObjectRef = ObjectRef, As extends str
    */
   tableAlias?: string;
 
-  table: T;
+  table: DbTableRef<T>;
   /** The rows to write (an array value), each carrying its key. */
   items: Value;
   /** Capture the result into this stack variable. Captured literally so
@@ -1167,6 +1279,25 @@ export interface DbPaging {
   offset?: number | Value;
   totals?: boolean;
   metadata?: boolean;
+  /**
+   * The engine's paging gate (`context.return.<type>.paging.enabled`).
+   *
+   * **Leave this unset.** It defaults to being DERIVED — on whenever a
+   * `page`/`per_page`/`offset` field or a classic `external` blob is present —
+   * which is what stops a `search`/`sort`-only `paging` from silently truncating a
+   * result to 25 rows (issue #41). Setting it overrides that derivation.
+   *
+   * It exists because a stored query can carry the two apart: real workspaces
+   * persist a non-default `per_page` with the gate OFF, and a derived-only encoder
+   * cannot reproduce that — which cost ~158 `db.query` statements their
+   * readability. So this is here to REPRESENT a stored state faithfully, like
+   * `table: null`; authoring `enabled: false` beside a `per_page` asks the engine
+   * to ignore that `per_page`.
+   *
+   * Note it also moves where addons graft: a metadata paging envelope puts rows
+   * under `items[]`, so the gate and the addon offset stay consistent.
+   */
+  enabled?: boolean;
   /** Dynamic custom-query override (`context.simpleExternal.search`) — a {@link Value}, ANDed onto the static `where`. */
   search?: Value;
   /** Dynamic sort override (`context.simpleExternal.sort`) — a {@link Value}; replaces the static sort at runtime. */
@@ -1178,12 +1309,23 @@ function isPagingValue(x: unknown): x is Value {
   return typeof x === "object" && x !== null && "tag" in x && "value" in x && "filters" in x;
 }
 
-/** Whether a `paging` arg carries a page/per_page/offset field (static or `Value`) — the engine's paging gate. */
+/** Whether a `paging` arg carries a page/per_page/offset field (static or `Value`). */
 function hasPageField(paging?: DbPaging): boolean {
   return (
     !!paging &&
     (paging.page !== undefined || paging.per_page !== undefined || paging.offset !== undefined)
   );
+}
+
+/**
+ * The engine's paging gate: an explicit {@link DbPaging.enabled} when authored,
+ * otherwise derived from a page field or a classic `external` blob.
+ *
+ * Both the return block's `enabled` and the addon graft offset read this, so the
+ * two cannot disagree about whether rows are wrapped in a paging envelope.
+ */
+function pagingEnabled(paging: DbPaging | undefined, forceEnabled: boolean): boolean {
+  return paging?.enabled ?? (hasPageField(paging) || forceEnabled);
 }
 
 /**
@@ -1349,7 +1491,7 @@ function encodeReturn(
   // `search`/`sort`-only `paging` must NOT flip it on (else default pagination
   // truncates the result to 25 rows). A classic `external` blob (forceEnabled)
   // also needs the gate on for its page/per_page to take effect.
-  const enabled = hasPageField(paging) || forceEnabled;
+  const enabled = pagingEnabled(paging, forceEnabled);
   const staticInt = (v: number | Value | undefined, def: number): number =>
     typeof v === "number" ? v : def;
   if (returnType === "stream") {
@@ -1389,7 +1531,7 @@ function encodeReturn(
 export interface DbQueryArgs<
   T extends ObjectRef = ObjectRef,
   As extends string = string,
-  Cols extends readonly ColsOf<T>[] = readonly ColsOf<T>[],
+  Cols extends readonly OutputPath<ColsOf<T>>[] = readonly ColsOf<T>[],
   A extends readonly AddonSpec[] = readonly AddonSpec[],
   P extends DbPaging | undefined = DbPaging | undefined,
   RT extends DbReturnType = DbReturnType,
@@ -1403,7 +1545,7 @@ export interface DbQueryArgs<
    */
   tableAlias?: string;
 
-  table: T;
+  table: DbTableRef<T>;
   /**
    * The engine's `context.return.type`. `"list"` (default) returns a row array
    * (or paging envelope); `"single"` a first-match `row | null`; `"count"` a
@@ -1491,7 +1633,7 @@ export interface DbQueryArgs<
 export function dbQuery<
   T extends ObjectRef,
   const As extends string = "",
-  const Cols extends readonly ColsOf<T>[] = readonly [],
+  const Cols extends readonly OutputPath<ColsOf<T>>[] = readonly [],
   const A extends readonly AddonSpec[] = readonly [],
   const P extends DbPaging | undefined = undefined,
   const RT extends DbReturnType = "list",
@@ -1500,13 +1642,18 @@ export function dbQuery<
 >(
   args: DbQueryArgs<T, As, Cols, A, P, RT, E, AG>,
 ): DbResult<As, QueryResult<RowShapeOf<T, Cols>, A, P, RT, E, AG>> {
-  assertNoAddonShadow(args.table, args.addon);
-  assertNoEvalShadow(args.table, args.eval);
+  // An unbound (`null`) table has no columns to shadow and no name to qualify
+  // with, exactly as in an addon's `null` branch.
+  if (args.table !== null) {
+    assertNoAddonShadow(args.table, args.addon);
+    assertNoEvalShadow(args.table, args.eval);
+  }
   const returnType: DbReturnType = args.returnType ?? "list";
   // The primary table alias (the default `dbo.as`) — used to qualify aggregate
   // group/eval column names, which the engine requires as `<alias>.<column>`.
   const primaryAlias =
-    args.tableAlias ?? (typeof args.table === "string" ? args.table : args.table.name);
+    args.tableAlias ??
+    (args.table === null ? "" : typeof args.table === "string" ? args.table : args.table.name);
   const context: Record<string, unknown> = { dbo: dboBinding(args.table, args.tableAlias) };
   const search = encodeSearch(args.where, args.additionalWhere);
   if (search !== undefined) context.search = search;
@@ -1544,7 +1691,7 @@ export function dbQuery<
   // frontend's return-type editor applies the identical `items[]` prefix.
   const usesPagingEnvelope =
     returnType === "list" &&
-    (hasPageField(args.paging) || args.external !== undefined) &&
+    pagingEnabled(args.paging, args.external !== undefined) &&
     (args.paging?.metadata ?? true);
   return {
     name: "mvp:dbo_view",

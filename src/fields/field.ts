@@ -58,6 +58,25 @@ export interface FieldOptions {
   /** Text-field display format (text fields only; the engine drops it elsewhere). */
   format?: TextFormat;
   sensitive?: boolean;
+  /**
+   * Merge the referenced object's fields into this one rather than nesting them.
+   *
+   * **Leave this unset** unless reproducing a pulled field. It defaults to `false`,
+   * which is what every field this SDK authors from scratch wants; it is here so a
+   * pulled workspace's field can be recovered as a readable `f.*` call instead of
+   * degrading to `rawField()`. Paired with {@link hidden} in the wild — 584 fields
+   * across the sweep carry `merge: true` with a `hidden` list beside it.
+   */
+  merge?: boolean;
+  /**
+   * Names to hide from this field's expansion (e.g. `["created_at"]`).
+   *
+   * **Leave this unset** unless reproducing a pulled field; it defaults to `[]`.
+   * Each entry is resolved as a name and removed from the expanded shape, so an
+   * entry naming nothing hides nothing — a stored `[""]` is a real spelling that
+   * appears in the wild and round-trips verbatim here rather than being guessed at.
+   */
+  hidden?: readonly string[];
   /** Field visibility in API output. Defaults to `"public"`. */
   access?: FieldAccess;
   style?: { type: FieldStyleType };
@@ -211,8 +230,8 @@ export function encodeField(
     _xsid: "",
     nullable: options.nullable ?? false,
     ...defaultEntry(options),
-    merge: false,
-    hidden: [],
+    merge: options.merge ?? false,
+    hidden: options.hidden !== undefined ? [...options.hidden] : [],
     override: [],
     customize: ctx.customize,
     required: options.required ?? false,

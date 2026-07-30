@@ -29,8 +29,10 @@ import { s } from "../statements/s.js";
 import { encodeStatement, type Statement } from "../statements/statement.js";
 import { normalize } from "../validate/normalize.js";
 import { CORE_MODULE, type DecodeContext } from "./context.js";
-import { call, lit, obj, type Expr } from "./print.js";
+import { call, lit, obj, spread, type Expr } from "./print.js";
 import { deepEqual } from "./field.js";
+import { applyPassthrough, envelopePassthrough } from "./envelope-passthrough.js";
+import { declineHere, recordProveAbort, recordProveDecline } from "./prove-diff.js";
 import { decodeCondition } from "./expression.js";
 import { decodeValue } from "./value.js";
 
@@ -139,7 +141,15 @@ function recoverRule(
       return { field: rule.field, runtime: value, expr: decodeValue(ctx, value), isDefault: false };
     }
     case "context-nest": {
-      const value = toTaggedValue(getPath(context, rule.route.path));
+      const stored_ = getPath(context, rule.route.path);
+      // The engine keeps whichever spelling it is given here: a tagged value, or
+      // the bare string the editor writes (live-verified on `precondition.error`,
+      // where real workspaces store `error: "Access Denied."` while the schema
+      // declares a value). Both are authorable, so both decode.
+      if (typeof stored_ === "string") {
+        return { field: rule.field, runtime: stored_, expr: lit(stored_), isDefault: false };
+      }
+      const value = toTaggedValue(stored_);
       if (!value) return null;
       return { field: rule.field, runtime: value, expr: decodeValue(ctx, value), isDefault: false };
     }
@@ -213,7 +223,9 @@ export function decodeFromSpec(ctx: DecodeContext, stored: StackItemXdo): Expr |
     else if (!rule.optional && rule.default === undefined) {
       // A required field that is not present cannot be re-authored; emitting the
       // call anyway would produce source that throws at compile time.
-      return null;
+      return declineHere(
+        `spec: required "${rule.field}" not recoverable from its ${rule.route.kind} route`,
+      );
     }
   }
   recovered.push(...envelopeEntries(spec, stored));
@@ -225,6 +237,24 @@ export function decodeFromSpec(ctx: DecodeContext, stored: StackItemXdo): Expr |
   if (lean.length < recovered.length) candidates.push(lean);
   candidates.push(recovered);
 
+  // Envelope members no spec ROUTES have to be overridden on the built statement
+  // and spread over the emitted call instead.
+  //
+  // `disabled` is always in this position: every statement carries it and no spec
+  // routes it as a rule field. `description` is only sometimes — the interpreter
+  // routes it where the spec's envelope permits it (which reads better, as a
+  // member of the args object), and those specs already emitted it as an envelope
+  // entry above. Every OTHER spec stored a description it could not re-author, so
+  // an annotated `precondition`, `send_email`, `setheader`, or `template_string`
+  // degraded to `raw()` purely for carrying a comment.
+  const passthrough = envelopePassthrough(stored);
+  const routesDescription = spec.envelope?.description === true;
+  const overrides = { ...passthrough.overrides };
+  if (routesDescription) delete overrides.description;
+  const spreadEntries = passthrough.entries.filter(
+    ([name]) => !(routesDescription && name === "description"),
+  );
+
   for (const sPath of SPATHS_BY_NAME.get(stored.name) ?? []) {
     const factory = leafOf(sPath);
     if (!factory) continue;
@@ -233,16 +263,26 @@ export function decodeFromSpec(ctx: DecodeContext, stored: StackItemXdo): Expr |
       for (const entry of candidate) authored[entry.field] = entry.runtime;
 
       let encoded: StackItemXdo;
+      let entries = spreadEntries;
       try {
-        encoded = encodeStatement(factory(authored));
-      } catch {
+        const applied = applyPassthrough(factory(authored), passthrough, overrides);
+        entries = applied.entries.filter(
+          ([name]) => !(routesDescription && name === "description"),
+        );
+        encoded = encodeStatement(applied.statement);
+      } catch (error) {
+        recordProveAbort(`spec:${sPath}`, stored.name, `factory threw: ${String(error)}`);
         continue;
       }
-      if (!sameStatement(encoded, stored)) continue;
+      if (!sameStatement(encoded, stored)) {
+        recordProveDecline(`spec:${sPath}`, stored.name, normalize(encoded), normalize(stored));
+        continue;
+      }
 
       ctx.use(CORE_MODULE, "s");
       const args = candidate.length > 0 ? [obj(candidate.map((e) => [e.field, e.expr]))] : [];
-      return call(`s.${sPath}`, ...args);
+      const expression = call(`s.${sPath}`, ...args);
+      return entries.length > 0 ? spread(expression, entries) : expression;
     }
   }
   return null;

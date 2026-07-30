@@ -208,6 +208,15 @@ resolves a pulled query's payload, and a pulled agent still types `s.ai.agent.ru
 endpoint someone created and never filled in pulls as a def with no `stack`, which looks
 identical to a decode that gave up. The report is what tells the two apart.
 
+A few options exist only so a pull can be *faithful*, and reading them in generated code
+is the only time you should see them: `table: null` / `fn: null` (a statement whose target
+was deleted or never bound), `merge` / `hidden` on a field, and `paging: { enabled }` on a
+query. They describe what the source workspace actually stored — a pulled `table: null` is
+a defect to fix upstream, not a shape to copy — and each carries that warning at the call
+site. A blank reference also reports, because it has two causes worth telling apart: the
+target really is gone, or it sat outside this export's scope and was blanked on the way
+out. Re-pull with it in scope to know which.
+
 Then it checks its own work: the project it just wrote is loaded, exported, and diffed
 against the workspace it came from. A mismatch names the object and fails the command
 (`--no-verify` opts out). So "it compiled" and "it means the same thing" are separate
@@ -440,7 +449,9 @@ async function fetchPosts(): Promise<Post[]> {
   `null` on a miss rather than throwing — handle the not-found path), a row list for
   `db.query`/`db.bulk.patch` (→ `Row[]`), a `boolean` for `db.has`, a `number` count for
   `db.bulk.delete`, and a `get`/`query` `output: [...]` selection narrows to a `Pick` (still
-  `| null` for `get`).
+  `| null` for `get`). A dotted entry selects sub-keys of an object column
+  (`output: ["id", "meta.url"]`, on a statement or an addon); the narrowing keys off the
+  path's root, since an object column's sub-keys aren't declared in the schema.
   Where the shape isn't statically knowable — a value reshaped by a filter/lambda, built by
   control flow, or from an op the engine itself leaves untyped (`db.del`, `db.bulk.add`/`bulk.update`,
   raw `direct_query`) — it resolves to `unknown`; declare `responseShape` to close it.
@@ -880,6 +891,13 @@ and any datasource you don't list is dropped. Secrets and instance-assigned valu
 material, integration keys, `domain_prefix`, usage counters) are never emitted; `codegen`
 reports them as deliberate omissions rather than round-trip failures.
 
+**Three fields are server-shaped, not authoring surfaces.** `realtime`, `documentation`, and
+`swagger` are carried **verbatim**: SideStep models none of their members, so whatever the engine
+stored round-trips unchanged — including members this SDK has never heard of. They exist so a
+pulled workspace is honest, not to be authored, so omit them. `realtime` in particular is the
+**legacy** workspace-level block; the realtime primitives you actually author are
+`realtimeServer` / `realtimeChannel` / `realtimeMessage`, each its own object.
+
 SideStep emits each tier's lists + the customize flags; it does not compute the fallback (the
 engine does). A `resultStrategy: "replace"` middleware attached `post` rewrites the response at
 runtime, which `InferResponse` can't see — declare `responseShape` on the endpoint in that case.
@@ -1086,6 +1104,11 @@ statement takes one typed args object; control-flow specials (`s.set_var`, `s.co
 `s.for`, `s.foreach`, `s.while`, `s.group`, `s.switch`, `s.try_catch`, `s.return`, …) keep
 their authored signatures.
 
+**Every statement can carry `description` and `disabled`.** Spread them over any statement:
+`{ ...s.set_var("x", c.int(1)), disabled: true }`. `disabled: true` is Xano's commented-out
+state — the step stays in the stack and the run engine skips it, so a pull of a workspace with
+disabled steps keeps them as readable source instead of opaque blobs. Both default to absent.
+
 The **call family** (`s.function.run`, `s.api.call`, `s.task.call`, `s.tool.call`, …)
 invokes another workspace object — pass the target's def handle (or name) and SideStep
 resolves the cross-object reference at export. The **db family** (`s.db.add`/`s.db.edit`/
@@ -1093,7 +1116,9 @@ resolves the cross-object reference at export. The **db family** (`s.db.add`/`s.
 reads/mutations match one field (`{ fieldName, fieldValue }`, defaulting to `id`); writes
 take a partial `row: { … }` — an `s.db.edit` writes **only** the columns you list and leaves
 every unmentioned column at its stored value (a `{ votes }` edit bumps `votes` alone, it does
-not null the rest); only `s.db.query` takes a `where` comparison built with
+not null the rest). A **nested** cell writes sub-keys of an object column
+(`row: { magic_link: { token: inp("token"), used: c.bool(true) } }`); to also set the
+column's own value, use `data: [{ name, value, children: [...] }]`. Only `s.db.query` takes a `where` comparison built with
 `expr(...)` (plus `sort: [{ sortBy, dir? }]` and `paging: { page?, per_page?, offset? }`).
 `s.db.query`'s `where`, `additionalWhere`, `sort`, `paging`, and `output` are all
 **applied by the engine** — the filter narrows the read, sort orders it, paging
@@ -1110,7 +1135,9 @@ array (ANDed) and branch on the result, rather than pushing the check to the cli
   `like`/`ilike`/`between`/`contains`/`includes`/`overlaps`/`@>`/`~`/`search`/… (plus the
   `expr` comparisons). Compose nested logic with `and(...)` / `or(...)`: `where:
   and(cmp(col("tags"), "overlaps", inp("t")), or(expr(col("a"), "=", …), expr(col("b"), "=", …)))`.
-  The same surface is available on `addon()` `where`.
+  The same surface is available on `addon()` `where`. An array is ANDed, and a bare
+  `or(...)` at the top level ORs the top-level clauses rather than nesting them —
+  the shape the engine itself stores.
 - **`returnType`** (`"list"` default | `"single"` | `"count"` | `"exists"` | `"stream"` |
   `"aggregate"`) drives `context.return.type` and the `InferResponse` shape — `count`→`number`,
   `exists`→`boolean`, `single`→`Row | null`, `stream`→`Row[]` (pageable, no envelope),
@@ -1335,7 +1362,8 @@ shapes. `input.url()` names a URL-typed text field. **Comparisons** use `= != > 
 **Validate input at the boundary.** Field types don't enforce arbitrary rules, so reject
 bad input in the stack with `s.precondition` — it raises a **status-bearing** error
 (`error_type: "badrequest"` → HTTP 400) a client can detect via `res.ok`, unlike `s.throw`,
-which returns 200 with an error body. Example: a link shortener stores user URLs and later
+which returns 200 with an error body. Its `error` takes a plain string for a fixed message
+(`error: "url must start with http"`) or a `Value` when the message is computed. Example: a link shortener stores user URLs and later
 navigates to them, so a `javascript:`/`data:` URL is a stored-XSS / open-redirect vector —
 guard the scheme before persisting:
 

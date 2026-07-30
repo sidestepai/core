@@ -2,12 +2,12 @@
  * `db.query` (`mvp:dbo_view`) emit-shape proof (issues #41 / #34 / #36).
  *
  * These fixtures are DERIVED FROM SOURCE, not captured goldens — there is no
- * vendored `dbo_view` golden in the corpus. The shape is grounded in the
- * cloud-client MVP schema + converter that the live engine reads:
- *   - context.search {expression[]}  ← MVP/xs/type/mvp/{Search,Expression,Statement}.php
- *   - context.return.list.{sort,paging}  ← MVP/xs/type/mvp/ReturnSection.php +
- *     helper/MVP.php::convertContextToConfig (top-level `context.sort` is NEVER read)
- *   - context.lock {value,tag,filters}  ← MVP/xs/type/mvp/Context.php + convertLockToConfig
+ * vendored `dbo_view` golden in the corpus. The shape is grounded in the engine's
+ * own declared statement schema and the converter it reads that schema through:
+ *   - context.search {expression[]}  ← the declared search/expression types
+ *   - context.return.list.{sort,paging}  ← the declared return-section type
+ *     (a top-level `context.sort` is NEVER read — only the one under `list`)
+ *   - context.lock {value,tag,filters}  ← the declared context type
  *   - statement `output` envelope  ← the db.get `query-auth-me` golden
  * Behavior is verified end-to-end by the live cross-user repro (issue #41).
  *
@@ -172,6 +172,51 @@ describe("db.query (mvp:dbo_view) emit shape", () => {
     expect(ctx.return.list.paging.enabled).toBe(false); // no page field → no default pagination
     expect(ctx.simpleExternal.search).toEqual({ value: "q", tag: "input", filters: [] });
     expect(ctx.simpleExternal.sort).toEqual({ value: "s", tag: "input", filters: [] });
+  });
+
+  it("an explicit paging.enabled overrides the derivation, in both directions", () => {
+    // Added so a decoder can reproduce a stored query that carries a non-default
+    // `per_page` with the gate OFF — real workspaces persist exactly that, and a
+    // derive-only encoder could not express it. It is an override, not a new
+    // default: every derivation assertion above is unchanged.
+    const off = encodeStatement(dbQuery({ table: note, paging: { per_page: 10, enabled: false } }));
+    const offPaging = (off.context as { return: { list: { paging: { enabled: boolean; per_page: number } } } })
+      .return.list.paging;
+    expect(offPaging.enabled).toBe(false); // derivation would have said true
+    expect(offPaging.per_page).toBe(10); // and the value it gates still persists
+
+    const on = encodeStatement(dbQuery({ table: note, paging: { search: inp("q"), enabled: true } }));
+    const onPaging = (on.context as { return: { list: { paging: { enabled: boolean } } } })
+      .return.list.paging;
+    expect(onPaging.enabled).toBe(true); // derivation would have said false (#41)
+  });
+
+  it("the gate and the addon graft offset stay consistent under an override", () => {
+    // The gate also decides whether rows sit under `items[]`, so the two read the
+    // same value — a query whose gate is forced off must not graft addons into a
+    // paging envelope that will not exist.
+    const enc = encodeStatement(
+      dbQuery({
+        table: note,
+        paging: { per_page: 10, enabled: false },
+        addon: [{ addon: { name: "author", guid: "3333000000000000000000000000cccc" }, as: "_author" }],
+      }),
+    );
+    const [attached] = (enc as { addon: Array<{ offset?: string; as: string }> }).addon;
+    // No envelope, so no `items[]` prefix — the offset is simply absent, which is
+    // the same state as the `""` a pulled workspace carries (normalize drops both).
+    expect(attached?.offset).not.toBe("items[]");
+    expect(attached?.as).toBe("_author");
+
+    // And with the gate left to derive, the same addon DOES graft under the envelope.
+    const derived = encodeStatement(
+      dbQuery({
+        table: note,
+        paging: { per_page: 10 },
+        addon: [{ addon: { name: "author", guid: "3333000000000000000000000000cccc" }, as: "_author" }],
+      }),
+    );
+    expect((derived as { addon: Array<{ offset?: string }> }).addon[0]?.offset).toBe("items[]");
   });
 
   it("all-static paging emits no simpleExternal (byte-identical to today)", () => {
@@ -348,19 +393,48 @@ describe("db.query (mvp:dbo_view) emit shape", () => {
     expect(JSON.stringify(bundle)).toContain("const:epochms");
   });
 
-  it("or() emits a group node; second child carries or:true", () => {
+  it("a ROOT or() joins the root siblings flat, rather than wrapping them", () => {
+    // This shape changed deliberately (R-D). A root `or(...)` used to emit one
+    // group node wrapping both children — a form that, across 187 real
+    // workspaces, the engine stores exactly ZERO times: the editor writes root
+    // siblings flat, with the join on the sibling.
+    //
+    // It changes emitted bytes for an authoring form that already ships, so it
+    // was proven on a live engine before landing rather than argued offline: the
+    // two spellings select the same rows and take the same branch across the
+    // whole truth table of a two-term OR, in a query's search block and in a
+    // runtime conditional alike, and the flat form survives an export unchanged.
     const enc = encodeStatement(
       dbQuery({
         table: note,
         where: or(expr(col("user_id"), "=", auth("id")), cmp(col("title"), "ilike", inp("q"))),
       }),
     );
-    const top = (enc.context as { search: { expression: { type: string; group: { expression: { or: boolean }[] } }[] } })
+    const top = (enc.context as { search: { expression: { type: string; or: boolean }[] } })
       .search.expression;
-    expect(top[0]!.type).toBe("group");
-    const kids = top[0]!.group.expression;
-    expect(kids[0]!.or).toBe(false); // first child never ORs to a nonexistent predecessor
-    expect(kids[1]!.or).toBe(true); // second ORs to the first
+    expect(top).toHaveLength(2);
+    expect(top[0]!.type).toBe("statement");
+    expect(top[0]!.or).toBe(false); // the first sibling never ORs to a nonexistent predecessor
+    expect(top[1]!.or).toBe(true); // the second ORs to the first
+  });
+
+  it("keeps a group wrapped when the root holds more than one node", () => {
+    // The paired negative: root siblings are ANDed, so a group sitting beside
+    // another node must keep its wrapper or its own join would be lost.
+    const enc = encodeStatement(
+      dbQuery({
+        table: note,
+        where: [
+          expr(col("user_id"), "=", auth("id")),
+          or(cmp(col("title"), "ilike", inp("q")), expr(col("title"), "=", c.text("x"))),
+        ],
+      }),
+    );
+    const top = (enc.context as { search: { expression: { type: string; or: boolean }[] } })
+      .search.expression;
+    expect(top).toHaveLength(2);
+    expect(top[1]!.type).toBe("group");
+    expect(top[1]!.or).toBe(false); // ANDed against its sibling
   });
 
   it("nested and(a, or(b, c)) emits a group containing a nested group", () => {

@@ -220,7 +220,7 @@ describe("sidestep lock adopt", () => {
     };
   }
 
-  it("seeds the lock from a live bundle, keyed per section incl. workspace fixed keys", async () => {
+  it("seeds the lock from a live bundle, keyed per section incl. the workspace fixed key", async () => {
     const bundlePath = join(dir, "live.json");
     const lockPath = join(dir, "xano.lock");
     writeFileSync(bundlePath, JSON.stringify(liveBundle()), "utf8");
@@ -230,9 +230,10 @@ describe("sidestep lock adopt", () => {
       "function:sayHello": { guid: LIVE_FN_GUID },
       "app:public": { guid: LIVE_APP_GUID, canonical: "LiveTok1" },
       workspace: { canonical: "WsLive11" },
-      "workspace:realtime": { canonical: "RtLive11" },
     });
-    expect(stdoutText()).toContain("5 added, 0 updated");
+    // The legacy realtime canonical in the bundle is deliberately not adopted —
+    // that key is retired and the block carries no identity this SDK mints.
+    expect(stdoutText()).toContain("4 added, 0 updated");
   });
 
   it("re-adopt overwrites existing values — but only with --yes", async () => {

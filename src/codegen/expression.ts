@@ -121,6 +121,23 @@ export function decodeCondition(ctx: DecodeContext, block: unknown): DecodedCond
 
   const decoded = decodeContainer(ctx, expression as ExprNode[]);
   if (!decoded) return null;
+
+  // Root siblings carry their own join, exactly like a group's do. A flat ORed
+  // root is spelled `or(...)`; the array form means ANDed, so reading an ORed
+  // container as an array would quietly change what it means.
+  const nodes = expression as Array<{ or?: unknown }>;
+  const ored = nodes.map((node, i) => i > 0 && node?.or === true);
+  if (nodes[0]?.or === true) return null;
+  if (ored.some(Boolean)) {
+    // A mixed container (`a AND b OR c`) has no authored form — `or(...)` would
+    // re-encode every sibling as ORed. Decline instead of emitting the wrong join.
+    if (!ored.slice(1).every(Boolean)) return null;
+    ctx.use(CORE_MODULE, "or");
+    return {
+      expr: call("or", ...decoded.map((d) => d.expr)),
+      runtime: { or: true, children: decoded.map((d) => d.runtime) },
+    };
+  }
   if (decoded.length === 1) return decoded[0]!;
   return {
     expr: arr(decoded.map((d) => d.expr)),

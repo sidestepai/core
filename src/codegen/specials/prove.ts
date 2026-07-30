@@ -18,8 +18,10 @@ import { s } from "../../statements/s.js";
 import { encodeStatement, type Statement } from "../../statements/statement.js";
 import { normalize } from "../../validate/normalize.js";
 import { CORE_MODULE, type DecodeContext } from "../context.js";
-import { call, lit, spread, type Expr } from "../print.js";
+import { call, spread, type Expr } from "../print.js";
 import { deepEqual } from "../field.js";
+import { applyPassthrough, envelopePassthrough } from "../envelope-passthrough.js";
+import { declineHere, recordProveAbort, recordProveDecline } from "../prove-diff.js";
 import type { RefIndex, ResolveOptions } from "../ref-index.js";
 
 /** What a special decoder is handed. */
@@ -63,30 +65,35 @@ export function prove(
   sourceArgs: readonly Expr[],
 ): Expr | null {
   const factory = leafOf(path);
-  if (!factory) return null;
+  if (!factory) return declineHere(`${path}: no such factory on \`s\``);
 
-  // A per-statement `description` is persisted by the engine and common in real
-  // workspaces, but **no hand-written statement factory takes one** — only the
-  // declarative specs route it as a field. Without this, every annotated
-  // statement in a pulled workspace would fall through to `raw()`, which is a
-  // large and entirely avoidable readability loss. `Statement.description` is
-  // part of the type, so overriding it on the factory's result is exact, and the
-  // comparison below still has to agree.
-  const description = (stored as { description?: unknown }).description;
-  const annotated = typeof description === "string" && description !== "";
+  // `description` and `disabled` are authored in the editor but are not arguments
+  // to any hand-written factory, so they are overridden on the result and spread
+  // over the emitted call. See {@link envelopePassthrough}.
+  const passthrough = envelopePassthrough(stored);
 
   let encoded: StackItemXdo;
+  let entries: ReadonlyArray<readonly [string, Expr]> = passthrough.entries;
   try {
-    const built = factory(...runtime);
-    encoded = encodeStatement(annotated ? { ...built, description } : built);
-  } catch {
+    const applied = applyPassthrough(factory(...runtime), passthrough);
+    entries = applied.entries;
+    encoded = encodeStatement(applied.statement);
+  } catch (error) {
+    recordProveAbort("special", stored.name, `factory threw: ${String(error)}`);
     return null;
   }
-  if (!deepEqual(normalize(encoded), normalize(stored))) return null;
+  if (!deepEqual(normalize(encoded), normalize(stored))) {
+    recordProveDecline("special", stored.name, normalize(encoded), normalize(stored));
+    return null;
+  }
   ctx.use(CORE_MODULE, "s");
   const expression = call(`s.${path}`, ...sourceArgs);
-  return annotated ? spread(expression, [["description", lit(description)]]) : expression;
+  return entries.length > 0 ? spread(expression, entries) : expression;
 }
+
+// Re-exported so a decoder imports its guard recorder from the same place it
+// imports `prove` — the two are halves of one contract.
+export { declineHere } from "../prove-diff.js";
 
 /** Read a dotted path out of a stored object. */
 export function getPath(root: unknown, path: string): unknown {

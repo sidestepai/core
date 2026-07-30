@@ -66,8 +66,9 @@ const CATALOG_BY_TYPE: Readonly<Record<string, string>> = {
  * call and not the descriptor literal either.
  */
 const ENCODER_FIXED: ReadonlyArray<readonly [string, unknown]> = [
-  ["merge", false],
-  ["hidden", []],
+  // `merge` and `hidden` used to sit here. They are authorable field options now,
+  // which is what lets a merged/hidden field come back as a readable catalog call:
+  // together they were the largest single cause of `rawField()` in the sweep.
   ["override", []],
   ["is_settings_registry", false],
 ];
@@ -196,6 +197,12 @@ function recoverOptions(
   const mode = stored.mode ?? "";
   const fallbackDefault = stored.default ?? "";
 
+  // Recovered verbatim rather than interpreted: a stored `hidden: [""]` is a real
+  // spelling in the wild, and reproducing it exactly is what makes this safe
+  // without deciding what an empty entry MEANS.
+  if (stored.merge === true || !elide) options.merge = stored.merge === true;
+  const hidden = Array.isArray(stored.hidden) ? (stored.hidden as string[]) : [];
+  if (hidden.length > 0 || !elide) options.hidden = [...hidden];
   if (stored.nullable || !elide) options.nullable = stored.nullable ?? false;
   if (stored.required || !elide) options.required = stored.required ?? false;
   if (stored.sensitive || !elide) options.sensitive = stored.sensitive ?? false;

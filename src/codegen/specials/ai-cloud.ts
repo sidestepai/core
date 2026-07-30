@@ -13,7 +13,7 @@ import type { TaggedValue } from "../../types/xdo.js";
 import { lit, obj, type Expr } from "../print.js";
 import { resolveReference } from "../ref-index.js";
 import { decodeValue } from "../value.js";
-import { getPath, prove, type SpecialArgs, type SpecialDecoder } from "./prove.js";
+import { declineHere, getPath, prove, type SpecialArgs, type SpecialDecoder } from "./prove.js";
 
 /** Coerce a stored `{value, tag, filters}` block to a tagged value. */
 function toValue(raw: unknown): TaggedValue | null {
@@ -34,7 +34,8 @@ function inputMap(a: SpecialArgs): Map<string, TaggedValue> | null {
   for (const raw of list) {
     const value = toValue(raw);
     const name = (raw as { name?: unknown }).name;
-    if (!value || typeof name !== "string") return null;
+    if (!value || typeof name !== "string")
+      return declineHere("input[]: entry is not a named tagged value");
     out.set(name, value);
   }
   return out;
@@ -56,7 +57,8 @@ function inputOnly(
     const values = inputMap(a);
     if (!values) return null;
     const known = new Set(fields.map(([entry]) => entry));
-    for (const name of values.keys()) if (!known.has(name)) return null;
+    for (const name of values.keys())
+      if (!known.has(name)) return declineHere(`${path}: unmodelled input entry "${name}"`);
 
     const entries: Array<[string, Expr]> = [];
     const runtime: Record<string, unknown> = {};
@@ -81,7 +83,8 @@ function inputOnly(
  */
 const aiAgentRun: SpecialDecoder = (a) => {
   const guid = getPath(a.stored.context, "toolset.id");
-  if (typeof guid !== "string" || guid === "") return null;
+  if (typeof guid !== "string" || guid === "")
+    return declineHere("ai.agent.run: context.toolset.id is blank");
   const values = inputMap(a);
   if (!values) return null;
 
@@ -101,7 +104,10 @@ const aiAgentRun: SpecialDecoder = (a) => {
     entries.push([arg, decodeValue(a.ctx, value)]);
     runtime[arg] = value;
   }
-  if (values.size > 0) return null;
+  if (values.size > 0)
+    return declineHere(
+      `ai.agent.run: unmodelled input entry "${[...values.keys()][0] ?? ""}"`,
+    );
 
   // `runtime` is written only when a mode was authored, so its presence — not a
   // comparison against a default — is what carries `runtimeMode` back.

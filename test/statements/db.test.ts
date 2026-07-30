@@ -238,6 +238,19 @@ describe("db !map:dbo family — byte-shape vs transform-temp goldens", () => {
       // @ts-expect-error — 'nope' is not a column of `users`
       dbGet({ table: users, fieldValue: c.int(1), output: ["nope"] });
     });
+
+    it("types a dotted sub-key path by its root column", () => {
+      const users = table({
+        name: "user",
+        schema: { email: f.email(), password_reset: f.json() },
+      });
+      // A dotted path selects sub-keys of a declared column; the sub-keys of an
+      // object column are not declared, so only the root is checked.
+      dbGet({ table: users, fieldValue: c.int(1), output: ["password_reset.token"] });
+      // @ts-expect-error — 'nope' is still not a column, dotted or not
+      dbGet({ table: users, fieldValue: c.int(1), output: ["nope.token"] });
+
+    });
   });
 
   describe("schema-driven row expansion (DX — reachable, not byte-verified)", () => {
