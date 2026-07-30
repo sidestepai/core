@@ -22,6 +22,7 @@
  */
 import type { StackItemXdo, TaggedValue } from "../../types/xdo.js";
 import { isDefaultEnvelopeMember } from "../../validate/normalize.js";
+import { outputPaths } from "../../statements/special/output-select.js";
 import { arr, lit, obj, type Expr } from "../print.js";
 import { isBoundNumericId, isReferenceId, isUnboundId, resolveReference } from "../ref-index.js";
 import { decodeValue } from "../value.js";
@@ -140,36 +141,102 @@ function aliasEntry(stored: unknown): { entry: [string, Expr]; runtime: string }
   return { entry: ["tableAlias", lit(alias)], runtime: alias };
 }
 
-/** One parsed `input[]` entry. */
+/** One parsed `input[]` entry, with the sub-entries of an expanded one. */
 interface InputEntry {
   readonly name: string;
   readonly value: TaggedValue;
   readonly ignore: boolean;
+  readonly children: InputEntry[];
 }
 
-/** Parse `input[]` into name/value/ignore triples, or null if any entry is malformed. */
+/**
+ * Parse `input[]` into name/value/ignore entries, recursing into the `children`
+ * of an expanded one, or null if any entry is malformed.
+ *
+ * `expand` and `children` must agree, because the encoder derives `expand` from
+ * "has children" and so cannot reproduce a tree where they disagree. Neither
+ * disagreeing combination occurs in the wild; declining keeps them recorded as
+ * `raw()` rather than re-encoded into a shape that differs from what is stored.
+ */
 function inputEntries(stored: StackItemXdo): InputEntry[] | null {
-  const list = Array.isArray(stored.input) ? stored.input : [];
+  return parseEntries(stored.input, "input[]");
+}
+
+function parseEntries(list: unknown, path: string): InputEntry[] | null {
   const out: InputEntry[] = [];
-  for (const raw of list) {
+  for (const raw of Array.isArray(list) ? list : []) {
     const value = toValue(raw);
     const name = (raw as { name?: unknown }).name;
     if (!value || typeof name !== "string")
-      return declineHere("input[]: entry is not a named tagged value");
-    out.push({ name, value, ignore: (raw as { ignore?: unknown }).ignore === true });
+      return declineHere(`${path}: entry is not a named tagged value`);
+    const rawChildren = (raw as { children?: unknown }).children;
+    const expand = (raw as { expand?: unknown }).expand === true;
+    const hasChildren = Array.isArray(rawChildren) && rawChildren.length > 0;
+    if (expand !== hasChildren)
+      return declineHere(`${path}: "expand" disagrees with "children"`);
+    const children = hasChildren ? parseEntries(rawChildren, `${path}.children[]`) : [];
+    if (!children) return null;
+    out.push({
+      name,
+      value,
+      ignore: (raw as { ignore?: unknown }).ignore === true,
+      children,
+    });
   }
   return out;
 }
 
-/** The column whitelist a statement's `output` envelope carries, if it is customized. */
+/**
+ * The column whitelist a statement's `output` envelope carries, if it is
+ * customized — as the dotted paths that re-encode to the stored tree, so a
+ * nested selection (sub-keys of an object column) survives the round trip.
+ * `undefined` for an uncustomized block; a customized block the path form cannot
+ * express returns `undefined` too, which leaves the block unaccounted and lets
+ * `prove` decline rather than emitting a selection that drops keys.
+ */
 function outputCols(stored: StackItemXdo): string[] | undefined {
   const output = (stored as { output?: unknown }).output as
     | { customize?: unknown; items?: unknown }
     | undefined;
   if (!output || output.customize !== true) return undefined;
-  const items = Array.isArray(output.items) ? output.items : [];
-  const names = items.map((item) => (item as { name?: unknown }).name);
-  return names.every((n) => typeof n === "string") ? (names as string[]) : undefined;
+  return outputPaths(output.items ?? []) ?? undefined;
+}
+
+/**
+ * Only row-data entries have an authored home for sub-entries. A lookup or named
+ * entry that carries them would re-encode without them, so this declines with a
+ * label rather than letting `prove` report it as an anonymous byte difference.
+ */
+function unexpanded(row: InputEntry, path: string): boolean {
+  if (row.children.length === 0) return true;
+  declineHere(`${path}: "${row.name}" carries sub-entries, which only row data can hold`);
+  return false;
+}
+
+/**
+ * One row-write entry as authored `data:` — `{name, value}`, plus `ignore` when
+ * set and `children` when the entry is expanded. Shared by every op that carries
+ * row data so the nested form cannot decode one way here and another there.
+ */
+function rowCell(
+  a: SpecialArgs,
+  row: InputEntry,
+): { expr: Expr; runtime: Record<string, unknown> } {
+  const fields: Array<[string, Expr]> = [
+    ["name", lit(row.name)],
+    ["value", decodeValue(a.ctx, row.value)],
+  ];
+  const runtime: Record<string, unknown> = { name: row.name, value: row.value };
+  if (row.ignore) {
+    fields.push(["ignore", lit(true)]);
+    runtime.ignore = true;
+  }
+  if (row.children.length > 0) {
+    const children = row.children.map((child) => rowCell(a, child));
+    fields.push(["children", arr(children.map((child) => child.expr))]);
+    runtime.children = children.map((child) => child.runtime);
+  }
+  return { expr: obj(fields), runtime };
 }
 
 /** Decode one stored addon attachment, recursing into `children`. */
@@ -219,12 +286,11 @@ function decodeAddonSpec(
 
   const output = block.output as { customize?: unknown; items?: unknown } | undefined;
   if (output?.customize === true) {
-    const items = Array.isArray(output.items) ? output.items : [];
-    const names = items.map((item) => (item as { name?: unknown }).name);
-    if (!names.every((n) => typeof n === "string"))
-      return declineHere("addon[].output.items[]: column has no name");
-    entries.push(["output", lit(names)]);
-    runtime.output = names;
+    const paths = outputPaths(output.items ?? []);
+    if (!paths)
+      return declineHere("addon[].output.items[]: column selection is not a name tree");
+    entries.push(["output", lit(paths)]);
+    runtime.output = paths;
   }
 
   const children = Array.isArray(block.children) ? block.children : [];
@@ -395,6 +461,7 @@ function dboOp(shape: DboOpShape): SpecialDecoder {
         return declineHere(`${shape.path}: input[] does not lead with field_name/field_value`);
       if (fieldName.value.tag !== "const" || fieldName.value.filters.length > 0)
         return declineHere(`${shape.path}: field_name is not a bare constant`);
+      if (!unexpanded(fieldName, shape.path) || !unexpanded(fieldValue, shape.path)) return null;
       // `id` is the encoder's default lookup column, so naming it adds nothing.
       if (fieldName.value.value !== "id") {
         entries.push(["fieldName", lit(fieldName.value.value)]);
@@ -412,6 +479,7 @@ function dboOp(shape: DboOpShape): SpecialDecoder {
         return declineHere(`${shape.path}: input[] is missing required "${spec.entry}"`);
       }
       cursor += 1;
+      if (!unexpanded(found, shape.path)) return null;
       if (spec.bool) {
         const value = plainBool(found.value);
         if (value === null)
@@ -428,16 +496,9 @@ function dboOp(shape: DboOpShape): SpecialDecoder {
       const rows = entriesIn.slice(cursor);
       cursor = entriesIn.length;
       if (rows.length > 0) {
-        const cells = rows.map((row) => {
-          const fields: Array<[string, Expr]> = [
-            ["name", lit(row.name)],
-            ["value", decodeValue(a.ctx, row.value)],
-          ];
-          if (row.ignore) fields.push(["ignore", lit(true)]);
-          return obj(fields);
-        });
-        entries.push(["data", arr(cells)]);
-        runtime.data = rows.map((row) => ({ name: row.name, value: row.value, ignore: row.ignore }));
+        const cells = rows.map((row) => rowCell(a, row));
+        entries.push(["data", arr(cells.map((cell) => cell.expr))]);
+        runtime.data = cells.map((cell) => cell.runtime);
       }
     }
 
@@ -500,6 +561,8 @@ const dbAddOrEdit: SpecialDecoder = (a) => {
     return declineHere("db.add_or_edit: input[] does not lead with field_name/field_value");
   if (fieldName.value.tag !== "const" || fieldName.value.filters.length > 0)
     return declineHere("db.add_or_edit: field_name is not a bare constant");
+  if (!unexpanded(fieldName, "db.add_or_edit") || !unexpanded(fieldValue, "db.add_or_edit"))
+    return null;
 
   // Through the shared table argument like the rest of the family, which is what
   // gives this one the unbound state too — it used to resolve the guid inline.
@@ -521,20 +584,9 @@ const dbAddOrEdit: SpecialDecoder = (a) => {
   runtime.fieldValue = fieldValue.value;
 
   if (rows.length > 0) {
-    entries.push([
-      "data",
-      arr(
-        rows.map((row) => {
-          const fields: Array<[string, Expr]> = [
-            ["name", lit(row.name)],
-            ["value", decodeValue(a.ctx, row.value)],
-          ];
-          if (row.ignore) fields.push(["ignore", lit(true)]);
-          return obj(fields);
-        }),
-      ),
-    ]);
-    runtime.data = rows.map((row) => ({ name: row.name, value: row.value, ignore: row.ignore }));
+    const cells = rows.map((row) => rowCell(a, row));
+    entries.push(["data", arr(cells.map((cell) => cell.expr))]);
+    runtime.data = cells.map((cell) => cell.runtime);
   }
 
   const as = (a.stored as { as?: unknown }).as;

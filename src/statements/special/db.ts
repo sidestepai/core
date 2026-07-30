@@ -40,6 +40,8 @@ import type { LeanInput } from "../lean-input.js";
 import { tableColumns } from "../../kinds/table.js";
 import type { ColumnDef, TableDef, InferRow } from "../../kinds/table.js";
 import type { Prettify } from "../../fields/value-types.js";
+import { encodeOutputItems } from "./output-select.js";
+import type { OutputPath, OutputRoot } from "./output-select.js";
 import { encodeSearch, encodeSort, encodeEval, qualifyAggregateEvals } from "./db-search.js";
 import type { DbWhere, SortDirective, DbEval, EvalFields, AggregateRow } from "./db-search.js";
 export type { DbWhere, SortDir, SortDirective, DbEval, DbEvalFilter } from "./db-search.js";
@@ -64,7 +66,7 @@ type RowShapeOf<T extends ObjectRef, Cols extends readonly string[]> = [
   ? unknown
   : Cols["length"] extends 0
     ? InferRow<T>
-    : Pick<InferRow<T>, Extract<Cols[number], keyof InferRow<T>>>;
+    : Pick<InferRow<T>, Extract<OutputRoot<Cols[number]>, keyof InferRow<T>>>;
 
 /**
  * The full-row shape a single-record write binds — `db.add` (inserted row),
@@ -99,9 +101,9 @@ type IsUnknown<T> = 0 extends 1 & T ? false : unknown extends T ? true : false;
 type NarrowGraft<G, O extends readonly string[]> = IsUnknown<G> extends true
   ? unknown
   : G extends readonly (infer E)[]
-    ? Prettify<Pick<E, Extract<O[number], keyof E>>>[]
+    ? Prettify<Pick<E, Extract<OutputRoot<O[number]>, keyof E>>>[]
     : G extends object
-      ? Prettify<Pick<G, Extract<O[number], keyof G>>>
+      ? Prettify<Pick<G, Extract<OutputRoot<O[number]>, keyof G>>>
       : G;
 
 /**
@@ -327,11 +329,27 @@ interface RichInput {
   filters: unknown[];
   ignore: boolean;
   expand: boolean;
-  children: unknown[];
+  children: RichInput[];
 }
 
-function entry(name: string, v: Value, ignore = false): RichInput {
-  return { name, value: v.value, tag: v.tag, filters: v.filters, ignore, expand: false, children: [] };
+/**
+ * One stored input entry. `children` marks the entry **expanded**: the engine
+ * assembles the column's value as an object from the child entries, keyed by
+ * each child's name, recursively. `expand` is not authored separately — it is
+ * exactly "this entry has children", which is the only combination real
+ * workspaces store (an expanded entry always carries children, and an
+ * unexpanded one never does).
+ */
+function entry(name: string, v: Value, ignore = false, children: RichInput[] = []): RichInput {
+  return {
+    name,
+    value: v.value,
+    tag: v.tag,
+    filters: v.filters,
+    ignore,
+    expand: children.length > 0,
+    children,
+  };
 }
 
 /**
@@ -350,9 +368,9 @@ interface EnvelopeOpts {
 
 /**
  * The shared db-op envelope fields (everything except name/context/as/input).
- * `output` switches the output block to the engine's customized form —
- * `{customize:true, items:[{name,children:[]}]}` (byte shape per the engine's
- * persisted golden); omitted, it stays the full-record default.
+ * `output` switches the output block to the engine's customized form (byte shape
+ * per the engine's persisted golden); omitted, it stays the full-record default.
+ * A dotted entry selects sub-keys of an object column ({@link encodeOutputItems}).
  */
 function envelope(
   opts: EnvelopeOpts = {},
@@ -364,7 +382,7 @@ function envelope(
     // An empty selection normalizes to the full-record default — `[]` must not
     // emit the degenerate `{customize:true, items:[]}` shape no golden attests.
     output: outputCols?.length
-      ? { customize: true, filters: [], items: outputCols.map((name) => ({ name, children: [] })) }
+      ? { customize: true, filters: [], items: encodeOutputItems(outputCols) }
       : { customize: false, filters: [], items: [] },
     // `encodeAddons` returns `[]` when omitted, preserving the empty-`addon:[]`
     // default byte-for-byte for statements that attach none.
@@ -451,7 +469,7 @@ function dboStatement(
 export interface DbGetArgs<
   T extends ObjectRef = ObjectRef,
   As extends string = string,
-  Cols extends readonly ColsOf<T>[] = readonly ColsOf<T>[],
+  Cols extends readonly OutputPath<ColsOf<T>>[] = readonly ColsOf<T>[],
   A extends readonly AddonSpec[] = readonly AddonSpec[],
 > {
   /**
@@ -503,7 +521,7 @@ export interface DbGetArgs<
 export function dbGet<
   T extends ObjectRef,
   const As extends string = "",
-  const Cols extends readonly ColsOf<T>[] = readonly [],
+  const Cols extends readonly OutputPath<ColsOf<T>>[] = readonly [],
   const A extends readonly AddonSpec[] = readonly [],
 >(args: DbGetArgs<T, As, Cols, A>): DbResult<As, WithAddons<RowShapeOf<T, Cols>, A> | null> {
   return dboStatement(
@@ -674,10 +692,20 @@ export interface DbField {
   value: Value;
   /** Store with `ignore:true` (system/readonly column not written), e.g. `id`. */
   ignore?: boolean;
+  /**
+   * Sub-entries for an object column: the engine builds the column's value from
+   * these, keyed by each child's name, recursively (stored `expand:true`). The
+   * entry's own `value` is still written — real workspaces carry either an empty
+   * constant or a reference to the object the children were derived from — so it
+   * stays authored rather than derived.
+   */
+  children?: DbField[];
 }
 
 function rowEntries(data: DbField[]): RichInput[] {
-  return data.map((f) => entry(f.name, f.value, f.ignore ?? false));
+  return data.map((f) =>
+    entry(f.name, f.value, f.ignore ?? false, f.children ? rowEntries(f.children) : []),
+  );
 }
 
 /**
@@ -691,11 +719,26 @@ function rowEntries(data: DbField[]): RichInput[] {
 export type RowCell = Value & { readonly __col?: never };
 
 /**
+ * A nested cell: sub-keys written into an object column, keyed by name. Each
+ * leaf is still a {@link RowCell}, so the `col()` guard above holds at every
+ * depth — nesting adds a level, never an escape hatch.
+ *
+ * The column's own stored value is written as an empty constant, which is what
+ * the overwhelming majority of real expanded entries carry. The one shape this
+ * cannot express is an expanded column whose own value is a reference (the
+ * editor seeds the children from it); author that through `data:` with explicit
+ * `children`, which controls every byte.
+ */
+export type NestedCell<C extends string = string> = { readonly [K in C]?: RowCell | NestedCell };
+
+/**
  * A partial row keyed by column name — the values to write. Unspecified columns
  * get a type default on `db.add`; on `db.edit` they are marked `ignore:true` and
  * keep their stored value instead (issue #33 — see `expandRow`).
  */
-export type RowMap<C extends string = string> = Partial<Record<C, RowCell>>;
+export type RowMap<C extends string = string> = Partial<
+  Record<C, RowCell | NestedCell>
+>;
 
 /**
  * Schema-driven row expansion (DX convenience — *reachable, not byte-verified*).
@@ -783,17 +826,42 @@ function expandRow(table: ObjectRef, row: RowMap, op: "add" | "edit"): DbField[]
   }
   const systemIgnore = SYSTEM_IGNORE[op];
   return cols.map((col) => {
-    const supplied = row[col.name] !== undefined;
+    const cell = row[col.name];
+    const supplied = cell !== undefined;
     // On edit, a column the author didn't mention must be left untouched
     // (`ignore:true`) — otherwise the partial edit overwrites it with a type
     // default, wiping the stored value (issue #33). On add there is nothing to
     // preserve, so unmentioned columns still emit their type default.
     const ignore = systemIgnore.has(col.name) || (op === "edit" && !supplied);
+    if (supplied && isNestedCell(cell)) {
+      return { name: col.name, value: c.text(""), ignore, children: nestedFields(cell) };
+    }
     return {
       name: col.name,
-      value: supplied ? row[col.name]! : defaultCell(col),
+      value: supplied ? (cell as RowCell) : defaultCell(col),
       ignore,
     };
+  });
+}
+
+/**
+ * A cell is nested when it is a plain object that is not a {@link Value}. Tested
+ * against the whole `Value` shape rather than the presence of `tag` alone: a
+ * nested cell's keys are sub-key names, and one of them may well *be* `"tag"` —
+ * but its own value is then a cell (an object), never the string a `Value` holds.
+ */
+function isNestedCell(cell: RowCell | NestedCell): cell is NestedCell {
+  const v = cell as Partial<Value>;
+  return !(typeof v.tag === "string" && typeof v.value === "string" && Array.isArray(v.filters));
+}
+
+/** Expand a nested cell into child entries, recursing through deeper nesting. */
+function nestedFields(cell: NestedCell): DbField[] {
+  return Object.entries(cell).map(([name, value]) => {
+    const child = value as RowCell | NestedCell;
+    return isNestedCell(child)
+      ? { name, value: c.text(""), children: nestedFields(child) }
+      : { name, value: child };
   });
 }
 
@@ -1463,7 +1531,7 @@ function encodeReturn(
 export interface DbQueryArgs<
   T extends ObjectRef = ObjectRef,
   As extends string = string,
-  Cols extends readonly ColsOf<T>[] = readonly ColsOf<T>[],
+  Cols extends readonly OutputPath<ColsOf<T>>[] = readonly ColsOf<T>[],
   A extends readonly AddonSpec[] = readonly AddonSpec[],
   P extends DbPaging | undefined = DbPaging | undefined,
   RT extends DbReturnType = DbReturnType,
@@ -1565,7 +1633,7 @@ export interface DbQueryArgs<
 export function dbQuery<
   T extends ObjectRef,
   const As extends string = "",
-  const Cols extends readonly ColsOf<T>[] = readonly [],
+  const Cols extends readonly OutputPath<ColsOf<T>>[] = readonly [],
   const A extends readonly AddonSpec[] = readonly [],
   const P extends DbPaging | undefined = undefined,
   const RT extends DbReturnType = "list",

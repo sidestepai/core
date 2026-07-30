@@ -512,6 +512,116 @@ describe("database family", () => {
     );
   });
 
+  // R-C — the two nested shapes. Both were invisible before: neither could be
+  // authored, so 14 row writes and 40 output blocks re-encoded flat and declined.
+  describe("nested values", () => {
+    /** Encode a statement, then hand-edit its stored bytes the way the engine stores them. */
+    function restore(statement: Statement, edit: (stored: StackItemXdo) => void): StackItemXdo {
+      const stored = structuredClone(encodeStatement(statement)) as StackItemXdo;
+      edit(stored);
+      return stored;
+    }
+
+    /** Decode stored bytes straight through, without going via the encoder first. */
+    function decodeSource(stored: StackItemXdo): string {
+      return printExpr(decodeStatement(new DecodeContext(), DB_REFS, stored));
+    }
+
+    it("round-trips a row write whose column is assembled from sub-entries", () => {
+      const source = dbRoundTrip(
+        s.db.edit({
+          table: USERS,
+          fieldValue: inp("id"),
+          data: [
+            { name: "email", value: inp("email") },
+            {
+              name: "magic_link",
+              value: ref("user.magic_link"),
+              children: [
+                { name: "token", value: ref("user.magic_link.token") },
+                { name: "used", value: c.bool(true) },
+              ],
+            },
+          ],
+          as: "updated",
+        }),
+      );
+      expect(source).toContain("children: [");
+      expect(source).not.toContain("raw(");
+    });
+
+    it("declines when `expand` and `children` disagree, rather than re-encoding a third shape", () => {
+      // The encoder derives `expand` from having children, so it cannot reproduce
+      // a tree where they disagree. Neither disagreeing combination occurs in the
+      // wild; `raw()` keeps the stored bytes exactly.
+      const stored = restore(
+        s.db.add({ table: USERS, data: [{ name: "email", value: inp("email") }] }),
+        (bytes) => {
+          (bytes.input as Array<Record<string, unknown>>)[0]!.expand = true;
+        },
+      );
+      const source = decodeSource(stored);
+      expect(source).toContain("raw(");
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+    });
+
+    it("declines sub-entries on a lookup entry, which has no authored home for them", () => {
+      const stored = restore(
+        s.db.get({ table: USERS, fieldValue: inp("id"), as: "user" }),
+        (bytes) => {
+          const entry = (bytes.input as Array<Record<string, unknown>>)[1]!;
+          entry.expand = true;
+          entry.children = [
+            { name: "x", value: "1", tag: "const:int", filters: [], ignore: false, expand: false, children: [] },
+          ];
+        },
+      );
+      const source = decodeSource(stored);
+      expect(source).toContain("raw(");
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+    });
+
+    it("round-trips a nested output selection as dotted paths", () => {
+      const source = dbRoundTrip(
+        s.db.get({
+          table: USERS,
+          fieldValue: inp("id"),
+          output: ["id", "password_reset.token", "password_reset.used"],
+          as: "user",
+        }),
+      );
+      expect(source).toContain('"password_reset.token"');
+      expect(source).not.toContain("raw(");
+    });
+
+    it("round-trips a nested selection inside an addon's own output", () => {
+      const source = dbRoundTrip(
+        s.db.get({
+          table: USERS,
+          fieldValue: inp("id"),
+          addon: [{ addon: AUTHOR_ADDON, as: "_author", output: ["name", "img.url"] }],
+          as: "user",
+        }),
+      );
+      expect(source).toContain('"img.url"');
+      expect(source).not.toContain("raw(");
+    });
+
+    it("declines a selected column whose own name contains a dot", () => {
+      // Emitting it as a path would re-encode as two levels, silently changing
+      // which column is selected — so it stays raw().
+      const stored = restore(
+        s.db.get({ table: USERS, fieldValue: inp("id"), output: ["id"], as: "user" }),
+        (bytes) => {
+          (bytes.output as { items: Array<Record<string, unknown>> }).items[0]!.name = "a.b";
+        },
+      );
+      const source = decodeSource(stored);
+      expect(source).toContain("raw(");
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+    });
+  });
+
   it("round-trips add_or_edit, whose lean shape stores the table name beside the guid", () => {
     dbRoundTrip(
       s.db.add_or_edit({

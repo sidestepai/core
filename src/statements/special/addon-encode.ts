@@ -26,6 +26,8 @@ import type { ObjectRef } from "../../refs/guid.js";
 import type { AddonDef } from "../../kinds/addon.js";
 import { leanInput } from "../lean-input.js";
 import type { LeanInput } from "../lean-input.js";
+import { encodeOutputItems } from "./output-select.js";
+import type { OutputItem } from "./output-select.js";
 
 /**
  * One addon attached to a db statement.
@@ -54,7 +56,10 @@ export interface AddonSpec<Graft = unknown> {
   as: string;
   /** Addon input bindings, name → value (use {@link out} for parent-row columns). */
   input?: Record<string, Value>;
-  /** Restrict the addon's returned columns. Narrows the graft at runtime and in the grafted type (to `output ∩ the addon's columns`). */
+  /** Restrict the addon's returned columns. Narrows the graft at runtime and in
+   * the grafted type (to `output ∩ the addon's columns`). A dotted entry
+   * (`"img.url"`) selects sub-keys of an object column; the graft narrows by the
+   * root segment, since an object column's sub-keys are not declared. */
   output?: readonly string[];
   /** Nested addons (recursive). */
   children?: AddonSpec[];
@@ -66,7 +71,7 @@ interface StoredAddon {
   as: string;
   offset?: string;
   input: LeanInput[];
-  output?: { customize: true; items: { name: string; children: [] }[] };
+  output?: { customize: true; items: OutputItem[] };
   children?: StoredAddon[];
 }
 
@@ -81,11 +86,9 @@ function encodeInput(input?: Record<string, Value>): LeanInput[] {
  * omits the `filters:[]` key the parent statement's column-restriction envelope
  * carries — the engine's stored addon output has no `filters` (KTD-5, O1).
  */
-function encodeOutput(
-  cols?: readonly string[],
-): StoredAddon["output"] {
+function encodeOutput(cols?: readonly string[]): StoredAddon["output"] {
   if (!cols?.length) return undefined;
-  return { customize: true, items: cols.map((name) => ({ name, children: [] as [] })) };
+  return { customize: true, items: encodeOutputItems(cols) };
 }
 
 /**
