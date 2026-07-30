@@ -449,7 +449,9 @@ async function fetchPosts(): Promise<Post[]> {
   `null` on a miss rather than throwing — handle the not-found path), a row list for
   `db.query`/`db.bulk.patch` (→ `Row[]`), a `boolean` for `db.has`, a `number` count for
   `db.bulk.delete`, and a `get`/`query` `output: [...]` selection narrows to a `Pick` (still
-  `| null` for `get`).
+  `| null` for `get`). A dotted entry selects sub-keys of an object column
+  (`output: ["id", "meta.url"]`, on a statement or an addon); the narrowing keys off the
+  path's root, since an object column's sub-keys aren't declared in the schema.
   Where the shape isn't statically knowable — a value reshaped by a filter/lambda, built by
   control flow, or from an op the engine itself leaves untyped (`db.del`, `db.bulk.add`/`bulk.update`,
   raw `direct_query`) — it resolves to `unknown`; declare `responseShape` to close it.
@@ -1114,7 +1116,9 @@ resolves the cross-object reference at export. The **db family** (`s.db.add`/`s.
 reads/mutations match one field (`{ fieldName, fieldValue }`, defaulting to `id`); writes
 take a partial `row: { … }` — an `s.db.edit` writes **only** the columns you list and leaves
 every unmentioned column at its stored value (a `{ votes }` edit bumps `votes` alone, it does
-not null the rest); only `s.db.query` takes a `where` comparison built with
+not null the rest). A **nested** cell writes sub-keys of an object column
+(`row: { magic_link: { token: inp("token"), used: c.bool(true) } }`); to also set the
+column's own value, use `data: [{ name, value, children: [...] }]`. Only `s.db.query` takes a `where` comparison built with
 `expr(...)` (plus `sort: [{ sortBy, dir? }]` and `paging: { page?, per_page?, offset? }`).
 `s.db.query`'s `where`, `additionalWhere`, `sort`, `paging`, and `output` are all
 **applied by the engine** — the filter narrows the read, sort orders it, paging
