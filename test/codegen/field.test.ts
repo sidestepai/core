@@ -327,6 +327,27 @@ describe("decodeField — inputs", () => {
     identity("users__", input.dbLink({ name: "users", guid }, { hidden: ["created_at"] }), "input", refs);
   });
 
+  it("names the local table ids a customize block hides from the export's guid remap", () => {
+    // The export remaps `@` targets to portable guids everywhere else, but not
+    // inside `customize`: every one of the 60 found there across the sweep was
+    // still a local numeric id. They round-trip byte-for-byte, so this is not a
+    // fidelity loss — but they do not identify the same table elsewhere, which
+    // is also why `customize` should not get a readable authoring surface.
+    const guid = "9f3c81a04be27d6510aa4c8831ef25b7";
+    const stored = {
+      ...encodeField("users__", `${guid}_mvpschema`, { merge: true }, INPUT_CONTEXT),
+      customize: {
+        owner_id: { hidden: false, default: "", required: false, customize: [], methods: [{ name: "@", arg: ["dbo=14"] }] },
+      },
+    };
+    const ctx = new DecodeContext();
+    const decoded = decodeField(ctx, refsFor(), stored as never, "input");
+    expect(printExpr(decoded.expr)).toContain("rawField(");
+    const detail = String(ctx.report.entries[0]!.detail);
+    expect(detail).toContain("dbo=14");
+    expect(detail).toContain("LOCAL row id");
+  });
+
   it("keeps the database link off the column surface", () => {
     // `excludedTypesForDatabase` rules dblink out as a column: a column linking a
     // whole table is a foreign key, which is f.tableRef.

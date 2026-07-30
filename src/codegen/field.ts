@@ -309,6 +309,43 @@ function tableRefGuid(stored: FieldXdo): string | null {
   return guid === "" ? null : guid;
 }
 
+/**
+ * The warning a `customize` block earns when it references tables by LOCAL id.
+ *
+ * A `customize` block carries per-column overrides, and those can include an `@`
+ * table reference. The export remaps `@` targets to portable guids everywhere
+ * else — 483 of them at field level across the sweep — but not inside
+ * `customize`: all 60 references found there were still local numeric ids
+ * (`dbo=14`). They are carried through byte-for-byte, so nothing is lost here,
+ * but they name a row id in the SOURCE workspace and will point at whatever
+ * happens to hold that id in a different one.
+ *
+ * That is also why `customize` has no authoring surface and should not get one:
+ * a readable form would present unportable data as if it were authorable.
+ */
+function describeCustomizePortability(stored: FieldXdo): string {
+  const customize = (stored as { customize?: unknown }).customize;
+  if (customize === null || typeof customize !== "object") return "";
+  const local = new Set<string>();
+  const walk = (value: unknown): void => {
+    if (Array.isArray(value)) return value.forEach(walk);
+    if (value === null || typeof value !== "object") return;
+    const method = value as { name?: unknown; arg?: unknown };
+    if (method.name === "@" && Array.isArray(method.arg)) {
+      const target = method.arg[0];
+      if (typeof target === "string" && /^dbo=\d+$/.test(target)) local.add(target);
+    }
+    Object.values(value).forEach(walk);
+  };
+  walk(customize);
+  if (local.size === 0) return "";
+  return (
+    `. Its customize references ${[...local].sort().join(", ")} by LOCAL row id rather than by guid — ` +
+    `the export does not remap table references inside customize, so these carry verbatim but do not ` +
+    `identify the same table in another workspace`
+  );
+}
+
 /** Render recovered options as a source object literal, decoding nested children. */
 function optionsExpr(options: FieldOptions, omit: ReadonlyArray<keyof FieldOptions> = []): Expr {
   const entries: Array<[string, Expr]> = [];
@@ -348,7 +385,8 @@ export function decodeField(
     ctx.use(CODEGEN_MODULE, "rawField");
     ctx.problem(
       "value-fallback",
-      `field "${stored.name}" stores ${missing.join(", ")} in a shape no authoring surface can produce; emitted verbatim via rawField()`,
+      `field "${stored.name}" stores ${missing.join(", ")} in a shape no authoring surface can produce; emitted verbatim via rawField()` +
+        describeCustomizePortability(stored),
     );
     return { idiomatic: false, expr: call("rawField", lit(stored)) };
   }

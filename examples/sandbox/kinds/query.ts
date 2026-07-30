@@ -46,3 +46,32 @@ export const userPostQuery = query({
   stack: [s.db.get({ table: users, fieldValue: inp("user_id"), as: "user" })],
   response: ref("user"),
 });
+
+/**
+ * DATABASE LINK — `input.dbLink(table)` is ONE entry that EXPANDS into one input
+ * per COLUMN of the linked table. It is the most confusing input in the catalog
+ * for exactly that reason: the entry is not the input.
+ *
+ * The `users` table's columns arrive here as individual request inputs, so they
+ * are read by their own column names — `inp("name")`, `inp("email")` — NOT by
+ * the entry's name. The expansion is live: add a column to `users` and it
+ * becomes an input here with no change to this file.
+ *
+ * `hidden` drops columns from the expansion, which is what you almost always
+ * want for server-managed columns (`id`, `created_at`) — a caller has no
+ * business supplying them.
+ *
+ * By convention the editor names the entry after the table with a trailing `__`.
+ * The name is just the map key and any name works; matching the convention keeps
+ * a pulled workspace diffing cleanly against a hand-written one.
+ */
+export const signupQuery = query({
+  name: "ex_signup",
+  verb: "POST",
+  apiGroup: api,
+  input: { users__: input.dbLink(users, { hidden: ["id", "created_at"] }) },
+  stack: [
+    s.db.add({ table: users, row: { name: inp("name"), email: inp("email") }, as: "created" }),
+  ],
+  response: ref("created"),
+});
