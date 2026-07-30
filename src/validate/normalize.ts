@@ -207,11 +207,14 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     case "filters":
       return isEmptyArray(v);
     // Statement/object input-entry array: the lean parser form omits an empty
-    // `input`; the full persisted form carries `input:[]`. Same generational gap
-    // as the members above — an empty input array is identical to no inputs.
-    // Drop the empty form on both sides; a populated `input` is preserved.
+    // `input`; the full persisted form carries `input:[]`; and the engine writes
+    // `input:null` for a statement that takes no inputs at all. All three are the
+    // same "no inputs" state — the SDK emits the `[]` spelling, so without the
+    // null arm every input-less statement in a pulled workspace fails to prove
+    // and degrades to `raw()`. Drop all three on both sides; a populated `input`
+    // is preserved. Same two-spellings-of-empty shape as `settings_registry`.
     case "input":
-      return isEmptyArray(v);
+      return v === null || isEmptyArray(v);
     case "example":
       return isEmptyObject(v);
     case "shared_workspace":
@@ -276,13 +279,19 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
 }
 
 /**
- * A statement/object `output` is "empty" — `{filters:[]}` (lean parser form) or
- * `{items:[],filters:[],customize:false}` (full persisted form) are the same
+ * A statement/object `output` is "empty" — `null` (what the engine writes for a
+ * statement that shapes no result), `{filters:[]}` (lean parser form), and
+ * `{items:[],filters:[],customize:false}` (full persisted form) are all the same
  * "no output customization" state. Drop the key from both sides when empty;
  * keep it (and recurse) when it carries selected `items` or `customize:true`.
+ *
+ * The `null` arm matters for the same reason as `input:null`: the SDK emits the
+ * full form, so without it every result-less statement in a pulled workspace
+ * fails its re-encode proof and degrades to `raw()`.
  */
 export function isEmptyOutput(v: unknown): boolean {
-  if (v === null || typeof v !== "object" || Array.isArray(v)) return false;
+  if (v === null) return true;
+  if (typeof v !== "object" || Array.isArray(v)) return false;
   const o = v as { items?: unknown; customize?: unknown };
   const noItems = o.items === undefined || (Array.isArray(o.items) && o.items.length === 0);
   return noItems && o.customize !== true;

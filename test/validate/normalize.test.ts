@@ -123,3 +123,81 @@ describe("validate normalizer — per-kind default/serialization rules", () => {
     expect(normalize(custom)).toEqual(custom);
   });
 });
+
+/**
+ * U2: the engine writes `input:null` / `output:null` for a statement that takes no
+ * inputs or shapes no result, while the SDK emits the full envelope (`input:[]`
+ * and `{items:[],filters:[],customize:false}`). Both spell the same empty state,
+ * so the comparison has to treat them as equal — otherwise every input-less
+ * statement in a pulled workspace fails its re-encode proof and degrades to
+ * `raw()`, which was the single largest cause in the codegen sweep.
+ *
+ * Each rule is tested on BOTH sides: it collapses at the empty spellings, and it
+ * PRESERVES a populated value. The negative half is what keeps the rule from
+ * quietly weakening what `sidestep validate` reports to a user.
+ */
+describe("validate normalizer — null vs empty envelope spellings", () => {
+  it("treats input null, [] and absent as the same empty state", () => {
+    expect(normalize({ input: null })).toEqual({});
+    expect(normalize({ input: [] })).toEqual({});
+    expect(normalize({ name: "mvp:uuid4", input: null })).toEqual(
+      normalize({ name: "mvp:uuid4", input: [] }),
+    );
+  });
+
+  it("preserves a populated input rather than collapsing it", () => {
+    const populated = { input: [{ name: "id", value: "1", tag: "const" }] };
+    expect(normalize(populated)).toEqual(populated);
+    // The rule must not make a populated input compare equal to an empty one.
+    expect(normalize(populated)).not.toEqual(normalize({ input: null }));
+  });
+
+  it("treats output null and both empty forms as the same empty state", () => {
+    expect(normalize({ output: null })).toEqual({});
+    expect(normalize({ output: { filters: [] } })).toEqual({});
+    expect(normalize({ output: { items: [], filters: [], customize: false } })).toEqual({});
+    expect(normalize({ output: null })).toEqual(
+      normalize({ output: { items: [], filters: [], customize: false } }),
+    );
+  });
+
+  it("preserves an output carrying selected items", () => {
+    // A kept `output` keeps its members verbatim — only the empty `children` of a
+    // selected item is elided. The selection itself must survive.
+    const selected = { output: { items: [{ name: "id", children: [] }], customize: false } };
+    expect(normalize(selected)).toEqual({ output: { items: [{ name: "id" }], customize: false } });
+    expect(normalize(selected)).not.toEqual(normalize({ output: null }));
+  });
+
+  it("preserves an output that customizes, even with no items", () => {
+    const customized = { output: { items: [], filters: [], customize: true } };
+    expect(normalize(customized)).toEqual({ output: { items: [], customize: true } });
+    expect(normalize(customized)).not.toEqual(normalize({ output: null }));
+  });
+
+  it("collapses a null-envelope statement to the same shape as a full-envelope one", () => {
+    // The engine's lean spelling and the SDK's full spelling of one statement.
+    const stored = { name: "mvp:uuid4", as: "id", input: null, output: null, disabled: true };
+    const encoded = {
+      name: "mvp:uuid4",
+      as: "id",
+      input: [],
+      output: { items: [], filters: [], customize: false },
+      disabled: true,
+      description: "",
+      addon: [],
+      mocks: {},
+      runtime: null,
+      settings_registry: null,
+      _xsid: "",
+    };
+    expect(normalize(encoded)).toEqual(normalize(stored));
+    // `disabled:true` is authored state, not an envelope default — it survives both.
+    expect((normalize(stored) as { disabled?: unknown }).disabled).toBe(true);
+  });
+
+  it("is idempotent over the null spellings", () => {
+    const once = normalize({ input: null, output: null, name: "mvp:uuid4" });
+    expect(normalize(once)).toEqual(once);
+  });
+});
