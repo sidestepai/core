@@ -548,7 +548,7 @@ A **column `default` must stay within the BMP** — a 4-byte character (codepoin
 e.g. an emoji) is mangled into invalid UTF-8 by the engine's default pipeline and is rejected
 at export rather than 500ing at deploy (Postgres `22021`); BMP defaults (accents, `€`, most
 CJK) are fine, or put the value on an `input.<type>({ default })`, applied at runtime bind. (issue #45)
-`input.*` fully mirrors `f.*` — every type below is
+`input.*` mirrors `f.*` — every column type below is
 a legal input (scalars, files `input.image/video/audio/attachment`, `input.geo.*`,
 `input.vector(size)`, `input.tableRef(table)`, `input.object(children)`), plus
 `input.list(element)` for arrays — wrap any element constructor, e.g.
@@ -577,6 +577,7 @@ so `inp("name")` reads already-normalized; don't reroll `var $x = inp("name")|tr
 - `f.video` (stored `blob_video`)
 - `f.audio` (stored `blob_audio`)
 - `f.attachment` (stored `blob`)
+- `input.file` — INPUT ONLY (no `f.` form)
 - `f.geo.point` (stored `geo_point`)
 - `f.geo.multipoint` (stored `geo_multipoint`)
 - `f.geo.linestring` (stored `geo_linestring`)

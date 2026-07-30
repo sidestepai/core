@@ -179,6 +179,8 @@ export interface ManifestFieldType {
   stored: string;
   /** Valid bind-method names for this type (empty = none; `{name,arg}` escape hatch only). */
   methods: string[];
+  /** Present and true when the type exists under `input.` only, with no `f.` column form. */
+  inputOnly?: boolean;
 }
 
 /** One CLI flag, with the effect it has. */
@@ -443,7 +445,12 @@ const VALUE_CONSTRUCTORS: ReadonlyArray<ManifestValue> = [
  * `tableRef`). Methods are joined in from the generated per-type sets so the
  * manifest can never disagree with what the constructors accept.
  */
-const FIELD_DESCRIPTORS: ReadonlyArray<{ name: string; stored: string; methodKey?: string }> = [
+const FIELD_DESCRIPTORS: ReadonlyArray<{
+  name: string;
+  stored: string;
+  methodKey?: string;
+  inputOnly?: boolean;
+}> = [
   { name: "text", stored: "text" },
   { name: "int", stored: "int" },
   { name: "decimal", stored: "decimal" },
@@ -458,6 +465,8 @@ const FIELD_DESCRIPTORS: ReadonlyArray<{ name: string; stored: string; methodKey
   { name: "video", stored: "blob_video" },
   { name: "audio", stored: "blob_audio" },
   { name: "attachment", stored: "blob" },
+  // Input-only: a raw upload is the request's bytes, not something a table holds.
+  { name: "file", stored: "file", inputOnly: true },
   { name: "geo.point", stored: "geo_point" },
   { name: "geo.multipoint", stored: "geo_multipoint" },
   { name: "geo.linestring", stored: "geo_linestring" },
@@ -472,10 +481,11 @@ const FIELD_DESCRIPTORS: ReadonlyArray<{ name: string; stored: string; methodKey
 
 /** The field-type catalog with each type's valid bind-methods joined in. */
 function buildFieldTypes(): ManifestFieldType[] {
-  return FIELD_DESCRIPTORS.map(({ name, stored, methodKey }) => ({
+  return FIELD_DESCRIPTORS.map(({ name, stored, methodKey, inputOnly }) => ({
     name,
     stored,
     methods: Object.keys(FIELD_METHODS[methodKey ?? name] ?? {}),
+    ...(inputOnly ? { inputOnly: true } : {}),
   }));
 }
 
@@ -1260,7 +1270,7 @@ export function renderLlmsTxt(m: Manifest): string {
     "e.g. an emoji) is mangled into invalid UTF-8 by the engine's default pipeline and is rejected",
     "at export rather than 500ing at deploy (Postgres `22021`); BMP defaults (accents, `€`, most",
     "CJK) are fine, or put the value on an `input.<type>({ default })`, applied at runtime bind. (issue #45)",
-    "`input.*` fully mirrors `f.*` — every type below is",
+    "`input.*` mirrors `f.*` — every column type below is",
     "a legal input (scalars, files `input.image/video/audio/attachment`, `input.geo.*`,",
     "`input.vector(size)`, `input.tableRef(table)`, `input.object(children)`), plus",
     "`input.list(element)` for arrays — wrap any element constructor, e.g.",
@@ -1279,7 +1289,11 @@ export function renderLlmsTxt(m: Manifest): string {
   for (const ft of m.fieldTypes) {
     const stored = ft.stored !== ft.name.replace(/^geo\./, "") ? ` (stored \`${ft.stored}\`)` : "";
     const methods = ft.methods.length ? ` — methods: ${ft.methods.join(", ")}` : "";
-    lines.push(`- \`f.${ft.name}\`${stored}${methods}`);
+    // An input-only type has NO `f.` form; naming it `f.<name>` would document a
+    // constructor that does not exist.
+    const ns = ft.inputOnly ? "input" : "f";
+    const only = ft.inputOnly ? " — INPUT ONLY (no `f.` form)" : "";
+    lines.push(`- \`${ns}.${ft.name}\`${stored}${methods}${only}`);
   }
   lines.push("");
 

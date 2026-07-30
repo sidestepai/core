@@ -414,6 +414,12 @@
       "methods": []
     },
     {
+      "name": "file",
+      "stored": "file",
+      "methods": [],
+      "inputOnly": true
+    },
+    {
       "name": "geo.point",
       "stored": "geo_point",
       "methods": []
