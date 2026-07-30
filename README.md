@@ -295,7 +295,8 @@ const product = table({
     price: f.decimal(),
     tags:  f.text({ array: true }),
   },
-  // Rows are validated against the column types before deploy. Omit `id` and
+  // Rows are validated against the column types before deploy. A column without
+  // `required: true` may be omitted (the engine applies its default). Omit `id` and
   // int-PK rows are auto-numbered 1..N (or set `id` on every row); a bad value
   // or unknown column is a loud error, never a silent drop.
   seed: [
@@ -308,7 +309,9 @@ const product = table({
 Deploy is a full replace, so re-deploying re-seeds cleanly — no duplicate rows. Seed
 data travels only in the deploy package (resolved at deploy time); it never enters the
 type-only workspace your frontend imports. For large or generated data, pass a loader
-instead of an inline array: `seed: () => import("./products.seed.json")`.
+instead of an inline array: `seed: () => import("./products.seed.json")` (a JSON module's
+`.default` is unwrapped for you). The loader form costs nothing in typing — the table's
+row type and column names stay inferred either way.
 
 ---
 
@@ -685,6 +688,25 @@ Server frames arrive as `action: join` (the ack, carrying bound `params`), `mess
 `conversation: true`, so history is distinguishable from live traffic), and `error`
 (`payload.message`, plus `payload.code`/`retry_after` when rate limited). An `error` is a
 per-frame refusal, not a disconnect.
+
+Presence frames (a `presence: true` channel only) carry the roster: `presence_full` holds
+`payload.members`, an array of the whole roster including the receiving client, and
+`presence_join`/`presence_leave` hold a single `payload.member`. A member is
+`{ id, dbo_id, authenticated, extras, joined_at }` — `id` is the auth row id as a string
+(`""` when anonymous), `dbo_id` the auth table's id (`0` when anonymous), `extras` the
+connection's extras, `joined_at` epoch seconds. Render from `presence_full` and apply the
+deltas; the count is members, not connections, since the roster is refcounted per identity
+(a user's second tab fires no second `presence_join`). On join the order is `join` ack →
+`presence_full` → (everyone else gets `presence_join`) → conversation replay, and a joined
+client can re-request the snapshot with `{ action: "presence", channel }`.
+
+Inside a handler, both input surfaces read with `inp()`: `inp("body")` for the message
+payload, `inp("room_id")` for the channel's `{room_id}` path param — bound once at join and
+read from the connection thereafter, so a sender cannot post into a room it never joined.
+`s.realtime.get_session({ as })` binds the connection itself (the joined channel, its
+params, and the caller's identity/extras) for the "who is this sender" question on an
+anonymous-client channel; it is only meaningful in a realtime message or channel-trigger
+stack.
 
 **The superseded realtime layer.** Xano has had two realtime generations, and they reuse
 the same words — "realtime", "channel" — for different objects. Everything above is the

@@ -9,7 +9,24 @@
  * its own stack — rather than one handler switching on a convention field.
  *
  * `input` here types the message PAYLOAD. The owning channel's `input` types the
- * channel PATH parameters (`rooms/{room_id}`). Both reach the stack.
+ * channel PATH parameters (`rooms/{room_id}`). Both reach the stack as ordinary
+ * declared inputs, read the same way — `inp("body")` for a payload field,
+ * `inp("room_id")` for the channel's path param:
+ *
+ * ```ts
+ * const rooms = realtimeChannel({ name: "rooms/{room_id}", server, input: { room_id: input.int() } });
+ * realtimeMessage({
+ *   name: "send",
+ *   channel: rooms,
+ *   input: { body: input.text() },
+ *   stack: [s.db.add({ table: messages, data: { room_id: inp("room_id"), body: inp("body") } })],
+ * });
+ * ```
+ *
+ * A path param is bound ONCE at join and read from the connection thereafter —
+ * never from the frame — so a sender cannot claim a room it did not join. The
+ * same values reach a channel `join`/`leave` trigger's stack, and ride the
+ * realtime session as `session.params.<name>` (`s.realtime.get_session`).
  *
  * A message names BOTH its channel and its server: a channel path is unique only
  * within a server, so the path alone cannot be resolved. Passing a

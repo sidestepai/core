@@ -33,8 +33,14 @@ import { measureCommittedLlms } from "../../scripts/measure-llms.js";
 // Raised again from 27.2k for URL path params: `{param}` segments are a whole
 // addressing capability with a hard authoring rule behind them (an unbound
 // marker throws), and the `getPath({ params })` / handle-`toSearchParams` recipe
-// is the client half an agent cannot infer from the def.)
-const CEILING_TOKENS = 27_400;
+// is the client half an agent cannot infer from the def.
+// Raised again from 27.4k for the three realtime answers in #164: how a stack
+// READS a channel path param (`inp("room_id")`) and what `get_session` holds, and
+// the presence frame payload shapes (`presence_full.members` vs
+// `presence_join.member`, and the member entry). All three were named-but-unshaped
+// surfaces an author had to guess at and defend against — the exact thing this doc
+// exists to prevent.)
+const CEILING_TOKENS = 28_100;
 
 describe("llms.txt token budget", () => {
   it("stays under the bloat-tripwire ceiling", () => {
