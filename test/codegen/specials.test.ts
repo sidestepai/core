@@ -144,6 +144,67 @@ describe("expression algebra", () => {
     expect(source).toContain("or(");
   });
 
+  // R-D — a root `or(...)` joins the ROOT siblings rather than wrapping them.
+  // Before this, the flat spelling (which is the only one real workspaces store)
+  // had no authored form, so every statement carrying one fell back to `raw()`.
+  describe("a flat top-level OR", () => {
+    it("round-trips as or(...), not as an ANDed array", () => {
+      // The array form means ANDed, so reading an ORed container back as an array
+      // would quietly invert what the statement matches.
+      const source = roundTrip(
+        s.conditional({
+          when: or(expr(ref("a"), "=", c.int(1)), expr(ref("b"), "=", c.int(2))),
+          then: [s.set_var("hit", c.bool(true))],
+        }),
+      );
+      expect(source).toContain("or(");
+      expect(source).not.toContain("raw(");
+    });
+
+    it("declines a MIXED container, which has no authored form", () => {
+      // `a AND b OR c` cannot be spelled: `or(...)` would re-encode every sibling
+      // as ORed. Emitting it anyway would change what the statement matches, so
+      // it stays raw() — exact, if unreadable.
+      const stored = structuredClone(
+        encodeStatement(
+          s.conditional({
+            when: [
+              expr(ref("a"), "=", c.int(1)),
+              expr(ref("b"), "=", c.int(2)),
+              expr(ref("c"), "=", c.int(3)),
+            ],
+            then: [s.set_var("hit", c.bool(true))],
+          }),
+        ),
+      ) as StackItemXdo;
+      const nodes = (stored.context as { expr: { expression: Array<{ or: boolean }> } }).expr
+        .expression;
+      nodes[2]!.or = true; // a AND b OR c
+
+      const source = printExpr(decodeStatement(new DecodeContext(), EMPTY_REFS, stored));
+      expect(source).toContain("raw(");
+      expect(normalize(encodeStatement(evaluate(source)))).toEqual(normalize(stored));
+    });
+
+    it("declines an `or` flag on the FIRST sibling, which joins to nothing", () => {
+      const stored = structuredClone(
+        encodeStatement(
+          s.conditional({
+            when: or(expr(ref("a"), "=", c.int(1)), expr(ref("b"), "=", c.int(2))),
+            then: [s.set_var("hit", c.bool(true))],
+          }),
+        ),
+      ) as StackItemXdo;
+      const nodes = (stored.context as { expr: { expression: Array<{ or: boolean }> } }).expr
+        .expression;
+      nodes[0]!.or = true;
+
+      const source = printExpr(decodeStatement(new DecodeContext(), EMPTY_REFS, stored));
+      expect(source).toContain("raw(");
+      expect(normalize(encodeStatement(evaluate(source)))).toEqual(normalize(stored));
+    });
+  });
+
   it("round-trips a comparison carrying ignoreEmpty, which expr() cannot express", () => {
     const source = roundTrip(
       s.while({ when: cmp(ref("q"), "like", inp("term"), { ignoreEmpty: true }), body: [] }),

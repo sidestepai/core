@@ -393,19 +393,48 @@ describe("db.query (mvp:dbo_view) emit shape", () => {
     expect(JSON.stringify(bundle)).toContain("const:epochms");
   });
 
-  it("or() emits a group node; second child carries or:true", () => {
+  it("a ROOT or() joins the root siblings flat, rather than wrapping them", () => {
+    // This shape changed deliberately (R-D). A root `or(...)` used to emit one
+    // group node wrapping both children — a form that, across 187 real
+    // workspaces, the engine stores exactly ZERO times: the editor writes root
+    // siblings flat, with the join on the sibling.
+    //
+    // It changes emitted bytes for an authoring form that already ships, so it
+    // was proven on a live engine before landing rather than argued offline: the
+    // two spellings select the same rows and take the same branch across the
+    // whole truth table of a two-term OR, in a query's search block and in a
+    // runtime conditional alike, and the flat form survives an export unchanged.
     const enc = encodeStatement(
       dbQuery({
         table: note,
         where: or(expr(col("user_id"), "=", auth("id")), cmp(col("title"), "ilike", inp("q"))),
       }),
     );
-    const top = (enc.context as { search: { expression: { type: string; group: { expression: { or: boolean }[] } }[] } })
+    const top = (enc.context as { search: { expression: { type: string; or: boolean }[] } })
       .search.expression;
-    expect(top[0]!.type).toBe("group");
-    const kids = top[0]!.group.expression;
-    expect(kids[0]!.or).toBe(false); // first child never ORs to a nonexistent predecessor
-    expect(kids[1]!.or).toBe(true); // second ORs to the first
+    expect(top).toHaveLength(2);
+    expect(top[0]!.type).toBe("statement");
+    expect(top[0]!.or).toBe(false); // the first sibling never ORs to a nonexistent predecessor
+    expect(top[1]!.or).toBe(true); // the second ORs to the first
+  });
+
+  it("keeps a group wrapped when the root holds more than one node", () => {
+    // The paired negative: root siblings are ANDed, so a group sitting beside
+    // another node must keep its wrapper or its own join would be lost.
+    const enc = encodeStatement(
+      dbQuery({
+        table: note,
+        where: [
+          expr(col("user_id"), "=", auth("id")),
+          or(cmp(col("title"), "ilike", inp("q")), expr(col("title"), "=", c.text("x"))),
+        ],
+      }),
+    );
+    const top = (enc.context as { search: { expression: { type: string; or: boolean }[] } })
+      .search.expression;
+    expect(top).toHaveLength(2);
+    expect(top[1]!.type).toBe("group");
+    expect(top[1]!.or).toBe(false); // ANDed against its sibling
   });
 
   it("nested and(a, or(b, c)) emits a group containing a nested group", () => {

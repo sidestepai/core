@@ -17,7 +17,7 @@ import {
   isValue,
   isGroup,
   isCmpNode,
-  encodeContainer,
+  encodeExpression,
 } from "../expression.js";
 
 // Re-export the shared algebra so existing `db-search.js` importers (incl. the
@@ -88,7 +88,10 @@ export function encodeSearch(where?: DbWhere, additionalWhere?: DbWhere): unknow
   }
   // Top-level siblings are ANDed (the engine has exactly one `search`, so
   // `where` + `additionalWhere` concatenate into one ANDed `expression[]`).
-  if (nodes.length) return { expression: encodeContainer(nodes, false) };
+  // Routed through `encodeExpression` rather than `encodeContainer` so a lone
+  // root `or(...)` splices its children flat here exactly as it does in a
+  // conditional — the two must not disagree about what `or(...)` means.
+  if (nodes.length) return encodeExpression(nodes);
   if (raw !== undefined) return raw;
   return undefined;
 }

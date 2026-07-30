@@ -210,9 +210,9 @@ describe("nested output selection", () => {
   });
 
   it("nests an addon's own output the same way, without the statement's `filters` key", () => {
-    const [stored] = encodeAddons([{ addon: A, as: "_author", output: ["name", "img.url"] }]) as Array<
-      Record<string, unknown>
-    >;
+    const [stored] = encodeAddons([
+      { addon: A, as: "_author", output: ["name", "img.url"] },
+    ]) as unknown as Array<Record<string, unknown>>;
     expect(stored!.output).toEqual({
       customize: true,
       items: [
