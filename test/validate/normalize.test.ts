@@ -789,3 +789,24 @@ describe("validate normalizer — per-key empty spellings", () => {
     expect(normalize({ example: {} })).toEqual({});
   });
 });
+
+describe("validate normalizer — an unset async runtime binding", () => {
+  it("reads both stored spellings of 'no runtime' as unset", () => {
+    // `null` on one engine generation, blank members on another — 6 real
+    // `mvp:function` statements store `{id: "", mode: ""}`.
+    expect(normalize({ runtime: null })).toEqual({});
+    expect(normalize({ runtime: { id: "", mode: "" } })).toEqual({});
+  });
+
+  it("keeps a runtime binding that names something", () => {
+    // `id` is a stripped server column everywhere, including inside `runtime`,
+    // so what survives is the part the comparison actually judges.
+    expect(normalize({ runtime: { id: "worker-1", mode: "async" } })).toEqual({
+      runtime: { mode: "async" },
+    });
+    // A partially-set binding is still authored data.
+    expect(normalize({ runtime: { id: "", mode: "async" } })).toEqual({
+      runtime: { mode: "async" },
+    });
+  });
+});

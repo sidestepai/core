@@ -225,8 +225,18 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     // empty-associative-collection artifact again. Both mean "no mocks".
     case "mocks":
       return isEmptyObject(v) || isEmptyArray(v);
+    // An UNSET runtime binding, in both stored spellings: the `null` the engine
+    // writes on one generation and the blank-member object it writes on another
+    // (`{id: "", mode: ""}` on 6 real `mvp:function` statements). A binding that
+    // names anything is preserved and still compares.
     case "runtime":
-      return v === null;
+      return (
+        v === null ||
+        (typeof v === "object" &&
+          v !== null &&
+          !Array.isArray(v) &&
+          Object.values(v as Record<string, unknown>).every((member) => member === ""))
+      );
     case "settings_registry":
       return v === null || isEmptyArray(v);
     case "addon":
