@@ -239,9 +239,8 @@ export function decodeFromSpec(ctx: DecodeContext, stored: StackItemXdo): Expr |
   // degraded to `raw()` purely for carrying a comment.
   const passthrough = envelopePassthrough(stored);
   const routesDescription = spec.envelope?.description === true;
-  const overrides = routesDescription
-    ? (({ description: _ignored, ...rest }) => rest)(passthrough.overrides)
-    : passthrough.overrides;
+  const overrides = { ...passthrough.overrides };
+  if (routesDescription) delete overrides.description;
   const spreadEntries = passthrough.entries.filter(
     ([name]) => !(routesDescription && name === "description"),
   );
