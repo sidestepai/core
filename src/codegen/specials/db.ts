@@ -23,7 +23,7 @@
 import type { StackItemXdo, TaggedValue } from "../../types/xdo.js";
 import { isDefaultEnvelopeMember } from "../../validate/normalize.js";
 import { arr, lit, obj, type Expr } from "../print.js";
-import { resolveReference } from "../ref-index.js";
+import { isBoundNumericId, isReferenceId, isUnboundId, resolveReference } from "../ref-index.js";
 import { decodeValue } from "../value.js";
 import { decodeCondition } from "../expression.js";
 import { declineHere, getPath, prove, type SpecialArgs, type SpecialDecoder } from "./prove.js";
@@ -348,13 +348,15 @@ interface DboOpShape {
 /** Build a decoder for one uniform `context.dbo.id` + `input[]` operation. */
 function dboOp(shape: DboOpShape): SpecialDecoder {
   return (a) => {
-    const guid = getPath(a.stored.context, "dbo.id");
-    if (typeof guid !== "string")
-      return declineHere(`${shape.path}: context.dbo.id is not a string`);
+    const storedId = getPath(a.stored.context, "dbo.id");
+    if (!isReferenceId(storedId))
+      return declineHere(`${shape.path}: context.dbo.id is not a reference id`);
+    if (isBoundNumericId(storedId))
+      return declineHere(`${shape.path}: context.dbo.id is a numeric object reference`);
     const entriesIn = inputEntries(a.stored);
     if (!entriesIn) return null;
 
-    const table = guid === "" ? unboundTableArg() : tableArg(a, guid);
+    const table = isUnboundId(storedId) ? unboundTableArg() : tableArg(a, String(storedId));
     const entries: Array<[string, Expr]> = [["table", table.expr]];
     const runtime: Record<string, unknown> = { table: table.runtime };
     const alias = aliasEntry(a.stored.context);
@@ -458,9 +460,11 @@ function dboOp(shape: DboOpShape): SpecialDecoder {
  * why the ref index's name — not an empty placeholder — is what proves here.
  */
 const dbAddOrEdit: SpecialDecoder = (a) => {
-  const guid = getPath(a.stored.context, "dbo.id");
-  if (typeof guid !== "string")
-    return declineHere("db.add_or_edit: context.dbo.id is not a string");
+  const storedId = getPath(a.stored.context, "dbo.id");
+  if (!isReferenceId(storedId))
+    return declineHere("db.add_or_edit: context.dbo.id is not a reference id");
+  if (isBoundNumericId(storedId))
+    return declineHere("db.add_or_edit: context.dbo.id is a numeric object reference");
   // `dbo.as` is read by PRESENCE, like every other db statement: it is authored
   // per statement, so its absence is data. Requiring it here (which this decoder
   // used to) made `add_or_edit` the one db statement that could not decode
@@ -475,11 +479,11 @@ const dbAddOrEdit: SpecialDecoder = (a) => {
   if (fieldName.value.tag !== "const" || fieldName.value.filters.length > 0)
     return declineHere("db.add_or_edit: field_name is not a bare constant");
 
-  const target = a.refs.lookup(guid);
-  const entries: Array<[string, Expr]> = [
-    ["table", resolveReference(a.ctx, a.refs, guid, { ...a.resolve, unresolved: "object-ref" })],
-  ];
-  const runtime: Record<string, unknown> = { table: { name: target?.name ?? "", guid } };
+  // Through the shared table argument like the rest of the family, which is what
+  // gives this one the unbound state too — it used to resolve the guid inline.
+  const table = isUnboundId(storedId) ? unboundTableArg() : tableArg(a, String(storedId));
+  const entries: Array<[string, Expr]> = [["table", table.expr]];
+  const runtime: Record<string, unknown> = { table: table.runtime };
   if (alias) {
     entries.push(alias.entry);
     runtime.tableAlias = alias.runtime;
@@ -611,10 +615,12 @@ function externalQuery(engine: string): SpecialDecoder {
 /** `db.bulk.delete` — the one bulk op whose filter rides `context.search`. */
 const dbBulkDelete: SpecialDecoder = (a) => {
   const context = (a.stored.context ?? {}) as Record<string, unknown>;
-  const guid = getPath(context, "dbo.id");
-  if (typeof guid !== "string")
-    return declineHere("db.bulk.delete: context.dbo.id is not a string");
-  const table = guid === "" ? unboundTableArg() : tableArg(a, guid);
+  const storedId = getPath(context, "dbo.id");
+  if (!isReferenceId(storedId))
+    return declineHere("db.bulk.delete: context.dbo.id is not a reference id");
+  if (isBoundNumericId(storedId))
+    return declineHere("db.bulk.delete: context.dbo.id is a numeric object reference");
+  const table = isUnboundId(storedId) ? unboundTableArg() : tableArg(a, String(storedId));
   const entries: Array<[string, Expr]> = [["table", table.expr]];
   const runtime: Record<string, unknown> = { table: table.runtime };
   const alias = aliasEntry(context);
@@ -712,13 +718,15 @@ function decodePaging(
 /** `db.query` — the full query-all surface. */
 const dbQuery: SpecialDecoder = (a) => {
   const context = (a.stored.context ?? {}) as Record<string, unknown>;
-  const guid = getPath(context, "dbo.id");
-  if (typeof guid !== "string")
-    return declineHere("db.query: context.dbo.id is not a string");
+  const storedId = getPath(context, "dbo.id");
+  if (!isReferenceId(storedId))
+    return declineHere("db.query: context.dbo.id is not a reference id");
+  if (isBoundNumericId(storedId))
+    return declineHere("db.query: context.dbo.id is a numeric object reference");
   if (Array.isArray(a.stored.input) && a.stored.input.length > 0)
     return declineHere("db.query: statement-level input[] is populated");
 
-  const table = guid === "" ? unboundTableArg() : tableArg(a, guid);
+  const table = isUnboundId(storedId) ? unboundTableArg() : tableArg(a, String(storedId));
   const entries: Array<[string, Expr]> = [["table", table.expr]];
   const runtime: Record<string, unknown> = { table: table.runtime };
   const alias = aliasEntry(context);

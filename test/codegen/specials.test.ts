@@ -634,6 +634,29 @@ describe("db family — an unbound table", () => {
     expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
   });
 
+  it("treats a zero numeric id as unbound, like a blank guid", () => {
+    // A reference id is a guid OR a number depending on how the referring object
+    // was saved, so the empty form has two spellings and both mean "no target".
+    const stored = unbind(s.db.get({ table: USERS, fieldValue: inp("id"), as: "user" }), { id: 0 });
+    const source = printExpr(decodeStatement(new DecodeContext(), DB_REFS, stored));
+    expect(source).toContain("table: null");
+    expect(source).not.toContain("raw(");
+    expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+  });
+
+  it("declines a BOUND numeric reference rather than emit an unverifiable one", () => {
+    // The load-bearing distinction. `normalize` strips `id` as a server column, so
+    // a reference id is never byte-compared — the proof-carrying contract cannot
+    // catch a wrong one here. Recovering `3` would re-encode it as the STRING "3",
+    // a type change that would sail through unexamined, so it stays raw() until a
+    // reference can carry its stored spelling.
+    const stored = unbind(s.db.get({ table: USERS, fieldValue: inp("id"), as: "user" }), { id: 3 });
+    const source = printExpr(decodeStatement(new DecodeContext(), DB_REFS, stored));
+    expect(source).toContain("raw(");
+    expect(source).not.toContain("table: null");
+    expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+  });
+
   it("throws rather than guess when `row:` needs an unbound table's columns", () => {
     // `table: null` represents a broken statement; it does not author one. `row:`
     // expands against the table's schema, so it has nothing to work from — and a

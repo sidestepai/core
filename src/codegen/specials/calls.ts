@@ -10,7 +10,7 @@
  */
 import type { TaggedValue } from "../../types/xdo.js";
 import { lit, obj, type Expr } from "../print.js";
-import { resolveReference } from "../ref-index.js";
+import { isBoundNumericId, isReferenceId, isUnboundId, resolveReference } from "../ref-index.js";
 import { decodeValue } from "../value.js";
 import { declineHere, getPath, prove, type SpecialArgs, type SpecialDecoder } from "./prove.js";
 
@@ -71,15 +71,18 @@ interface CallShape {
 /** Build a decoder for one uniform call surface. */
 function callDecoder(shape: CallShape): SpecialDecoder {
   return (a) => {
-    const guid = getPath(a.stored.context, shape.idPath);
-    if (typeof guid !== "string")
-      return declineHere(`${shape.path}: context.${shape.idPath} is not a string`);
+    const stored = getPath(a.stored.context, shape.idPath);
+    if (!isReferenceId(stored))
+      return declineHere(`${shape.path}: context.${shape.idPath} is not a reference id`);
     // A blank id is an UNBOUND target, not a decode failure — the statement calls
     // a function that was deleted, or was never bound. Where the surface models
     // that state it is authored as `null`; elsewhere it stays a decline.
-    const unbound = guid === "";
+    const unbound = isUnboundId(stored);
     if (unbound && shape.unbindable !== true)
       return declineHere(`${shape.path}: context.${shape.idPath} is blank`);
+    if (isBoundNumericId(stored))
+      return declineHere(`${shape.path}: context.${shape.idPath} is a numeric object reference`);
+    const guid = String(stored);
 
     const target = unbound
       ? lit(null)
