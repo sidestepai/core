@@ -429,10 +429,30 @@ describe("validate normalizer — return-block paging defaults", () => {
     expect(normalize({ paging: { metadata: false } })).toEqual({ paging: { metadata: false } });
   });
 
-  it("preserves a numeric-string customized value, not just the number", () => {
+  it("keeps a numeric-string customized value, canonicalized to its declared int", () => {
     // The bug this came from: a stored `per_page: "10"` was skipped as "not a
-    // number" and the re-encode fell back to 25.
-    expect(normalize({ paging: { per_page: "10" } })).toEqual({ paging: { per_page: "10" } });
+    // number" and the re-encode fell back to 25. What matters is that a customized
+    // value SURVIVES — it must not drop as a default and must not read as 25.
+    //
+    // It canonicalizes to the number rather than staying a string because that is
+    // what the member declares (`int`), and the two serializations are the same
+    // value: a stored `"10"` against an encoded `10` was costing 11 real `db.query`
+    // statements their readability. Compare against the default to prove the point
+    // of the original bug still holds.
+    expect(normalize({ paging: { per_page: "10" } })).toEqual({ paging: { per_page: 10 } });
+    expect(normalize({ paging: { per_page: "10" } })).not.toEqual(normalize({ paging: {} }));
+    expect(normalize({ paging: { per_page: "10" } })).toEqual(normalize({ paging: { per_page: 10 } }));
+    // The default-holding form still drops in either serialization — and the block
+    // it empties then drops too, by the `paging` rule.
+    expect(normalize({ paging: { per_page: "25" } })).toEqual({});
+    expect(normalize({ paging: { per_page: 25 } })).toEqual({});
+  });
+
+  it("leaves an addon's offset path alone while coercing a paging offset", () => {
+    // `offset` names two unrelated things. An addon's is a response PATH, which is
+    // not a numeric string and so cannot be swept into the int coercion.
+    expect(normalize({ offset: "items[]" })).toEqual({ offset: "items[]" });
+    expect(normalize({ paging: { offset: "40" } })).toEqual({ paging: { offset: 40 } });
   });
 
   it("drops a default distinct and keeps an explicit one", () => {

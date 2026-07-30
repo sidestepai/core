@@ -148,6 +148,12 @@ const DEFAULT_RETURN_BLOCKS: Readonly<Record<string, unknown>> = {
  * more information than {@link DEFAULT_CONTEXT_RETURN} does.
  */
 const MINIMAL_CONTEXT_RETURN = { type: "list" };
+/**
+ * Return-block paging members the engine declares `int`. A readback can carry
+ * either serialization, and the number is the declared form.
+ */
+const PAGING_INT_KEYS = new Set(["page", "per_page", "offset"]);
+
 /** An expression group that nests nothing — what an omitted group means. */
 const EMPTY_SEARCH = { expression: [] };
 /** The engine's default `context.external` (paged-external input) — SDK omits it. */
@@ -472,6 +478,22 @@ export function normalize<T>(value: T): T {
         out[k] = v.map((e) => (typeof e === "number" ? String(e) : normalize(e)));
         continue;
       }
+      // A paging int persisted as a numeric STRING. These coerce toward the NUMBER,
+      // the opposite direction to `value`/`arg` above, because that is what each
+      // form declares: a tagged `value` is a string, `page`/`per_page`/`offset` are
+      // ints. Same artifact, canonicalized toward the declared type in both cases.
+      //
+      // The default-holding forms already reconcile via `isNumber`; this is for a
+      // CUSTOMIZED one, where a stored `"10"` against an encoded `10` cost 11
+      // `db.query` statements their readability.
+      //
+      // An addon's `offset` shares the key name and holds a response PATH
+      // (`"items[]"`), which is not a numeric string and so passes through — the
+      // same coexistence the two `offset` rules already rely on.
+      if (PAGING_INT_KEYS.has(k) && typeof v === "string" && /^-?\d+$/.test(v)) {
+        out[k] = Number(v);
+        continue;
+      }
       // `value` coercion absorbs a corpus inconsistency (the SDK always emits the
       // string form; only older goldens carry the number). `temperature` is a
       // different case: the SDK's agent encoder emits a NUMBER (buildProviderConfig
@@ -484,8 +506,18 @@ export function normalize<T>(value: T): T {
         out[k] = "{}";
         continue;
       }
+      // A tagged `value` is declared a STRING (`TaggedValue.value`), and the engine
+      // persists a `const:bool` either way — `value: false` and `value: "false"` are
+      // the same authored boolean. Coerced for the same reason as the numeric form
+      // directly above, and it is what a stored `context.lock` costs otherwise: 25
+      // `db.query` statements degraded to `raw()` over the spelling of one flag.
+      //
+      // Only `true`/`false` under a `value` key. A boolean anywhere else keeps its
+      // type and is still compared.
       out[k] =
-        (k === "value" || k === "temperature") && typeof v === "number" ? String(v) : normalize(v);
+        (k === "value" || k === "temperature") && (typeof v === "number" || typeof v === "boolean")
+          ? String(v)
+          : normalize(v);
     }
     return out as unknown as T;
   }
