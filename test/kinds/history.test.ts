@@ -83,7 +83,7 @@ describe("encodeContainerHistory (container tier)", () => {
 });
 
 describe("buildWorkspaceHistory (workspace tier)", () => {
-  it("empty map → all 12 keys at engine defaults, no inherit (matches golden)", () => {
+  it("empty map → all 14 keys at engine defaults, no inherit (matches golden)", () => {
     expect(buildWorkspaceHistory({})).toEqual({
       query_enabled: true,
       query_limit: 100,
@@ -97,6 +97,8 @@ describe("buildWorkspaceHistory (workspace tier)", () => {
       trigger_limit: 100,
       middleware_enabled: false,
       middleware_limit: 100,
+      message_enabled: false,
+      message_limit: 100,
     });
   });
 

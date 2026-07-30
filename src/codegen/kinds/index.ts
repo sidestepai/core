@@ -735,9 +735,13 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
         plain(a.stored, "canonical", ""),
         plain(a.stored, "use_xdo", false),
         plain(a.stored, "preferences", {}),
-        (a.stored.realtime as { canonical?: string })?.canonical
-          ? (["realtime", lit(a.stored.realtime)] as DefEntry)
-          : null,
+        // The legacy workspace-level realtime block and the documentation block
+        // are carried verbatim — this SDK models neither's members, so they are
+        // compared against the engine's empty default and emitted whole when they
+        // depart from it. Anything else drops them on every real workspace.
+        plain(a.stored, "realtime", { hash: "", mode: "", enabled: false, channels: [] }),
+        plain(a.stored, "documentation", { token: "", whitelist: {}, require_token: false }),
+        plain(a.stored, "swagger", false),
         workspaceMiddleware(a),
         workspaceHistory(a),
         workspaceEnv(a),

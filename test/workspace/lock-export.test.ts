@@ -141,10 +141,14 @@ describe("lock-aware export", () => {
     const lock = lockWith({ workspace: { canonical: "AdoptdWs" } });
     const ctx = createLockContext(lock);
     const bundle = buildWorkspace().export({ lock: ctx });
-    const ws = bundle.payload.workspace as { canonical: string; realtime: { canonical: string } };
+    const ws = bundle.payload.workspace as {
+      canonical: string;
+      realtime: Record<string, unknown>;
+    };
     expect(ws.canonical).toBe("AdoptdWs");
-    // No lock entry for realtime → stays empty, is not minted, not observed.
-    expect(ws.realtime.canonical).toBe("");
+    // The legacy realtime block is carried verbatim and models no canonical of its
+    // own, so an unauthored one contributes nothing to mint or observe.
+    expect(ws.realtime.canonical).toBeUndefined();
     expect(ctx.observed["workspace:realtime"]).toBeUndefined();
   });
 

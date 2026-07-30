@@ -49,6 +49,19 @@ export interface OmissionPolicy {
    * the top-level `payload.env` section, where they actually live.
    */
   readonly emptied?: true;
+  /**
+   * True when the generated tree writes the key with a value it **derives** rather
+   * than carries. Only `guid` does this today: the workspace config declares no
+   * guid field, so the export path mints one from the workspace name, and that
+   * will never equal the instance-assigned guid it replaced.
+   *
+   * Without this, the deliberate re-derivation reads as a round-trip failure on
+   * every real workspace — 158 of 158 in the sweep that surfaced it — which is
+   * enough noise to bury every genuine per-object mismatch underneath it. The
+   * value is *meant* to differ, so any value is accepted here; what matters is
+   * that the key is never carried across tenants.
+   */
+  readonly derived?: true;
 }
 
 /**
@@ -107,7 +120,12 @@ export const WORKSPACE_OMITTED_KEYS: Readonly<Record<string, OmissionPolicy>> = 
 
   // --- assigned and owned by the instance ---
   id: { reason: "server-managed", detail: "instance-assigned workspace id" },
-  guid: { reason: "server-managed", detail: "instance-assigned workspace guid" },
+  guid: {
+    reason: "server-managed",
+    derived: true,
+    detail:
+      "instance-assigned workspace guid; the generated tree re-derives its own from the workspace name rather than carrying it",
+  },
   checksum: { reason: "server-managed", detail: "derived by the engine on save" },
   created_at: { reason: "server-managed", detail: "engine timestamp" },
   updated_at: { reason: "server-managed", detail: "engine timestamp" },

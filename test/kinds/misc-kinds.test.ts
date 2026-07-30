@@ -80,7 +80,11 @@ describe("workspace config kind", () => {
     expect(w.name).toBe("b12");
     expect(w.preferences).toEqual({ track_performance: true });
     expect(w.settings).toEqual({ ai_enabled: true });
-    expect(w.realtime).toEqual({ canonical: "" });
+    // The legacy realtime block is carried verbatim, so an unauthored one is the
+    // engine's own empty shape rather than a canonical this SDK invented.
+    expect(w.realtime).toEqual({ hash: "", mode: "", enabled: false, channels: [] });
+    expect(w.documentation).toEqual({ token: "", whitelist: {}, require_token: false });
+    expect(w.swagger).toBe(false);
     expect(workspaceKind.payloadKey).toBe("workspace");
   });
 });
@@ -155,7 +159,7 @@ describe("workspace-tier history", () => {
     expect("history" in w).toBe(false);
   });
 
-  it("emits the 12-key map at engine defaults, no inherit (matches golden)", () => {
+  it("emits the 14-key map at engine defaults, no inherit (matches golden)", () => {
     const w = encodeWorkspaceConfig({ name: "b12", history: {} });
     expect(w.history).toEqual({
       query_enabled: true,
@@ -170,6 +174,8 @@ describe("workspace-tier history", () => {
       trigger_limit: 100,
       middleware_enabled: false,
       middleware_limit: 100,
+      message_enabled: false,
+      message_limit: 100,
     });
     expect("inherit" in w.history!).toBe(false);
   });
@@ -194,5 +200,51 @@ describe("workspace-tier history", () => {
     // No `test_*` keys and no branch block at this tier.
     expect("test_enabled" in h).toBe(false);
     expect("branch" in w).toBe(false);
+  });
+});
+
+/**
+ * U7 — the workspace-level slots that mismatched on every real workspace, so no
+ * workspace could ever verify clean and every genuine per-object diff was buried
+ * underneath the noise.
+ *
+ * The legacy realtime and documentation blocks are carried verbatim: SideStep
+ * models none of their members, so the contract is "whatever the engine stored
+ * round-trips", not "this SDK understands this shape".
+ */
+describe("workspace config — verbatim server blocks", () => {
+  it("round-trips a legacy realtime block it does not model", () => {
+    const legacy = { hash: "abc", mode: "shared", enabled: true, channels: ["a", "b"] };
+    expect(encodeWorkspaceConfig({ name: "ws", realtime: legacy }).realtime).toEqual(legacy);
+  });
+
+  it("round-trips a documentation block it does not model", () => {
+    const docs = { token: "t0k", whitelist: { "10.0.0.1": true }, require_token: true };
+    expect(encodeWorkspaceConfig({ name: "ws", documentation: docs }).documentation).toEqual(docs);
+  });
+
+  it("carries an unmodelled member of a verbatim block through untouched", () => {
+    // The point of verbatim: a member this SDK has never heard of still survives.
+    const withExtra = { hash: "", mode: "", enabled: false, channels: [], future_key: 42 };
+    expect(encodeWorkspaceConfig({ name: "ws", realtime: withExtra }).realtime).toEqual(withExtra);
+  });
+
+  it("emits the engine's own empty defaults when the blocks are unauthored", () => {
+    const w = encodeWorkspaceConfig({ name: "ws" });
+    expect(w.realtime).toEqual({ hash: "", mode: "", enabled: false, channels: [] });
+    expect(w.documentation).toEqual({ token: "", whitelist: {}, require_token: false });
+    expect(w.swagger).toBe(false);
+  });
+
+  it("round-trips an enabled swagger flag", () => {
+    expect(encodeWorkspaceConfig({ name: "ws", swagger: true }).swagger).toBe(true);
+    expect(encodeWorkspaceConfig({ name: "ws", swagger: false }).swagger).toBe(false);
+  });
+
+  it("emits a history pair for the realtime message tier", () => {
+    // The engine stores 14 keys at this tier; a 12-key map mismatched every time.
+    const w = encodeWorkspaceConfig({ name: "ws", history: { message: true } });
+    expect(w.history).toMatchObject({ message_enabled: true, message_limit: 100 });
+    expect(Object.keys(w.history!)).toHaveLength(14);
   });
 });
