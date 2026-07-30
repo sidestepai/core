@@ -37,7 +37,7 @@ import { decodeCondition } from "./expression.js";
 import { decodeValue } from "./value.js";
 
 /** Specs by stored name. */
-const SPECS_BY_NAME: ReadonlyMap<string, StatementSpec> = new Map(
+export const SPECS_BY_NAME: ReadonlyMap<string, StatementSpec> = new Map(
   GENERATED_SPECS.map((spec) => [spec.name, spec]),
 );
 

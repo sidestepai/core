@@ -17,7 +17,7 @@ import { raw } from "../statements/special/raw.js";
 import { CODEGEN_MODULE, type DecodeContext } from "./context.js";
 import { arr, call, lit, type Expr } from "./print.js";
 import type { RefIndex, ResolveOptions } from "./ref-index.js";
-import { decodeFromSpec } from "./spec-inverse.js";
+import { decodeFromSpec, SPECS_BY_NAME } from "./spec-inverse.js";
 import { SPECIAL_DECODERS } from "./specials/index.js";
 import { withDeclineContext } from "./prove-diff.js";
 
@@ -56,8 +56,23 @@ function dispatch(
   const fromSpec = ctx.speculate(() => decodeFromSpec(ctx, stored));
   if (fromSpec) return fromSpec;
 
+  // "has no decoder" was reported for EVERY fallback, including the ones where a
+  // decoder exists and simply declined — 81 of 181 sweep rows said it of
+  // `mvp:dbo_view`, `mvp:conditional` and `mvp:set_var`, all of which have had
+  // decoders for a long time. Read literally it sends a maintainer to write code
+  // that is already there, and it hides the split that matters: a statement
+  // nothing models is a COVERAGE gap, while one whose decoder declined is a
+  // FIDELITY gap in a decoder that exists.
   const name = (stored as { name?: unknown }).name;
-  ctx.problem("raw-fallback", `${typeof name === "string" ? name : "(unnamed)"} has no decoder`);
+  const label = typeof name === "string" ? name : "(unnamed)";
+  const modelled =
+    typeof name === "string" && (SPECIAL_DECODERS.has(name) || SPECS_BY_NAME.has(name));
+  ctx.problem(
+    "raw-fallback",
+    modelled
+      ? `${label} is modelled, but its decoder could not reproduce the stored statement; emitted verbatim via raw()`
+      : `${label} has no decoder; emitted verbatim via raw()`,
+  );
   ctx.use(CODEGEN_MODULE, "raw");
   return call("raw", lit(stored));
 }
