@@ -880,6 +880,13 @@ and any datasource you don't list is dropped. Secrets and instance-assigned valu
 material, integration keys, `domain_prefix`, usage counters) are never emitted; `codegen`
 reports them as deliberate omissions rather than round-trip failures.
 
+**Three fields are server-shaped, not authoring surfaces.** `realtime`, `documentation`, and
+`swagger` are carried **verbatim**: SideStep models none of their members, so whatever the engine
+stored round-trips unchanged — including members this SDK has never heard of. They exist so a
+pulled workspace is honest, not to be authored, so omit them. `realtime` in particular is the
+**legacy** workspace-level block; the realtime primitives you actually author are
+`realtimeServer` / `realtimeChannel` / `realtimeMessage`, each its own object.
+
 SideStep emits each tier's lists + the customize flags; it does not compute the fallback (the
 engine does). A `resultStrategy: "replace"` middleware attached `post` rewrites the response at
 runtime, which `InferResponse` can't see — declare `responseShape` on the endpoint in that case.
@@ -1085,6 +1092,11 @@ Tab-complete `s.` to explore: `s.math.*`, `s.array.*`, `s.text.*`, `s.object.*`,
 statement takes one typed args object; control-flow specials (`s.set_var`, `s.conditional`,
 `s.for`, `s.foreach`, `s.while`, `s.group`, `s.switch`, `s.try_catch`, `s.return`, …) keep
 their authored signatures.
+
+**Every statement can carry `description` and `disabled`.** Spread them over any statement:
+`{ ...s.set_var("x", c.int(1)), disabled: true }`. `disabled: true` is Xano's commented-out
+state — the step stays in the stack and the run engine skips it, so a pull of a workspace with
+disabled steps keeps them as readable source instead of opaque blobs. Both default to absent.
 
 The **call family** (`s.function.run`, `s.api.call`, `s.task.call`, `s.tool.call`, …)
 invokes another workspace object — pass the target's def handle (or name) and SideStep

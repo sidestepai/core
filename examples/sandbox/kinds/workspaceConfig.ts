@@ -1,6 +1,6 @@
 /**
  * `workspaceConfig({...})` — workspace-level settings (payload key `workspace`),
- * e.g. the canonical domain and realtime config. Also carries `use_xdo` and the
+ * e.g. the canonical domain. Also carries `use_xdo` and the
  * workspace-tier `middleware` and `history` maps — the terminal fallback of the
  * Query → API Group → Workspace chain. Their keys are per object type (no
  * `_customize`/inherit flags); a query with no closer override inherits these.
@@ -11,7 +11,10 @@ import { rateLimit } from "./middleware.js";
 export const wsConfig = workspaceConfig({
   name: "ex_kind_workspace_config",
   canonical: "my-app",
-  realtime: { canonical: "my-app-realtime" },
+  // NOTE: `realtime`, `documentation`, and `swagger` are deliberately absent.
+  // They are server-shaped blocks this SDK carries verbatim so a pulled workspace
+  // round-trips, not surfaces to author. (For realtime, author `realtimeServer` /
+  // `realtimeChannel` / `realtimeMessage` — see the realtime examples.)
   middleware: {
     query: { pre: [rateLimit] },
   },
@@ -21,6 +24,9 @@ export const wsConfig = workspaceConfig({
     query: 100,
     function: true,
     trigger: "all",
+    // `message` is the realtime tier; it defaults off because message history is
+    // a hot path.
+    message: false,
   },
   // Workspace environment variables — read at request time with `env("NAME")`.
   // VALUES ARE SECRETS: source them from the deploy environment, don't commit
