@@ -966,6 +966,7 @@ export function dbEdit<
       ...rowEntries(data),
     ],
     { addon: args.addon },
+    args.tableAlias,
   ) as DbResult<As, WithAddons<FullRowShapeOf<T>, A>>;
 }
 

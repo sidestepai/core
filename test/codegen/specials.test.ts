@@ -1322,6 +1322,31 @@ describe("miscellaneous specials", () => {
     ).toContain("expiration");
   });
 
+  it("carries an auth table stored by name rather than by guid, without calling it an unresolved guid", () => {
+    // `dbtable` has three stored spellings: the guid (179 of 191 across the
+    // sweep), blank (5), and — on older workspaces — the table's NAME (7).
+    // Routing a name through guid resolution reported `guid users is not
+    // present in this bundle`, an ERROR about a guid that was never one.
+    const stored = encodeStatement(
+      s.security.create_auth_token({ table: USERS, id: ref("user.id"), as: "token" }),
+    ) as StackItemXdo;
+    const entry = (stored.input as Array<{ name: string; value: string }>).find(
+      (e) => e.name === "dbtable",
+    )!;
+    entry.value = "users";
+
+    const ctx = new DecodeContext();
+    const source = printExpr(decodeStatement(ctx, DB_REFS, stored));
+    // Carried verbatim, so it re-encodes to the same bytes. Resolving it to the
+    // table's symbol would write the table's real guid instead and break that.
+    expect(source).toContain('guid: "users"');
+    expect(source).not.toContain("s.raw");
+    const categories = ctx.report.entries.map((e) => e.category);
+    expect(categories).not.toContain("unresolved-ref");
+    expect(categories).toContain("value-fallback");
+    expect(ctx.report.entries[0]!.detail).toContain("by name rather than by guid");
+  });
+
   it("round-trips the call-family tail that does not share the uniform call shape", () => {
     roundTrip(s.action.package.call({ action: "", package: "acme/thing", input: { a: c.int(1) } }));
     roundTrip(

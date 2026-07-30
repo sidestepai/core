@@ -184,12 +184,35 @@ const createAuthToken: SpecialDecoder = (a) => {
   // A blank guid is an unbound table — resolving it threw inside the factory and
   // took the whole statement to `raw()`. Same "no target" spelling as elsewhere.
   const unbound = table.value === "";
+
+  // `dbtable` has a THIRD stored spelling: older workspaces write the table's
+  // NAME here rather than its guid (7 of 191 across the sweep, against 179 guid
+  // and 5 blank). Routing a name through guid resolution reported "guid user is
+  // not present in this bundle" — an ERROR, about a guid that was never a guid.
+  // The name rides through verbatim on the `{name, guid}` escape hatch and
+  // re-encodes byte-identically, so nothing is lost; what it costs is the link
+  // to the table's symbol, which is a readability loss and reported as one.
+  // Resolving it to the symbol would be worse than useless: re-encoding a table
+  // handle writes the table's real guid, changing the stored bytes.
+  const named = unbound ? undefined : a.refs.all().find((o) => o.kind === "table" && o.name === table.value);
+  const nameSpelled = named !== undefined && a.refs.lookup(table.value) === undefined;
+  if (nameSpelled) {
+    a.ctx.problem(
+      "value-fallback",
+      `security.create_auth_token references table "${table.value}" by name rather than by guid, as older workspaces store it; carried verbatim, so it is not linked to the table's symbol`,
+    );
+  }
   const entries: Array<[string, Expr]> = [
     [
       "table",
       unbound
         ? lit(null)
-        : resolveReference(a.ctx, a.refs, table.value, { ...a.resolve, unresolved: "object-ref" }),
+        : nameSpelled
+          ? obj([
+              ["name", lit("")],
+              ["guid", lit(table.value)],
+            ])
+          : resolveReference(a.ctx, a.refs, table.value, { ...a.resolve, unresolved: "object-ref" }),
     ],
     ["id", decodeValue(a.ctx, id)],
   ];

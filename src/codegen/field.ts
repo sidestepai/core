@@ -354,21 +354,24 @@ export function decodeField(
     return { idiomatic: false, expr: call("rawField", lit(stored)) };
   };
 
-  const reEncoded =
-    options === null ? null : encodeField(stored.name, stored.type, options, context);
-  if (reEncoded === null || !sameField(reEncoded, stored)) {
-    // The descriptor literal is still a legal `FieldDescriptor`, so the schema
-    // keeps compiling; it just reads as data rather than as a catalog call.
+  // The descriptor literal is still a legal `FieldDescriptor`, so the schema
+  // keeps compiling; it just reads as data rather than as a catalog call.
+  const literalBecause = (why: string): DecodedField => {
     if (missing.length === 0) {
       ctx.problem(
         "value-fallback",
-        `field "${stored.name}" (${stored.type}) emitted as a descriptor literal: ` +
-          (reEncoded === null
-            ? "its options could not be recovered from the stored shape"
-            : `re-encoding the recovered options ${describeDiff(reEncoded, stored)}`),
+        `field "${stored.name}" (${stored.type}) emitted as a descriptor literal: ${why}`,
       );
     }
     return descriptorLiteral();
+  };
+
+  if (options === null) {
+    return literalBecause("its options could not be recovered from the stored shape");
+  }
+  const reEncoded = encodeField(stored.name, stored.type, options, context);
+  if (!sameField(reEncoded, stored)) {
+    return literalBecause(`re-encoding the recovered options ${describeDiff(reEncoded, stored)}`);
   }
 
   const ns = ctx.use(CORE_MODULE, surface);
