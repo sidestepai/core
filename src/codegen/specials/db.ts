@@ -601,6 +601,13 @@ function decodeWhere(a: SpecialArgs, stored: unknown): { expr: Expr; runtime: un
   return { expr: decodeValue(a.ctx, value), runtime: value };
 }
 
+/** A persisted int, whether serialized as a number or as a numeric string. */
+function numberOf(v: unknown): number | undefined {
+  if (typeof v === "number") return Number.isFinite(v) ? v : undefined;
+  if (typeof v === "string" && v !== "" && /^-?\d+$/.test(v)) return Number(v);
+  return undefined;
+}
+
 /** The paging fields a query recovers, split between the static block and `simpleExternal`. */
 function decodePaging(
   a: SpecialArgs,
@@ -620,8 +627,13 @@ function decodePaging(
       runtime[key] = value;
       continue;
     }
-    const stored = block[key];
-    if (typeof stored === "number" && stored !== fallback) {
+    // The engine's schema types these `int`, but a persisted value can arrive as
+    // a numeric STRING — the same serialization artifact `normalize` absorbs for
+    // tagged `value`/`arg`. Requiring a number here silently skipped the field, so
+    // the re-encode fell back to the engine default and the whole query degraded
+    // to `raw()` over a paging size the SDK had read but discarded.
+    const stored = numberOf(block[key]);
+    if (stored !== undefined && stored !== fallback) {
       entries.push([key, lit(stored)]);
       runtime[key] = stored;
     }

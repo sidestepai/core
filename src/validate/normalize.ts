@@ -60,6 +60,14 @@ function isEmptyCustomize(v: unknown): boolean {
 function isEmptyArray(v: unknown): boolean {
   return Array.isArray(v) && v.length === 0;
 }
+/**
+ * A persisted int equal to `n`, whether serialized as a number or as a numeric
+ * string. The engine types these `int` but a readback can carry either form —
+ * the same artifact the tagged-`value` coercion below absorbs.
+ */
+function isNumber(v: unknown, n: number): boolean {
+  return v === n || (typeof v === "string" && v !== "" && Number(v) === n);
+}
 
 /** Structural deep-equal for comparing an engine-default subtree to a frozen default. */
 function deepEqual(a: unknown, b: unknown): boolean {
@@ -171,12 +179,38 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     case "description":
     case "sql_name":
       return v === "";
-    // An addon's `offset` — the response path its rows are spliced into. The
-    // engine persists `""` for an addon spliced at the root where the SDK omits
-    // it; both mean "no offset". Only the empty-string form drops, so the numeric
-    // paging `offset` nested under a list context is untouched.
+    // Two unrelated `offset`s, both at a default. An addon's is the response path
+    // its rows are spliced into, `""` when spliced at the root. A list context's
+    // paging offset is declared to default to 0. Neither carries information at
+    // its default; any other value is preserved.
     case "offset":
-      return v === "";
+      return v === "" || isNumber(v, 0);
+    // Return-block paging members, each at its declared default. Type-distinct
+    // from their same-named neighbours in a permissions block (`page: true`,
+    // `per_page: false`), which are booleans and so untouched.
+    case "page":
+      return isNumber(v, 1);
+    case "per_page":
+      return isNumber(v, 25);
+    case "metadata":
+      return v === true;
+    case "totals":
+      return v === false;
+    case "distinct":
+      return v === "auto";
+    // A return sub-block whose every member sat at a default. These are checked
+    // against their NORMALIZED form because the member rules above are what empty
+    // them — without this the block survives as `{}` and the whole return envelope
+    // never collapses, which is the only reason it matters.
+    //
+    // `list` also names a foreach's iterated value; a tagged value never
+    // normalizes to empty, so that one is untouched.
+    case "paging":
+    case "list":
+    case "single":
+    case "stream":
+    case "aggregate":
+      return isEmptyObject(normalize(v));
     // Field-envelope members the engine fills with a fixed default on save. A
     // field saved by an older engine generation omits them entirely, while both
     // the current engine and the SDK always write them — the same lean-vs-full

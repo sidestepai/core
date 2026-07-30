@@ -245,10 +245,14 @@ describe("validate normalizer — empty context and addon offset", () => {
     expect(normalize({ offset: "items[]" })).toEqual({ offset: "items[]" });
   });
 
-  it("leaves a numeric paging offset untouched", () => {
-    // `offset` is also a number under a list context's paging block. Only the
-    // empty-string form is an addon-splice default.
-    expect(normalize({ paging: { offset: 0, page: 1 } })).toEqual({ paging: { offset: 0, page: 1 } });
+  it("drops a paging offset at its declared default but keeps a real one", () => {
+    // `offset` is two unrelated things: an addon's splice path (`""` at the root)
+    // and a list context's paging offset, which the engine declares to default to
+    // 0. Both are defaults; a real offset is preserved.
+    expect(normalize({ paging: { offset: 0, page: 1 } })).toEqual({});
+    expect(normalize({ paging: { offset: 40 } })).toEqual({ paging: { offset: 40 } });
+    // The addon ENTRY still exists — only its default offset drops.
+    expect(normalize({ addon: [{ offset: "" }] })).toEqual({ addon: [{}] });
   });
 
   it("collapses an addon spliced at the root to match the SDK's omission", () => {
@@ -337,5 +341,51 @@ describe("validate normalizer — per-statement context defaults", () => {
       ],
     };
     expect(normalize(encoded)).toEqual(normalize(stored));
+  });
+});
+
+/**
+ * The return block's paging members, each at the default the engine declares for
+ * it. Two things make these safe to drop by key name: the drop is symmetric (a
+ * customized value is preserved and still compared), and the same-named members of
+ * a permissions block are booleans, so they are type-distinct and untouched.
+ *
+ * A persisted int can arrive as a numeric string, so both forms count as the
+ * default — a real readback carries `per_page: "25"` as readily as `25`.
+ */
+describe("validate normalizer — return-block paging defaults", () => {
+  it("collapses an all-defaults paging block", () => {
+    expect(
+      normalize({ paging: { page: 1, offset: 0, totals: false, metadata: true, per_page: 25 } }),
+    ).toEqual({});
+  });
+
+  it("accepts the numeric-string spelling of each default", () => {
+    expect(normalize({ paging: { page: "1", offset: "0", per_page: "25" } })).toEqual({});
+  });
+
+  it("preserves every customized paging member", () => {
+    expect(normalize({ paging: { per_page: 10 } })).toEqual({ paging: { per_page: 10 } });
+    expect(normalize({ paging: { page: 3 } })).toEqual({ paging: { page: 3 } });
+    expect(normalize({ paging: { totals: true } })).toEqual({ paging: { totals: true } });
+    expect(normalize({ paging: { metadata: false } })).toEqual({ paging: { metadata: false } });
+  });
+
+  it("preserves a numeric-string customized value, not just the number", () => {
+    // The bug this came from: a stored `per_page: "10"` was skipped as "not a
+    // number" and the re-encode fell back to 25.
+    expect(normalize({ paging: { per_page: "10" } })).toEqual({ paging: { per_page: "10" } });
+  });
+
+  it("drops a default distinct and keeps an explicit one", () => {
+    expect(normalize({ distinct: "auto" })).toEqual({});
+    expect(normalize({ distinct: "yes" })).toEqual({ distinct: "yes" });
+  });
+
+  it("leaves a permissions block's same-named boolean members alone", () => {
+    // `page`/`per_page` are booleans here, so the numeric-default rules cannot
+    // reach them.
+    const permissions = { permissions: { page: true, sort: true, search: true, per_page: false } };
+    expect(normalize(permissions)).toEqual(permissions);
   });
 });
