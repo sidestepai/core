@@ -62,11 +62,64 @@ export interface VerifyResult {
   readonly omissions: readonly VerifyOmission[];
 }
 
-/** Objects in a payload section, keyed by name. */
-function sectionByName(payload: Record<string, unknown>, key: string): Map<string, unknown> {
+/** One section object, under the key that identifies it, keeping its display name. */
+interface SectionEntry {
+  /** What the report calls it. */
+  readonly name: string;
+  readonly value: unknown;
+}
+
+/**
+ * Objects in a payload section, keyed by identity.
+ *
+ * Name alone is not an identity: agents and MCP servers share the `toolset`
+ * payload key, so a workspace can hold two objects of different kinds with the
+ * same name — and one real workspace does. Keying by name collapsed the pair to
+ * a single entry, which then compared the agent against the MCP server and
+ * reported a `type`/`canonical` mismatch on two objects that each round-tripped
+ * perfectly. The dropped twin was invisible, which is the worse half.
+ *
+ * A repeated name falls back to the object's guid, which `codegen` preserves
+ * verbatim precisely so references stay consistent. Names that do not repeat
+ * key exactly as before, so nothing else in the comparison shifts.
+ */
+function sectionByName(
+  payload: Record<string, unknown>,
+  key: string,
+  ambiguous: ReadonlySet<string>,
+): Map<string, SectionEntry> {
   const section = payload[key];
   if (!Array.isArray(section)) return new Map();
-  return new Map(section.map((o) => [String((o as { name?: unknown }).name ?? ""), o]));
+  const out = new Map<string, SectionEntry>();
+  for (const o of section) {
+    const name = String((o as { name?: unknown }).name ?? "");
+    const guid = (o as { guid?: unknown }).guid;
+    const keyed =
+      ambiguous.has(name) && typeof guid === "string" && guid !== "" ? `${name} ${guid}` : name;
+    out.set(keyed, { name, value: o });
+  }
+  return out;
+}
+
+/**
+ * Names that repeat within a section on EITHER side.
+ *
+ * Computed across both bundles on purpose: if one side lost a twin, that name is
+ * no longer repeated there, and keying the two sides by different rules would
+ * turn one dropped object into a missing-plus-invented pair naming neither.
+ */
+function ambiguousNames(...sections: unknown[]): ReadonlySet<string> {
+  const ambiguous = new Set<string>();
+  for (const section of sections) {
+    if (!Array.isArray(section)) continue;
+    const seen = new Set<string>();
+    for (const o of section) {
+      const name = String((o as { name?: unknown }).name ?? "");
+      if (seen.has(name)) ambiguous.add(name);
+      seen.add(name);
+    }
+  }
+  return ambiguous;
 }
 
 /** Deep structural equality over normalized payload objects. */
@@ -222,32 +275,34 @@ export function verifyBundles(source: unknown, regenerated: unknown): VerifyResu
       continue;
     }
     const policy = sectionOmission(key);
-    const beforeByName = sectionByName(sourcePayload, key);
-    const afterByName = sectionByName(regeneratedPayload, key);
-    for (const [name, original] of beforeByName) {
-      if (!afterByName.has(name)) {
+    const ambiguous = ambiguousNames(before, after);
+    const beforeByName = sectionByName(sourcePayload, key, ambiguous);
+    const afterByName = sectionByName(regeneratedPayload, key, ambiguous);
+    for (const [identity, entry] of beforeByName) {
+      const counterpart = afterByName.get(identity);
+      if (counterpart === undefined) {
         if (policy) {
-          omissions.push({ payloadKey: key, name, reason: policy.reason, detail: policy.detail });
+          omissions.push({ payloadKey: key, name: entry.name, reason: policy.reason, detail: policy.detail });
           continue;
         }
-        mismatches.push({ payloadKey: key, name, detail: "missing from the generated tree", paths: [] });
+        mismatches.push({ payloadKey: key, name: entry.name, detail: "missing from the generated tree", paths: [] });
         continue;
       }
-      if (!deepEqual(normalize(original), normalize(afterByName.get(name)))) {
-        const paths = mismatchPaths(original, afterByName.get(name));
+      if (!deepEqual(normalize(entry.value), normalize(counterpart.value))) {
+        const paths = mismatchPaths(entry.value, counterpart.value);
         mismatches.push({
           payloadKey: key,
-          name,
+          name: entry.name,
           detail: withPaths("re-exports differently than the source bundle", paths),
           paths,
         });
       }
     }
-    for (const name of afterByName.keys()) {
-      if (!beforeByName.has(name)) {
+    for (const [identity, entry] of afterByName) {
+      if (!beforeByName.has(identity)) {
         mismatches.push({
           payloadKey: key,
-          name,
+          name: entry.name,
           detail: "present in the generated tree but not in the source bundle",
           paths: [],
         });

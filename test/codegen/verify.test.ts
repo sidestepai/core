@@ -86,6 +86,49 @@ describe("verifyBundles", () => {
     expect(result.mismatches[0]!.paths).toEqual(['.description: MISSING from encoded (stored="hi")']);
   });
 
+  it("compares SAME-NAME objects in one section pairwise, by guid", () => {
+    // Agents and MCP servers share the `toolset` payload key, so a same-name
+    // pair is a shape the platform actually produces — one real workspace has
+    // an agent and an MCP server both called "asdf". Keying the section by name
+    // alone collapsed them to one entry, which then compared the agent against
+    // the MCP server and reported a type/canonical "mismatch" on two objects
+    // that each round-tripped perfectly. Worse, it made a genuinely dropped
+    // twin invisible.
+    const pair = () => [
+      { name: "asdf", guid: "g-agent", type: "agent", canonical: "Er5dDfdN" },
+      { name: "asdf", guid: "g-mcp", type: "mcp", canonical: "0XXCkdtQ" },
+    ];
+    expect(verifyBundles(bundle(pair()), bundle(pair()))).toMatchObject({ ok: true });
+  });
+
+  it("still catches a real difference between same-name twins", () => {
+    const result = verifyBundles(
+      bundle([
+        { name: "asdf", guid: "g-agent", type: "agent", description: "before" },
+        { name: "asdf", guid: "g-mcp", type: "mcp" },
+      ]),
+      bundle([
+        { name: "asdf", guid: "g-agent", type: "agent", description: "after" },
+        { name: "asdf", guid: "g-mcp", type: "mcp" },
+      ]),
+    );
+    expect(result.mismatches).toHaveLength(1);
+    expect(result.mismatches[0]!.name).toBe("asdf");
+    expect(result.mismatches[0]!.paths).toEqual(['.description: encoded="after" stored="before"']);
+  });
+
+  it("reports a dropped same-name twin instead of hiding it", () => {
+    const result = verifyBundles(
+      bundle([
+        { name: "asdf", guid: "g-agent", type: "agent" },
+        { name: "asdf", guid: "g-mcp", type: "mcp" },
+      ]),
+      bundle([{ name: "asdf", guid: "g-mcp", type: "mcp" }]),
+    );
+    expect(result.mismatches).toHaveLength(1);
+    expect(result.mismatches[0]).toMatchObject({ name: "asdf", detail: "missing from the generated tree" });
+  });
+
   it("catches an object the generated tree dropped entirely", () => {
     // The failure mode a payload-wide deep-equal would also catch, but without
     // saying which object went missing — this is the common real-world case (an
