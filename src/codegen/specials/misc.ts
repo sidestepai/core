@@ -181,15 +181,20 @@ const createAuthToken: SpecialDecoder = (a) => {
   if (table.tag !== "const" || table.filters.length > 0)
     return declineHere("security.create_auth_token: dbtable is not a bare guid constant");
 
+  // A blank guid is an unbound table — resolving it threw inside the factory and
+  // took the whole statement to `raw()`. Same "no target" spelling as elsewhere.
+  const unbound = table.value === "";
   const entries: Array<[string, Expr]> = [
     [
       "table",
-      resolveReference(a.ctx, a.refs, table.value, { ...a.resolve, unresolved: "object-ref" }),
+      unbound
+        ? lit(null)
+        : resolveReference(a.ctx, a.refs, table.value, { ...a.resolve, unresolved: "object-ref" }),
     ],
     ["id", decodeValue(a.ctx, id)],
   ];
   const runtime: Record<string, unknown> = {
-    table: { name: "", guid: table.value },
+    table: unbound ? null : { name: "", guid: table.value },
     id,
   };
   // Presence, not value: an explicitly-authored `{}`/86400 is stored and must

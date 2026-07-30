@@ -182,8 +182,14 @@ export function realtimeEvent(a: RealtimeEventArgs): Statement {
 // --- auth token (declarative) ----------------------------------------------
 
 export interface CreateAuthTokenArgs<As extends string = string> {
-  /** The auth table the token authenticates against. */
-  table: ObjectRef;
+  /**
+   * The auth table the token authenticates against.
+   *
+   * `null` is the UNBOUND table the engine stores as a blank guid — deleted, or
+   * never bound. It exists so `codegen` can reproduce such a statement instead
+   * of throwing, the same "no target" spelling `db.query`'s `table` carries.
+   */
+  table: ObjectRef | null;
   /** Token id (the authenticated row id). */
   id: Value;
   /** Extra claims embedded in the token. Defaults to `{}` (no extra claims). */
@@ -214,7 +220,12 @@ export function createAuthToken<const As extends string = "">(
     // Xano's editor writes this shape, so this is what a pulled workspace has.
     input: [
       { name: "id", ...vf(a.id) },
-      { name: "dbtable", value: resolveRef("dbo", a.table), tag: "const", filters: [] },
+      {
+        name: "dbtable",
+        value: a.table === null ? "" : resolveRef("dbo", a.table),
+        tag: "const",
+        filters: [],
+      },
       ...(a.extras === undefined ? [] : [{ name: "extras", ...vf(a.extras) }]),
       ...(a.expiration === undefined ? [] : [{ name: "expiration", ...vf(a.expiration) }]),
     ],
