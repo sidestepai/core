@@ -32,9 +32,6 @@ import { decodeFieldMap, decodeResponse, deepEqual } from "../field.js";
 import { decodeStack } from "../statement.js";
 import { decodeCondition } from "../expression.js";
 import { isDefaultEnvelopeMember, isEmptyOutput } from "../../validate/normalize.js";
-// The encoder's own container-default table — imported, not mirrored. A decoder
-// copy that drifted would elide a customized tier as though it were the default.
-import { CONTAINER_DEFAULT_ENABLED } from "../../kinds/history.js";
 import type { ContainerPrefix } from "../../kinds/history.js";
 import { parsePathParams } from "../../kinds/path-params.js";
 
@@ -112,14 +109,17 @@ const HISTORY_DEFAULT_OFF = new Set(["function", "middleware", "trigger", "messa
  * the kind's inherit default. Returns `undefined` for a stored block no scalar
  * produces (e.g. disabled with a custom limit), so the caller can report it.
  */
-function historyScalar(objType: string, block: unknown): boolean | number | "all" | null | undefined {
+function historyScalar(block: unknown): boolean | number | "all" | null | undefined {
   const value = block as { inherit?: boolean; enabled?: boolean; limit?: number } | undefined;
   if (value === undefined) return null;
-  const isDefault =
-    value.inherit === true &&
-    value.enabled === !HISTORY_DEFAULT_OFF.has(objType) &&
-    value.limit === 100;
-  if (isDefault) return null;
+  // An INHERITING block takes its setting from the parent tier, which makes its
+  // own `enabled`/`limit` inert — so there is nothing to spell, whatever they
+  // hold. `normalize` already drops any inheriting block for that same reason,
+  // so requiring them at the tier default here reported 27 real objects as
+  // unauthorable that the byte comparison had already ruled equal. The stored
+  // members drift two ways in the wild: an older save omits `limit` entirely,
+  // and a block toggled back to inherit keeps whatever it last held.
+  if (value.inherit === true) return null;
   if (value.inherit !== false) return undefined;
   if (value.enabled === false) return value.limit === 100 ? false : undefined;
   if (value.limit === -1) return "all";
@@ -128,8 +128,20 @@ function historyScalar(objType: string, block: unknown): boolean | number | "all
 }
 
 /** `history:` for an object-tier kind. */
-function history(args: KindDecodeArgs, objType: string): DefEntry | null {
-  const scalar = historyScalar(objType, args.stored.history);
+function history(args: KindDecodeArgs): DefEntry | null {
+  // An ARRAY here is not a settings block at all — it is the engine's own record
+  // of past runs (`on`, `duration`, `debugger`), which no authoring surface
+  // produces and none should. Declining to copy run telemetry into a committed
+  // source tree is correct, so it is reported as a deliberate omission rather
+  // than as a block the scalar surface failed to spell.
+  if (Array.isArray(args.stored.history)) {
+    args.ctx.problem(
+      "expected-omission",
+      "history holds engine-recorded run telemetry, which is not authored data (server-managed)",
+    );
+    return null;
+  }
+  const scalar = historyScalar(args.stored.history);
   if (scalar === null) return null;
   if (scalar === undefined) {
     args.ctx.problem(
@@ -148,16 +160,12 @@ function history(args: KindDecodeArgs, objType: string): DefEntry | null {
 function containerHistory(args: KindDecodeArgs, prefix: ContainerPrefix): DefEntry | null {
   const block = args.stored.history as Record<string, unknown> | undefined;
   if (block === undefined) return null;
-  const enabledDefault = CONTAINER_DEFAULT_ENABLED[prefix];
   const normalized = {
     inherit: block.inherit,
     enabled: block[`${prefix}_enabled`],
     limit: block[`${prefix}_limit`],
   };
-  if (deepEqual(normalized, { inherit: true, enabled: enabledDefault, limit: 100 })) return null;
-  // `historyScalar` keys the inherit default off the object type, so pass one
-  // whose default matches this tier's.
-  const scalar = historyScalar(enabledDefault ? "query" : "message", normalized);
+  const scalar = historyScalar(normalized);
   if (scalar === null) return null;
   if (scalar === undefined) {
     args.ctx.problem(
@@ -466,7 +474,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
         plain(a.stored, "description", ""),
         plain(a.stored, "docs", ""),
         plain((a.stored.workspace ?? {}) as StoredObject, "id", 0, "workspace"),
-        history(a, "function"),
+        history(a),
         middleware(a),
         tags(a.stored),
         inputs(a),
@@ -495,7 +503,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
         plain(a.stored, "cache", DEFAULT_CACHE),
         middleware(a),
         tags(a.stored),
-        history(a, "query"),
+        history(a),
         pathAwareInputs(a),
         response(a),
         stack(a),
@@ -596,7 +604,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
         plain(a.stored, "disabled", false),
         middleware(a),
         tags(a.stored),
-        history(a, "message"),
+        history(a),
         inputs(a),
         response(a),
         stack(a),
@@ -615,7 +623,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
         plain(a.stored, "active", true),
         plain(a.stored, "description", ""),
         triggerObjId(a),
-        history(a, "trigger"),
+        history(a),
         ["meta", lit(a.stored.meta)],
         tags(a.stored),
         // `input` is implied by trigger type and re-injected by the encoder, so
@@ -642,7 +650,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
         plain(a.stored, "active", false),
         middleware(a),
         tags(a.stored),
-        history(a, "task"),
+        history(a),
         schedule(a),
         stack(a),
       ]),
@@ -661,7 +669,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
         plain(a.stored, "docs", ""),
         plain(a.stored, "result_type", "merge", "resultStrategy"),
         plain(a.stored, "exception", "silent", "exceptionPolicy"),
-        history(a, "middleware"),
+        history(a),
         tags(a.stored),
         inputs(a),
         response(a),
@@ -693,7 +701,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
         plain(a.stored, "enabled", true),
         middleware(a),
         tags(a.stored),
-        history(a, "tool"),
+        history(a),
         plain((a.stored.toolset ?? {}) as StoredObject, "id", 0, "toolsetId"),
         inputs(a),
         response(a),
@@ -985,7 +993,7 @@ function workspaceHistory(a: KindDecodeArgs): DefEntry | null {
     if (enabled === !HISTORY_DEFAULT_OFF.has(type) && limit === 100) continue;
     // No `inherit` at this tier — it is the terminal fallback — so the scalar
     // inverse is fed a synthetic `inherit: false`.
-    const scalar = historyScalar(type, { inherit: false, enabled, limit });
+    const scalar = historyScalar({ inherit: false, enabled, limit });
     if (scalar === undefined) {
       a.ctx.problem(
         "verify-mismatch",

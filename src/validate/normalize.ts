@@ -227,6 +227,7 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     case "as":
     case "description":
     case "sql_name":
+      return v === "";
     // The object-level members below are the same generational gap one level up
     // — an object saved by an older engine generation omits them, while both the
     // current engine and the SDK always write them at a fixed default. They were
