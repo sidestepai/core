@@ -259,12 +259,22 @@ function decodeAddonSpec(
   const destination = offset ? `${offset}.${alias}` : alias;
 
   const target = a.refs.lookup(guid);
+  // A BLANK id is an unbound attachment — the addon was deleted, or never bound.
+  // Resolving it threw inside the factory, which degraded the whole enclosing
+  // query to `raw()`; `addon: null` is the same "no target" spelling `table:
+  // null` and `fn: null` already carry, and it keeps the query readable.
+  const unbound = guid === "";
   const entries: Array<[string, Expr]> = [
-    ["addon", resolveReference(a.ctx, a.refs, guid, { ...a.resolve, unresolved: "object-ref" })],
+    [
+      "addon",
+      unbound
+        ? lit(null)
+        : resolveReference(a.ctx, a.refs, guid, { ...a.resolve, unresolved: "object-ref" }),
+    ],
     ["as", lit(destination)],
   ];
   const runtime: Record<string, unknown> = {
-    addon: { name: target?.name ?? "", guid },
+    addon: unbound ? null : { name: target?.name ?? "", guid },
     as: destination,
   };
 

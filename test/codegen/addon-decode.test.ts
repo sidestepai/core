@@ -23,6 +23,10 @@ import { decodeBundle } from "../../src/codegen/index.js";
 import { workspace } from "../../src/workspace/xano.js";
 import { addon } from "../../src/kinds/addon.js";
 import { table } from "../../src/kinds/table.js";
+import { query } from "../../src/kinds/query.js";
+import { apiGroup } from "../../src/kinds/api-group.js";
+import { s } from "../../src/statements/s.js";
+import { deriveGuid } from "../../src/refs/guid.js";
 import { f } from "../../src/fields/catalog.js";
 import { input } from "../../src/inputs/input.js";
 import { col, inp } from "../../src/values/value.js";
@@ -248,5 +252,50 @@ describe("addon decode — an unbound addon is reported, not just emitted", () =
     expect(
       decodeBundle(ws.export()).report.entries.filter((e) => e.category === "empty-source"),
     ).toEqual([]);
+  });
+});
+
+/**
+ * An UNBOUND addon attachment (`id: ""`) — the addon was deleted, or never bound.
+ *
+ * Resolving it threw inside the factory, and a factory throw is not a local
+ * failure: it degraded the whole enclosing `db.query` to `raw()`. 12 of the 17
+ * factory aborts in a 187-workspace sweep were this one cause. `addon: null` is
+ * the same "no target" spelling `table: null` and `fn: null` already carry.
+ */
+describe("unbound addon attachment", () => {
+  /** A workspace with one query whose single attachment carries `id`. */
+  function queryWithAttachment(id: string): Bundle {
+    const ws = workspace("w")
+      .registerTables([users])
+      .registerApiGroups([apiGroup({ name: "public" })])
+      .registerQueries([
+        query({
+          name: "list",
+          verb: "GET",
+          apiGroup: "public",
+          stack: [s.db.query({ table: users, as: "rows" })],
+        }),
+      ]);
+    const bundle = ws.export() as Bundle;
+    // The attachment list lives at the STATEMENT's top level, not under `context`.
+    const stack = (bundle.payload as unknown as { query: Array<{ run: Array<Record<string, unknown>> }> }).query[0]!.run;
+    stack[0]!.addon = [
+      { id, as: "_extra", input: [], output: { items: [], filters: [], customize: false }, children: [] },
+    ];
+    return bundle;
+  }
+
+  it("keeps the enclosing query readable instead of aborting it to raw()", () => {
+    const file = decodeBundle(queryWithAttachment("")).files.find((x) => x.path.includes("queries"));
+    expect(file!.contents).toContain("addon: null");
+    expect(file!.contents).not.toContain("raw(");
+  });
+
+  it("still resolves an attachment that names a real addon", () => {
+    // The paired negative: `null` appears only for a genuinely blank id.
+    const bound = queryWithAttachment(deriveGuid("addon", "extra"));
+    const file = decodeBundle(bound).files.find((x) => x.path.includes("queries"));
+    expect(file!.contents).not.toContain("addon: null");
   });
 });

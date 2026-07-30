@@ -18,7 +18,7 @@ import { RefIndex } from "../../src/codegen/ref-index.js";
 
 function fallbackDetail(stored: Record<string, unknown>): string {
   const ctx = new DecodeContext();
-  decodeStack(ctx, new RefIndex({ payload: {} } as never), [stored as never], {} as never);
+  decodeStack(ctx, new RefIndex(), [stored as never], {} as never);
   const entry = ctx.report.entries.find((e) => e.category === "raw-fallback");
   return entry?.detail ?? "";
 }

@@ -43,8 +43,13 @@ export interface AddonSpec<Graft = unknown> {
    * The target addon. A typed {@link AddonDef} handle (from {@link addon}) carries
    * its graft shape into the parent row's response type; a bare name/`ObjectRef`
    * resolves to a guid but grafts `unknown`.
+   *
+   * `null` is the UNBOUND attachment the engine stores as `id: ""` — an addon
+   * that was deleted or never bound. It exists so `codegen` can reproduce such a
+   * query faithfully instead of throwing and degrading the whole statement to
+   * `raw()`; it grafts `unknown`, which is what an unbound target knows.
    */
-  addon: ObjectRef | AddonDef<Graft>;
+  addon: ObjectRef | AddonDef<Graft> | null;
   /**
    * Dotted destination **relative to a returned row**, e.g. `"_book"` (a bare
    * alias) or `"obj._book"` (offset + alias). Splits at the last dot into the
@@ -149,7 +154,9 @@ function encodeOne(
   const finalOffset =
     envelopeOffset !== undefined ? withEnvelopeOffset(offset, envelopeOffset) : offset;
   const stored: StoredAddon = {
-    id: resolveRef("addon", spec.addon),
+    // An unbound attachment stores a blank id — the same "no target" the engine
+    // writes, and the same spelling `table: null` / `fn: null` already use.
+    id: spec.addon === null ? "" : resolveRef("addon", spec.addon),
     as,
     input: encodeInput(spec.input),
   };
