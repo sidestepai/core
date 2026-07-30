@@ -145,6 +145,27 @@ function reportExample(a: KindDecodeArgs): null {
   return null;
 }
 
+/**
+ * A query's saved TEST definitions (`{id, name, input, token, expect, …}`).
+ * Nothing in this SDK models them, so a populated list cannot survive a pull.
+ *
+ * Same treatment as {@link reportExample}, and for the same reason: reported as
+ * a deliberate omission AND dropped from the round-trip comparison, so exactly
+ * one of "left behind" and "does not re-export" fires rather than both. Their
+ * contents are user data too — an `expect` carries whole recorded response
+ * payloads — so `normalize` strips them rather than emptying them.
+ */
+function reportTests(a: KindDecodeArgs): null {
+  const tests = a.stored["test"];
+  if (Array.isArray(tests) && tests.length > 0) {
+    a.ctx.problem(
+      "expected-omission",
+      `${tests.length} saved query test${tests.length === 1 ? "" : "s"} (\`test\`) are not modelled and are left behind (unmodeled)`,
+    );
+  }
+  return null;
+}
+
 /** `history:` for an object-tier kind. */
 function history(args: KindDecodeArgs): DefEntry | null {
   // An ARRAY here is not a settings block at all — it is the engine's own record
@@ -526,6 +547,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
         response(a),
         stack(a),
         reportExample(a),
+        reportTests(a),
       ]),
   },
   {

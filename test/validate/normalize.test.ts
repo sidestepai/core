@@ -788,6 +788,26 @@ describe("validate normalizer — per-key empty spellings", () => {
     expect(normalize({ example: { output: { float: 3.14 }, input: { abc: 123 } } })).toEqual({});
     expect(normalize({ example: {} })).toEqual({});
   });
+
+  it("strips a query's saved `test` list, which nothing models", () => {
+    // Reported as an omission by the decoder, so it must NOT also read as a
+    // failed round trip — an omission and a mismatch mean opposite things.
+    const tests = [
+      { id: "0373fad8", name: "test", input: [], token: "", expect: [{ type: "to_equal", vars: [] }] },
+    ];
+    expect(normalize({ test: tests })).toEqual({});
+  });
+
+  it("keys the `test` strip on shape, never on that very generic name", () => {
+    // Real workspaces hold table columns named `test`/`test2` and const values
+    // "test". Stripping every key called `test` would delete user data.
+    expect(normalize({ test: "a string" })).toEqual({ test: "a string" });
+    expect(normalize({ test: { name: "not a list" } })).toEqual({ test: { name: "not a list" } });
+    // An array, but not of test definitions — no `expect` on the entries.
+    expect(normalize({ test: [{ name: "col" }] })).toEqual({ test: [{ name: "col" }] });
+    // A column literally named `test` survives untouched.
+    expect(normalize({ name: "test", type: "text" })).toEqual({ name: "test", type: "text" });
+  });
 });
 
 describe("validate normalizer — an unset async runtime binding", () => {

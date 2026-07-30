@@ -321,7 +321,8 @@ function tableRefGuid(stored: FieldXdo): string | null {
  * happens to hold that id in a different one.
  *
  * That is also why `customize` has no authoring surface and should not get one:
- * a readable form would present unportable data as if it were authorable.
+ * a readable form would present unportable data as if it were authorable
+ * (issue #171).
  */
 function describeCustomizePortability(stored: FieldXdo): string {
   const customize = (stored as { customize?: unknown }).customize;

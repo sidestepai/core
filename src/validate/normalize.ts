@@ -50,6 +50,33 @@ const STRIP_KEYS = new Set([
 ]);
 
 /**
+ * A query's saved TEST definitions — `[{id, name, input, token, expect, …}]`.
+ *
+ * Nothing in this SDK models them, so a populated list cannot survive a pull;
+ * the decoder reports one as an omission and this drops it from the comparison,
+ * so exactly one of "left behind" and "does not re-export" fires. Same treatment
+ * as `example`, and stripped rather than emptied for the same reason: an
+ * `expect` carries whole recorded response payloads, which are user data.
+ *
+ * Keyed on SHAPE, never on the name alone. `test` is one of the most generic
+ * key names there is — the corpus holds table columns named `test`/`test2` and
+ * const values `"test"` — so this fires only for a non-empty array whose every
+ * entry carries the `expect` list a test definition is built around.
+ */
+function isSavedTestList(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every(
+      (entry) =>
+        entry !== null &&
+        typeof entry === "object" &&
+        Array.isArray((entry as { expect?: unknown }).expect),
+    )
+  );
+}
+
+/**
  * Recursively remove server/auto-generated keys from a parsed JSON value.
  *
  * Also coerces numeric `value` fields to strings: the golden corpus is
@@ -628,6 +655,7 @@ export function normalize<T>(value: T): T {
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
       if (STRIP_KEYS.has(k)) continue;
       if (isTable && k === "as") continue;
+      if (k === "test" && isSavedTestList(v)) continue;
       if (
         isMiddlewareBlock &&
         (k === "pre" || k === "post") &&
