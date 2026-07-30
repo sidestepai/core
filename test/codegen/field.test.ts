@@ -204,6 +204,41 @@ describe("decodeField — catalog coverage", () => {
     }
   });
 
+  /**
+   * The six field-flag combinations the 187-workspace sweep actually found, with
+   * the row counts it measured. Together they are 1,782 of the 1,885 `rawField()`
+   * envelopes sampled — C8, which the plan had recorded as the largest single
+   * cluster and a field-authoring design question.
+   *
+   * Kept table-driven against real counts so a regression here is legible as "this
+   * many real fields just lost their readable form", not as one abstract case.
+   */
+  const SWEPT_FLAGS: ReadonlyArray<readonly [label: string, rows: number, flags: Record<string, unknown>]> = [
+    ["customize as an empty array", 842, { customize: [] }],
+    ["merge with a hidden list", 584, { merge: true, hidden: ["created_at"] }],
+    ["hidden holding an empty name", 214, { hidden: [""] }],
+    ["all three together", 109, { merge: true, hidden: ["created_at"], customize: [] }],
+    ["hidden holding a numeric-looking name", 23, { hidden: ["1"] }],
+    ["merge alone", 10, { merge: true }],
+  ];
+
+  it.each(SWEPT_FLAGS)(
+    "decodes %s (%i real fields) readably and byte-identically",
+    (_label, _rows, flags) => {
+      const stored = { ...encodeField("x", "text", {}, COLUMN_CONTEXT), ...flags } as FieldXdo;
+      const ctx = new DecodeContext();
+      const source = printExpr(decodeField(ctx, refsFor(), stored, "f").expr);
+      expect(source).not.toContain("rawField(");
+      const back = evaluate(source);
+      // Compared under `normalize`, the comparator the round-trip contract itself
+      // uses: an empty `customize` canonicalizes forward to the `{}` the SDK writes,
+      // the same accepted artifact as `mocks` and an empty `context`.
+      expect(normalize(encodeField("x", back.type, back.options, COLUMN_CONTEXT)), source).toEqual(
+        normalize(stored),
+      );
+    },
+  );
+
   it("leaves an unmerged, unhidden field's source untouched", () => {
     // The paired negative: the two new options must not appear on the fields that
     // do not set them, which is nearly all of them.
