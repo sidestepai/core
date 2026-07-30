@@ -770,7 +770,15 @@ const dbQuery: SpecialDecoder = (a) => {
     runtime.lock = lock;
   }
 
-  const simple = (context.simpleExternal ?? {}) as Record<string, unknown>;
+  // Same story as `search`/`eval` above, and it bit harder: the engine writes all
+  // five `simpleExternal` facets at an empty `input` default on a query that binds
+  // none of them. Read as authored, they became five bound paging Values — and
+  // since the engine honors `external` over `simpleExternal`, the SDK forbids
+  // authoring both, so the recovered call did not merely mismatch, it THREW.
+  // Measured: 70 of 230 fallen-back queries stored exactly this pair.
+  const simple = isUnauthored("simpleExternal", context.simpleExternal)
+    ? {}
+    : (context.simpleExternal as Record<string, unknown>);
   const pagingEntries: Array<[string, Expr]> = [];
   const pagingRuntime: Record<string, unknown> = {};
   let sortBlock: unknown;

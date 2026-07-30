@@ -791,6 +791,42 @@ describe("db.query", () => {
       expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
     });
 
+    it("reads an all-default simpleExternal as unauthored, not as five bound facets", () => {
+      // The engine writes all five paging facets at an empty `input` default. Read
+      // as authored they become bound Values, and because the engine honors
+      // `external` over `simpleExternal` the SDK forbids authoring both — so this
+      // did not merely mismatch, the recovered call THREW inside the factory.
+      const withExternal = encodeStatement(
+        s.db.query({ table: POSTS, external: { value: inp("filters") }, as: "rows" }),
+      );
+      const stored = {
+        ...withExternal,
+        context: {
+          ...(withExternal.context as Record<string, unknown>),
+          simpleExternal: {
+            page: { tag: "input", value: "", filters: [] },
+            sort: { tag: "input", value: "", filters: [] },
+            offset: { tag: "input", value: "", filters: [] },
+            search: { tag: "input", value: "", filters: [] },
+            per_page: { tag: "input", value: "", filters: [] },
+          },
+        },
+      } as StackItemXdo;
+      const source = decode(stored);
+      expect(source).toContain("external:");
+      expect(source).not.toContain("raw(");
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+    });
+
+    it("still decodes genuinely bound paging facets from simpleExternal", () => {
+      // The paired negative: the rule above must not swallow a real input binding.
+      const source = dbRoundTrip(
+        s.db.query({ table: POSTS, paging: { page: inp("page"), per_page: inp("size") }, as: "p" }),
+      );
+      expect(source).toContain("page: inp(");
+      expect(source).toContain("per_page: inp(");
+    });
+
     it("falls back to raw() rather than dropping a search it cannot read", () => {
       // The load-bearing negative: the rule above must not become a licence to
       // discard a filter. A malformed operand is unreadable, and a query whose
