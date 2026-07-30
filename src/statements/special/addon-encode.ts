@@ -117,10 +117,10 @@ function splitAs(as: string): { offset?: string; as: string } {
  * Prefix a paging-envelope offset (e.g. `"items[]"`) onto an addon's own offset.
  * When a `db.query` returns a metadata paging envelope, the rows live under
  * `items[]`, so a top-level addon must graft at `items[].<offset>` rather than at
- * the envelope root — the frontend applies exactly this rule in the return-type
- * editor (`statement-dbo-view.component.ts` `openReturn`). Idempotent: an offset
- * that already starts with the prefix (an author who wrote `items[]` explicitly)
- * is left untouched, mirroring the frontend's `!offset.startsWith(findMe)` guard.
+ * the envelope root — the editor applies exactly this rule when it opens the
+ * return-type picker. Idempotent: an offset that already starts with the prefix
+ * (an author who wrote `items[]` explicitly) is left untouched, matching the
+ * editor's own "already prefixed?" guard.
  */
 function withEnvelopeOffset(offset: string | undefined, envelopeOffset: string): string {
   if (offset?.startsWith(envelopeOffset)) return offset;

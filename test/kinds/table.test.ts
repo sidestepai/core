@@ -141,10 +141,10 @@ describe("table kind", () => {
   });
 
   it("decorates each dbo with the package-export import directive", () => {
-    // The engine's importWorkspace switches on `import.mode`; a dbo without an
-    // `import` block fatals ("Undefined array key 'import'"). "standard" =
-    // create-or-update by guid. Only dbos carry it (Export.php::exportSchema),
-    // not the stored dbo form, so it's added at export, not in encodeTable.
+    // The engine's workspace import switches on `import.mode`; a dbo without an
+    // `import` block fatals on the missing key. "standard" = create-or-update by
+    // guid. Only dbos carry it, and only in the EXPORTED form — not the stored
+    // dbo form — so it's added at export, not in encodeTable.
     const bundle = new Xano()
       .register("table", { name: "user", schema: [] })
       .export();

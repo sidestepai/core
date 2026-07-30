@@ -2,12 +2,12 @@
  * `db.query` (`mvp:dbo_view`) emit-shape proof (issues #41 / #34 / #36).
  *
  * These fixtures are DERIVED FROM SOURCE, not captured goldens — there is no
- * vendored `dbo_view` golden in the corpus. The shape is grounded in the
- * cloud-client MVP schema + converter that the live engine reads:
- *   - context.search {expression[]}  ← MVP/xs/type/mvp/{Search,Expression,Statement}.php
- *   - context.return.list.{sort,paging}  ← MVP/xs/type/mvp/ReturnSection.php +
- *     helper/MVP.php::convertContextToConfig (top-level `context.sort` is NEVER read)
- *   - context.lock {value,tag,filters}  ← MVP/xs/type/mvp/Context.php + convertLockToConfig
+ * vendored `dbo_view` golden in the corpus. The shape is grounded in the engine's
+ * own declared statement schema and the converter it reads that schema through:
+ *   - context.search {expression[]}  ← the declared search/expression types
+ *   - context.return.list.{sort,paging}  ← the declared return-section type
+ *     (a top-level `context.sort` is NEVER read — only the one under `list`)
+ *   - context.lock {value,tag,filters}  ← the declared context type
  *   - statement `output` envelope  ← the db.get `query-auth-me` golden
  * Behavior is verified end-to-end by the live cross-user repro (issue #41).
  *
