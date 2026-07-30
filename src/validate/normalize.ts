@@ -483,6 +483,18 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     // default must pass through the same reduction to compare equal.
     case "lock":
       return deepEqual(normalize(v), normalize({ tag: "const:bool", value: "" }));
+    // A condition container that holds nothing, in either stored spelling: the
+    // `{expression: []}` the SDK writes and the empty associative-map form `[]`
+    // the engine hands back — the same artifact already absorbed for `mocks`,
+    // `customize` and an empty `context`. Both mean "no condition configured".
+    // A populated container is untouched and still compares node for node.
+    case "expr":
+      return (
+        isEmptyArray(v) ||
+        (v !== null &&
+          typeof v === "object" &&
+          isEmptyArray((v as { expression?: unknown }).expression))
+      );
     case "search":
       return deepEqual(normalize(v), normalize({ expression: [] }));
     // Two spellings of an all-defaults return block. The engine's declared shape

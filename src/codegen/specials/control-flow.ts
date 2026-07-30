@@ -11,7 +11,7 @@
 import type { TaggedValue } from "../../types/xdo.js";
 import { arr, lit, obj, type Expr } from "../print.js";
 import { decodeValue } from "../value.js";
-import { decodeCondition } from "../expression.js";
+import { decodeConditionOrEmpty } from "../expression.js";
 import { declineHere, getPath, prove, type SpecialArgs, type SpecialDecoder } from "./prove.js";
 
 /** Coerce a stored `{value, tag, filters}` block to a tagged value. */
@@ -60,7 +60,7 @@ const updateVar: SpecialDecoder = (a) => {
 /** One `elif` branch of a conditional. */
 function decodeElifBranch(a: SpecialArgs, branch: unknown): { expr: Expr; runtime: unknown } | null {
   const context = (branch as { context?: unknown }).context;
-  const when = decodeCondition(a.ctx, getPath(context, "expr"));
+  const when = decodeConditionOrEmpty(a.ctx, getPath(context, "expr"));
   if (!when) return declineHere("conditional: an elif branch's expr is not a decodable condition");
   const body = a.decodeStack(getPath(context, "if.run"));
   return {
@@ -74,7 +74,7 @@ function decodeElifBranch(a: SpecialArgs, branch: unknown): { expr: Expr; runtim
 
 /** `if (when) { then } [else if …] [else { … }]`. */
 const conditional: SpecialDecoder = (a) => {
-  const when = decodeCondition(a.ctx, getPath(a.stored.context, "expr"));
+  const when = decodeConditionOrEmpty(a.ctx, getPath(a.stored.context, "expr"));
   if (!when) return declineHere("conditional: context.expr is not a decodable condition");
 
   const then = nested(a, "if.run");
@@ -192,7 +192,7 @@ function loopDecoder(path: string, storedField: string, defField: string): Speci
 
 /** `while (when) { body }`. */
 const whileLoop: SpecialDecoder = (a) => {
-  const when = decodeCondition(a.ctx, getPath(a.stored.context, "expr"));
+  const when = decodeConditionOrEmpty(a.ctx, getPath(a.stored.context, "expr"));
   if (!when) return declineHere("while: context.expr is not a decodable condition");
   const body = a.decodeStack(getPath(a.stored.context, "run"));
   return prove(

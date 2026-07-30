@@ -42,6 +42,38 @@ function toValue(raw: unknown): TaggedValue | null {
   };
 }
 
+/**
+ * An empty condition container, in either stored spelling.
+ *
+ * A half-configured `if`/`while` — dropped into a stack and never given a
+ * condition — stores `{expression: []}` (9 real statements) or the empty
+ * associative-map form `[]` (8 more). Both mean the same "nothing configured",
+ * and both are AUTHORABLE: `Condition` is `SearchNode | SearchNode[]`, and
+ * `encodeComparison([])` produces exactly `{expression: []}`. So the empty
+ * condition round-trips byte-for-byte — nothing is invented and nothing the
+ * engine evaluates changes.
+ */
+export function isEmptyCondition(block: unknown): boolean {
+  if (Array.isArray(block)) return block.length === 0;
+  const expression = (block as { expression?: unknown })?.expression;
+  return Array.isArray(expression) && expression.length === 0;
+}
+
+/**
+ * {@link decodeCondition}, plus the empty container it declines.
+ *
+ * Kept separate so only the surfaces whose factory takes a whole `Condition`
+ * (`if`, `while`, an `elif` branch) recover an empty one. A `db.query` search
+ * has its own empty handling and must not start emitting `where: []`.
+ */
+export function decodeConditionOrEmpty(
+  ctx: DecodeContext,
+  block: unknown,
+): DecodedCondition | null {
+  if (isEmptyCondition(block)) return { expr: arr([]), runtime: [] };
+  return decodeCondition(ctx, block);
+}
+
 /** Decode one comparison node. */
 function decodeStatementNode(ctx: DecodeContext, node: ExprNode): DecodedCondition | null {
   const statement = (node as { statement?: { op?: unknown; left?: unknown; right?: unknown } })

@@ -77,3 +77,58 @@ describe("create_auth_token with an unbound table", () => {
     expect(source).not.toContain("table: null");
   });
 });
+
+/**
+ * A conditional with NO condition — dropped into a stack and never filled in.
+ *
+ * 17 of the 20 conditional declines in a 187-workspace sweep were this: 9 store
+ * `{expression: []}` and 8 store the empty associative-map form `[]`. Both are
+ * authorable, and that is the whole point — `Condition` is
+ * `SearchNode | SearchNode[]`, and `encodeComparison([])` produces exactly
+ * `{expression: []}`, so an empty `when` reproduces the stored bytes. Nothing is
+ * invented, and nothing the engine evaluates changes.
+ */
+describe("a conditional with an empty condition", () => {
+  // The envelope a real stored conditional carries — all 17 empty ones in the
+  // corpus store `elif: {run: []}`, which is what the factory writes back.
+  const conditional = (expr: unknown) => ({
+    name: "mvp:conditional",
+    context: { expr, if: { run: [] }, elif: { run: [] }, else: { run: [] } },
+  });
+
+  for (const [label, expr] of [
+    ["the {expression: []} spelling", { expression: [] }],
+    ["the empty associative-map spelling", []],
+  ] as const) {
+    it(`recovers ${label} as an empty when, not raw()`, () => {
+      const ctx = new DecodeContext();
+      const source = printExpr(
+        decodeStatement(ctx, new RefIndex(), conditional(expr) as never, {} as never),
+      );
+      expect(source).not.toContain("raw(");
+      expect(source).toContain("when: []");
+    });
+  }
+
+  it("still declines a condition it cannot spell, rather than emptying it", () => {
+    // The load-bearing negative: a MIXED `a AND b OR c` container has no
+    // authored form, and must stay raw() — emptying it would silently drop a
+    // real condition and change which rows the branch takes.
+    const node = (or: boolean) => ({
+      or,
+      type: "statement",
+      group: { expression: [] },
+      statement: { op: "=", left: { tag: "var", operand: "a", filters: [] }, right: { tag: "const", operand: "1", filters: [] } },
+    });
+    const ctx = new DecodeContext();
+    const source = printExpr(
+      decodeStatement(
+        ctx,
+        new RefIndex(),
+        conditional({ expression: [node(false), node(false), node(true)] }) as never,
+        {} as never,
+      ),
+    );
+    expect(source).toContain("raw(");
+  });
+});
