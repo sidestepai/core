@@ -1,5 +1,5 @@
 /**
- * Statement-catalog codegen (U9). Reads the cloud-client statement schema YAMLs,
+ * Statement-catalog codegen (U9). Reads the engine's statement schema YAMLs,
  * interprets each declarative `transform` into a `StatementSpec`, pins the
  * engine-only `output` flag from the persisted golden fixtures, and writes the
  * committed catalog data (`src/statements/generated/specs.generated.ts`) plus a
@@ -8,24 +8,24 @@
  * Run (regenerates the committed output):
  *   npm run codegen
  *
- * Sources (override via env):
- *   XANO_SCHEMA_DIR  — statement/*.yaml         (the codegen input)
- *   XANO_FIXTURE_DIR — transform-temp/*.json    (persisted fixtures; pins `output`)
+ * Sources — both REQUIRED, and pointed at a local engine checkout by the person
+ * running this. There is no default: the layout of that checkout is not this
+ * repo's to record.
+ *   XANO_SCHEMA_DIR  — dir of per-statement schema YAMLs (the codegen input)
+ *   XANO_FIXTURE_DIR — dir of persisted transform goldens (pins the `output` flag)
  *
  * Codegen is reproducible: re-running on the same sources produces identical
  * output (specs sorted by name; deterministic serialization).
  */
 import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
 import { join, basename } from "node:path";
-import { homedir } from "node:os";
 import { parseYaml } from "../src/statements/schema-dsl/parse.ts";
 import { schemaToSpec } from "../src/statements/schema-dsl/generate.ts";
 import { applySpecOverrides } from "../src/statements/schema-dsl/overrides.ts";
 import type { EnvelopeProfile, StatementSpec } from "../src/statements/schema-dsl/interpret.ts";
 
-const CLOUD_CLIENT = join(homedir(), "git/cloud-client/extensions/MVP/includes/xano");
-const SCHEMA_DIR = process.env.XANO_SCHEMA_DIR ?? join(CLOUD_CLIENT, "script/kind/schema/statement");
-const FIXTURE_DIR = process.env.XANO_FIXTURE_DIR ?? join(CLOUD_CLIENT, "test/script/data/transform-temp");
+const SCHEMA_DIR = process.env.XANO_SCHEMA_DIR ?? "";
+const FIXTURE_DIR = process.env.XANO_FIXTURE_DIR ?? "";
 const OUT_SPECS = join(import.meta.dirname, "../src/statements/generated/specs.generated.ts");
 const OUT_FACTORIES = join(import.meta.dirname, "../src/statements/generated/factories.generated.ts");
 const OUT_PENDING = join(import.meta.dirname, "../src/statements/generated/PENDING.md");
@@ -242,7 +242,11 @@ export const generated = ${serializeNamespace(tree, "")};
 
 function main(): void {
   if (!existsSync(SCHEMA_DIR)) {
-    console.error(`Schema dir not found: ${SCHEMA_DIR}\nSet XANO_SCHEMA_DIR to the cloud-client statement schema dir.`);
+    console.error(
+      SCHEMA_DIR === ""
+        ? "Set XANO_SCHEMA_DIR to the statement-schema directory of a local engine checkout."
+        : `Schema dir not found: ${SCHEMA_DIR}`,
+    );
     process.exit(1);
   }
   const fixtureProfiles = buildFixtureProfileIndex(FIXTURE_DIR);

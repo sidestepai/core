@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
 import { parseYaml } from "../../../src/statements/schema-dsl/parse.js";
 import { schemaToSpec } from "../../../src/statements/schema-dsl/generate.js";
 import { applySpecOverrides } from "../../../src/statements/schema-dsl/overrides.js";
@@ -9,14 +8,13 @@ import type { StatementSpec } from "../../../src/statements/schema-dsl/interpret
 import { GENERATED_SPECS } from "../../../src/statements/generated/catalog.js";
 
 /**
- * Reproducibility gate for the U9 codegen: regenerating from the cloud-client
- * schema YAMLs must produce the same specs the committed catalog ships
+ * Reproducibility gate for the U9 codegen: regenerating from the engine's
+ * statement schema YAMLs must produce the same specs the committed catalog ships
  * (compared modulo the `output` flag, which the codegen pins from the persisted
- * fixtures — not present in CI). Skips when the source repo isn't available.
+ * fixtures — not present in CI). Point `XANO_SCHEMA_DIR` at a local engine
+ * checkout to run it; it skips when that is unset, which is the CI case.
  */
-const SCHEMA_DIR =
-  process.env.XANO_SCHEMA_DIR ??
-  join(homedir(), "git/cloud-client/extensions/MVP/includes/xano/script/kind/schema/statement");
+const SCHEMA_DIR = process.env.XANO_SCHEMA_DIR ?? "";
 
 /** Drop fixture-pinned fields (`output`, `envelope`) so the comparison is source-only. */
 function structural(spec: StatementSpec): Omit<StatementSpec, "output" | "envelope"> {
@@ -49,7 +47,7 @@ describe("U9 codegen reproducibility", () => {
     expect(regenerated).toEqual(committed);
   });
 
-  it.skipIf(available)("skipped: cloud-client schema source not present", () => {
+  it.skipIf(available)("skipped: XANO_SCHEMA_DIR not set", () => {
     expect(GENERATED_SPECS.length).toBeGreaterThan(0);
   });
 });

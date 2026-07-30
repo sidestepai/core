@@ -73,8 +73,8 @@ const emptyObj = () => ({ value: "", tag: "const:obj", filters: [] });
  * calls.test.ts, substacks.test.ts, set-var.test.ts, generated.test.ts). This
  * central corpus is for the generic declaratives that lack a domain-test home.
  *
- * @TODO(byte-verify): the debug-loop worklist. Source dir:
- *   cloud-client/extensions/MVP/includes/xano/test/script/data/transform-temp/mvp:<name>.json
+ * @TODO(byte-verify): the debug-loop worklist. Source: the engine's own persisted
+ *   transform goldens, one `mvp:<name>.json` per statement.
  *   Each needs: vendor the json into test/fixtures/statements/ + add a {fixture,build}
  *   row here with the right authoring args (read the golden for inputs).
  *

@@ -4,8 +4,8 @@
  * Unlike the value `filters[]` pipeline (377 names, any value), the methods
  * valid on a *field* are a small set that depends on the field's **type** — and
  * the engine declares that set authoritatively per type in the column-create API
- * schema (cloud-client `app/workspace/mvp/app/meta/dbo-schema-<type>.yaml`, the
- * `?filters?` block). This codegen distills those per-type sets so each `f.<type>`
+ * schema — one `dbo-schema-<type>.yaml` per column type, in its `?filters?`
+ * block (point `XANO_DBO_SCHEMA_DIR` at that directory; there is no default). This codegen distills those per-type sets so each `f.<type>`
  * / `input.<type>` constructor can type its `methods` to exactly the names valid
  * for that type, giving authors (and code-gen agents) discoverable, checked values.
  *
@@ -22,7 +22,6 @@
  */
 import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
 
 const ROOT = join(import.meta.dirname, "..");
 const VENDOR = join(ROOT, "vendor/field-methods.json");
@@ -34,9 +33,7 @@ const VENDOR = join(ROOT, "vendor/field-methods.json");
 const RESOLVABLE = join(ROOT, "vendor/field-methods-resolvable.json");
 const OUT = join(ROOT, "src/fields/generated/field-methods.generated.ts");
 
-const META_DIR =
-  process.env.XANO_DBO_SCHEMA_DIR ??
-  join(homedir(), "git/cloud-client/extensions/MVP/includes/xano/app/workspace/mvp/app/meta");
+const META_DIR = process.env.XANO_DBO_SCHEMA_DIR ?? "";
 
 /**
  * Maps a `dbo-schema-<type>.yaml` basename type to the sidestep catalog/input

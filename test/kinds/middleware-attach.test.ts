@@ -12,7 +12,7 @@ import { deriveGuid } from "../../src/refs/guid.js";
 describe("middleware attachment", () => {
   it("encodes an entry to the full mvp:middleware stack-item envelope", () => {
     const entry = encodeMiddlewareEntry("audit");
-    // The full 12-key StackItemXdo envelope (matches DEV-4553.json middleware.pre[0]).
+    // The full 12-key StackItemXdo envelope (matches a persisted golden's middleware.pre[0]).
     expect(entry).toEqual({
       name: "mvp:middleware",
       as: "",

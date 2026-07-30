@@ -14,11 +14,9 @@ import type { InferRow } from "../../src/kinds/table.js";
  * derivation drifting from what the Xano engine actually derives.
  *
  * The engine builds its OpenAPI response schema by a **static walk** of
- * `result[]` + `run[]` (`x2/extensions/XS/includes/xano/xs/Stack.php:73`
- * `findVarSchema`, wired into the OpenAPI spec at
- * `x2/extensions/Api/includes/xano/helper/ApiSpec.php:416`). Xano's own SDK
- * generator consumes that spec — so mirroring the same walk is what keeps the SDK
- * premise sound.
+ * `result[]` + `run[]`, resolving each variable's schema as it goes, and wires
+ * the result into the published OpenAPI spec. Xano's own SDK generator consumes
+ * that spec — so mirroring the same walk is what keeps the SDK premise sound.
  *
  * No live OpenAPI snapshot is vendored in this repo (the spec is produced
  * server-side). Instead {@link engineKeySet} **recomputes the engine's rule over

@@ -13,10 +13,10 @@ import type { InferRow } from "../../src/kinds/table.js";
  * Type-level guard for the `db.query` paging envelope (issue #58) and the
  * addon-augmented row shape in `InferResponse`.
  *
- * The envelope shape mirrors the engine's `XS::packageListMeta` OpenAPI schema
- * (`x2/.../helper/XS.php:5437`): the row list under `items` plus paging metadata,
- * and `itemsTotal`/`pageTotal` only when `totals:true`. Addon aliases mirror
- * `XS::applyAddOnSchema` — the last segment of each `as` lands on the row element,
+ * The envelope shape mirrors the engine's own list-metadata OpenAPI schema: the
+ * row list under `items` plus paging metadata, and `itemsTotal`/`pageTotal` only
+ * when `totals:true`. Addon aliases mirror how the engine applies an addon to
+ * that schema — the last segment of each `as` lands on the row element,
  * valued `unknown` (the SDK cannot type the referenced addon's return columns).
  */
 

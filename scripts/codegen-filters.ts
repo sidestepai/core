@@ -7,11 +7,13 @@
  * Two-stage, like the statement codegen:
  *   1. `--refresh` distills the three upstream sources of truth into the
  *      committed `vendor/filters.json` (offline snapshot):
- *        - xs-language-server `parser/generic/filterNames.js` — the full set of
- *          ~365 filter names applicable to a variable (authoritative membership);
- *        - xs-language-server `onHover/filters.md` — one-line descriptions;
- *        - cloud-client `api/query/mvp/xs/filter.yaml` — structured arg metadata
- *          (named/typed args, result, group) for the ~49 it documents richly.
+ *        - the language server's filter-name list — the full set of ~365 filter
+ *          names applicable to a variable (authoritative membership);
+ *        - the language server's hover docs — one-line descriptions;
+ *        - the engine's filter schema — structured arg metadata (named/typed
+ *          args, result, group) for the ~49 it documents richly.
+ *      Each is located by its own env var; there are no defaults, because the
+ *      layout of those checkouts is not this repo's to record.
  *   2. always: emit `src/values/generated/filters.generated.ts` from that JSON.
  *
  * Run:
@@ -22,7 +24,6 @@
  */
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
 
 const ROOT = join(import.meta.dirname, "..");
 const VENDOR = join(ROOT, "vendor/filters.json");
@@ -36,17 +37,15 @@ const VENDOR = join(ROOT, "vendor/filters.json");
 const RESOLVABLE = join(ROOT, "vendor/filters-resolvable.json");
 const OUT = join(ROOT, "src/values/generated/filters.generated.ts");
 
-const XS_LS = join(homedir(), "git/xs-language-server");
-const CLOUD_CLIENT = join(homedir(), "git/cloud-client/extensions/MVP/includes/xano");
-const NAMES_SRC = process.env.XANO_FILTER_NAMES ?? join(XS_LS, "parser/generic/filterNames.js");
-const DOCS_SRC = process.env.XANO_FILTER_DOCS ?? join(XS_LS, "onHover/filters.md");
-const YAML_SRC = process.env.XANO_FILTER_YAML ?? join(CLOUD_CLIENT, "api/query/mvp/xs/filter.yaml");
+const NAMES_SRC = process.env.XANO_FILTER_NAMES ?? "";
+const DOCS_SRC = process.env.XANO_FILTER_DOCS ?? "";
+const YAML_SRC = process.env.XANO_FILTER_YAML ?? "";
 // The value pipeline draws typed metadata from three sibling catalogs that share
 // filter.yaml's exact shape (`group`/`result`/`arg[]`). filter.yaml documents ~49
 // richly; pipe.yaml (~222) and aggregate.yaml (~13) cover the long tail. On the
 // names they share, filter.yaml wins (it is the curated, frontend-facing set).
-const PIPE_SRC = process.env.XANO_PIPE_YAML ?? join(CLOUD_CLIENT, "api/query/mvp/xs/pipe.yaml");
-const AGG_SRC = process.env.XANO_AGGREGATE_YAML ?? join(CLOUD_CLIENT, "api/query/mvp/xs/aggregate.yaml");
+const PIPE_SRC = process.env.XANO_PIPE_YAML ?? "";
+const AGG_SRC = process.env.XANO_AGGREGATE_YAML ?? "";
 
 /** A structured argument of a richly-specified filter. */
 interface FilterArg {

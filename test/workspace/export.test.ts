@@ -59,8 +59,8 @@ describe("Xano.export() bundle", () => {
   });
 });
 
-describe("sig (Migrate::calcSignatureJson replica)", () => {
-  it("phpJsonEncode matches the engine's \\xano::json_encode flags", () => {
+describe("sig (replica of the engine's bundle-signature routine)", () => {
+  it("phpJsonEncode matches the engine's own JSON-encode flags", () => {
     // The engine signs with JSON_HEX_QUOT|HEX_TAG|HEX_AMP|HEX_APOS|
     // UNESCAPED_SLASHES|UNESCAPED_UNICODE: '/' and non-ASCII stay RAW, while
     // " < > & ' become UPPERCASE \uXXXX. Verified byte-for-byte against a live
@@ -84,7 +84,7 @@ describe("sig (Migrate::calcSignatureJson replica)", () => {
   });
 
   it("calcSignatureJson preserves padding as '.' (engine base64_encodewebsafe)", () => {
-    // Verified byte-for-byte against the engine's Migrate::calcSignatureJson;
+    // Verified byte-for-byte against the engine's own signature routine;
     // the trailing '.' is the padding '=' mapped by strtr('+/=', '-_.').
     const sig = calcSignatureJson({ app: "xano", version: "1.03", type: "workspace", payload: {} });
     expect(sig).toBe("zmJNmZLe56nuEQ4brAmvr2ncgeo.");

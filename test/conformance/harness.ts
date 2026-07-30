@@ -1,5 +1,5 @@
 /**
- * Conformance harness (KTD-4). Loads vendored cloud-client golden fixtures and
+ * Conformance harness (KTD-4). Loads vendored engine golden fixtures and
  * normalizes both sides for deep-equal. Every kind/statement test plugs into
  * this; U11 wires the full corpus through it.
  */

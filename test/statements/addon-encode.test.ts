@@ -1,9 +1,8 @@
 /**
  * Addon-authoring encoder (`encodeAddons`) emit-shape proof.
  *
- * The stored shape is grounded in the cloud-client `addon-complex` script2json
- * golden (`.../parser/script2json/minimal/addon-complex.json`) plus the export
- * transform (`Migrate::exportAddonImpls`: numeric `id` -> guid, recurse on
+ * The stored shape is grounded in a persisted golden for a complex addon, plus
+ * the export transform it goes through (numeric `id` -> guid, recursing on
  * `children`). The vendored `db_view_addon.json` fixture is that golden's addon
  * block with `id` in export form (guid), which is what the SDK emits into a
  * packageExport bundle.
