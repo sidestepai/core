@@ -227,14 +227,24 @@ export function decodeFromSpec(ctx: DecodeContext, stored: StackItemXdo): Expr |
   if (lean.length < recovered.length) candidates.push(lean);
   candidates.push(recovered);
 
-  // `disabled` is carried by every statement, not gated by a spec envelope flag,
-  // and no spec routes it as a rule field — so it rides the shared passthrough
-  // instead of `envelopeEntries`. (`description` stays an envelope entry: the
-  // interpreter does route it, but only where the spec permits it.)
+  // Envelope members no spec ROUTES have to be overridden on the built statement
+  // and spread over the emitted call instead.
+  //
+  // `disabled` is always in this position: every statement carries it and no spec
+  // routes it as a rule field. `description` is only sometimes — the interpreter
+  // routes it where the spec's envelope permits it (which reads better, as a
+  // member of the args object), and those specs already emitted it as an envelope
+  // entry above. Every OTHER spec stored a description it could not re-author, so
+  // an annotated `precondition`, `send_email`, `setheader`, or `template_string`
+  // degraded to `raw()` purely for carrying a comment.
   const passthrough = envelopePassthrough(stored);
-  const disabledOverride =
-    passthrough.overrides.disabled === true ? { disabled: true as const } : {};
-  const disabledEntry = passthrough.entries.filter(([name]) => name === "disabled");
+  const routesDescription = spec.envelope?.description === true;
+  const overrides = routesDescription
+    ? (({ description: _ignored, ...rest }) => rest)(passthrough.overrides)
+    : passthrough.overrides;
+  const spreadEntries = passthrough.entries.filter(
+    ([name]) => !(routesDescription && name === "description"),
+  );
 
   for (const sPath of SPATHS_BY_NAME.get(stored.name) ?? []) {
     const factory = leafOf(sPath);
@@ -245,7 +255,7 @@ export function decodeFromSpec(ctx: DecodeContext, stored: StackItemXdo): Expr |
 
       let encoded: StackItemXdo;
       try {
-        encoded = encodeStatement({ ...factory(authored), ...disabledOverride });
+        encoded = encodeStatement({ ...factory(authored), ...overrides });
       } catch (error) {
         recordProveAbort(`spec:${sPath}`, stored.name, `factory threw: ${String(error)}`);
         continue;
@@ -258,7 +268,7 @@ export function decodeFromSpec(ctx: DecodeContext, stored: StackItemXdo): Expr |
       ctx.use(CORE_MODULE, "s");
       const args = candidate.length > 0 ? [obj(candidate.map((e) => [e.field, e.expr]))] : [];
       const expression = call(`s.${sPath}`, ...args);
-      return disabledEntry.length > 0 ? spread(expression, disabledEntry) : expression;
+      return spreadEntries.length > 0 ? spread(expression, spreadEntries) : expression;
     }
   }
   return null;

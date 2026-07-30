@@ -155,8 +155,10 @@ const DEFAULT_CONTEXT_SIMPLE_EXTERNAL = {
  */
 export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
   switch (key) {
+    // An empty `mocks` arrives as `[]` from the engine and `{}` from the SDK — the
+    // empty-associative-collection artifact again. Both mean "no mocks".
     case "mocks":
-      return isEmptyObject(v);
+      return isEmptyObject(v) || isEmptyArray(v);
     case "runtime":
       return v === null;
     case "settings_registry":
@@ -305,6 +307,9 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     // Generated-asset visibility, declared to default public wherever it appears.
     case "access":
       return v === "public";
+    // A precondition's error class, declared to default to the standard error.
+    case "error_type":
+      return v === "standard";
     case "external":
       return deepEqual(normalize(v), normalize(DEFAULT_CONTEXT_EXTERNAL));
     case "simpleExternal":
