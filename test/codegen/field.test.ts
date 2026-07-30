@@ -172,14 +172,45 @@ describe("decodeField — catalog coverage", () => {
   });
 
   it("preserves a stored key no authoring surface can produce, via rawField", () => {
-    const stored = { ...encodeField("x", "text", {}, COLUMN_CONTEXT), merge: true };
+    // `override` is encoder-fixed with no authoring option, so a field that sets it
+    // cannot come back as any catalog call or descriptor — it rides through
+    // `rawField()` byte-for-byte and is reported by name (R9).
+    const stored = { ...encodeField("x", "text", {}, COLUMN_CONTEXT), override: ["x"] };
     const ctx = new DecodeContext();
     const decoded = decodeField(ctx, refsFor(), stored, "f");
     const source = printExpr(decoded.expr);
     expect(source).toContain("rawField(");
     const back = evaluate(source);
     expect(encodeField("x", back.type, back.options, COLUMN_CONTEXT)).toEqual(stored);
-    expect(ctx.report.entries[0]!.detail).toContain("merge");
+    expect(ctx.report.entries[0]!.detail).toContain("override");
+  });
+
+  it("recovers merge and hidden as a readable catalog call, not rawField", () => {
+    // These two were encoder-fixed, and together they were the largest single cause
+    // of `rawField()` in the 187-workspace sweep — 584 fields carry `merge: true`
+    // with a `hidden` list beside it. They are authorable options now, so the field
+    // comes back readable AND byte-identical.
+    for (const hidden of [["created_at"], [""], ["created_at", "updated_at"]]) {
+      const stored = { ...encodeField("x", "text", {}, COLUMN_CONTEXT), merge: true, hidden };
+      const ctx = new DecodeContext();
+      const source = printExpr(decodeField(ctx, refsFor(), stored, "f").expr);
+      expect(source).not.toContain("rawField(");
+      expect(source).toContain("merge: true");
+      const back = evaluate(source);
+      // Byte-identical, including a `[""]` entry — reproduced verbatim rather than
+      // interpreted, so nothing depends on what an empty entry MEANS.
+      expect(encodeField("x", back.type, back.options, COLUMN_CONTEXT)).toEqual(stored);
+      expect(ctx.report.entries).toEqual([]);
+    }
+  });
+
+  it("leaves an unmerged, unhidden field's source untouched", () => {
+    // The paired negative: the two new options must not appear on the fields that
+    // do not set them, which is nearly all of them.
+    const stored = encodeField("x", "text", {}, COLUMN_CONTEXT);
+    const source = printExpr(decodeField(new DecodeContext(), refsFor(), stored, "f").expr);
+    expect(source).not.toContain("merge");
+    expect(source).not.toContain("hidden");
   });
 
   it("reports a disabled method instead of dropping it", () => {
@@ -313,20 +344,20 @@ describe("decodeField — golden fixtures", () => {
   });
 
   it("round-trips a column no authoring surface can produce, verbatim", () => {
-    // `merge` is encoder-fixed with no authoring option, so a column that sets
+    // `override` is encoder-fixed with no authoring option, so a column that sets
     // it cannot come back as any catalog call or descriptor — it rides through
     // `rawField()` byte-for-byte and is reported by name (R9). No fixture column
     // sets one, so the case is constructed rather than found.
     const column = {
       ...(readFixture("fields/enum-action.json") as FieldXdo),
-      merge: true,
+      override: ["action"],
     };
     const ctx = new DecodeContext();
     const source = printExpr(decodeField(ctx, refsFor(), column, "f").expr);
     expect(source).toContain("rawField(");
     const back = evaluate(source);
     expect(encodeField(column.name, back.type, back.options, COLUMN_CONTEXT)).toEqual(column);
-    expect(ctx.report.entries[0]!.detail).toContain("merge");
+    expect(ctx.report.entries[0]!.detail).toContain("override");
   });
 });
 

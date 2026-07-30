@@ -53,9 +53,18 @@ const STRIP_KEYS = new Set([
 function isEmptyObject(v: unknown): boolean {
   return v !== null && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0;
 }
-/** True for the two interchangeable "no customization" forms: `""` and `{}`. */
+/**
+ * True for the interchangeable "no customization" forms: `""`, `{}`, and `[]`.
+ *
+ * `customize` is an associative map of column name → overrides, and an empty
+ * associative collection serializes as a JSON **array** — the same artifact
+ * already absorbed for `mocks` and an empty `context`. Missing the `[]` spelling
+ * here was the single largest cause of `rawField()` in the sweep: 842 of 1,885
+ * fields, 45% of a cluster the plan had classified as a field-authoring design
+ * question rather than a canonicalization gap.
+ */
 function isEmptyCustomize(v: unknown): boolean {
-  return v === "" || isEmptyObject(v);
+  return v === "" || isEmptyObject(v) || isEmptyArray(v);
 }
 function isEmptyArray(v: unknown): boolean {
   return Array.isArray(v) && v.length === 0;
