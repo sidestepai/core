@@ -364,7 +364,7 @@ Non-obvious authoring rules:
   tools over MCP (auth is per-tool — no server-level gate); `agent({...})` carries a
   typed `llm` block. Their `tools` take a `tool()` handle (or name), resolved to the
   tool's guid like the call family; a raw numeric `id` is an escape hatch.
-- **`task.schedule` is an array** of `{ startsOn, freq?, repeatEnabled?, endsOn? }`
+- **`task.schedule` is an array** of `{ startsOn, freq?, repeatEnabled?, endsOn?, endsEnabled? }`
   (`ScheduleDef[]`), not a single `{ type, value }`. `freq` is seconds; `startsOn`/
   `endsOn` are **ISO-8601 string** timestamps (`"2026-01-01T00:00:00Z"`), not epoch
   numbers (passing `0` is a type error).
@@ -436,7 +436,7 @@ omit it and it derives from `name` (set it to survive a rename).
   - `cors?`: `{ mode?, allowOrigins?: string[], allowHeaders?: string[], allowCredentials?, maxAge?, allowMethods?: { get?, post?, put?, patch?, delete?, head? } }`.
 - `defineFunction`/`query`/`apiGroup` above cover the queries+tables core; the five below are the "reach past that" primitives (agents, tools, tasks, middleware, MCP servers). Same envelope conventions (`guid?`, `description?`, `docs?`, `tags?`, `history?`) unless noted.
 - `task({ name, guid?, description?, docs?, datasource?, active?, tags?, history?, schedule?, stack?, middleware? })` — a scheduled background job (function-like `stack`, no `input`/`response`).
-  - `schedule?`: a `ScheduleDef[]` (NOT a single object) — `{ startsOn, freq?, repeatEnabled?, endsOn? }`. `startsOn`/`endsOn` are **ISO-8601 string** timestamps (`"2026-01-01T00:00:00Z"`), not epoch numbers; `freq` is the repeat interval **in seconds** (default `86400` = daily); `endsOn` present ⇒ the schedule has an end. Deploys but does NOT fire in the sandbox (see the sandbox NOTE above).
+  - `schedule?`: a `ScheduleDef[]` (NOT a single object) — `{ startsOn, freq?, repeatEnabled?, endsOn?, endsEnabled? }`. `startsOn`/`endsOn` are **ISO-8601 string** timestamps (`"2026-01-01T00:00:00Z"`), not epoch numbers; `freq` is the repeat interval **in seconds** (default `86400` = daily); `endsOn` present ⇒ the schedule has an end. `endsEnabled?` defaults to that and is recovery-only — state it to reproduce a stored schedule that remembers an end date with the gate OFF. Deploys but does NOT fire in the sandbox (see the sandbox NOTE above).
 - `middleware({ name, guid?, description?, docs?, resultStrategy?, exceptionPolicy?, tags?, history?, input?, stack?, response? })` — a pre/post interceptor (function-like `stack`); attach it via a host's `middleware: { pre, post }`.
   - `resultStrategy?`: `"merge" | "replace"` (default `merge`) — how the middleware `response` folds into the host's.
   - `exceptionPolicy?`: `"silent" | "rethrow" | "critical"` (default `"silent"` — a throw is SWALLOWED, so a guard is NOT enforced). A rate-limit/auth guard wants `"rethrow"` (throw aborts the request, surfaces the status); `"critical"` also skips the `post` chain.

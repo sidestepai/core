@@ -19,7 +19,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { decodeBundle } from "../../src/codegen/index.js";
-import { workspace, defineFunction, apiGroup, s, c } from "../../src/index.js";
+import { workspace, defineFunction, apiGroup, task, s, c } from "../../src/index.js";
 
 /** A bundle with one function and one API group, both at their history default. */
 function bundle(): { payload: Record<string, unknown> } {
@@ -83,5 +83,58 @@ describe("history decode — an inheriting block is the default, not an unauthor
     const named = historyProblems(project);
     expect(named).toHaveLength(1);
     expect(named[0]!.category).toBe("expected-omission");
+  });
+});
+
+/**
+ * A task's schedule end date, which four real tasks lost on the way back.
+ *
+ * `endsOn` drove BOTH stored members — `ends.on` and `ends.enabled` — so a
+ * schedule whose end date is switched off but still remembered had no authored
+ * form. The decoder dropped it (the gate was off) and the encoder then refilled
+ * `ends.on` from `startsOn`, so the pulled task re-exported with a DIFFERENT end
+ * date rather than a missing one. That is the same one-derivation-two-members
+ * shape as the query paging gate, and it is fixed the same way: an additive
+ * override that defaults to the derivation, stated only when the two disagree.
+ */
+describe("task schedule decode — a disabled end date is still carried", () => {
+  /** Decode a real task after rewriting its stored `repeat.ends` block. */
+  function decodeSchedule(ends: { enabled: boolean; on: string }, repeatEnabled = false) {
+    const b = workspace("w")
+      .registerTasks([
+        task({
+          name: "nightly",
+          stack: [s.set_var("x", c.int(1))],
+          schedule: [{ startsOn: STARTS, freq: 86400, repeatEnabled }],
+        }),
+      ])
+      .export() as unknown as { payload: Record<string, unknown> };
+    const stored = (b.payload.task as Array<{ schedule: Array<{ repeat: Record<string, unknown> }> }>)[0]!;
+    stored.schedule[0]!.repeat.ends = ends;
+    return decodeBundle(b).files.map((f) => f.contents).join("\n");
+  }
+
+  const STARTS = "2022-05-27 22:31:04+0000";
+
+  it("recovers a remembered end date sitting behind a disabled gate", () => {
+    const source = decodeSchedule({ enabled: false, on: "2022-05-27 22:30:04+0000" });
+    expect(source).toContain('endsOn: "2022-05-27 22:30:04+0000"');
+    // Without the gate the encoder would read that date as switching ends ON.
+    expect(source).toContain("endsEnabled: false");
+  });
+
+  it("says neither when the stored end date is the encoder's own filler", () => {
+    // The common case, and the reason the override stays invisible: an unset end
+    // date is stored as `on: <starts_on>` with the gate off, which the
+    // derivation already reproduces exactly.
+    const source = decodeSchedule({ enabled: false, on: STARTS });
+    expect(source).not.toContain("endsOn");
+    expect(source).not.toContain("endsEnabled");
+  });
+
+  it("states only the date when the gate is genuinely on", () => {
+    const source = decodeSchedule({ enabled: true, on: "2023-01-01 00:00:00+0000" }, true);
+    expect(source).toContain('endsOn: "2023-01-01 00:00:00+0000"');
+    expect(source).not.toContain("endsEnabled");
   });
 });

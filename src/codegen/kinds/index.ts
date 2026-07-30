@@ -952,7 +952,22 @@ function schedule(a: KindDecodeArgs): DefEntry | null {
             // `freq` is never elided: `repeatEnabled` derives from `freq != null`,
             // so dropping it at its default would silently flip `repeat.enabled`.
             repeat.freq !== undefined ? (["freq", lit(repeat.freq)] as DefEntry) : null,
-            repeat.ends?.enabled ? (["endsOn", lit(repeat.ends.on)] as DefEntry) : null,
+            // Carried whenever it is not the encoder's own filler. An unset end
+            // date stores as `on: <starts_on>` with the gate off, which the
+            // derivation reproduces exactly — but a REMEMBERED date behind a
+            // disabled gate is real stored state, and dropping it did not leave
+            // the date missing, it left it silently replaced by `starts_on`.
+            repeat.ends !== undefined &&
+            (repeat.ends.enabled === true || repeat.ends.on !== s.starts_on)
+              ? (["endsOn", lit(repeat.ends.on)] as DefEntry)
+              : null,
+            // Stated only when the stored gate disagrees with `endsOn != null`,
+            // exactly as `repeatEnabled` is below.
+            repeat.ends !== undefined &&
+            repeat.ends.enabled !== true &&
+            repeat.ends.on !== s.starts_on
+              ? (["endsEnabled", lit(false)] as DefEntry)
+              : null,
             // Stated only when the stored flag disagrees with that derivation.
             repeat.enabled !== (repeat.freq !== undefined)
               ? (["repeatEnabled", lit(repeat.enabled ?? false)] as DefEntry)

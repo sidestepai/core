@@ -19,8 +19,14 @@ export interface ScheduleDef {
   /** Repeat frequency in seconds (defaults to 86400 when omitted). */
   freq?: number;
   repeatEnabled?: boolean;
-  /** End timestamp; when present, `ends.enabled` is true. */
+  /** End timestamp; when present, `ends.enabled` defaults to true. */
   endsOn?: string;
+  /**
+   * Whether the end date applies. Defaults to `endsOn != null`; state it only to
+   * represent a stored schedule that REMEMBERS an end date with the gate off —
+   * a state the derivation alone cannot spell, and one real tasks are in.
+   */
+  endsEnabled?: boolean;
 }
 
 export interface TaskDef {
@@ -72,7 +78,7 @@ export function encodeSchedule(def: ScheduleDef): ScheduleXdo {
     starts_on: def.startsOn,
     repeat: {
       enabled: def.repeatEnabled ?? def.freq != null,
-      ends: { enabled: def.endsOn != null, on: def.endsOn ?? def.startsOn },
+      ends: { enabled: def.endsEnabled ?? def.endsOn != null, on: def.endsOn ?? def.startsOn },
       freq: def.freq ?? 86400,
     },
   };
