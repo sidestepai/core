@@ -21,6 +21,7 @@
  * that elision is verified rather than assumed.
  */
 import type { StackItemXdo, TaggedValue } from "../../types/xdo.js";
+import { isDefaultEnvelopeMember } from "../../validate/normalize.js";
 import { arr, lit, obj, type Expr } from "../print.js";
 import { resolveReference } from "../ref-index.js";
 import { decodeValue } from "../value.js";
@@ -37,6 +38,24 @@ function toValue(raw: unknown): TaggedValue | null {
     tag: block.tag as TaggedValue["tag"],
     filters: (Array.isArray(block.filters) ? block.filters : []) as TaggedValue["filters"],
   };
+}
+
+/**
+ * True when a stored `context` member holds the empty default the engine writes
+ * unconditionally, so authoring nothing re-encodes to the same bytes.
+ *
+ * The engine fills `search` / `bind` / `eval` on a query that filters, joins, and
+ * computes nothing; the SDK's encoder omits them (`if (search !== undefined)`).
+ * `normalize` already reconciles that by dropping such a member from **both**
+ * sides, so the only correct reading of one is "not authored" — and the test is
+ * delegated to the normalizer rather than restated here, which is what keeps the
+ * decoder and the comparison it will be judged by from drifting apart.
+ *
+ * Reading them as a filter this decoder failed to parse is what cost 113 of 201
+ * fallen-back `db.query` statements their readability.
+ */
+function isUnauthored(key: string, value: unknown): boolean {
+  return value === undefined || isDefaultEnvelopeMember(key, value);
 }
 
 /** A stored `const:bool` with no filter chain, as a plain boolean. */
@@ -581,7 +600,7 @@ const dbBulkDelete: SpecialDecoder = (a) => {
     runtime.tableAlias = alias.runtime;
   }
 
-  if (context.search !== undefined) {
+  if (!isUnauthored("search", context.search)) {
     const where = decodeWhere(a, context.search);
     if (!where) return null;
     entries.push(["where", where.expr]);
@@ -692,14 +711,14 @@ const dbQuery: SpecialDecoder = (a) => {
     runtime.returnType = returnType;
   }
 
-  if (context.search !== undefined) {
+  if (!isUnauthored("search", context.search)) {
     const where = decodeWhere(a, context.search);
     if (!where) return null;
     entries.push(["where", where.expr]);
     runtime.where = where.runtime;
   }
 
-  if (context.bind !== undefined) {
+  if (!isUnauthored("bind", context.bind)) {
     if (!Array.isArray(context.bind))
       return declineHere("db.query: context.bind is present but not an array");
     const bindExprs: Expr[] = [];
@@ -736,14 +755,8 @@ const dbQuery: SpecialDecoder = (a) => {
     runtime.bind = bindRuntime;
   }
 
-  if (context.eval !== undefined) {
-    // Emptiness is checked here rather than inside `decodeEvals`, whose null also
-    // means "no evals" at the aggregate call sites — so only the fatal reading of
-    // it gets a decline, and only one per statement.
-    const list = context.eval;
-    if (!Array.isArray(list) || list.length === 0)
-      return declineHere("db.query: context.eval is present but empty");
-    const evals = decodeEvals(a, list);
+  if (!isUnauthored("eval", context.eval)) {
+    const evals = decodeEvals(a, context.eval);
     if (!evals) return null;
     entries.push(["eval", evals.expr]);
     runtime.eval = evals.runtime;

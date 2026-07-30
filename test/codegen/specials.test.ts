@@ -727,6 +727,83 @@ describe("db.query", () => {
       }),
     );
   });
+
+  /**
+   * The engine writes `search` / `bind` / `eval` unconditionally at their empty
+   * defaults; the SDK's encoder omits them. `normalize` reconciles that by
+   * dropping such a member from both sides, so the only correct reading of one is
+   * "not authored" — but the decoder used to read an empty `search` as a filter it
+   * had failed to parse. Measured on 187 real workspaces, that single
+   * misinterpretation accounted for 113 of 201 fallen-back `db.query` statements.
+   *
+   * Each case here pairs with a negative one proving a POPULATED member is still
+   * decoded rather than swept up by the same rule.
+   */
+  describe("the engine's empty context members", () => {
+    /** A stored query with each member spelled the way the engine persists it. */
+    function engineForm(overrides: Record<string, unknown> = {}): StackItemXdo {
+      const stored = encodeStatement(s.db.query({ table: POSTS, as: "rows" }));
+      return {
+        ...stored,
+        context: {
+          ...(stored.context as Record<string, unknown>),
+          search: { expression: [] },
+          bind: [],
+          eval: [],
+          ...overrides,
+        },
+      } as StackItemXdo;
+    }
+
+    function decode(stored: StackItemXdo): string {
+      return printExpr(decodeStatement(new DecodeContext(), DB_REFS, stored));
+    }
+
+    it("reads an empty search, bind, and eval as unauthored rather than unreadable", () => {
+      const stored = engineForm();
+      const source = decode(stored);
+      expect(source).toContain("s.db.query(");
+      expect(source).not.toContain("raw(");
+      // None of the three may be restated — an empty member carries no information.
+      for (const key of ["where:", "bind:", "eval:"]) expect(source).not.toContain(key);
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+    });
+
+    it("still decodes a populated search on an otherwise engine-spelled query", () => {
+      const withWhere = encodeStatement(
+        s.db.query({ table: POSTS, where: expr(col("published"), "=", c.bool(true)), as: "rows" }),
+      );
+      const stored = engineForm({
+        search: (withWhere.context as { search?: unknown }).search,
+      });
+      const source = decode(stored);
+      expect(source).toContain("where: expr(");
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+    });
+
+    it("still decodes a populated eval on an otherwise engine-spelled query", () => {
+      const withEval = encodeStatement(
+        s.db.query({ table: POSTS, eval: [{ name: "score", as: "s" }], as: "rows" }),
+      );
+      const stored = engineForm({ eval: (withEval.context as { eval?: unknown }).eval });
+      const source = decode(stored);
+      expect(source).toContain("eval:");
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+    });
+
+    it("falls back to raw() rather than dropping a search it cannot read", () => {
+      // The load-bearing negative: the rule above must not become a licence to
+      // discard a filter. A malformed operand is unreadable, and a query whose
+      // filter cannot be recovered has to stay exact-but-unreadable.
+      const stored = engineForm({
+        search: { expression: [{ statement: { op: "=", left: {}, right: {} } }] },
+      });
+      const source = decode(stored);
+      expect(source).toContain("raw(");
+      expect(source).not.toContain("s.db.query(");
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+    });
+  });
 });
 
 describe("AI agent and cloud jobs", () => {
