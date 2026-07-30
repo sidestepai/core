@@ -46,7 +46,12 @@ import { measureCommittedLlms } from "../../scripts/measure-llms.js";
 // `f.file` and get nothing), plus `db.get_by_id` and `security.create_guid`,
 // which are distinct stored statements from their near-neighbours `db.get` and
 // `security.create_uuid` and cannot be inferred from them.
-const CEILING_TOKENS = 28_150;
+// Raised again from 28.15k for `input.dbLink`. It earns prose rather than a
+// catalog row because it is the one input whose ENTRY IS NOT THE INPUT: the
+// engine expands one dblink into one input per column of the linked table, so an
+// agent that reads it by the entry's own name gets nothing and has no way to
+// discover why. The 718 of them in the sweep are all `merge: true`.
+const CEILING_TOKENS = 28_250;
 
 describe("llms.txt token budget", () => {
   it("stays under the bloat-tripwire ceiling", () => {

@@ -279,6 +279,22 @@ function storedChildren(stored: FieldXdo): FieldXdo[] {
 }
 
 /** The `@`-method table reference a `tableRef` column carries, if this is one. */
+/**
+ * The table a **database-link** input points at, or null when the field is not
+ * one.
+ *
+ * The stored type is the table's identity with `_mvpschema` appended — the id in
+ * the editor, the guid in an export, the same substitution `context.dbo.id`
+ * gets. The engine splits on that suffix and expands the link into one input per
+ * column of the named table.
+ */
+function dbLinkTableGuid(stored: FieldXdo): string | null {
+  const suffix = "_mvpschema";
+  if (typeof stored.type !== "string" || !stored.type.endsWith(suffix)) return null;
+  const guid = stored.type.slice(0, -suffix.length);
+  return guid === "" ? null : guid;
+}
+
 function tableRefGuid(stored: FieldXdo): string | null {
   if (stored.type !== "int" && stored.type !== "uuid") return null;
   const last = stored.methods?.[stored.methods.length - 1];
@@ -405,6 +421,22 @@ export function decodeField(
 
   /** The catalog the emitted call resolves against at evaluation time. */
   const catalog = (surface === "input" ? input : f) as unknown as Record<string, unknown>;
+
+  const dbLinkGuid = dbLinkTableGuid(stored);
+  if (dbLinkGuid !== null && surface === "input") {
+    // `merge` is what makes the engine expand the link, so `input.dbLink` forces
+    // it — emitting it back would be redundant, and it is not authorable here.
+    const { merge: _merge, ...rest } = opts;
+    const restExpr = optionsExpr(rest as FieldOptions);
+    const args: Expr[] = [
+      resolveReference(ctx, refs, dbLinkGuid, { ...resolve, unresolved: "object-ref" }),
+    ];
+    if (restExpr.kind === "object" && restExpr.entries.length > 0) args.push(restExpr);
+    const decoded = proven(call(`${ns}.dbLink`, ...args), () =>
+      input.dbLink({ name: "", guid: dbLinkGuid }, rest as never),
+    );
+    if (decoded) return decoded;
+  }
 
   const refGuid = tableRefGuid(stored);
   if (refGuid !== null) {

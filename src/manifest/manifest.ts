@@ -467,6 +467,8 @@ const FIELD_DESCRIPTORS: ReadonlyArray<{
   { name: "attachment", stored: "blob" },
   // Input-only: a raw upload is the request's bytes, not something a table holds.
   { name: "file", stored: "file", inputOnly: true },
+  // Input-only: a column linking a whole table is a foreign key (tableRef).
+  { name: "dbLink", stored: "<tableGuid>_mvpschema", inputOnly: true },
   { name: "geo.point", stored: "geo_point" },
   { name: "geo.multipoint", stored: "geo_multipoint" },
   { name: "geo.linestring", stored: "geo_linestring" },
@@ -1273,6 +1275,9 @@ export function renderLlmsTxt(m: Manifest): string {
     "`input.*` mirrors `f.*` — every column type below is",
     "a legal input (scalars, files `input.image/video/audio/attachment`, `input.geo.*`,",
     "`input.vector(size)`, `input.tableRef(table)`, `input.object(children)`), plus",
+    "`input.dbLink(table)` is the odd one: ONE entry that EXPANDS into one input per",
+    "COLUMN of the linked table, so read them by column name (`inp(\"email\")`), never by",
+    "the entry's own name. `hidden: [\"created_at\"]` drops columns from that expansion.",
     "`input.list(element)` for arrays — wrap any element constructor, e.g.",
     "`input.list(input.text())` or `input.list(input.object({ id: f.int() }))`. Prefer the",
     "typed forms over `input.json()` when the shape is known.",

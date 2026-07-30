@@ -296,6 +296,47 @@ describe("decodeField — inputs", () => {
     expect(identity("avatar", input.file(), "input")).toBe("input.file()");
   });
 
+  it("decodes a database link to input.dbLink, resolving the table to its symbol", () => {
+    // 718 fields across the sweep, every one of them `merge: true` — the flag
+    // that makes the engine EXPAND the link into one input per column. The type
+    // is the table's identity with `_mvpschema` appended, so it is a reference
+    // and must resolve to the table's symbol rather than a raw guid.
+    const guid = "9f3c81a04be27d6510aa4c8831ef25b7";
+    const refs = refsFor({ dbo: [{ name: "users", guid }] });
+    const stored = encodeField(
+      "users__",
+      `${guid}_mvpschema`,
+      { merge: true, hidden: ["created_at"] },
+      INPUT_CONTEXT,
+    );
+    const ctx = new DecodeContext();
+    const decoded = decodeField(ctx, refs, stored, "input", { symbolFor: (t) => t.name });
+    expect(decoded.idiomatic).toBe(true);
+    const source = printExpr(decoded.expr);
+    expect(source).toContain("input.dbLink(users");
+    expect(source).toContain("created_at");
+    // `merge` is forced by the constructor, so echoing it back would be noise.
+    expect(source).not.toContain("merge");
+    expect(source).not.toContain(guid);
+    expect(ctx.report.entries).toHaveLength(0);
+  });
+
+  it("round-trips a database link byte-for-byte", () => {
+    const guid = "9f3c81a04be27d6510aa4c8831ef25b7";
+    const refs = refsFor({ dbo: [{ name: "users", guid }] });
+    identity("users__", input.dbLink({ name: "users", guid }, { hidden: ["created_at"] }), "input", refs);
+  });
+
+  it("keeps the database link off the column surface", () => {
+    // `excludedTypesForDatabase` rules dblink out as a column: a column linking a
+    // whole table is a foreign key, which is f.tableRef.
+    const guid = "9f3c81a04be27d6510aa4c8831ef25b7";
+    const stored = encodeField("users__", `${guid}_mvpschema`, { merge: true }, COLUMN_CONTEXT);
+    const ctx = new DecodeContext();
+    const decoded = decodeField(ctx, refsFor({ dbo: [{ name: "users", guid }] }), stored, "f");
+    expect(printExpr(decoded.expr)).not.toContain("dbLink");
+  });
+
   it("keeps the upload type off the column surface", () => {
     // There is no `f.file`: a table holds a stored resource, never an upload.
     // Resolving `file` against `f` would emit source that does not evaluate.

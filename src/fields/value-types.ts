@@ -40,6 +40,18 @@ export interface XanoFileUpload {
   readonly __fileUpload?: never;
 }
 
+/**
+ * Marker value of a database-link input (`input.dbLink()`).
+ *
+ * Opaque on purpose: a dblink input does not bind a value of its own. The engine
+ * EXPANDS it into one input per column of the linked table, so a table with
+ * three columns turns one dblink entry into three request inputs. Read those by
+ * their own column names — `inp("email")`, not `inp("user__")`.
+ */
+export interface XanoDbLink {
+  readonly __dbLink?: never;
+}
+
 /** Opaque runtime value of a geo input/column (a GeoJSON-shaped object). */
 export interface XanoGeoJson {
   type: string;

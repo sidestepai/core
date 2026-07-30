@@ -420,6 +420,12 @@
       "inputOnly": true
     },
     {
+      "name": "dbLink",
+      "stored": "<tableGuid>_mvpschema",
+      "methods": [],
+      "inputOnly": true
+    },
+    {
       "name": "geo.point",
       "stored": "geo_point",
       "methods": []

@@ -551,6 +551,9 @@ CJK) are fine, or put the value on an `input.<type>({ default })`, applied at ru
 `input.*` mirrors `f.*` — every column type below is
 a legal input (scalars, files `input.image/video/audio/attachment`, `input.geo.*`,
 `input.vector(size)`, `input.tableRef(table)`, `input.object(children)`), plus
+`input.dbLink(table)` is the odd one: ONE entry that EXPANDS into one input per
+COLUMN of the linked table, so read them by column name (`inp("email")`), never by
+the entry's own name. `hidden: ["created_at"]` drops columns from that expansion.
 `input.list(element)` for arrays — wrap any element constructor, e.g.
 `input.list(input.text())` or `input.list(input.object({ id: f.int() }))`. Prefer the
 typed forms over `input.json()` when the shape is known.
@@ -578,6 +581,7 @@ so `inp("name")` reads already-normalized; don't reroll `var $x = inp("name")|tr
 - `f.audio` (stored `blob_audio`)
 - `f.attachment` (stored `blob`)
 - `input.file` — INPUT ONLY (no `f.` form)
+- `input.dbLink` (stored `<tableGuid>_mvpschema`) — INPUT ONLY (no `f.` form)
 - `f.geo.point` (stored `geo_point`)
 - `f.geo.multipoint` (stored `geo_multipoint`)
 - `f.geo.linestring` (stored `geo_linestring`)

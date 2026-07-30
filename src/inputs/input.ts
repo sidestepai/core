@@ -9,7 +9,9 @@ import { encodeField, INPUT_CONTEXT } from "../fields/field.js";
 import type { FieldOptions, MethodArg, ReadonlyMethods } from "../fields/field.js";
 import { f, toNestedFields } from "../fields/catalog.js";
 import type { FieldMap } from "../fields/catalog.js";
-import type { TypeBrand, BrandValue, FromFieldMap, XanoFileUpload } from "../fields/value-types.js";
+import type { TypeBrand, BrandValue, FromFieldMap, XanoFileUpload, XanoDbLink } from "../fields/value-types.js";
+import { resolveRef } from "../refs/guid.js";
+import type { ObjectRef } from "../refs/guid.js";
 import type {
   TextMethod,
   IntMethod,
@@ -107,6 +109,36 @@ export const input = {
    * friends only when the caller already sends a stored file resource.
    */
   file: makeInput<XanoFileUpload>("file"),
+
+  /**
+   * **Database link** — one input that EXPANDS into one input per column of the
+   * linked table (stored `<tableGuid>_mvpschema`; XanoScript `dblink`). A table
+   * with three columns turns this single entry into three request inputs, so
+   * read them by their own column names: `inp("email")`, not `inp("user__")`.
+   * The expansion is live — adding a column to the table adds an input here.
+   *
+   * `hidden` is how you drop columns from that expansion (`["created_at", "id"]`)
+   * and is the common case in the wild, not an edge case. `merge: true` is what
+   * makes the engine expand rather than nest, so it is forced and cannot be
+   * unset — a dblink that does not merge is not a dblink.
+   *
+   * Input-only: `excludedTypesForDatabase` rules it out as a column, and a
+   * column linking a whole table would be a foreign key — use
+   * {@link f.tableRef} for that.
+   *
+   * By convention the editor names the entry after the table with a trailing
+   * `__` (`user__`), but the name is just the key in your `input:` map and any
+   * name round-trips.
+   */
+  dbLink<const O extends ConstInputOpts<never> = Record<string, never>>(
+    table: ObjectRef,
+    options: O = {} as O,
+  ): InputDescriptor & TypeBrand<XanoDbLink, O> {
+    return {
+      type: `${resolveRef("dbo", table)}_mvpschema`,
+      options: { ...options, merge: true },
+    } as InputDescriptor & TypeBrand<XanoDbLink, O>;
+  },
 
   // --- file resources / geo / vector / table refs (shared with the `f.*` catalog) ---
   /** Image file input (stored `blob_img`). */
