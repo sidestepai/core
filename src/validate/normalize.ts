@@ -302,8 +302,20 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
       return v === false;
     case "documentation":
       return deepEqual(normalize(v), normalize(DEFAULT_DOCUMENTATION));
-    case "cors":
-      return deepEqual(normalize(v), normalize(DEFAULT_CORS));
+    // A CORS block is applied ONLY when its `mode` is `"custom"` — the engine
+    // reads an absent mode as `""`, which is not custom — so a block that does
+    // not say `custom` configures nothing.
+    //
+    // Two spellings therefore mean the same default. The current one says
+    // `mode: "default"`; an older one predates `mode` entirely and carries
+    // `enabled: false`, a key that request path never reads.
+    case "cors": {
+      if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
+      const block = { ...(v as Record<string, unknown>) };
+      if (block["enabled"] === false) delete block["enabled"];
+      block["mode"] ??= "default";
+      return deepEqual(normalize(block), normalize(DEFAULT_CORS));
+    }
     // Both stored spellings of "no middleware": the engine hands an empty
     // associative map back as a JSON array, the same artifact already absorbed
     // for `mocks`, `customize` and an empty `context`. A phase explicitly

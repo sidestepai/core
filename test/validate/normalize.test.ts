@@ -594,6 +594,40 @@ describe("validate normalizer — object-level default envelope members", () => 
     expect(normalize(configured)).toEqual(configured);
   });
 
+  it("reads the LEGACY cors spelling as the same default block", () => {
+    // Two real API groups store a block that predates `mode` and spells "off" as
+    // `enabled: false`. The engine applies a CORS block only when its `mode` is
+    // `"custom"` — reading an absent mode as `""` — so a block with no mode is
+    // inert, exactly like `mode: "default"`. `enabled` is not a key that handler
+    // reads at all.
+    const legacy = {
+      cors: {
+        maxAge: 0,
+        enabled: false,
+        allowHeaders: [],
+        allowMethods: { delete: false, get: false, head: false, patch: false, post: false, put: false },
+        allowOrigins: [],
+        allowCredentials: false,
+      },
+    };
+    expect(normalize(legacy)).toEqual({});
+  });
+
+  it("does not let the legacy spelling swallow a CUSTOM cors block", () => {
+    const custom = {
+      cors: {
+        mode: "custom",
+        enabled: false,
+        maxAge: 3600,
+        allowHeaders: [],
+        allowMethods: { delete: false, get: true, head: false, patch: false, post: true, put: false },
+        allowOrigins: ["www.google.com"],
+        allowCredentials: true,
+      },
+    };
+    expect(normalize(custom)).toEqual(custom);
+  });
+
   it("reads an empty middleware block through BOTH of its stored spellings", () => {
     // The empty-associative-collection artifact again (`mocks`, `customize`, an
     // empty `context`): the engine hands an empty map back as a JSON array,
