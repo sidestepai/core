@@ -546,8 +546,19 @@ export function normalize<T>(value: T): T {
       //
       // Only `true`/`false` under a `value` key. A boolean anywhere else keeps its
       // type and is still compared.
+      // `operand` is the same tagged value under the name a COMPARISON gives it
+      // (`statement.left` / `statement.right`), and the corpus is inconsistent
+      // there for the same reason: a real workspace stores `const:int` `0` as the
+      // number while the SDK writes the documented string.
+      //
+      // Leaving it out was a silent hole rather than a missing nicety. The
+      // decoders hand `prove` the STORED value object as the factory argument, so
+      // a re-encode reproduces the number and the proof passes — while the source
+      // it emits says `c.int(0)`, which encodes `"0"`. The proof therefore could
+      // not see a difference that `verify` (comparing a real re-export) reports.
       out[k] =
-        (k === "value" || k === "temperature") && (typeof v === "number" || typeof v === "boolean")
+        (k === "value" || k === "operand" || k === "temperature") &&
+        (typeof v === "number" || typeof v === "boolean")
           ? String(v)
           : normalize(v);
     }

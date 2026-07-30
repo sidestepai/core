@@ -467,3 +467,40 @@ describe("validate normalizer — return-block paging defaults", () => {
     expect(normalize(permissions)).toEqual(permissions);
   });
 });
+
+/**
+ * A comparison's operands are tagged values under a different key, and the corpus
+ * serializes a `const:int` there as a number or a string interchangeably.
+ *
+ * This one was a silent hole rather than a missing nicety, which is why it has
+ * its own block. The statement decoders hand `prove` the STORED value object as
+ * the factory argument, so a re-encode reproduces whatever the workspace stored
+ * and the proof passes — while the source those decoders emit says `c.int(0)`,
+ * which encodes `"0"`. The proof could not see a difference that a real
+ * re-export does, and 5 queries reported a round-trip mismatch because of it.
+ */
+describe("validate normalizer — comparison operand serialization", () => {
+  it("coerces a numeric operand to its string form, like a tagged `value`", () => {
+    expect(normalize({ right: { tag: "const:int", operand: 0, filters: [] } })).toEqual(
+      normalize({ right: { tag: "const:int", operand: "0", filters: [] } }),
+    );
+  });
+
+  it("still compares operands that genuinely differ", () => {
+    // The paired negative: equalizing the SPELLING must not equalize the VALUE.
+    expect(normalize({ right: { tag: "const:int", operand: 0 } })).not.toEqual(
+      normalize({ right: { tag: "const:int", operand: 1 } })
+    );
+    expect(normalize({ left: { tag: "input", operand: "a" } })).not.toEqual(
+      normalize({ left: { tag: "input", operand: "b" } })
+    );
+  });
+
+  it("leaves a non-numeric operand exactly as stored", () => {
+    // (An empty `filters` drops by its own pre-existing rule; the operand itself
+    // is what this pins.)
+    expect(normalize({ left: { tag: "var", operand: "api_1.response.status", filters: [] } })).toEqual(
+      { left: { tag: "var", operand: "api_1.response.status" } },
+    );
+  });
+});
