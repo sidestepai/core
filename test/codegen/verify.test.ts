@@ -37,6 +37,55 @@ describe("verifyBundles", () => {
     expect(result.mismatches[0]).toMatchObject({ payloadKey: "function", name: "signup" });
   });
 
+  it("names the keys inside the object that differ, not just the object", () => {
+    // The per-object message was the same shape of useless the workspace section
+    // already outgrew: a real object carries hundreds of nested keys and
+    // "re-exports differently" named none of them. A full sweep produced 1,716
+    // rows saying exactly that, which is a cluster nobody can cluster.
+    const result = verifyBundles(
+      bundle([{ name: "signup", description: "hi", auth: { table: "user" } }]),
+      bundle([{ name: "signup", description: "", auth: { table: "admin" } }]),
+    );
+    expect(result.mismatches[0]!.paths).toEqual([
+      '.auth.table: encoded="admin" stored="user"',
+      // `normalize` drops an empty `description`, so the regenerated side has no
+      // such key at all — the path says so rather than claiming an empty string.
+      '.description: MISSING from encoded (stored="hi")',
+    ]);
+    expect(result.mismatches[0]!.detail).toContain(".auth.table");
+  });
+
+  it("names the paths under a differing section key too", () => {
+    const result = verifyBundles(
+      { payload: { settings: { name: "ws", limits: { rate: 1 } } } },
+      { payload: { settings: { name: "ws", limits: { rate: 2 } } } },
+    );
+    expect(result.mismatches[0]).toMatchObject({ payloadKey: "settings", name: "limits" });
+    expect(result.mismatches[0]!.paths).toEqual([".rate: encoded=2 stored=1"]);
+  });
+
+  it("leaves paths empty when the object is simply absent from one side", () => {
+    // A missing object has no key-level disagreement to report — the whole
+    // object IS the finding, and inventing paths for it would dilute clustering.
+    const result = verifyBundles(bundle([{ name: "signup" }]), bundle([]));
+    expect(result.mismatches[0]!.paths).toEqual([]);
+  });
+
+  it("compares the NORMALIZED objects, so canonicalization is not re-reported", () => {
+    // The paths must agree with the verdict that produced them: `normalize`
+    // strips server columns, so a difference it elides is not a mismatch and
+    // must not appear as a path either. Reporting the raw diff here would make
+    // every object list `id` and hide the key that actually failed.
+    const result = verifyBundles(
+      bundle([{ name: "signup", id: 1, description: "hi" }]),
+      bundle([{ name: "signup", id: 999, description: "" }]),
+    );
+    expect(result.mismatches).toHaveLength(1);
+    // `id` differs by 998 and is absent from the paths — it is a stripped server
+    // column, so the comparison never saw it and neither does the report.
+    expect(result.mismatches[0]!.paths).toEqual(['.description: MISSING from encoded (stored="hi")']);
+  });
+
   it("catches an object the generated tree dropped entirely", () => {
     // The failure mode a payload-wide deep-equal would also catch, but without
     // saying which object went missing — this is the common real-world case (an

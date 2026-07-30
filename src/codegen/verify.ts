@@ -17,6 +17,7 @@
  * the browser-safe authoring entry.
  */
 import { normalize } from "../validate/normalize.js";
+import { diffKeyPaths } from "./prove-diff.js";
 import type { DecodeReport } from "./report.js";
 import { sectionOmission, workspaceKeyOmission, type OmissionReason } from "./omissions.js";
 
@@ -27,6 +28,13 @@ export interface VerifyMismatch {
   readonly name: string;
   /** What differs, in one line. */
   readonly detail: string;
+  /**
+   * The key paths inside the object that disagree, as `diffKeyPaths` spells them.
+   *
+   * Empty when the object is present on only one side — there is no key-level
+   * disagreement to name, and the absence is itself the whole finding.
+   */
+  readonly paths: readonly string[];
 }
 
 /**
@@ -77,6 +85,31 @@ function deepEqual(a: unknown, b: unknown): boolean {
   return true;
 }
 
+/**
+ * The key paths where a regenerated object disagrees with its source.
+ *
+ * Diffed **after** `normalize()`, deliberately: the paths have to agree with the
+ * verdict that produced them. A raw diff would list every server column the
+ * comparison already elides — `id` on every object — and bury the key that
+ * actually failed.
+ */
+function mismatchPaths(source: unknown, regenerated: unknown): string[] {
+  return diffKeyPaths(normalize(regenerated), normalize(source));
+}
+
+/**
+ * One line naming both what happened and where.
+ *
+ * "re-exports differently than the source bundle" was true and useless at scale:
+ * a full sweep produced 1,716 rows carrying that sentence and nothing else, so
+ * the largest remaining category was also the only one that could not be
+ * clustered. The paths are what make a row actionable — the same argument that
+ * already split the workspace section into per-key rows.
+ */
+function withPaths(detail: string, paths: readonly string[]): string {
+  return paths.length === 0 ? detail : `${detail}: ${paths.join("; ")}`;
+}
+
 /** A plain object (not an array, not null) — the shape worth comparing per key. */
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -108,7 +141,13 @@ function verifySection(
 
   // A scalar (`partial`) has no keys to report against — compare it whole.
   if (!isPlainObject(before) || !isPlainObject(after)) {
-    mismatches.push({ payloadKey: key, name: "(section)", detail: "section does not match the source bundle" });
+    const paths = mismatchPaths(before, after);
+    mismatches.push({
+      payloadKey: key,
+      name: "(section)",
+      detail: withPaths("section does not match the source bundle", paths),
+      paths,
+    });
     return;
   }
 
@@ -134,15 +173,22 @@ function verifySection(
       omissions.push({ payloadKey: key, name, reason: policy.reason, detail: policy.detail });
       continue;
     }
+    // Only a key present on BOTH sides has paths to name; a one-sided key is
+    // reported whole, exactly like a one-sided object.
+    const paths =
+      right === undefined || left === undefined ? [] : mismatchPaths(left, right);
     mismatches.push({
       payloadKey: key,
       name,
-      detail:
+      detail: withPaths(
         right === undefined
           ? "present in the source bundle but not in the generated tree"
           : left === undefined
             ? "present in the generated tree but not in the source bundle"
             : "re-exports differently than the source bundle",
+        paths,
+      ),
+      paths,
     });
   }
 }
@@ -184,16 +230,27 @@ export function verifyBundles(source: unknown, regenerated: unknown): VerifyResu
           omissions.push({ payloadKey: key, name, reason: policy.reason, detail: policy.detail });
           continue;
         }
-        mismatches.push({ payloadKey: key, name, detail: "missing from the generated tree" });
+        mismatches.push({ payloadKey: key, name, detail: "missing from the generated tree", paths: [] });
         continue;
       }
       if (!deepEqual(normalize(original), normalize(afterByName.get(name)))) {
-        mismatches.push({ payloadKey: key, name, detail: "re-exports differently than the source bundle" });
+        const paths = mismatchPaths(original, afterByName.get(name));
+        mismatches.push({
+          payloadKey: key,
+          name,
+          detail: withPaths("re-exports differently than the source bundle", paths),
+          paths,
+        });
       }
     }
     for (const name of afterByName.keys()) {
       if (!beforeByName.has(name)) {
-        mismatches.push({ payloadKey: key, name, detail: "present in the generated tree but not in the source bundle" });
+        mismatches.push({
+          payloadKey: key,
+          name,
+          detail: "present in the generated tree but not in the source bundle",
+          paths: [],
+        });
       }
     }
   }
