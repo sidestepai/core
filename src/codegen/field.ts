@@ -536,9 +536,27 @@ export function decodeResponse(
   }
 
   const single = stored.length === 1 && stored[0]!.name === "";
-  return single
-    ? decodeValue(ctx, asValue(stored[0]!))
-    : obj(stored.map((item) => [item.name, ctx.at(`response.${item.name}`, () => decodeValue(ctx, asValue(item)))]));
+  if (single) return decodeValue(ctx, asValue(stored[0]!));
+
+  // Everything else is emitted as a RECORD, which is keyed by name — so it can
+  // only carry items whose names are non-empty and distinct. Two items sharing a
+  // name collapse into one, and a blank name is a name items share: one real
+  // query stores four items, three of them unnamed, and came back as two with
+  // the survivors' tags and values shuffled onto each other.
+  const names = stored.map((item) => item.name);
+  const keyed = names.every((name) => name !== "") && new Set(names).size === names.length;
+  if (!keyed) {
+    ctx.use(CODEGEN_MODULE, "rawResponse");
+    ctx.problem(
+      "raw-fallback",
+      `the response has ${stored.length} items whose names do not key it (blank or repeated), which the record form cannot carry; emitted verbatim via rawResponse()`,
+    );
+    return call("rawResponse", lit(stored));
+  }
+
+  return obj(
+    stored.map((item) => [item.name, ctx.at(`response.${item.name}`, () => decodeValue(ctx, asValue(item)))]),
+  );
 }
 
 /** Re-exported so kind decoders share one structural comparison. */

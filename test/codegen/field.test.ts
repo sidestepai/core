@@ -22,6 +22,7 @@ import { c, ref, withFilters } from "../../src/values/value.js";
 import { fl } from "../../src/values/generated/filters.generated.js";
 import { rawValue } from "../../src/values/raw-value.js";
 import { rawResponse } from "../../src/responses/raw-response.js";
+import type { ResultItemXdo } from "../../src/types/xdo.js";
 import { rawField } from "../../src/fields/raw-field.js";
 import { DecodeContext } from "../../src/codegen/context.js";
 import { printExpr } from "../../src/codegen/print.js";
@@ -427,6 +428,42 @@ describe("decodeResponse", () => {
     expect(source).toContain("rawResponse(");
     expect(ctx.report.entries[0]!.category).toBe("raw-fallback");
     expect(encodeResponse(evaluateValue(source))).toEqual(stored);
+  });
+
+  it("carries a result[] with more than one UNNAMED item through rawResponse()", () => {
+    // The record form is keyed by name, so two items sharing a name collapse
+    // into one — and a blank name is the name three of these share. One real
+    // query stores four items, three of them unnamed: it came back as TWO,
+    // silently, with the survivors' tags and values shuffled.
+    const stored = [
+      { name: "", tag: "var", value: "hello_1", filters: [], _xsid: "", disabled: false },
+      { name: "", tag: "input", value: "ab", filters: [], _xsid: "", disabled: false },
+      { name: "func_1", tag: "var", value: "func_1", filters: [], _xsid: "", disabled: false },
+    ] as const satisfies readonly ResultItemXdo[];
+    const ctx = new DecodeContext();
+    const source = printExpr(decodeResponse(ctx, stored)!);
+    expect(source).toContain("rawResponse(");
+    expect(ctx.report.entries[0]!.category).toBe("raw-fallback");
+    expect(encodeResponse(evaluateValue(source))).toEqual(stored);
+  });
+
+  it("carries a result[] with a REPEATED name through rawResponse()", () => {
+    const stored = [
+      { name: "id", tag: "var", value: "a", filters: [], _xsid: "", disabled: false },
+      { name: "id", tag: "var", value: "b", filters: [], _xsid: "", disabled: false },
+    ] as const satisfies readonly ResultItemXdo[];
+    const ctx = new DecodeContext();
+    const source = printExpr(decodeResponse(ctx, stored)!);
+    expect(source).toContain("rawResponse(");
+    expect(encodeResponse(evaluateValue(source))).toEqual(stored);
+  });
+
+  it("still uses the readable record form when every name is distinct", () => {
+    // The paired negative — the raw path must not swallow the common case.
+    const stored = encodeResponse({ id: ref("user.id"), total: ref("n") });
+    const ctx = new DecodeContext();
+    expect(printExpr(decodeResponse(ctx, stored)!)).not.toContain("rawResponse(");
+    expect(ctx.report.entries).toEqual([]);
   });
 
   it("does NOT fall back for a non-empty _xsid, which is engine-generated", () => {
