@@ -20,6 +20,7 @@ import { normalize } from "../../validate/normalize.js";
 import { CORE_MODULE, type DecodeContext } from "../context.js";
 import { call, lit, spread, type Expr } from "../print.js";
 import { deepEqual } from "../field.js";
+import { recordProveAbort, recordProveDecline } from "../prove-diff.js";
 import type { RefIndex, ResolveOptions } from "../ref-index.js";
 
 /** What a special decoder is handed. */
@@ -79,10 +80,14 @@ export function prove(
   try {
     const built = factory(...runtime);
     encoded = encodeStatement(annotated ? { ...built, description } : built);
-  } catch {
+  } catch (error) {
+    recordProveAbort("special", stored.name, `factory threw: ${String(error)}`);
     return null;
   }
-  if (!deepEqual(normalize(encoded), normalize(stored))) return null;
+  if (!deepEqual(normalize(encoded), normalize(stored))) {
+    recordProveDecline("special", stored.name, normalize(encoded), normalize(stored));
+    return null;
+  }
   ctx.use(CORE_MODULE, "s");
   const expression = call(`s.${path}`, ...sourceArgs);
   return annotated ? spread(expression, [["description", lit(description)]]) : expression;

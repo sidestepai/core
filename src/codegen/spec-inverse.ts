@@ -31,6 +31,7 @@ import { normalize } from "../validate/normalize.js";
 import { CORE_MODULE, type DecodeContext } from "./context.js";
 import { call, lit, obj, type Expr } from "./print.js";
 import { deepEqual } from "./field.js";
+import { recordProveAbort, recordProveDecline } from "./prove-diff.js";
 import { decodeCondition } from "./expression.js";
 import { decodeValue } from "./value.js";
 
@@ -235,10 +236,14 @@ export function decodeFromSpec(ctx: DecodeContext, stored: StackItemXdo): Expr |
       let encoded: StackItemXdo;
       try {
         encoded = encodeStatement(factory(authored));
-      } catch {
+      } catch (error) {
+        recordProveAbort(`spec:${sPath}`, stored.name, `factory threw: ${String(error)}`);
         continue;
       }
-      if (!sameStatement(encoded, stored)) continue;
+      if (!sameStatement(encoded, stored)) {
+        recordProveDecline(`spec:${sPath}`, stored.name, normalize(encoded), normalize(stored));
+        continue;
+      }
 
       ctx.use(CORE_MODULE, "s");
       const args = candidate.length > 0 ? [obj(candidate.map((e) => [e.field, e.expr]))] : [];
