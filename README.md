@@ -1135,7 +1135,9 @@ array (ANDed) and branch on the result, rather than pushing the check to the cli
   `like`/`ilike`/`between`/`contains`/`includes`/`overlaps`/`@>`/`~`/`search`/… (plus the
   `expr` comparisons). Compose nested logic with `and(...)` / `or(...)`: `where:
   and(cmp(col("tags"), "overlaps", inp("t")), or(expr(col("a"), "=", …), expr(col("b"), "=", …)))`.
-  The same surface is available on `addon()` `where`.
+  The same surface is available on `addon()` `where`. An array is ANDed, and a bare
+  `or(...)` at the top level ORs the top-level clauses rather than nesting them —
+  the shape the engine itself stores.
 - **`returnType`** (`"list"` default | `"single"` | `"count"` | `"exists"` | `"stream"` |
   `"aggregate"`) drives `context.return.type` and the `InferResponse` shape — `count`→`number`,
   `exists`→`boolean`, `single`→`Row | null`, `stream`→`Row[]` (pageable, no envelope),
@@ -1360,7 +1362,8 @@ shapes. `input.url()` names a URL-typed text field. **Comparisons** use `= != > 
 **Validate input at the boundary.** Field types don't enforce arbitrary rules, so reject
 bad input in the stack with `s.precondition` — it raises a **status-bearing** error
 (`error_type: "badrequest"` → HTTP 400) a client can detect via `res.ok`, unlike `s.throw`,
-which returns 200 with an error body. Example: a link shortener stores user URLs and later
+which returns 200 with an error body. Its `error` takes a plain string for a fixed message
+(`error: "url must start with http"`) or a `Value` when the message is computed. Example: a link shortener stores user URLs and later
 navigates to them, so a `javascript:`/`data:` URL is a stored-XSS / open-redirect vector —
 guard the scheme before persisting:
 
