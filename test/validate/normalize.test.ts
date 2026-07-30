@@ -298,6 +298,64 @@ describe("validate normalizer — per-statement context defaults", () => {
     expect(normalize(paged)).toEqual(paged);
   });
 
+  it("drops a default sibling result-shape block beside a customized one", () => {
+    // The engine writes all four result-shape blocks on every query; the SDK writes
+    // only the one its `returnType` selects. Emptiness alone did not collapse a
+    // default sibling, because two of its members have no rule that empties them
+    // (the paging `enabled` gate and an aggregate's empty `group`/`index` lists),
+    // so one customized member left every sibling mismatching. Measured on the
+    // sweep, `context.return` was implicated in ALL 174 remaining `db.query`
+    // mismatches and was the sole cause in 87.
+    const engine = {
+      return: {
+        type: "list",
+        list: { sort: [], paging: { page: 1, enabled: true, per_page: 10 }, distinct: "auto" },
+        single: { sort: [] },
+        stream: { sort: [], paging: { page: 1, enabled: false, per_page: 25 }, distinct: "auto" },
+        aggregate: {
+          eval: [], sort: [], group: [], index: [],
+          paging: { page: 1, enabled: false, metadata: true, per_page: 25 },
+        },
+      },
+    };
+    // The three default siblings go; the customized `list` block stays, with its
+    // customization intact.
+    expect(normalize(engine)).toEqual({
+      return: { type: "list", list: { paging: { enabled: true, per_page: 10 } } },
+    });
+  });
+
+  it("preserves a result-shape block that is actually customized", () => {
+    // The load-bearing negatives: the rule compares against each block's own frozen
+    // default, so anything authored inside one still compares unequal.
+    const grouped = {
+      aggregate: {
+        group: [{ name: "posts.author_id", as: "author" }], eval: [], sort: [], index: [],
+        paging: { page: 1, enabled: false, metadata: true, per_page: 25 },
+      },
+    };
+    expect(normalize(grouped)).not.toEqual(normalize({}));
+    expect(JSON.stringify(normalize(grouped))).toContain("author_id");
+
+    const stream = { stream: { sort: [], paging: { page: 2, enabled: true, per_page: 5 }, distinct: "auto" } };
+    expect(normalize(stream)).toEqual({ stream: { paging: { page: 2, enabled: true, per_page: 5 } } });
+
+    const single = { single: { sort: [{ sortBy: "id", orderBy: "desc" }] } };
+    expect(normalize(single)).toEqual(single);
+  });
+
+  it("does not touch a foreach's iterated list value", () => {
+    // `list` is a generic member name, and comparing against the frozen return
+    // sub-default rather than testing for emptiness is what keeps this rule off it:
+    // an iterated list is a tagged value and cannot match the default block.
+    // (The empty `filters` drops by its own long-standing rule — what matters here
+    // is that the `list` MEMBER survives rather than being swept up as a default.)
+    expect(normalize({ list: { tag: "input", value: "rows", filters: [] } })).toEqual({
+      list: { tag: "input", value: "rows" },
+    });
+    expect(normalize({ list: [] })).toEqual({ list: [] });
+  });
+
   it("drops an expression group that nests nothing", () => {
     expect(normalize({ group: { expression: [] } })).toEqual({});
     expect(normalize({ group: { expression: [] } })).toEqual(normalize({}));

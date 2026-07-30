@@ -129,6 +129,19 @@ const DEFAULT_CONTEXT_RETURN = {
   },
 };
 /**
+ * The four result-shape sub-blocks of {@link DEFAULT_CONTEXT_RETURN}, by member
+ * name. The engine writes every one of them on every query; the SDK writes only
+ * the block its `returnType` selects, so each default sibling has to drop on its
+ * own once any one of them is customized.
+ */
+const DEFAULT_RETURN_BLOCKS: Readonly<Record<string, unknown>> = {
+  list: DEFAULT_CONTEXT_RETURN.list,
+  single: DEFAULT_CONTEXT_RETURN.single,
+  stream: DEFAULT_CONTEXT_RETURN.stream,
+  aggregate: DEFAULT_CONTEXT_RETURN.aggregate,
+};
+
+/**
  * The leanest all-defaults `context.return`: the result type at its declared
  * default with no sub-block customized. A query saved by an engine generation
  * that did not expand the whole subtree persists exactly this, and it carries no
@@ -206,11 +219,28 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     // `list` also names a foreach's iterated value; a tagged value never
     // normalizes to empty, so that one is untouched.
     case "paging":
+      return isEmptyObject(normalize(v));
+    // The same four blocks, plus the residue the member rules above cannot reach.
+    //
+    // The engine writes ALL FOUR result-shape blocks on every query; the SDK writes
+    // only the one its `returnType` selects. Emptiness alone does not collapse a
+    // default sibling, because two of its members have no rule that empties them —
+    // the paging `enabled:false` gate and an aggregate's empty `group`/`index`
+    // lists. So one customized `per_page` left every default sibling mismatching,
+    // and a paged query could never verify.
+    //
+    // Deep-equality against each block's own frozen default is what reaches those
+    // members WITHOUT a global rule on their generic names — `enabled:false` is
+    // meaningful on a history block, and an empty `group` is a condition default
+    // elsewhere. A block with anything authored inside it still compares.
     case "list":
     case "single":
     case "stream":
     case "aggregate":
-      return isEmptyObject(normalize(v));
+      return (
+        isEmptyObject(normalize(v)) ||
+        deepEqual(normalize(v), normalize(DEFAULT_RETURN_BLOCKS[key]))
+      );
     // Field-envelope members the engine fills with a fixed default on save. A
     // field saved by an older engine generation omits them entirely, while both
     // the current engine and the SDK always write them — the same lean-vs-full
