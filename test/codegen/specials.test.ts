@@ -302,6 +302,45 @@ describe("call family", () => {
     );
   });
 
+  it("decodes an unbound call target as `fn: null`, on both mvp:function surfaces", () => {
+    // A call whose target function was deleted stores a blank `context.function.id`
+    // — an unbound reference, not a decode failure. 17 statements across the sweep.
+    for (const [statement, expected] of [
+      [s.function.run({ fn: { name: "helper", guid: "aaaa000000000000000000000000aaaa" } }), "s.function.run("],
+      [s.service.function.run({ fn: { name: "helper", guid: "aaaa000000000000000000000000aaaa" } }), "s.service.function.run("],
+    ] as const) {
+      const bound = encodeStatement(statement);
+      const stored = {
+        ...bound,
+        context: { ...(bound.context as Record<string, unknown>), function: { id: "" } },
+      } as StackItemXdo;
+      const source = printExpr(decodeStatement(new DecodeContext(), REFS, stored));
+      expect(source).toContain(expected);
+      expect(source).toContain("fn: null");
+      expect(source).not.toContain("raw(");
+      expect(normalize(encodeStatement(evaluate(source, CALL_SYMBOLS)))).toEqual(normalize(stored));
+    }
+  });
+
+  it("does not offer null to a call surface that cannot express it", () => {
+    // `callDecoder` is shared, and only the mvp:function surfaces model the unbound
+    // state. Everything else must keep declining rather than build a call its
+    // factory would throw on — raw() is exact, a thrown factory is just noise.
+    const bound = encodeStatement(
+      s.task.call({ task: { name: "nightly", guid: "cccc000000000000000000000000cccc" } }),
+    );
+    const stored = {
+      ...bound,
+      context: { ...(bound.context as Record<string, unknown>), id: "" },
+    } as StackItemXdo;
+    const source = printExpr(decodeStatement(new DecodeContext(), REFS, stored));
+    expect(source).toContain("raw(");
+    expect(source).not.toContain("s.task.call(");
+    // `task: null` specifically — the raw blob's own `runtime: null` is not that.
+    expect(source).not.toContain("task: null");
+    expect(normalize(encodeStatement(evaluate(source, CALL_SYMBOLS)))).toEqual(normalize(stored));
+  });
+
   // The plan's headline discrimination case: one stored name, two surfaces.
   it("routes mvp:function by its stored context, not by name", () => {
     const plain = roundTrip(
@@ -549,6 +588,59 @@ describe("database family", () => {
     expect(source).toContain("s.db.transaction(");
     expect(source).toContain("raw(");
     expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+  });
+});
+
+describe("db family — an unbound table", () => {
+  /** Re-point a statement's `context.dbo` at nothing, the way a deleted table leaves it. */
+  function unbind(statement: Statement, dbo: Record<string, unknown> = { id: "" }): StackItemXdo {
+    const stored = encodeStatement(statement);
+    return {
+      ...stored,
+      context: { ...(stored.context as Record<string, unknown>), dbo },
+    } as StackItemXdo;
+  }
+
+  // `dboOp` drives eleven statements off one table-reading path, so the state has
+  // to hold across the shapes: a lookup op, a row-write, and a bulk op.
+  const CASES: ReadonlyArray<readonly [string, Statement]> = [
+    ["s.db.get(", s.db.get({ table: USERS, fieldValue: inp("id"), as: "user" })],
+    ["s.db.del(", s.db.del({ table: USERS, fieldValue: inp("id") })],
+    ["s.db.add(", s.db.add({ table: USERS, data: [{ name: "email", value: inp("email") }] })],
+    ["s.db.edit(", s.db.edit({ table: USERS, fieldValue: inp("id"), data: [{ name: "email", value: inp("email") }] })],
+    ["s.db.bulk.add(", s.db.bulk.add({ table: USERS, items: inp("rows") })],
+  ];
+
+  for (const [surface, statement] of CASES) {
+    it(`decodes ${surface}…) with a blank dbo.id as \`table: null\``, () => {
+      const stored = unbind(statement);
+      const source = printExpr(decodeStatement(new DecodeContext(), DB_REFS, stored));
+      expect(source).toContain(surface);
+      expect(source).toContain("table: null");
+      expect(source).not.toContain("raw(");
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+    });
+  }
+
+  it("keeps every other recovered argument alongside the unbound table", () => {
+    // The table going null must not quietly take the rest of the statement with it.
+    const stored = unbind(
+      s.db.get({ table: USERS, fieldName: "email", fieldValue: inp("email"), as: "user" }),
+    );
+    const source = printExpr(decodeStatement(new DecodeContext(), DB_REFS, stored));
+    expect(source).toContain('fieldName: "email"');
+    expect(source).toContain("fieldValue: inp(");
+    expect(source).toContain('as: "user"');
+    expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+  });
+
+  it("throws rather than guess when `row:` needs an unbound table's columns", () => {
+    // `table: null` represents a broken statement; it does not author one. `row:`
+    // expands against the table's schema, so it has nothing to work from — and a
+    // decoded broken statement always carries `data:`, never `row:`.
+    expect(() => s.db.add({ table: null, row: { email: c.text("x@y.z") } })).toThrow(
+      /table` is null/,
+    );
   });
 });
 
@@ -825,6 +917,44 @@ describe("db.query", () => {
       );
       expect(source).toContain("page: inp(");
       expect(source).toContain("per_page: inp(");
+    });
+
+    it("decodes an unbound table as `table: null` rather than declining", () => {
+      // A statement whose table was deleted stores a blank `context.dbo.id`. That
+      // is a state the authoring surface models deliberately — the same contract
+      // an addon's `table` has always carried — so reading it as "no reference to
+      // recover" degraded 83 db statements to raw() across the sweep.
+      const bound = encodeStatement(s.db.query({ table: POSTS, as: "rows" }));
+      const stored = {
+        ...bound,
+        context: { ...(bound.context as Record<string, unknown>), dbo: { id: "" } },
+      } as StackItemXdo;
+      const source = decode(stored);
+      expect(source).toContain("table: null");
+      expect(source).not.toContain("raw(");
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+    });
+
+    it("keeps an unbound table's surviving alias", () => {
+      // A deleted table's alias routinely outlives it (`{as: "user", id: ""}`), and
+      // it is read by presence like every other `dbo.as`.
+      const bound = encodeStatement(s.db.query({ table: POSTS, as: "rows" }));
+      const stored = {
+        ...bound,
+        context: { ...(bound.context as Record<string, unknown>), dbo: { as: "user", id: "" } },
+      } as StackItemXdo;
+      const source = decode(stored);
+      expect(source).toContain("table: null");
+      expect(source).toContain('tableAlias: "user"');
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+    });
+
+    it("still resolves a bound table to its symbol", () => {
+      // The paired negative: `null` must not become the lazy answer for a table
+      // that is perfectly resolvable.
+      const source = dbRoundTrip(s.db.query({ table: POSTS, as: "rows" }));
+      expect(source).toContain("table: posts");
+      expect(source).not.toContain("table: null");
     });
 
     it("falls back to raw() rather than dropping a search it cannot read", () => {

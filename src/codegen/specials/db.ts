@@ -65,6 +65,12 @@ function plainBool(raw: unknown): boolean | null {
   return value.value === "true";
 }
 
+/** A recovered `table:` argument — a bound reference, or `null` when unbound. */
+interface TableArg {
+  readonly expr: Expr;
+  readonly runtime: { name: string; guid: string } | null;
+}
+
 /**
  * The `table:` argument for a stored table guid.
  *
@@ -74,12 +80,29 @@ function plainBool(raw: unknown): boolean | null {
  * indexed name still rides along: `db.add_or_edit` stores it as `context.dbo.as`
  * and `db.query` uses it to alias-qualify aggregate columns.
  */
-function tableArg(a: SpecialArgs, guid: string): { expr: Expr; runtime: { name: string; guid: string } } {
+function tableArg(a: SpecialArgs, guid: string): TableArg {
   const target = a.refs.lookup(guid);
   return {
     expr: resolveReference(a.ctx, a.refs, guid, { ...a.resolve, unresolved: "object-ref" }),
     runtime: { name: target?.name ?? "", guid },
   };
+}
+
+/**
+ * An UNBOUND table — the engine's empty `context.dbo.id`.
+ *
+ * This is not a decode failure. A statement whose table was deleted (or one
+ * freshly dropped into a stack and never bound) stores a blank id, and the
+ * authoring surface models that state deliberately as `table: null` — the same
+ * contract an addon's `table` has carried all along. Reading it as "no reference
+ * to recover" degraded 83 db statements to `raw()` across the sweep, which is
+ * strictly less readable for no gain in fidelity.
+ *
+ * The alias is left to {@link aliasEntry}, which reads `dbo.as` by presence: a
+ * deleted table's alias frequently outlives it (`{as: "user", id: ""}`).
+ */
+function unboundTableArg(): TableArg {
+  return { expr: lit(null), runtime: null };
 }
 
 /**
@@ -326,12 +349,12 @@ interface DboOpShape {
 function dboOp(shape: DboOpShape): SpecialDecoder {
   return (a) => {
     const guid = getPath(a.stored.context, "dbo.id");
-    if (typeof guid !== "string" || guid === "")
-      return declineHere(`${shape.path}: context.dbo.id is blank`);
+    if (typeof guid !== "string")
+      return declineHere(`${shape.path}: context.dbo.id is not a string`);
     const entriesIn = inputEntries(a.stored);
     if (!entriesIn) return null;
 
-    const table = tableArg(a, guid);
+    const table = guid === "" ? unboundTableArg() : tableArg(a, guid);
     const entries: Array<[string, Expr]> = [["table", table.expr]];
     const runtime: Record<string, unknown> = { table: table.runtime };
     const alias = aliasEntry(a.stored.context);
@@ -436,8 +459,8 @@ function dboOp(shape: DboOpShape): SpecialDecoder {
  */
 const dbAddOrEdit: SpecialDecoder = (a) => {
   const guid = getPath(a.stored.context, "dbo.id");
-  if (typeof guid !== "string" || guid === "")
-    return declineHere("db.add_or_edit: context.dbo.id is blank");
+  if (typeof guid !== "string")
+    return declineHere("db.add_or_edit: context.dbo.id is not a string");
   // `dbo.as` is read by PRESENCE, like every other db statement: it is authored
   // per statement, so its absence is data. Requiring it here (which this decoder
   // used to) made `add_or_edit` the one db statement that could not decode
@@ -589,9 +612,9 @@ function externalQuery(engine: string): SpecialDecoder {
 const dbBulkDelete: SpecialDecoder = (a) => {
   const context = (a.stored.context ?? {}) as Record<string, unknown>;
   const guid = getPath(context, "dbo.id");
-  if (typeof guid !== "string" || guid === "")
-    return declineHere("db.bulk.delete: context.dbo.id is blank");
-  const table = tableArg(a, guid);
+  if (typeof guid !== "string")
+    return declineHere("db.bulk.delete: context.dbo.id is not a string");
+  const table = guid === "" ? unboundTableArg() : tableArg(a, guid);
   const entries: Array<[string, Expr]> = [["table", table.expr]];
   const runtime: Record<string, unknown> = { table: table.runtime };
   const alias = aliasEntry(context);
@@ -690,12 +713,12 @@ function decodePaging(
 const dbQuery: SpecialDecoder = (a) => {
   const context = (a.stored.context ?? {}) as Record<string, unknown>;
   const guid = getPath(context, "dbo.id");
-  if (typeof guid !== "string" || guid === "")
-    return declineHere("db.query: context.dbo.id is blank");
+  if (typeof guid !== "string")
+    return declineHere("db.query: context.dbo.id is not a string");
   if (Array.isArray(a.stored.input) && a.stored.input.length > 0)
     return declineHere("db.query: statement-level input[] is populated");
 
-  const table = tableArg(a, guid);
+  const table = guid === "" ? unboundTableArg() : tableArg(a, guid);
   const entries: Array<[string, Expr]> = [["table", table.expr]];
   const runtime: Record<string, unknown> = { table: table.runtime };
   const alias = aliasEntry(context);
@@ -732,7 +755,7 @@ const dbQuery: SpecialDecoder = (a) => {
       const cells: Array<[string, Expr]> = [["table", joined.expr]];
       const entry: Record<string, unknown> = { table: joined.runtime };
       // The alias defaults to the joined table's own name.
-      if (typeof bindAlias === "string" && bindAlias !== joined.runtime.name) {
+      if (typeof bindAlias === "string" && bindAlias !== joined.runtime?.name) {
         cells.push(["as", lit(bindAlias)]);
         entry.as = bindAlias;
       }
@@ -856,7 +879,9 @@ const dbQuery: SpecialDecoder = (a) => {
   }
 
   if (returnType === "aggregate") {
-    const aggregate = decodeAggregate(a, ret, table.runtime.name, sortBlock);
+    // An unbound table contributes no alias to qualify aggregate columns with,
+    // matching the encoder's own `null` branch.
+    const aggregate = decodeAggregate(a, ret, table.runtime?.name ?? "", sortBlock);
     if (!aggregate) return declineHere("db.query: context.return.aggregate is not decodable");
     entries.push(["aggregate", aggregate.expr]);
     runtime.aggregate = aggregate.runtime;

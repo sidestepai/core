@@ -252,6 +252,27 @@ export interface DbAggregate {
 export type DbJoin = "inner" | "left" | "right";
 
 /**
+ * A db statement's target table — a def handle or name, or `null` for the
+ * engine's own empty binding (`context.dbo.id: ""`).
+ *
+ * ⚠ **Do not author `null`.** It is a BROKEN state in Xano, not a neutral one:
+ * the statement is bound to no table and does nothing wherever it runs. It exists
+ * on these types so `codegen` can represent a broken statement faithfully rather
+ * than degrade the whole thing to `raw()` — a pulled `table: null` is a defect to
+ * fix in the pulled workspace, not a shape to copy.
+ *
+ * It is what a statement degrades to when the table it referenced is deleted, and
+ * also where a freshly-dropped one starts. The engine clears the id rather than
+ * recording a tombstone, so those two are the same bytes: `null` means "unbound",
+ * never "was deleted". The same contract as an addon's `table` (see
+ * {@link addon}), which is where this pattern comes from.
+ *
+ * An unbound table has no schema, so `row:` (which expands the typed row against
+ * the table's columns) is unavailable with it — use `data:`.
+ */
+type DbTableRef<T extends ObjectRef = ObjectRef> = T | null;
+
+/**
  * A join (`context.bind[]`): join `table` (aliased by `as`) with `join` kind and
  * an optional `where` join condition (same search surface as the query). Joins
  * widen what `where`/`sort`/`eval` can address by dotted path (`"author.id"`);
@@ -399,8 +420,11 @@ function assertNoAddonShadow(table: ObjectRef, addons?: readonly AddonSpec[]): v
  * from the majority exactly as omitting it diverges from the rest. It is
  * authored instead, and absent unless asked for.
  */
-function dboBinding(table: ObjectRef, tableAlias?: string): Record<string, unknown> {
-  const dbo: Record<string, unknown> = { id: resolveRef("dbo", table) };
+function dboBinding(table: ObjectRef | null, tableAlias?: string): Record<string, unknown> {
+  // `null` writes the engine's own empty binding rather than a resolved guid —
+  // `resolveRef` would reject a target with neither a name nor a guid. Same
+  // representation-of-a-broken-state contract as an addon's `table: null`.
+  const dbo: Record<string, unknown> = { id: table === null ? "" : resolveRef("dbo", table) };
   if (tableAlias !== undefined) dbo.as = tableAlias;
   return dbo;
 }
@@ -408,13 +432,13 @@ function dboBinding(table: ObjectRef, tableAlias?: string): Record<string, unkno
 /** Assemble a `!map:dbo` statement: table ref → `context.dbo` + rich envelope. */
 function dboStatement(
   name: string,
-  table: ObjectRef,
+  table: ObjectRef | null,
   as: string | undefined,
   input: RichInput[],
   opts: EnvelopeOpts = {},
   tableAlias?: string,
 ): Statement {
-  assertNoAddonShadow(table, opts.addon);
+  if (table !== null) assertNoAddonShadow(table, opts.addon);
   return {
     name,
     context: { dbo: dboBinding(table, tableAlias) },
@@ -438,7 +462,7 @@ export interface DbGetArgs<
   tableAlias?: string;
 
   /** The target table (def handle or name). */
-  table: T;
+  table: DbTableRef<T>;
   /** The lookup field (defaults to the primary key `id`). */
   fieldName?: ColsOf<T>;
   /** The value to match. */
@@ -507,7 +531,7 @@ export interface DbDelArgs<T extends ObjectRef = ObjectRef> {
    */
   tableAlias?: string;
 
-  table: T;
+  table: DbTableRef<T>;
   fieldName?: ColsOf<T>;
   fieldValue: Value;
   as?: string;
@@ -544,7 +568,7 @@ export interface DbHasArgs<T extends ObjectRef = ObjectRef, As extends string = 
    */
   tableAlias?: string;
 
-  table: T;
+  table: DbTableRef<T>;
   fieldName?: ColsOf<T>;
   fieldValue: Value;
   /** Capture the existence boolean into this stack variable. Captured literally so
@@ -580,7 +604,7 @@ export interface DbPatchArgs<
    */
   tableAlias?: string;
 
-  table: T;
+  table: DbTableRef<T>;
   fieldName?: ColsOf<T>;
   fieldValue: Value;
   /** The partial row to merge (an object value). */
@@ -625,7 +649,7 @@ export interface DbTruncateArgs {
    */
   tableAlias?: string;
 
-  table: ObjectRef;
+  table: DbTableRef;
   /** Reset auto-increment counters. */
   reset?: boolean;
   as?: string;
@@ -728,6 +752,26 @@ function columnsOf(table: ObjectRef): ColumnDef[] {
   );
 }
 
+/**
+ * Narrow an unbound (`null`) table where a bound one is structurally required.
+ *
+ * `table: null` exists to REPRESENT a broken statement, not to author one, so the
+ * surfaces that read the table's schema — `row:`'s column expansion — have
+ * nothing to work from. A decoded broken statement always carries `data:` (the
+ * stored `input[]` verbatim) and never `row:`, so this is unreachable from the
+ * read path and only fires on a hand-authored `null`.
+ */
+function requireBoundTable(table: ObjectRef | null, argName: string): ObjectRef {
+  if (table === null) {
+    throw new Error(
+      `db: \`${argName}\` needs the table's columns, but \`table\` is null (an unbound ` +
+        "statement). `table: null` represents a statement whose table was deleted — fix the " +
+        `binding, or pass the row values as \`data:\` instead of \`${argName}:\`.`,
+    );
+  }
+  return table;
+}
+
 function expandRow(table: ObjectRef, row: RowMap, op: "add" | "edit"): DbField[] {
   const cols = columnsOf(table);
   const colNames = new Set(cols.map((col) => col.name));
@@ -765,7 +809,7 @@ export interface DbAddArgs<
    */
   tableAlias?: string;
 
-  table: T;
+  table: DbTableRef<T>;
   /** The row to insert as explicit entries (exact control over each field + `ignore`). */
   data?: DbField[];
   /** A partial row keyed by column name; expanded against the table's declared columns. */
@@ -788,7 +832,7 @@ export function dbAdd<
   const As extends string = "",
   const A extends readonly AddonSpec[] = readonly [],
 >(args: DbAddArgs<T, As, A>): DbResult<As, WithAddons<FullRowShapeOf<T>, A>> {
-  const data = args.row !== undefined ? expandRow(args.table, args.row, "add") : (args.data ?? []);
+  const data = args.row !== undefined ? expandRow(requireBoundTable(args.table, "row"), args.row, "add") : (args.data ?? []);
   return dboStatement(
     "mvp:dbo_add",
     args.table,
@@ -811,7 +855,7 @@ export interface DbEditArgs<
    */
   tableAlias?: string;
 
-  table: T;
+  table: DbTableRef<T>;
   fieldName?: ColsOf<T>;
   fieldValue: Value;
   /** The new field values as explicit entries (exact control over each field + `ignore`). */
@@ -843,7 +887,7 @@ export function dbEdit<
   const As extends string = "",
   const A extends readonly AddonSpec[] = readonly [],
 >(args: DbEditArgs<T, As, A>): DbResult<As, WithAddons<FullRowShapeOf<T>, A>> {
-  const data = args.row !== undefined ? expandRow(args.table, args.row, "edit") : (args.data ?? []);
+  const data = args.row !== undefined ? expandRow(requireBoundTable(args.table, "row"), args.row, "edit") : (args.data ?? []);
   return dboStatement(
     "mvp:dbo_editby",
     args.table,
@@ -873,7 +917,7 @@ export function dbEdit<
  */
 
 export interface DbAddOrEditArgs<T extends ObjectRef = ObjectRef, As extends string = string> {
-  table: T;
+  table: DbTableRef<T>;
   /** The match field (defaults to the primary key `id`). */
   fieldName?: ColsOf<T>;
   /** The value to match for the edit branch. */
@@ -899,7 +943,7 @@ export interface DbAddOrEditArgs<T extends ObjectRef = ObjectRef, As extends str
 export function dbAddOrEdit<T extends ObjectRef, const As extends string = "">(
   args: DbAddOrEditArgs<T, As>,
 ): DbResult<As, FullRowShapeOf<T>> {
-  const data = args.row !== undefined ? expandRow(args.table, args.row, "edit") : (args.data ?? []);
+  const data = args.row !== undefined ? expandRow(requireBoundTable(args.table, "row"), args.row, "edit") : (args.data ?? []);
   const input: Array<LeanInput & { ignore?: boolean }> = [
     leanInput("field_name", c.text(args.fieldName ?? "id")),
     leanInput("field_value", args.fieldValue),
@@ -921,7 +965,7 @@ export interface DbSchemaArgs {
    */
   tableAlias?: string;
 
-  table: ObjectRef;
+  table: DbTableRef;
   /** Dot-path into the schema to read. */
   path: Value;
   as?: string;
@@ -1002,7 +1046,7 @@ export interface DbBulkAddArgs {
    */
   tableAlias?: string;
 
-  table: ObjectRef;
+  table: DbTableRef;
   /** The rows to insert (an array value). */
   items: Value;
   /** Permit explicit `id` values in the rows. */
@@ -1018,7 +1062,7 @@ export interface DbBulkAddArgs {
  */
 function bulkStatement(
   name: string,
-  table: ObjectRef,
+  table: ObjectRef | null,
   as: string | undefined,
   input: LeanInput[],
   tableAlias?: string,
@@ -1045,7 +1089,7 @@ export interface DbBulkDeleteArgs<As extends string = string> {
    */
   tableAlias?: string;
 
-  table: ObjectRef;
+  table: DbTableRef;
   /**
    * Filter selecting which rows to delete — the same `where` surface as
    * `s.db.query`: `expr(...)`/`cmp(...)` comparisons, `and(...)`/`or(...)` groups,
@@ -1095,7 +1139,7 @@ export interface DbBulkWriteArgs<T extends ObjectRef = ObjectRef, As extends str
    */
   tableAlias?: string;
 
-  table: T;
+  table: DbTableRef<T>;
   /** The rows to write (an array value), each carrying its key. */
   items: Value;
   /** Capture the result into this stack variable. Captured literally so
@@ -1403,7 +1447,7 @@ export interface DbQueryArgs<
    */
   tableAlias?: string;
 
-  table: T;
+  table: DbTableRef<T>;
   /**
    * The engine's `context.return.type`. `"list"` (default) returns a row array
    * (or paging envelope); `"single"` a first-match `row | null`; `"count"` a
@@ -1500,13 +1544,18 @@ export function dbQuery<
 >(
   args: DbQueryArgs<T, As, Cols, A, P, RT, E, AG>,
 ): DbResult<As, QueryResult<RowShapeOf<T, Cols>, A, P, RT, E, AG>> {
-  assertNoAddonShadow(args.table, args.addon);
-  assertNoEvalShadow(args.table, args.eval);
+  // An unbound (`null`) table has no columns to shadow and no name to qualify
+  // with, exactly as in an addon's `null` branch.
+  if (args.table !== null) {
+    assertNoAddonShadow(args.table, args.addon);
+    assertNoEvalShadow(args.table, args.eval);
+  }
   const returnType: DbReturnType = args.returnType ?? "list";
   // The primary table alias (the default `dbo.as`) — used to qualify aggregate
   // group/eval column names, which the engine requires as `<alias>.<column>`.
   const primaryAlias =
-    args.tableAlias ?? (typeof args.table === "string" ? args.table : args.table.name);
+    args.tableAlias ??
+    (args.table === null ? "" : typeof args.table === "string" ? args.table : args.table.name);
   const context: Record<string, unknown> = { dbo: dboBinding(args.table, args.tableAlias) };
   const search = encodeSearch(args.where, args.additionalWhere);
   if (search !== undefined) context.search = search;

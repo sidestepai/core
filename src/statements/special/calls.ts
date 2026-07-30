@@ -62,9 +62,26 @@ function encodeCallInput(input?: CallInput): unknown[] {
   return Object.entries(input).map(([name, v]) => ({ name, ...vf(coerceScalar(v)) }));
 }
 
+/**
+ * A call's target function — a def handle or name, or `null` for the engine's own
+ * empty binding (`context.function.id: ""`).
+ *
+ * ⚠ **Do not author `null`.** It is a BROKEN state in Xano, not a neutral one:
+ * the statement calls nothing. It exists so `codegen` can represent a broken
+ * statement faithfully rather than degrade it to `raw()` — a pulled `fn: null` is
+ * a defect to fix in the pulled workspace, not a shape to copy. Same contract as
+ * a db statement's `table` and an addon's, which is where the pattern comes from.
+ */
+type FnRef = ObjectRef | null;
+
+/** A target function's stored id — `""` for an unbound one (see {@link FnRef}). */
+function fnId(fn: FnRef): string {
+  return fn === null ? "" : resolveRef("function", fn);
+}
+
 export interface FunctionRunArgs {
-  /** The target function (def handle or name). */
-  fn: ObjectRef;
+  /** The target function (def handle or name), or `null` when unbound. */
+  fn: FnRef;
   /** Capture the result into this stack variable. */
   as?: string;
   /** Input bindings, keyed by the target's input names. */
@@ -75,7 +92,7 @@ export interface FunctionRunArgs {
 export function functionRun(args: FunctionRunArgs): Statement {
   return {
     name: "mvp:function",
-    context: { function: { id: resolveRef("function", args.fn) } },
+    context: { function: { id: fnId(args.fn) } },
     as: args.as,
     input: encodeCallInput(args.input),
   };
@@ -222,7 +239,7 @@ export function addonCall(args: AddonCallArgs): Statement {
 
 export interface ServiceFunctionRunArgs {
   /** The target function (def handle or name) in a connected service. */
-  fn: ObjectRef;
+  fn: FnRef;
   as?: string;
   input?: CallInput;
   /** Execution mode (`"shared"` default). */
@@ -233,7 +250,7 @@ export interface ServiceFunctionRunArgs {
 export function serviceFunctionRun(args: ServiceFunctionRunArgs): Statement {
   return {
     name: "mvp:function",
-    context: { function: { id: resolveRef("function", args.fn) }, runtime_mode: args.runtimeMode ?? "shared" },
+    context: { function: { id: fnId(args.fn) }, runtime_mode: args.runtimeMode ?? "shared" },
     as: args.as,
     input: encodeCallInput(args.input),
   };
