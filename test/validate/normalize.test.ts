@@ -257,3 +257,85 @@ describe("validate normalizer — empty context and addon offset", () => {
     expect(normalize(encoded)).toEqual(normalize(stored));
   });
 });
+
+/**
+ * U4: per-statement `context` defaults. Unlike the empty-collection rules above,
+ * these are values the SDK writes at a default the persisted form omits — each one
+ * checked against the engine's own declared default for that member before being
+ * frozen here, because a guessed default would make a real authored value
+ * invisible to the round-trip diff.
+ */
+describe("validate normalizer — per-statement context defaults", () => {
+  it("drops an all-defaults return block in either spelling", () => {
+    // The lean spelling: result type at its default, no sub-block customized.
+    expect(normalize({ return: { type: "list" } })).toEqual({});
+    // The expanded spelling the engine fills on save was already handled.
+    expect(normalize({ return: { type: "list" } })).toEqual(
+      normalize({
+        return: {
+          list: {
+            sort: [],
+            paging: { page: 1, offset: 0, totals: false, enabled: false, metadata: true, per_page: 25 },
+            distinct: "auto",
+          },
+          type: "list",
+          single: { sort: [] },
+          stream: { sort: [], paging: { page: 1, enabled: false, per_page: 25 }, distinct: "auto" },
+          aggregate: { eval: [], sort: [], group: [], index: [], paging: { page: 1, enabled: false, metadata: true, per_page: 25 } },
+        },
+      }),
+    );
+  });
+
+  it("preserves a non-default result type and customized paging", () => {
+    expect(normalize({ return: { type: "single" } })).toEqual({ return: { type: "single" } });
+    expect(normalize({ return: { type: "count" } })).not.toEqual(normalize({ return: { type: "list" } }));
+    const paged = { return: { type: "list", list: { paging: { enabled: true, per_page: 100 } } } };
+    expect(normalize(paged)).toEqual(paged);
+  });
+
+  it("drops an expression group that nests nothing", () => {
+    expect(normalize({ group: { expression: [] } })).toEqual({});
+    expect(normalize({ group: { expression: [] } })).toEqual(normalize({}));
+  });
+
+  it("preserves a group that actually nests expressions", () => {
+    const nested = { group: { expression: [{ type: "statement", statement: { op: "=" } }] } };
+    expect(normalize(nested)).toEqual(nested);
+    expect(normalize(nested)).not.toEqual(normalize({ group: { expression: [] } }));
+  });
+
+  it("does not touch an aggregate's empty group array", () => {
+    // `group` is also a sort/grouping LIST under an aggregate return. Only the
+    // nested-search object form is a condition default.
+    expect(normalize({ aggregate: { group: [] } })).toEqual({ aggregate: { group: [] } });
+  });
+
+  it("drops a default-false or-flag and keeps a real one", () => {
+    expect(normalize({ or: false })).toEqual({});
+    expect(normalize({ or: true })).toEqual({ or: true });
+  });
+
+  it("drops default-public asset access and keeps private", () => {
+    expect(normalize({ access: "public" })).toEqual({});
+    expect(normalize({ access: "private" })).toEqual({ access: "private" });
+    expect(normalize({ access: "internal" })).toEqual({ access: "internal" });
+  });
+
+  it("collapses a full condition entry to its persisted-lean twin", () => {
+    const stored = {
+      expression: [{ type: "statement", statement: { op: "=", left: { operand: "a" } } }],
+    };
+    const encoded = {
+      expression: [
+        {
+          type: "statement",
+          or: false,
+          group: { expression: [] },
+          statement: { op: "=", left: { operand: "a", filters: [] } },
+        },
+      ],
+    };
+    expect(normalize(encoded)).toEqual(normalize(stored));
+  });
+});

@@ -120,6 +120,15 @@ const DEFAULT_CONTEXT_RETURN = {
     paging: { page: 1, enabled: false, metadata: true, per_page: 25 },
   },
 };
+/**
+ * The leanest all-defaults `context.return`: the result type at its declared
+ * default with no sub-block customized. A query saved by an engine generation
+ * that did not expand the whole subtree persists exactly this, and it carries no
+ * more information than {@link DEFAULT_CONTEXT_RETURN} does.
+ */
+const MINIMAL_CONTEXT_RETURN = { type: "list" };
+/** An expression group that nests nothing — what an omitted group means. */
+const EMPTY_SEARCH = { expression: [] };
 /** The engine's default `context.external` (paged-external input) — SDK omits it. */
 const DEFAULT_CONTEXT_EXTERNAL = {
   tag: "input",
@@ -273,8 +282,29 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
       return deepEqual(normalize(v), normalize({ tag: "const:bool", value: "" }));
     case "search":
       return deepEqual(normalize(v), normalize({ expression: [] }));
+    // Two spellings of an all-defaults return block. The engine's declared shape
+    // defaults the result type to a list and leaves every sub-block optional, so
+    // a query that customizes nothing persists either the whole subtree (when the
+    // engine filled it on save) or nothing but the type — and the SDK omits it
+    // entirely. Accept both, and preserve any customized paging/sort/distinct.
     case "return":
-      return deepEqual(normalize(v), normalize(DEFAULT_CONTEXT_RETURN));
+      return (
+        deepEqual(normalize(v), normalize(DEFAULT_CONTEXT_RETURN)) ||
+        deepEqual(normalize(v), MINIMAL_CONTEXT_RETURN)
+      );
+    // A condition entry's nested group. The engine declares it optional with no
+    // default, so an entry that nests nothing omits the key while the SDK
+    // materializes an empty search. Same state; drop the empty form on both
+    // sides. A group that actually nests expressions is preserved and compared.
+    case "group":
+      return deepEqual(normalize(v), EMPTY_SEARCH);
+    // A condition entry's or-flag, declared to default false: the persisted form
+    // omits it at the default where the SDK writes it.
+    case "or":
+      return v === false;
+    // Generated-asset visibility, declared to default public wherever it appears.
+    case "access":
+      return v === "public";
     case "external":
       return deepEqual(normalize(v), normalize(DEFAULT_CONTEXT_EXTERNAL));
     case "simpleExternal":
