@@ -14,7 +14,7 @@ import type { TaggedValue } from "../../types/xdo.js";
 import { lit, obj, type Expr } from "../print.js";
 import { resolveReference } from "../ref-index.js";
 import { decodeValue } from "../value.js";
-import { getPath, prove, type SpecialArgs, type SpecialDecoder } from "./prove.js";
+import { declineHere, getPath, prove, type SpecialArgs, type SpecialDecoder } from "./prove.js";
 
 /** Coerce a stored `{value, tag, filters}` block to a tagged value. */
 function toValue(raw: unknown): TaggedValue | null {
@@ -35,7 +35,8 @@ function inputMap(a: SpecialArgs): Map<string, TaggedValue> | null {
   for (const raw of list) {
     const value = toValue(raw);
     const name = (raw as { name?: unknown }).name;
-    if (!value || typeof name !== "string") return null;
+    if (!value || typeof name !== "string")
+      return declineHere("input[]: entry is not a named tagged value");
     out.set(name, value);
   }
   return out;
@@ -69,7 +70,9 @@ const getRawInput: SpecialDecoder = (a) => {
   const encoding = values.get("encoding");
   const exclude = values.get("exclude_middleware_modification");
   const known = new Set(["encoding", "exclude_middleware_modification"]);
-  if ([...values.keys()].some((name) => !known.has(name))) return null;
+  const extra = [...values.keys()].find((name) => !known.has(name));
+  if (extra !== undefined)
+    return declineHere(`util.get_raw_input: unmodelled input entry "${extra}"`);
 
   // Presence, not value: both are `?=` optionals the engine omits when unset, so
   // an absent entry means "not authored" and must stay absent.
@@ -103,20 +106,22 @@ function contextValues(
   return (a) => {
     const context = (a.stored.context ?? {}) as Record<string, unknown>;
     for (const [key, expected] of Object.entries(constants)) {
-      if (context[key] !== expected) return null;
+      if (context[key] !== expected)
+        return declineHere(`${path}: context.${key} is not the modelled ${String(expected)}`);
     }
     const known = new Set([...fields.map(([key]) => key), ...Object.keys(constants)]);
-    for (const key of Object.keys(context)) if (!known.has(key)) return null;
+    for (const key of Object.keys(context))
+      if (!known.has(key)) return declineHere(`${path}: unmodelled context key "${key}"`);
 
     const entries: Array<[string, Expr]> = [];
     const runtime: Record<string, unknown> = {};
     for (const [key, arg, required] of fields) {
       if (context[key] === undefined) {
-        if (required) return null;
+        if (required) return declineHere(`${path}: required context.${key} is absent`);
         continue;
       }
       const value = toValue(context[key]);
-      if (!value) return null;
+      if (!value) return declineHere(`${path}: context.${key} is not a tagged value`);
       entries.push([arg, decodeValue(a.ctx, value)]);
       runtime[arg] = value;
     }
@@ -131,7 +136,8 @@ const realtimeEvent: SpecialDecoder = (a) => {
   const channel = toValue(context.channel);
   const data = toValue(context.data);
   const authId = toValue(getPath(context, "auth.row_id"));
-  if (!channel || !data || !authId) return null;
+  if (!channel || !data || !authId)
+    return declineHere("api.realtime_event: channel, data, or auth.row_id is not a tagged value");
 
   const entries: Array<[string, Expr]> = [
     ["channel", decodeValue(a.ctx, channel)],
@@ -167,8 +173,13 @@ const createAuthToken: SpecialDecoder = (a) => {
   const extras = values.get("extras");
   const expiration = values.get("expiration");
   const known = new Set(["dbtable", "id", "extras", "expiration"]);
-  if (!table || !id || [...values.keys()].some((name) => !known.has(name))) return null;
-  if (table.tag !== "const" || table.filters.length > 0) return null;
+  if (!table || !id)
+    return declineHere("security.create_auth_token: input[] is missing dbtable or id");
+  const unmodelled = [...values.keys()].find((name) => !known.has(name));
+  if (unmodelled !== undefined)
+    return declineHere(`security.create_auth_token: unmodelled input entry "${unmodelled}"`);
+  if (table.tag !== "const" || table.filters.length > 0)
+    return declineHere("security.create_auth_token: dbtable is not a bare guid constant");
 
   const entries: Array<[string, Expr]> = [
     [
@@ -219,10 +230,11 @@ function callInput(a: SpecialArgs): { expr: Expr; runtime: Record<string, unknow
  */
 const actionPackageCall: SpecialDecoder = (a) => {
   const context = (a.stored.context ?? {}) as Record<string, unknown>;
-  if (getPath(context, "action.trace_id") !== "") return null;
-  if (getPath(context, "package_version.id") !== "") return null;
+  if (getPath(context, "action.trace_id") !== "" || getPath(context, "package_version.id") !== "")
+    return declineHere("action.package.call: statement carries a marketplace identity");
   const slug = getPath(context, "package.slug");
-  if (typeof slug !== "string") return null;
+  if (typeof slug !== "string")
+    return declineHere("action.package.call: context.package.slug is not a string");
 
   const entries: Array<[string, Expr]> = [["action", lit("")]];
   const runtime: Record<string, unknown> = { action: "" };
@@ -244,7 +256,8 @@ const actionPackageCall: SpecialDecoder = (a) => {
 const workflowTestCall: SpecialDecoder = (a) => {
   const context = (a.stored.context ?? {}) as Record<string, unknown>;
   const guid = context.id;
-  if (typeof guid !== "string" || guid === "") return null;
+  if (typeof guid !== "string" || guid === "")
+    return declineHere("workflow_test.call: context.id is blank");
 
   const entries: Array<[string, Expr]> = [
     [

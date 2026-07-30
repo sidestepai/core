@@ -12,7 +12,7 @@ import type { TaggedValue } from "../../types/xdo.js";
 import { lit, obj, type Expr } from "../print.js";
 import { resolveReference } from "../ref-index.js";
 import { decodeValue } from "../value.js";
-import { getPath, prove, type SpecialArgs, type SpecialDecoder } from "./prove.js";
+import { declineHere, getPath, prove, type SpecialArgs, type SpecialDecoder } from "./prove.js";
 
 /** Coerce a stored `{value, tag, filters}` block to a tagged value. */
 function toValue(raw: unknown): TaggedValue | null {
@@ -34,7 +34,8 @@ function callInput(a: SpecialArgs): { expr: Expr; runtime: Record<string, unknow
   for (const entry of entries) {
     const name = (entry as { name?: unknown }).name;
     const value = toValue(entry);
-    if (typeof name !== "string" || !value) return null;
+    if (typeof name !== "string" || !value)
+      return declineHere("call input[]: entry is not a named tagged value");
     source.push([name, decodeValue(a.ctx, value)]);
     runtime[name] = value;
   }
@@ -62,7 +63,8 @@ interface CallShape {
 function callDecoder(shape: CallShape): SpecialDecoder {
   return (a) => {
     const guid = getPath(a.stored.context, shape.idPath);
-    if (typeof guid !== "string" || guid === "") return null;
+    if (typeof guid !== "string" || guid === "")
+      return declineHere(`${shape.path}: context.${shape.idPath} is blank`);
 
     const target = resolveReference(a.ctx, a.refs, guid, {
       ...a.resolve,
@@ -108,14 +110,14 @@ const apiCallExtra: CallShape["extra"] = (a) => {
 
   const headers = toValue(context.headers);
   if (context.headers !== undefined) {
-    if (!headers) return null;
+    if (!headers) return declineHere("api.call: context.headers is not a tagged value");
     entries.push(["headers", decodeValue(a.ctx, headers)]);
     runtime.headers = headers;
   }
 
   const token = toValue(context.token);
   if (context.token !== undefined) {
-    if (!token) return null;
+    if (!token) return declineHere("api.call: context.token is not a tagged value");
     const authEntries: Array<[string, Expr]> = [["token", decodeValue(a.ctx, token)]];
     const auth: Record<string, unknown> = { token };
     if (context.token_ignore_expiration === true) {
@@ -146,7 +148,8 @@ const functionRunOrService: SpecialDecoder = (a) => {
     idPath: "function.id",
     extra: () => {
       const mode = context.runtime_mode;
-      if (typeof mode !== "string") return null;
+      if (typeof mode !== "string")
+        return declineHere("service.function.run: context.runtime_mode is not a string");
       // `"shared"` is the factory default; stating it would be noise.
       return mode === "shared"
         ? { entries: [], runtime: {} }

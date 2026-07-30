@@ -25,7 +25,7 @@ import { arr, lit, obj, type Expr } from "../print.js";
 import { resolveReference } from "../ref-index.js";
 import { decodeValue } from "../value.js";
 import { decodeCondition } from "../expression.js";
-import { getPath, prove, type SpecialArgs, type SpecialDecoder } from "./prove.js";
+import { declineHere, getPath, prove, type SpecialArgs, type SpecialDecoder } from "./prove.js";
 
 /** Coerce a stored `{value, tag, filters}` block to a tagged value. */
 function toValue(raw: unknown): TaggedValue | null {
@@ -92,7 +92,8 @@ function inputEntries(stored: StackItemXdo): InputEntry[] | null {
   for (const raw of list) {
     const value = toValue(raw);
     const name = (raw as { name?: unknown }).name;
-    if (!value || typeof name !== "string") return null;
+    if (!value || typeof name !== "string")
+      return declineHere("input[]: entry is not a named tagged value");
     out.push({ name, value, ignore: (raw as { ignore?: unknown }).ignore === true });
   }
   return out;
@@ -114,11 +115,13 @@ function decodeAddonSpec(
   a: SpecialArgs,
   stored: unknown,
 ): { expr: Expr; runtime: Record<string, unknown> } | null {
-  if (stored === null || typeof stored !== "object") return null;
+  if (stored === null || typeof stored !== "object")
+    return declineHere("addon[]: attachment is not an object");
   const block = stored as Record<string, unknown>;
   const guid = block.id;
   const alias = block.as;
-  if (typeof guid !== "string" || typeof alias !== "string") return null;
+  if (typeof guid !== "string" || typeof alias !== "string")
+    return declineHere("addon[]: attachment has no id or no as");
 
   // The encoder splits the authored destination at its last dot into
   // `offset` + `as`; rejoining them recovers exactly what was authored, including
@@ -143,7 +146,8 @@ function decodeAddonSpec(
     for (const raw of inputList) {
       const value = toValue(raw);
       const name = (raw as { name?: unknown }).name;
-      if (!value || typeof name !== "string") return null;
+      if (!value || typeof name !== "string")
+        return declineHere("addon[].input[]: entry is not a named tagged value");
       cells.push([name, decodeValue(a.ctx, value)]);
       inputRuntime[name] = value;
     }
@@ -155,7 +159,8 @@ function decodeAddonSpec(
   if (output?.customize === true) {
     const items = Array.isArray(output.items) ? output.items : [];
     const names = items.map((item) => (item as { name?: unknown }).name);
-    if (!names.every((n) => typeof n === "string")) return null;
+    if (!names.every((n) => typeof n === "string"))
+      return declineHere("addon[].output.items[]: column has no name");
     entries.push(["output", lit(names)]);
     runtime.output = names;
   }
@@ -190,7 +195,7 @@ function decodeSort(list: unknown): { expr: Expr; runtime: unknown[] } | null {
   for (const raw of list) {
     const sortBy = (raw as { sortBy?: unknown }).sortBy;
     const orderBy = (raw as { orderBy?: unknown }).orderBy;
-    if (typeof sortBy !== "string") return null;
+    if (typeof sortBy !== "string") return declineHere("sort[]: entry has no sortBy");
     const cells: Array<[string, Expr]> = [["sortBy", lit(sortBy)]];
     const entry: Record<string, unknown> = { sortBy };
     // `asc` is the encoder's default, so stating it would be noise.
@@ -222,7 +227,8 @@ function decodeEvals(
   const prefix = stripAlias ? `${stripAlias}.` : "";
   for (const raw of list) {
     const block = raw as { as?: unknown; name?: unknown; filters?: unknown };
-    if (typeof block.as !== "string" || typeof block.name !== "string") return null;
+    if (typeof block.as !== "string" || typeof block.name !== "string")
+      return declineHere("eval[]: entry has no name or no as");
     const name = prefix && block.name.startsWith(prefix) ? block.name.slice(prefix.length) : block.name;
     const cells: Array<[string, Expr]> = [
       ["name", lit(name)],
@@ -236,13 +242,15 @@ function decodeEvals(
       const filterRuntime: unknown[] = [];
       for (const step of filters) {
         const stepBlock = step as { name?: unknown; arg?: unknown; disabled?: unknown };
-        if (typeof stepBlock.name !== "string") return null;
+        if (typeof stepBlock.name !== "string")
+          return declineHere("eval[].filters[]: step has no name");
         const stepCells: Array<[string, Expr]> = [["name", lit(stepBlock.name)]];
         const stepEntry: Record<string, unknown> = { name: stepBlock.name };
         const args = Array.isArray(stepBlock.arg) ? stepBlock.arg : [];
         if (args.length > 0) {
           const values = args.map(toValue);
-          if (values.some((v) => v === null)) return null;
+          if (values.some((v) => v === null))
+            return declineHere("eval[].filters[].arg[]: argument is not a tagged value");
           stepCells.push(["arg", arr(values.map((v) => decodeValue(a.ctx, v!)))]);
           stepEntry.arg = values;
         }
@@ -299,7 +307,8 @@ interface DboOpShape {
 function dboOp(shape: DboOpShape): SpecialDecoder {
   return (a) => {
     const guid = getPath(a.stored.context, "dbo.id");
-    if (typeof guid !== "string" || guid === "") return null;
+    if (typeof guid !== "string" || guid === "")
+      return declineHere(`${shape.path}: context.dbo.id is blank`);
     const entriesIn = inputEntries(a.stored);
     if (!entriesIn) return null;
 
@@ -316,8 +325,10 @@ function dboOp(shape: DboOpShape): SpecialDecoder {
     if (shape.lookup) {
       const fieldName = entriesIn[cursor++];
       const fieldValue = entriesIn[cursor++];
-      if (fieldName?.name !== "field_name" || fieldValue?.name !== "field_value") return null;
-      if (fieldName.value.tag !== "const" || fieldName.value.filters.length > 0) return null;
+      if (fieldName?.name !== "field_name" || fieldValue?.name !== "field_value")
+        return declineHere(`${shape.path}: input[] does not lead with field_name/field_value`);
+      if (fieldName.value.tag !== "const" || fieldName.value.filters.length > 0)
+        return declineHere(`${shape.path}: field_name is not a bare constant`);
       // `id` is the encoder's default lookup column, so naming it adds nothing.
       if (fieldName.value.value !== "id") {
         entries.push(["fieldName", lit(fieldName.value.value)]);
@@ -332,12 +343,13 @@ function dboOp(shape: DboOpShape): SpecialDecoder {
       if (found?.name !== spec.entry) {
         // An optional entry the engine omitted: skip it without consuming a slot.
         if (spec.optional) continue;
-        return null;
+        return declineHere(`${shape.path}: input[] is missing required "${spec.entry}"`);
       }
       cursor += 1;
       if (spec.bool) {
         const value = plainBool(found.value);
-        if (value === null) return null;
+        if (value === null)
+          return declineHere(`${shape.path}: "${spec.entry}" is not a bare boolean constant`);
         entries.push([spec.arg, lit(value)]);
         runtime[spec.arg] = value;
         continue;
@@ -365,7 +377,11 @@ function dboOp(shape: DboOpShape): SpecialDecoder {
 
     // A stored entry no rule accounts for means this is not the shape we think
     // it is — fall through rather than silently dropping it.
-    if (cursor !== entriesIn.length) return null;
+    if (cursor !== entriesIn.length)
+      return declineHere(
+        `${shape.path}: input[] carries ${entriesIn.length - cursor} unaccounted entries ` +
+          `(first: "${entriesIn[cursor]?.name ?? ""}")`,
+      );
 
     if (shape.takesOutput) {
       const cols = outputCols(a.stored);
@@ -401,7 +417,8 @@ function dboOp(shape: DboOpShape): SpecialDecoder {
  */
 const dbAddOrEdit: SpecialDecoder = (a) => {
   const guid = getPath(a.stored.context, "dbo.id");
-  if (typeof guid !== "string" || guid === "") return null;
+  if (typeof guid !== "string" || guid === "")
+    return declineHere("db.add_or_edit: context.dbo.id is blank");
   // `dbo.as` is read by PRESENCE, like every other db statement: it is authored
   // per statement, so its absence is data. Requiring it here (which this decoder
   // used to) made `add_or_edit` the one db statement that could not decode
@@ -411,8 +428,10 @@ const dbAddOrEdit: SpecialDecoder = (a) => {
   const entriesIn = inputEntries(a.stored);
   if (!entriesIn) return null;
   const [fieldName, fieldValue, ...rows] = entriesIn;
-  if (fieldName?.name !== "field_name" || fieldValue?.name !== "field_value") return null;
-  if (fieldName.value.tag !== "const" || fieldName.value.filters.length > 0) return null;
+  if (fieldName?.name !== "field_name" || fieldValue?.name !== "field_value")
+    return declineHere("db.add_or_edit: input[] does not lead with field_name/field_value");
+  if (fieldName.value.tag !== "const" || fieldName.value.filters.length > 0)
+    return declineHere("db.add_or_edit: field_name is not a bare constant");
 
   const target = a.refs.lookup(guid);
   const entries: Array<[string, Expr]> = [
@@ -467,7 +486,8 @@ function sqlArgs(
 ): { expr: Expr; runtime: TaggedValue[] } | null {
   const list = Array.isArray(context.arg) ? context.arg : [];
   const values = list.map(toValue);
-  if (values.some((v) => v === null)) return null;
+  if (values.some((v) => v === null))
+    return declineHere("raw SQL: context.arg[] holds a non-tagged value");
   return {
     expr: arr(values.map((v) => decodeValue(a.ctx, v!))),
     runtime: values as TaggedValue[],
@@ -479,7 +499,7 @@ function sqlEntries(
   a: SpecialArgs,
   context: Record<string, unknown>,
 ): { entries: Array<[string, Expr]>; runtime: Record<string, unknown> } | null {
-  if (typeof context.code !== "string") return null;
+  if (typeof context.code !== "string") return declineHere("raw SQL: context.code is not a string");
   const entries: Array<[string, Expr]> = [["sql", lit(context.code)]];
   const runtime: Record<string, unknown> = { sql: context.code };
   // `list` is the encoder's default result shape.
@@ -526,7 +546,8 @@ function externalQuery(engine: string): SpecialDecoder {
     if (!decoded) return null;
     // The connection string rides `connection_string_flex`, not `connection_string`.
     const connection = toValue(context.connection_string_flex);
-    if (!connection) return null;
+    if (!connection)
+      return declineHere("external SQL: context.connection_string_flex is not a tagged value");
     decoded.entries.splice(1, 0, ["connectionString", decodeValue(a.ctx, connection)]);
     decoded.runtime.connectionString = connection;
 
@@ -549,7 +570,8 @@ function externalQuery(engine: string): SpecialDecoder {
 const dbBulkDelete: SpecialDecoder = (a) => {
   const context = (a.stored.context ?? {}) as Record<string, unknown>;
   const guid = getPath(context, "dbo.id");
-  if (typeof guid !== "string" || guid === "") return null;
+  if (typeof guid !== "string" || guid === "")
+    return declineHere("db.bulk.delete: context.dbo.id is blank");
   const table = tableArg(a, guid);
   const entries: Array<[string, Expr]> = [["table", table.expr]];
   const runtime: Record<string, unknown> = { table: table.runtime };
@@ -592,12 +614,15 @@ const dbTransaction: SpecialDecoder = (a) => {
 /**
  * Decode a stored `where`: an `{expression: […]}` tree through the shared
  * boolean-expression inverse, or a raw `Value` escape hatch passed through.
+ *
+ * Null is always fatal for a caller (a search filter cannot be dropped), so the
+ * decline is recorded here rather than at each call site.
  */
 function decodeWhere(a: SpecialArgs, stored: unknown): { expr: Expr; runtime: unknown } | null {
   const condition = decodeCondition(a.ctx, stored);
   if (condition) return { expr: condition.expr, runtime: condition.runtime };
   const value = toValue(stored);
-  if (!value) return null;
+  if (!value) return declineHere("where: neither a decodable condition tree nor a tagged value");
   return { expr: decodeValue(a.ctx, value), runtime: value };
 }
 
@@ -622,7 +647,8 @@ function decodePaging(
     // baseline, which stays at its engine default in that case.
     if (simple[key] !== undefined) {
       const value = toValue(simple[key]);
-      if (!value) return null;
+      if (!value)
+        return declineHere(`db.query: context.simpleExternal.${key} is not a tagged value`);
       entries.push([key, decodeValue(a.ctx, value)]);
       runtime[key] = value;
       continue;
@@ -645,8 +671,10 @@ function decodePaging(
 const dbQuery: SpecialDecoder = (a) => {
   const context = (a.stored.context ?? {}) as Record<string, unknown>;
   const guid = getPath(context, "dbo.id");
-  if (typeof guid !== "string" || guid === "") return null;
-  if (Array.isArray(a.stored.input) && a.stored.input.length > 0) return null;
+  if (typeof guid !== "string" || guid === "")
+    return declineHere("db.query: context.dbo.id is blank");
+  if (Array.isArray(a.stored.input) && a.stored.input.length > 0)
+    return declineHere("db.query: statement-level input[] is populated");
 
   const table = tableArg(a, guid);
   const entries: Array<[string, Expr]> = [["table", table.expr]];
@@ -672,13 +700,15 @@ const dbQuery: SpecialDecoder = (a) => {
   }
 
   if (context.bind !== undefined) {
-    if (!Array.isArray(context.bind)) return null;
+    if (!Array.isArray(context.bind))
+      return declineHere("db.query: context.bind is present but not an array");
     const bindExprs: Expr[] = [];
     const bindRuntime: unknown[] = [];
     for (const stored of context.bind) {
       const bindGuid = getPath(stored, "dbo.id");
       const bindAlias = getPath(stored, "dbo.as");
-      if (typeof bindGuid !== "string") return null;
+      if (typeof bindGuid !== "string")
+        return declineHere("db.query: a context.bind[] join has no dbo.id");
       const joined = tableArg(a, bindGuid);
       const cells: Array<[string, Expr]> = [["table", joined.expr]];
       const entry: Record<string, unknown> = { table: joined.runtime };
@@ -707,7 +737,13 @@ const dbQuery: SpecialDecoder = (a) => {
   }
 
   if (context.eval !== undefined) {
-    const evals = decodeEvals(a, context.eval);
+    // Emptiness is checked here rather than inside `decodeEvals`, whose null also
+    // means "no evals" at the aggregate call sites — so only the fatal reading of
+    // it gets a decline, and only one per statement.
+    const list = context.eval;
+    if (!Array.isArray(list) || list.length === 0)
+      return declineHere("db.query: context.eval is present but empty");
+    const evals = decodeEvals(a, list);
     if (!evals) return null;
     entries.push(["eval", evals.expr]);
     runtime.eval = evals.runtime;
@@ -715,7 +751,8 @@ const dbQuery: SpecialDecoder = (a) => {
 
   if (context.lock !== undefined) {
     const lock = plainBool(context.lock);
-    if (lock === null) return null;
+    if (lock === null)
+      return declineHere("db.query: context.lock is not a bare boolean constant");
     entries.push(["lock", lit(lock)]);
     runtime.lock = lock;
   }
@@ -768,7 +805,8 @@ const dbQuery: SpecialDecoder = (a) => {
   for (const key of ["search", "sort"] as const) {
     if (simple[key] === undefined) continue;
     const value = toValue(simple[key]);
-    if (!value) return null;
+    if (!value)
+      return declineHere(`db.query: context.simpleExternal.${key} is not a tagged value`);
     pagingEntries.push([key, decodeValue(a.ctx, value)]);
     pagingRuntime[key] = value;
   }
@@ -786,7 +824,7 @@ const dbQuery: SpecialDecoder = (a) => {
   }
   if (context.external !== undefined) {
     const external = decodeExternal(a, context.external);
-    if (!external) return null;
+    if (!external) return null; // `decodeExternal` records which part refused
     entries.push(["external", external.expr]);
     runtime.external = external.runtime;
   }
@@ -798,7 +836,7 @@ const dbQuery: SpecialDecoder = (a) => {
 
   if (returnType === "aggregate") {
     const aggregate = decodeAggregate(a, ret, table.runtime.name, sortBlock);
-    if (!aggregate) return null;
+    if (!aggregate) return declineHere("db.query: context.return.aggregate is not decodable");
     entries.push(["aggregate", aggregate.expr]);
     runtime.aggregate = aggregate.runtime;
   }
@@ -827,7 +865,7 @@ function decodeExternal(
   stored: unknown,
 ): { expr: Expr; runtime: Record<string, unknown> } | null {
   const value = toValue(stored);
-  if (!value) return null;
+  if (!value) return declineHere("db.query: context.external is not a tagged value");
   const entries: Array<[string, Expr]> = [["value", decodeValue(a.ctx, value)]];
   const runtime: Record<string, unknown> = { value };
 
@@ -847,7 +885,8 @@ function decodeExternal(
     const gates: Record<string, boolean> = {};
     for (const [key, fallback] of defaults) {
       const gate = permissions[key];
-      if (typeof gate !== "boolean") return null;
+      if (typeof gate !== "boolean")
+        return declineHere(`db.query: context.external.permissions.${key} is not a boolean`);
       if (gate !== fallback) {
         cells.push([key, lit(gate)]);
         gates[key] = gate;

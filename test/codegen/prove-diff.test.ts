@@ -8,7 +8,17 @@ import { describe, it, expect, afterEach } from "vitest";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { diffKeyPaths, recordProveAbort, recordProveDecline } from "../../src/codegen/prove-diff.js";
+import {
+  declineHere,
+  diffKeyPaths,
+  recordProveAbort,
+  recordProveDecline,
+  withDeclineContext,
+} from "../../src/codegen/prove-diff.js";
+import { DecodeContext } from "../../src/codegen/context.js";
+import { RefIndex } from "../../src/codegen/ref-index.js";
+import { decodeStatement } from "../../src/codegen/statement.js";
+import type { StackItemXdo } from "../../src/types/xdo.js";
 
 interface Record_ {
   arm: string;
@@ -160,5 +170,99 @@ describe("prove-diff — the recorder", () => {
     process.env["SIDESTEP_PROVE_DIFF"] = file;
     recordProveDecline("special", "mvp:dbo_view", { a: 1, b: 2, c: 3 }, { a: 9, b: 9, c: 9 });
     expect(readRecords(file)).toHaveLength(1);
+  });
+});
+
+/**
+ * The internal-guard recorder — the blind spot the byte-comparison and
+ * factory-throw recorders leave. A decoder that cannot recover its arguments at
+ * all returns null from a guard long before either fires, which is why 483 `raw()`
+ * fallbacks reported only 153 declines.
+ */
+describe("prove-diff — the internal-guard recorder", () => {
+  it("writes nothing and creates no file when the variable is unset", () => {
+    const file = sinkPath();
+    withDeclineContext("mvp:dbo_view", () => declineHere("db.query: context.dbo.id is blank"));
+    expect(existsSync(file)).toBe(false);
+  });
+
+  it("always returns null, so a guard can `return declineHere(…)` either way", () => {
+    expect(declineHere("off")).toBeNull();
+    process.env["SIDESTEP_PROVE_DIFF"] = sinkPath();
+    expect(declineHere("on")).toBeNull();
+  });
+
+  it("records the guard label against the statement being decoded", () => {
+    const file = sinkPath();
+    process.env["SIDESTEP_PROVE_DIFF"] = file;
+    withDeclineContext("mvp:dbo_view", () => declineHere("db.query: context.eval is present but empty"));
+
+    expect(readRecords(file)).toEqual([
+      {
+        // A distinct arm: these rows cluster on their own label, not on key paths.
+        arm: "guard",
+        name: "mvp:dbo_view",
+        diffs: ["GUARD: db.query: context.eval is present but empty"],
+      },
+    ]);
+  });
+
+  it("attributes a nested guard to the inner statement and restores the outer one", () => {
+    const file = sinkPath();
+    process.env["SIDESTEP_PROVE_DIFF"] = file;
+    withDeclineContext("mvp:conditional", () => {
+      withDeclineContext("mvp:set_var", () => declineHere("set_var: as is blank"));
+      declineHere("conditional: context.expr is not a decodable condition");
+    });
+
+    // A statement inside a conditional's `run[]` must not be filed under the
+    // conditional, and the conditional's own guard must not be filed under it.
+    expect(readRecords(file).map((r) => r.name)).toEqual(["mvp:set_var", "mvp:conditional"]);
+  });
+
+  it("restores the previous statement even when the decoder throws", () => {
+    const file = sinkPath();
+    process.env["SIDESTEP_PROVE_DIFF"] = file;
+    withDeclineContext("mvp:conditional", () => {
+      expect(() =>
+        withDeclineContext("mvp:set_var", () => {
+          throw new Error("factory blew up");
+        }),
+      ).toThrow();
+      declineHere("conditional: context.expr is not a decodable condition");
+    });
+    expect(readRecords(file)[0]!.name).toBe("mvp:conditional");
+  });
+
+  it("records nothing at all for a statement that decodes cleanly", () => {
+    const file = sinkPath();
+    process.env["SIDESTEP_PROVE_DIFF"] = file;
+    const stored = {
+      name: "mvp:set_var",
+      as: "total",
+      context: { value: "1", tag: "const:int", filters: [] },
+    } as unknown as StackItemXdo;
+    const ctx = new DecodeContext();
+    decodeStatement(ctx, RefIndex.fromPayload({}, ctx), stored);
+    expect(existsSync(file)).toBe(false);
+  });
+
+  it("names the guard a real decode tripped, through the live dispatch", () => {
+    const file = sinkPath();
+    process.env["SIDESTEP_PROVE_DIFF"] = file;
+    // A `set_var` with no `as` cannot be re-authored — the factory requires the
+    // name. Before the guard recorder, this was one of 18 `mvp:set_var` fallbacks
+    // that reported no decline at all.
+    const stored = {
+      name: "mvp:set_var",
+      as: "",
+      context: { value: "1", tag: "const:int", filters: [] },
+    } as unknown as StackItemXdo;
+    const ctx = new DecodeContext();
+    decodeStatement(ctx, RefIndex.fromPayload({}, ctx), stored);
+
+    const guards = readRecords(file).filter((r) => r.arm === "guard");
+    expect(guards.map((r) => r.name)).toContain("mvp:set_var");
+    expect(guards.some((r) => r.diffs[0] === "GUARD: set_var: as is blank")).toBe(true);
   });
 });

@@ -21,7 +21,7 @@ import { CORE_MODULE, type DecodeContext } from "../context.js";
 import { call, spread, type Expr } from "../print.js";
 import { deepEqual } from "../field.js";
 import { envelopePassthrough } from "../envelope-passthrough.js";
-import { recordProveAbort, recordProveDecline } from "../prove-diff.js";
+import { declineHere, recordProveAbort, recordProveDecline } from "../prove-diff.js";
 import type { RefIndex, ResolveOptions } from "../ref-index.js";
 
 /** What a special decoder is handed. */
@@ -65,7 +65,7 @@ export function prove(
   sourceArgs: readonly Expr[],
 ): Expr | null {
   const factory = leafOf(path);
-  if (!factory) return null;
+  if (!factory) return declineHere(`${path}: no such factory on \`s\``);
 
   // `description` and `disabled` are authored in the editor but are not arguments
   // to any hand-written factory, so they are overridden on the result and spread
@@ -88,6 +88,10 @@ export function prove(
   const expression = call(`s.${path}`, ...sourceArgs);
   return entries.length > 0 ? spread(expression, entries) : expression;
 }
+
+// Re-exported so a decoder imports its guard recorder from the same place it
+// imports `prove` — the two are halves of one contract.
+export { declineHere } from "../prove-diff.js";
 
 /** Read a dotted path out of a stored object. */
 export function getPath(root: unknown, path: string): unknown {

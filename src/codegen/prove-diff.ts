@@ -125,3 +125,54 @@ export function recordProveAbort(arm: string, name: unknown, why: string): void 
   if (file === undefined || file === "") return;
   appendFileSync(file, `${JSON.stringify({ arm, name, diffs: [`ABORT: ${why}`] })}\n`);
 }
+
+/**
+ * The stored statement a decoder is currently working on.
+ *
+ * A guard deep inside a decoder — inside a shared helper several frames down —
+ * has no handle on the statement being decoded, but the cluster it lands in is
+ * only useful with the name attached. The dispatch sets this around each decode
+ * and restores it afterwards, so nesting (a conditional's `run[]`, an addon's
+ * `children[]`) reports against the innermost statement rather than the outermost.
+ */
+let currentName: unknown = undefined;
+
+/** Run `body` with `name` as the statement guards inside it report against. */
+export function withDeclineContext<T>(name: unknown, body: () => T): T {
+  const previous = currentName;
+  currentName = name;
+  try {
+    return body();
+  } finally {
+    currentName = previous;
+  }
+}
+
+/**
+ * Record a decoder giving up at an internal guard, and return `null` for the
+ * caller to propagate.
+ *
+ * The two proof-arm recorders above only see a candidate that was *built* — a
+ * byte mismatch or a factory throw. A decoder that cannot recover its arguments
+ * at all returns `null` from a guard long before either, which is why 483 `raw()`
+ * fallbacks reported only 153 declines and why `db.query` was the largest
+ * undiagnosable family in the sweep.
+ *
+ * `where` is a stable label, not a message: it is what the sweep clusters on, so
+ * it names the decoder and the guard (`"db.query: where[] is not a decodable
+ * condition"`) rather than quoting the offending value.
+ *
+ * **Only fatal guards belong here.** Several helpers return `null` to mean "not
+ * applicable" — an absent `addon[]`, an empty `sort[]` — and their callers go on
+ * to decode fine. Recording those would drown the real signal, so the call sits
+ * at the site that actually abandons the statement, not at every `return null`.
+ */
+export function declineHere(where: string): null {
+  const file = sink();
+  if (file === undefined || file === "") return null;
+  appendFileSync(
+    file,
+    `${JSON.stringify({ arm: "guard", name: currentName, diffs: [`GUARD: ${where}`] })}\n`,
+  );
+  return null;
+}

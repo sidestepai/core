@@ -19,6 +19,7 @@ import { arr, call, lit, type Expr } from "./print.js";
 import type { RefIndex, ResolveOptions } from "./ref-index.js";
 import { decodeFromSpec } from "./spec-inverse.js";
 import { SPECIAL_DECODERS } from "./specials/index.js";
+import { withDeclineContext } from "./prove-diff.js";
 
 /** Decode one stored statement to a source expression. */
 export function decodeStatement(
@@ -26,6 +27,17 @@ export function decodeStatement(
   refs: RefIndex,
   stored: StackItemXdo,
   resolve: ResolveOptions = {},
+): Expr {
+  // Guards inside the arms below report against this name (see `declineHere`).
+  return withDeclineContext(stored.name, () => dispatch(ctx, refs, stored, resolve));
+}
+
+/** The dispatch proper: special decoder → spec inverse → `raw()`. */
+function dispatch(
+  ctx: DecodeContext,
+  refs: RefIndex,
+  stored: StackItemXdo,
+  resolve: ResolveOptions,
 ): Expr {
   const special = SPECIAL_DECODERS.get(stored.name);
   if (special) {

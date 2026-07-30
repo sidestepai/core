@@ -32,7 +32,7 @@ import { CORE_MODULE, type DecodeContext } from "./context.js";
 import { call, lit, obj, spread, type Expr } from "./print.js";
 import { deepEqual } from "./field.js";
 import { envelopePassthrough } from "./envelope-passthrough.js";
-import { recordProveAbort, recordProveDecline } from "./prove-diff.js";
+import { declineHere, recordProveAbort, recordProveDecline } from "./prove-diff.js";
 import { decodeCondition } from "./expression.js";
 import { decodeValue } from "./value.js";
 
@@ -215,7 +215,9 @@ export function decodeFromSpec(ctx: DecodeContext, stored: StackItemXdo): Expr |
     else if (!rule.optional && rule.default === undefined) {
       // A required field that is not present cannot be re-authored; emitting the
       // call anyway would produce source that throws at compile time.
-      return null;
+      return declineHere(
+        `spec: required "${rule.field}" not recoverable from its ${rule.route.kind} route`,
+      );
     }
   }
   recovered.push(...envelopeEntries(spec, stored));
