@@ -127,6 +127,24 @@ function historyScalar(block: unknown): boolean | number | "all" | null | undefi
   return typeof value.limit === "number" && value.limit >= 0 ? value.limit : undefined;
 }
 
+/**
+ * A query's saved request/response sample. Nothing in this SDK models it, so a
+ * populated one cannot survive a pull — say so out loud rather than dropping it
+ * silently. Two real queries carry one.
+ */
+function reportExample(a: KindDecodeArgs): null {
+  const example = a.stored.example;
+  const populated =
+    typeof example === "object" && example !== null && Object.keys(example).length > 0;
+  if (populated) {
+    a.ctx.problem(
+      "expected-omission",
+      "the saved request/response `example` is not modelled and is left behind (unmodeled)",
+    );
+  }
+  return null;
+}
+
 /** `history:` for an object-tier kind. */
 function history(args: KindDecodeArgs): DefEntry | null {
   // An ARRAY here is not a settings block at all — it is the engine's own record
@@ -507,6 +525,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
         pathAwareInputs(a),
         response(a),
         stack(a),
+        reportExample(a),
       ]),
   },
   {

@@ -683,3 +683,75 @@ describe("validate normalizer — the frozen object defaults match the encoder",
     }
   });
 });
+
+/**
+ * The empty spellings a stored object uses for "nothing here", one key at a
+ * time. Same generational gap as the block above, and the same discipline: each
+ * key is evidenced in the 177-workspace corpus storing the empty form and the
+ * ABSENT form side by side on one instance, and each rule is paired with a
+ * negative that keeps an authored value comparing.
+ */
+describe("validate normalizer — per-key empty spellings", () => {
+  it("drops an MCP tool entry's default type and its empty metadata", () => {
+    // 8 real tool entries store `type:"tool"` with empty metadata and 1 omits
+    // all three. A tool that exposes a RESOURCE says so, and still compares.
+    expect(normalize({ type: "tool", tool_meta: "", resource_uri: "" })).toEqual({});
+    expect(normalize({ type: "resource", resource_uri: "file://x" })).toEqual({
+      type: "resource",
+      resource_uri: "file://x",
+    });
+  });
+
+  it("leaves the `type` discriminators that are not a tool kind", () => {
+    // The paired negative for a generic name: `type` also discriminates
+    // expression nodes and column types, and none of those spell "tool".
+    expect(normalize({ type: "group" })).toEqual({ type: "group" });
+    expect(normalize({ type: "text" })).toEqual({ type: "text" });
+  });
+
+  it("drops the empty agent provider-config members", () => {
+    expect(
+      normalize({ baseURL: "", headers: "", safetySettings: "", dynamicRetrievalConfig: "", apiKey: "" }),
+    ).toEqual({});
+    const set = { baseURL: "https://x.test", apiKey: "{{ $env.gemini }}" };
+    expect(normalize(set)).toEqual(set);
+  });
+
+  it("never mistakes an api_request header LIST for the empty spelling", () => {
+    // `headers` is a string[] on an api_request statement; only the empty-STRING
+    // spelling an agent config uses is dropped.
+    expect(normalize({ headers: [] })).toEqual({ headers: [] });
+    expect(normalize({ headers: ["A: 1"] })).toEqual({ headers: ["A: 1"] });
+  });
+
+  it("reads every stored spelling of an unset thinking config as unset", () => {
+    // Four spellings across 16 real configs — `""`, absent, and the block with
+    // its budget as either `0` or `""`. The SDK writes the last one.
+    for (const v of ["", { includeThoughts: false, thinkingBudget: 0 }, { includeThoughts: false, thinkingBudget: "" }]) {
+      expect(normalize({ thinkingConfig: v }), JSON.stringify(v)).toEqual({});
+    }
+    const budgeted = { thinkingConfig: { includeThoughts: true, thinkingBudget: 1024 } };
+    expect(normalize(budgeted)).toEqual(budgeted);
+  });
+
+  it("reads an empty auth string as the same no-auth that `false` means", () => {
+    expect(normalize({ auth: "" })).toEqual({});
+    const table = { auth: "6QkKbIDe6DVBwUj4gv4HKSdRT1A" };
+    expect(normalize(table)).toEqual(table);
+  });
+
+  it("drops an empty view alias but keeps a named one", () => {
+    expect(normalize({ alias: "" })).toEqual({});
+    expect(normalize({ alias: "superseanview" })).toEqual({ alias: "superseanview" });
+  });
+
+  it("strips a query `example` whole, because its contents are USER data", () => {
+    // Not emptied — stripped. An example payload is a saved request/response
+    // SAMPLE, so a key inside it named `output` or `input` means whatever the
+    // user meant, not what a statement envelope means. Normalizing into it
+    // rewrote one real 700-byte sample down to `{}` by applying the
+    // statement-output rule to the user's own `output` key.
+    expect(normalize({ example: { output: { float: 3.14 }, input: { abc: 123 } } })).toEqual({});
+    expect(normalize({ example: {} })).toEqual({});
+  });
+});

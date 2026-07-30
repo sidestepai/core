@@ -19,7 +19,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { decodeBundle } from "../../src/codegen/index.js";
-import { workspace, defineFunction, apiGroup, task, s, c } from "../../src/index.js";
+import { workspace, defineFunction, apiGroup, query, task, s, c } from "../../src/index.js";
 
 /** A bundle with one function and one API group, both at their history default. */
 function bundle(): { payload: Record<string, unknown> } {
@@ -136,5 +136,33 @@ describe("task schedule decode — a disabled end date is still carried", () => 
     const source = decodeSchedule({ enabled: true, on: "2023-01-01 00:00:00+0000" }, true);
     expect(source).toContain('endsOn: "2023-01-01 00:00:00+0000"');
     expect(source).not.toContain("endsEnabled");
+  });
+});
+
+/**
+ * A query's saved request/response sample. Nothing in this SDK models it, so a
+ * pull cannot carry it — which must be SAID, not done silently. Two real queries
+ * store one, and both were reading as a broken round trip instead.
+ */
+describe("query example — unmodeled, and said out loud", () => {
+  function decodeWithExample(example: unknown) {
+    const b = workspace("w")
+      .registerApiGroups([apiGroup({ name: "public" })])
+      .registerQueries([
+        query({ name: "hello", verb: "GET", apiGroup: "public", stack: [s.set_var("x", c.int(1))] }),
+      ])
+      .export() as unknown as { payload: Record<string, unknown> };
+    (b.payload.query as Array<Record<string, unknown>>)[0]!.example = example;
+    return decodeBundle(b).report.entries.filter((e) => e.detail.includes("example"));
+  }
+
+  it("reports a populated example as an omission", () => {
+    const named = decodeWithExample({ input: { abc: 123 }, output: { abc: "test" } });
+    expect(named).toHaveLength(1);
+    expect(named[0]!.category).toBe("expected-omission");
+  });
+
+  it("says nothing when there is no example to leave behind", () => {
+    expect(decodeWithExample({})).toEqual([]);
   });
 });

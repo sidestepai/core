@@ -33,6 +33,15 @@ const STRIP_KEYS = new Set([
   "market_item",
   // engine-stored source artifact (the raw XanoScript text), not authored data
   "xanoscript",
+  // A query's saved request/response SAMPLE. Authored, but nothing in this SDK
+  // models it, so it cannot survive a pull — the decoder reports a populated one
+  // as an omission rather than letting it read as a failed round trip.
+  //
+  // Stripped rather than emptied because its contents are USER DATA: an example
+  // payload with a key named `output` or `input` was being rewritten by the
+  // engine-envelope rules meant for statement envelopes, which normalized one
+  // real 700-byte sample down to `{}`.
+  "example",
   // storage-mode flag the golden table corpus predates (those fixtures were
   // captured before `use_xdo` was serialized). The SDK always emits it; it
   // doesn't change the authored schema, so drop it from both sides — same as
@@ -239,6 +248,39 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     case "datasource":
     case "view_alias":
       return v === "";
+    // An MCP tool entry's optional metadata, and the agent provider-config
+    // members whose unset spelling is the empty string. Both store the empty
+    // form and the absent form side by side across the corpus.
+    case "tool_meta":
+    case "resource_uri":
+    case "alias":
+    case "baseURL":
+    case "safetySettings":
+    case "dynamicRetrievalConfig":
+    case "apiKey":
+      return v === "";
+    // `headers` is an empty STRING on an unset agent config and a string[] on an
+    // api_request statement — dropping only the string spelling leaves an empty
+    // header list comparing as the authored value it is.
+    case "headers":
+      return v === "";
+    // A tool entry's kind. Absent means `tool`; a `resource` or `prompt` entry
+    // says so and still compares. Value-distinct from the other `type`
+    // discriminators (an expression node, a column type), none of which is `tool`.
+    case "type":
+      return v === "tool";
+    // Four stored spellings of "no thinking budget" across 16 real configs: the
+    // empty string, absent, and the block with its budget as either `0` or `""`.
+    case "thinkingConfig":
+      return (
+        v === "" ||
+        (typeof v === "object" &&
+          v !== null &&
+          !Array.isArray(v) &&
+          (v as Record<string, unknown>)["includeThoughts"] === false &&
+          ((v as Record<string, unknown>)["thinkingBudget"] === 0 ||
+            (v as Record<string, unknown>)["thinkingBudget"] === ""))
+      );
     // A query with no declared response type. Type- and value-distinct from the
     // raw-SQL `response_type`, whose values are `list`/`single`/`count` and
     // whose own default (`list`) is spelled differently.
@@ -372,8 +414,6 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     // is preserved. Same two-spellings-of-empty shape as `settings_registry`.
     case "input":
       return v === null || isEmptyArray(v);
-    case "example":
-      return isEmptyObject(v);
     case "shared_workspace":
       return v !== null && typeof v === "object" && (v as { is_shared?: unknown }).is_shared === false;
     // A trigger's `obj_id`: a table trigger's is the referenced table's GUID
@@ -413,8 +453,9 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     // A default `auth:false` (public / no auth table): the engine persists it on a
     // tool where the SDK omits it. Drop the `false` form; `auth:true` and an
     // auth-table id are preserved and still compared.
+    // `false` and `""` are both "no auth table"; a guid names one and compares.
     case "auth":
-      return v === false;
+      return v === false || v === "";
     // Default db-query `context` members the engine fills when an addon (or any
     // db context) customizes nothing; the SDK omits them. Empty-collection /
     // false members drop directly; the three structured members below match
