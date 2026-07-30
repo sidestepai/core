@@ -40,7 +40,13 @@ import { measureCommittedLlms } from "../../scripts/measure-llms.js";
 // `presence_join.member`, and the member entry). All three were named-but-unshaped
 // surfaces an author had to guess at and defend against — the exact thing this doc
 // exists to prevent.)
-const CEILING_TOKENS = 28_100;
+// Raised again from 28.1k for three surfaces a pulled workspace proved are real
+// and nothing modelled: `input.file` (a raw upload, and the ONLY type with no
+// `f.` column form — an agent that assumes the catalogs mirror will write
+// `f.file` and get nothing), plus `db.get_by_id` and `security.create_guid`,
+// which are distinct stored statements from their near-neighbours `db.get` and
+// `security.create_uuid` and cannot be inferred from them.
+const CEILING_TOKENS = 28_150;
 
 describe("llms.txt token budget", () => {
   it("stays under the bloat-tripwire ceiling", () => {

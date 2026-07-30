@@ -541,6 +541,60 @@ export function dbGet<
   ) as DbResult<As, WithAddons<RowShapeOf<T, Cols>, A> | null>;
 }
 
+export interface DbGetByIdArgs<
+  T extends ObjectRef = ObjectRef,
+  As extends string = string,
+  Cols extends readonly OutputPath<ColsOf<T>>[] = readonly ColsOf<T>[],
+  A extends readonly AddonSpec[] = readonly AddonSpec[],
+> {
+  /**
+   * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
+   * Absent unless set — Xano writes it on some statements and not others, so it
+   * is authored rather than derived (see {@link dboBinding}).
+   */
+  tableAlias?: string;
+
+  /** The target table (def handle or name). */
+  table: DbTableRef<T>;
+  /** The primary key to fetch. The engine types this `int|min(1)`. */
+  id: Value;
+  /** Restrict the returned columns — same envelope as {@link DbGetArgs.output}. */
+  output?: Cols;
+  /** Attach addons to enrich the returned row (see {@link AddonSpec}). */
+  addon?: A;
+  /** Capture the row into this stack variable. */
+  as?: As;
+}
+
+/**
+ * `db.get_by_id <table>` — fetch a single record by primary key (`mvp:dbo_get`).
+ *
+ * The narrow sibling of {@link dbGet}: where `db.get` matches any field
+ * (`mvp:dbo_getby`, defaulting to `id`), this one is the engine's dedicated
+ * get-by-primary-key statement and takes a single `id` input. Both are live in
+ * real workspaces — which one the editor wrote is a matter of vintage and which
+ * panel was used — so the SDK models both rather than rewriting one into the
+ * other, which would change the stored bytes.
+ *
+ * Binds `Row | null` for the same reason `db.get` does: a miss yields null
+ * rather than throwing.
+ */
+export function dbGetById<
+  T extends ObjectRef,
+  const As extends string = "",
+  const Cols extends readonly OutputPath<ColsOf<T>>[] = readonly [],
+  const A extends readonly AddonSpec[] = readonly [],
+>(args: DbGetByIdArgs<T, As, Cols, A>): DbResult<As, WithAddons<RowShapeOf<T, Cols>, A> | null> {
+  return dboStatement(
+    "mvp:dbo_get",
+    args.table,
+    args.as,
+    [entry("id", args.id)],
+    { output: args.output, addon: args.addon },
+    args.tableAlias,
+  ) as DbResult<As, WithAddons<RowShapeOf<T, Cols>, A> | null>;
+}
+
 export interface DbDelArgs<T extends ObjectRef = ObjectRef> {
   /**
    * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
@@ -1795,6 +1849,7 @@ registerStatement("mvp:dbo_external_oracle_query", (a: DbExternalQueryArgs) => d
 registerStatement("mvp:dbo_external_postgres_query", (a: DbExternalQueryArgs) => dbExternalQuery({ ...a, engine: "postgres" }));
 registerStatement("mvp:dbo_external_snowflake_query", (a: DbExternalQueryArgs) => dbExternalQuery({ ...a, engine: "snowflake" }));
 registerStatement("mvp:dbo_getby", dbGet);
+registerStatement("mvp:dbo_get", dbGetById);
 registerStatement("mvp:dbo_delby", dbDel);
 registerStatement("mvp:dbo_hasby", dbHas);
 registerStatement("mvp:dbo_patch", dbPatch);

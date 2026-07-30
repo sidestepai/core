@@ -8,8 +8,8 @@
       "total": 30
     },
     "statements": {
-      "implemented": 215,
-      "total": 215
+      "implemented": 217,
+      "total": 217
     },
     "filters": {
       "typed": 129,
@@ -2606,6 +2606,13 @@
       "declarative": false
     },
     {
+      "surface": "db.get_by_id",
+      "storedName": "mvp:dbo_get",
+      "sPath": "db.get_by_id",
+      "registered": true,
+      "declarative": false
+    },
+    {
       "surface": "db.get",
       "storedName": "mvp:dbo_getby",
       "sPath": "db.get",
@@ -3510,6 +3517,13 @@
           "optional": true
         }
       ]
+    },
+    {
+      "surface": "security.create_guid",
+      "storedName": "mvp:guid",
+      "sPath": "security.create_guid",
+      "registered": true,
+      "declarative": false
     },
     {
       "surface": "security.create_password",

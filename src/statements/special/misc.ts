@@ -232,6 +232,30 @@ export function createAuthToken<const As extends string = "">(
   } as unknown as Statement & AsShapeBrand<As, string>;
 }
 
+// --- security.create_guid ---------------------------------------------------
+
+/**
+ * `security.create_guid` — generate a GUID (`mvp:guid`).
+ *
+ * The engine's statement declares no context, input, or output schema at all
+ * (`Generate GUID`): it takes nothing and binds the generated value, so `as` is
+ * the only thing to author. Sibling of `security.create_uuid` (`mvp:uuid4`),
+ * which is a different generator and a different stored statement — the SDK
+ * models both rather than folding one into the other.
+ *
+ * Branded `AsShapeBrand<As, string>` so a `ref("<as>")` traces to `string`.
+ */
+export function createGuid<const As extends string = "">(
+  a: { as?: As } = {},
+): Statement & AsShapeBrand<As, string> {
+  return {
+    name: "mvp:guid",
+    context: {},
+    as: a.as ?? "",
+    input: [],
+  } as unknown as Statement & AsShapeBrand<As, string>;
+}
+
 // --- expect.to_throw (structural) ------------------------------------------
 
 export interface ExpectToThrowArgs {
@@ -249,6 +273,7 @@ export function expectToThrow(a: ExpectToThrowArgs): Statement {
 }
 
 registerStatement("mvp:array_map", arrayMap);
+registerStatement("mvp:guid", createGuid);
 registerStatement("mvp:array_union", arrayUnion);
 registerStatement("mvp:comment", comment);
 registerStatement("mvp:placeholder", placeholder);

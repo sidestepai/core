@@ -303,6 +303,18 @@ const workflowTestCall: SpecialDecoder = (a) => {
   return prove(a.ctx, a.stored, "workflow_test.call", [runtime], [obj(entries)]);
 };
 
+/**
+ * `security.create_guid` — the engine declares no context, input, or output
+ * schema for it, so `as` is the only thing to recover. Anything else present is
+ * a shape this does not model, and declining lets it ride `raw()` intact.
+ */
+const createGuid: SpecialDecoder = (a) => {
+  const entries: Array<[string, Expr]> = [];
+  const runtime: Record<string, unknown> = {};
+  withAs(a, entries, runtime);
+  return prove(a.ctx, a.stored, "security.create_guid", [runtime], [obj(entries)]);
+};
+
 /** Miscellaneous decoders by stored name. */
 export const MISC_DECODERS: ReadonlyMap<string, SpecialDecoder> = new Map<string, SpecialDecoder>([
   ["mvp:get_input", getRawInput],
@@ -329,6 +341,7 @@ export const MISC_DECODERS: ReadonlyMap<string, SpecialDecoder> = new Map<string
   ],
   ["mvp:realtime_event", realtimeEvent],
   ["mvp:create_auth", createAuthToken],
+  ["mvp:guid", createGuid],
   ["mvp:action_package", actionPackageCall],
   ["mvp:workspace_run_workflow_test", workflowTestCall],
 ]);

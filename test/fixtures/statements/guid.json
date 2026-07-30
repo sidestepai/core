@@ -1,0 +1,16 @@
+{
+  "as": "var_new_uuid",
+  "name": "mvp:guid",
+  "_xsid": "f:2f758f53-0025-4da6-a9e8-de237c8c3968",
+  "addon": [],
+  "input": [],
+  "output": {
+    "items": [],
+    "filters": [],
+    "customize": false
+  },
+  "context": [],
+  "disabled": false,
+  "description": "",
+  "settings_registry": null
+}

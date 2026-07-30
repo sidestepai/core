@@ -1127,6 +1127,17 @@ export const DB_DECODERS: ReadonlyMap<string, SpecialDecoder> = new Map<string, 
       takesAddon: true,
     }),
   ],
+  // The engine's dedicated get-by-primary-key statement, distinct from
+  // `dbo_getby` above: one `id` input instead of a field_name/field_value pair.
+  [
+    "mvp:dbo_get",
+    dboOp({
+      path: "db.get_by_id",
+      named: [{ entry: "id", arg: "id" }],
+      takesOutput: true,
+      takesAddon: true,
+    }),
+  ],
   ["mvp:dbo_delby", dboOp({ path: "db.del", lookup: true })],
   ["mvp:dbo_hasby", dboOp({ path: "db.has", lookup: true })],
   [

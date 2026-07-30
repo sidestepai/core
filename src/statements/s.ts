@@ -36,6 +36,7 @@ import {
   dbEdit,
   dbAddOrEdit,
   dbGet,
+  dbGetById,
   dbDel,
   dbHas,
   dbPatch,
@@ -61,6 +62,7 @@ import {
   postProcess,
   realtimeEvent,
   createAuthToken,
+  createGuid,
   expectToThrow,
 } from "./special/misc.js";
 import { precondition, throwError } from "./special/precondition.js";
@@ -127,6 +129,7 @@ export const s = {
     edit: dbEdit,
     add_or_edit: dbAddOrEdit,
     get: dbGet,
+    get_by_id: dbGetById,
     del: dbDel,
     has: dbHas,
     patch: dbPatch,
@@ -151,6 +154,6 @@ export const s = {
   // into their generated namespaces.
   array: { ...generated.array, map: arrayMap, union: arrayUnion },
   expect: { ...generated.expect, to_throw: expectToThrow },
-  security: { ...generated.security, create_auth_token: createAuthToken },
+  security: { ...generated.security, create_auth_token: createAuthToken, create_guid: createGuid },
   util: { ...generated.util, get_raw_input: getRawInput, get_input: getRawInput, post_process: postProcess },
 } as const;
