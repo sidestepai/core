@@ -9,7 +9,7 @@ import { encodeField, INPUT_CONTEXT } from "../fields/field.js";
 import type { FieldOptions, MethodArg, ReadonlyMethods } from "../fields/field.js";
 import { f, toNestedFields } from "../fields/catalog.js";
 import type { FieldMap } from "../fields/catalog.js";
-import type { TypeBrand, BrandValue, FromFieldMap } from "../fields/value-types.js";
+import type { TypeBrand, BrandValue, FromFieldMap, XanoFileUpload } from "../fields/value-types.js";
 import type {
   TextMethod,
   IntMethod,
@@ -94,6 +94,19 @@ export const input = {
   /** Epoch-millisecond timestamp (stored `epochms`). */
   timestamp: makeInput<number>("epochms"),
   json: makeInput<unknown>("json"),
+
+  /**
+   * Raw file **upload** (stored `file`) — the bytes as they arrive on the
+   * request (multipart, base64, or a fetched URI). Input-only: there is no
+   * `f.file` column, because an upload is not something a table holds.
+   *
+   * It is NOT a stored file resource and cannot be written to a file column
+   * directly. Store it first and write what you get back:
+   * `s.storage.create_image({ as: "img", value: ref("input.avatar") })`, then
+   * write `ref("img")` to an `f.image()` column. Use {@link input.image} and
+   * friends only when the caller already sends a stored file resource.
+   */
+  file: makeInput<XanoFileUpload>("file"),
 
   // --- file resources / geo / vector / table refs (shared with the `f.*` catalog) ---
   /** Image file input (stored `blob_img`). */

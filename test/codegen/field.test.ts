@@ -162,6 +162,23 @@ describe("decodeField — catalog coverage", () => {
     );
   });
 
+  it("decodes an FK annotation whose target was cleared as an ordinary column", () => {
+    // The editor writes a bare `dbo=` when a reference is cleared. It is not a
+    // reference, and reading it as one made `f.tableRef` throw on an empty
+    // target and take the whole field down to a descriptor literal — 50 columns
+    // across the sweep. The `@` method rides along in `methods` instead.
+    const stored = encodeField("author_id", "int", { methods: [{ name: "@", arg: ["dbo="] }] }, COLUMN_CONTEXT);
+    const ctx = new DecodeContext();
+    const decoded = decodeField(ctx, refsFor(), stored, "f");
+    expect(decoded.idiomatic).toBe(true);
+    const source = printExpr(decoded.expr);
+    expect(source).toContain("f.int(");
+    expect(source).not.toContain("tableRef");
+    const back = evaluate(source);
+    expect(encodeField("author_id", back.type, back.options, COLUMN_CONTEXT)).toEqual(stored);
+    expect(ctx.report.entries).toHaveLength(0);
+  });
+
   it("falls back to a descriptor literal for a type outside the catalog", () => {
     const stored = encodeField("weird", "some_future_type", { required: true }, COLUMN_CONTEXT);
     const ctx = new DecodeContext();
@@ -267,8 +284,27 @@ describe("decodeField — inputs", () => {
     ["object", input.object({ id: f.int() })],
     ["list", input.list(input.text())],
     ["required", input.text({ required: true, description: "who" })],
+    ["file", input.file()],
   ] as Array<[string, FieldDescriptor]>)("round-trips input.%s identically", (name, descriptor) => {
     identity(name, descriptor, "input");
+  });
+
+  it("decodes a raw file upload to input.file()", () => {
+    // A stored `file` is the request's bytes, not a stored file resource. It had
+    // no catalog form at all, so every upload input in the sweep came back as a
+    // descriptor literal.
+    expect(identity("avatar", input.file(), "input")).toBe("input.file()");
+  });
+
+  it("keeps the upload type off the column surface", () => {
+    // There is no `f.file`: a table holds a stored resource, never an upload.
+    // Resolving `file` against `f` would emit source that does not evaluate.
+    expect((f as Record<string, unknown>)["file"]).toBeUndefined();
+    const stored = encodeField("avatar", "file", {}, COLUMN_CONTEXT);
+    const ctx = new DecodeContext();
+    const decoded = decodeField(ctx, refsFor(), stored, "f");
+    expect(decoded.idiomatic).toBe(false);
+    expect(printExpr(decoded.expr)).not.toContain("f.file");
   });
 
   it("emits against the input catalog, not the field catalog", () => {
