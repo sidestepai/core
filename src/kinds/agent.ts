@@ -307,7 +307,14 @@ function buildProviderConfig(llm: LlmSettings): Record<string, unknown> {
 }
 
 /** Map the typed authoring def onto the engine's stored `agent_settings`. */
-function buildAgentSettings(def: AgentDef): AgentSettingsXdo {
+/**
+ * Build the stored `agent_settings` block from the two def fields that feed it.
+ *
+ * Takes just those fields rather than an `AgentDef` because `mcpServer` shares
+ * it: both surfaces author ONE `mvp_toolset` row, so an MCP server can carry the
+ * same block. One builder means the two cannot drift into two wire shapes.
+ */
+export function buildAgentSettings(def: { llm: LlmSettings; output?: AgentOutput }): AgentSettingsXdo {
   const llm = def.llm;
   const promptType: "prompt" | "messages" = llm.messages !== undefined ? "messages" : "prompt";
   return {

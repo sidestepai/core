@@ -1,11 +1,37 @@
 import { describe, it, expect } from "vitest";
 import { mcpServer, encodeMcpServer } from "../../src/kinds/mcp-server.js";
 import { tool } from "../../src/kinds/toolset.js";
+import { encodeAgent } from "../../src/kinds/agent.js";
+import { PROVIDER_TYPED_KEYS } from "../../src/codegen/kinds/index.js";
 import { table } from "../../src/kinds/table.js";
 import { Xano } from "../../src/workspace/xano.js";
 import { deriveGuid } from "../../src/refs/guid.js";
 
 describe("mcp_server kind", () => {
+  it("carries an authored llm block, because both kinds are one stored object", () => {
+    // `agent` and `mcpServer` are two authoring surfaces over ONE `mvp_toolset`
+    // row, distinguished only by `type` — so an MCP server can hold the same
+    // `agent_settings` an agent does, and one real workspace has one that does
+    // (a provider, a model and a key). Without a surface for it, the block was
+    // dropped on every pull.
+    const ts = encodeMcpServer({
+      name: "books",
+      llm: { type: "xano-free", systemPrompt: "be brief", extraConfig: { model: "gemini-2.5-flash-lite" } },
+    });
+    expect(ts.type).toBe("mcp");
+    const settings = (ts as unknown as { agent_settings?: Record<string, unknown> }).agent_settings;
+    expect(settings).toMatchObject({ type: "xano-free", system_prompt: "be brief" });
+    expect(settings!.configs).toMatchObject({ "xano-free": { model: "gemini-2.5-flash-lite" } });
+  });
+
+  it("encodes the same agent_settings an agent would, for the same llm", () => {
+    // One builder, so the two surfaces cannot drift into two wire shapes.
+    const llm = { type: "xano-free", extraConfig: { model: "gemini-2.5-flash-lite" } } as const;
+    const fromMcp = (encodeMcpServer({ name: "x", llm }) as unknown as Record<string, unknown>).agent_settings;
+    const fromAgent = (encodeAgent({ name: "x", llm }) as unknown as Record<string, unknown>).agent_settings;
+    expect(fromMcp).toEqual(fromAgent);
+  });
+
   it("encodes type 'mcp', tool refs, and no agent_settings", () => {
     const ts = encodeMcpServer({ name: "books", instructions: "expose books", tools: [{ id: 1 }, { id: 2, enabled: false }] });
     expect(ts.type).toBe("mcp");
@@ -68,4 +94,33 @@ describe("mcp_server kind", () => {
     expect(obj.type).toBe("mcp");
     expect(obj.guid).toBe(deriveGuid("toolset", "books"));
   });
+});
+
+/**
+ * The decoder keeps a per-provider list of the stored config keys each typed
+ * surface declares. It mirrors `buildProviderConfig`, so it can drift — and a
+ * drift means either a silently dropped setting (key added to the encoder, not
+ * the list) or a generated tree that fails tsc (key on the list the surface does
+ * not declare). Pin it against what the encoder actually writes.
+ */
+describe("provider config — the decoder's typed-key list matches the encoder", () => {
+  const minimal = {
+    anthropic: { type: "anthropic" },
+    openai: { type: "openai" },
+    "google-genai": { type: "google-genai" },
+    "xano-free": { type: "xano-free" },
+  } as const;
+
+  for (const [provider, llm] of Object.entries(minimal)) {
+    it(`covers every key ${provider} writes`, () => {
+      const settings = (encodeAgent({ name: "a", llm }) as unknown as {
+        agent_settings: { configs: Record<string, Record<string, unknown>> };
+      }).agent_settings;
+      const written = Object.keys(settings.configs[provider]!);
+      expect(written.length).toBeGreaterThan(0);
+      for (const key of written) {
+        expect(PROVIDER_TYPED_KEYS[provider], `${provider}.${key}`).toContain(key);
+      }
+    });
+  }
 });

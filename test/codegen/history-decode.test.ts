@@ -166,3 +166,80 @@ describe("query example — unmodeled, and said out loud", () => {
     expect(decodeWithExample({})).toEqual([]);
   });
 });
+
+/**
+ * Agent/MCP LLM settings on the read path.
+ *
+ * `agent()` and `mcpServer()` are two authoring surfaces over ONE stored
+ * `mvp_toolset` row, distinguished only by `type` — so an MCP server can carry
+ * the same `agent_settings` an agent does, and a real one does.
+ *
+ * The provider surfaces are NOT interchangeable, though: `xano-free` is a
+ * wrapper that declares no `model`/`apiKey` of its own, while the stored config
+ * can hold both. Reading those onto the typed field would emit a generated tree
+ * that does not type-check, and dropping them loses stored settings silently —
+ * so they go to `extraConfig`, the escape hatch the encoder already merges last.
+ */
+describe("toolset llm settings — carried for both surfaces", () => {
+  function decodeToolset(stored: Record<string, unknown>) {
+    const b = workspace("w").export() as unknown as { payload: Record<string, unknown> };
+    b.payload.toolset = [
+      { name: "asdf", guid: "g1", canonical: "c1", tool: [], enabled: true, ...stored },
+    ];
+    const project = decodeBundle(b);
+    return project.files.map((f) => f.contents).join("\n");
+  }
+
+  const settings = (config: Record<string, unknown>) => ({
+    type: "xano-free",
+    system_prompt: "be brief",
+    max_steps: 5,
+    prompt_type: "prompt",
+    prompt: "",
+    prompt_messages: "",
+    structuredOutputs: false,
+    structuredOutputsSchema: [],
+    configs: { "xano-free": config },
+  });
+
+  it("recovers an MCP server's llm block, not just an agent's", () => {
+    const source = decodeToolset({ type: "mcp", agent_settings: settings({ temperature: 1 }) });
+    expect(source).toContain("mcpServer(");
+    expect(source).toContain('systemPrompt: "be brief"');
+  });
+
+  it("says nothing about llm for an MCP server that stores none", () => {
+    const source = decodeToolset({ type: "mcp" });
+    expect(source).toContain("mcpServer(");
+    expect(source).not.toContain("llm:");
+  });
+
+  it("routes a provider-config key the typed surface cannot declare to extraConfig", () => {
+    // `xano-free` declares no `model`/`apiKey`. Emitting them as typed fields
+    // produced a tree that fails tsc; skipping them lost real stored settings.
+    const source = decodeToolset({
+      type: "mcp",
+      agent_settings: settings({ temperature: 1, model: "gemini-2.5-flash-lite", apiKey: "k" }),
+    });
+    expect(source).toContain("extraConfig:");
+    // Nested INSIDE extraConfig, not a sibling of it — `model` is not a field
+    // `XanoFreeLlm` declares, so a sibling would not type-check.
+    expect(source.indexOf("extraConfig:")).toBeLessThan(source.indexOf('model: "gemini-2.5-flash-lite"'));
+    expect(source).toContain('apiKey: "k"');
+  });
+
+  it("still reads a provider's OWN model onto its typed field", () => {
+    // The paired negative: google-genai does declare `model`, so it must not be
+    // pushed into the escape hatch.
+    const source = decodeToolset({
+      type: "agent",
+      agent_settings: {
+        ...settings({ temperature: 1, model: "gemini-2.5-pro" }),
+        type: "google-genai",
+        configs: { "google-genai": { temperature: 1, model: "gemini-2.5-pro" } },
+      },
+    });
+    expect(source).toContain('model: "gemini-2.5-pro"');
+    expect(source).not.toContain("extraConfig:");
+  });
+});

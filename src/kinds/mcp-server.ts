@@ -16,10 +16,26 @@
 import { registerKind } from "./kind.js";
 import type { ObjectKind } from "./kind.js";
 import { encodeToolsetBase, resolveToolsetCanonical } from "./toolset.js";
+import { buildAgentSettings } from "./agent.js";
+import type { AgentOutput, AgentSettingsXdo, LlmSettings } from "./agent.js";
 import type { ToolsetBaseDef, ToolsetBaseXdo } from "./toolset.js";
 
-/** MCP server authoring def — the shared toolset envelope (no agent/LLM fields). */
-export type McpServerDef = ToolsetBaseDef;
+/**
+ * MCP server authoring def — the shared toolset envelope, plus the optional LLM
+ * block.
+ *
+ * `agent` and `mcpServer` are two authoring surfaces over ONE stored
+ * `mvp_toolset` row, distinguished only by `type`, so an MCP server can hold the
+ * same `agent_settings` an agent does — and real ones do. `llm` stays optional
+ * and is written only when authored, so an MCP server that does not set it
+ * emits exactly the bytes it always has.
+ */
+export type McpServerDef = ToolsetBaseDef & {
+  /** Typed LLM settings (provider + model + generation config), when this server carries them. */
+  llm?: LlmSettings;
+  /** Optional structured output schema, paired with {@link llm}. */
+  output?: AgentOutput;
+};
 
 /** Options for {@link McpServerHandle.getPath}/`getUrl`. */
 export interface McpPathOptions {
@@ -58,11 +74,19 @@ export type McpServerHandle = McpServerDef & {
 
 export interface McpServerXdo extends ToolsetBaseXdo {
   type: "mcp";
+  /** Present only when the def authored an {@link McpServerDef.llm}. */
+  agent_settings?: AgentSettingsXdo;
 }
 
 export function encodeMcpServer(def: McpServerDef): McpServerXdo {
   if (!def.name) throw new Error("mcp server: `name` is required.");
-  return { ...encodeToolsetBase(def), type: "mcp" };
+  const base: McpServerXdo = { ...encodeToolsetBase(def), type: "mcp" };
+  // Written only when authored: an MCP server that sets no `llm` emits exactly
+  // the bytes it always has, and the key stays absent rather than appearing at
+  // a default nothing stored.
+  return def.llm === undefined
+    ? base
+    : { ...base, agent_settings: buildAgentSettings({ llm: def.llm, output: def.output }) };
 }
 
 export const mcpServerKind: ObjectKind<McpServerDef, McpServerXdo> = {

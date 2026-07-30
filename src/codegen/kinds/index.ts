@@ -734,7 +734,13 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
     register: "registerMcpServers",
     defType: "McpServerDef",
     factory: "mcpServer",
-    decode: (a) => toolsetBaseEntries(a),
+    // An MCP server and an agent are one stored row, so an MCP server can carry
+    // the same settings block — read it when it holds anything, and stay silent
+    // when it does not, so the common MCP server emits exactly what it always did.
+    decode: (a) => [
+      ...toolsetBaseEntries(a),
+      ...(hasAgentSettings(a) ? agentSettingsEntries(a) : []),
+    ],
   },
   {
     name: "agent",
@@ -1314,11 +1320,39 @@ const PROVIDER_CONFIG_KEYS: ReadonlyArray<readonly [string, string, unknown]> = 
   ["dynamicRetrievalConfig", "dynamicRetrieval", ""],
 ];
 
+/**
+ * The stored provider-config keys each provider's TYPED surface declares.
+ *
+ * Mirrors `buildProviderConfig` one provider at a time, and is pinned against it
+ * by a drift test. The providers are not interchangeable: `xano-free` is a
+ * wrapper that declares no `model`/`apiKey` of its own, even though the stored
+ * config can carry both. Reading one onto the typed field emitted a generated
+ * tree that does not type-check — the failure the flat key table could not see,
+ * because it did not know which provider it was reading for.
+ */
+export const PROVIDER_TYPED_KEYS: Readonly<Record<string, ReadonlySet<string>>> = {
+  anthropic: new Set(["apiKey", "model", "temperature", "sendReasoning", "thinking", "baseURL", "headers"]),
+  openai: new Set([
+    "apiKey", "model", "temperature", "reasoningEffort", "baseURL", "headers",
+    "organization", "project", "compatibility",
+  ]),
+  "google-genai": new Set([
+    "apiKey", "model", "temperature", "useSearchGrounding", "thinkingConfig", "baseURL",
+    "headers", "safetySettings", "dynamicRetrievalConfig",
+  ]),
+  "xano-free": new Set([
+    "temperature", "useSearchGrounding", "thinkingConfig", "baseURL", "headers",
+    "safetySettings", "dynamicRetrievalConfig",
+  ]),
+};
+
 /** Flatten a stored provider config into `llm` authoring entries. */
-function providerConfigEntries(config: Record<string, unknown>): DefEntry[] {
+function providerConfigEntries(provider: string, config: Record<string, unknown>): DefEntry[] {
   const entries: DefEntry[] = [];
+  const typed = PROVIDER_TYPED_KEYS[provider];
   for (const [storedKey, defKey, fallback] of PROVIDER_CONFIG_KEYS) {
     if (!Object.hasOwn(config, storedKey)) continue;
+    if (typed !== undefined && !typed.has(storedKey)) continue;
     const value = config[storedKey];
     if (deepEqual(value, fallback)) continue;
     entries.push([defKey, lit(value)]);
@@ -1339,10 +1373,24 @@ function providerConfigEntries(config: Record<string, unknown>): DefEntry[] {
   if (thinkingConfig?.thinkingBudget !== undefined && thinkingConfig.thinkingBudget !== 0) {
     entries.push(["thinkingBudget", lit(thinkingConfig.thinkingBudget)]);
   }
+
+  // Anything this provider's typed surface cannot spell rides `extraConfig`, the
+  // forward-compat hatch `buildProviderConfig` already merges last — so it
+  // re-encodes verbatim. Skipping these dropped real stored settings silently.
+  if (typed !== undefined) {
+    const extra = Object.entries(config).filter(([key]) => !typed.has(key));
+    if (extra.length > 0) entries.push(["extraConfig", obj(extra.map(([k, v]) => [k, lit(v)]))]);
+  }
   return entries;
 }
 
-/** An agent's `agent_settings` → the `llm` and `output` authoring blocks. */
+/** Does this toolset store a settings block with anything in it? */
+function hasAgentSettings(a: KindDecodeArgs): boolean {
+  const settings = a.stored.agent_settings;
+  return typeof settings === "object" && settings !== null && Object.keys(settings).length > 0;
+}
+
+/** A toolset's `agent_settings` → the `llm` and `output` authoring blocks. */
 function agentSettingsEntries(a: KindDecodeArgs): DefEntry[] {
   const settings = (a.stored.agent_settings ?? {}) as Record<string, unknown>;
   const type = String(settings.type ?? "");
@@ -1360,7 +1408,7 @@ function agentSettingsEntries(a: KindDecodeArgs): DefEntry[] {
       : settings.prompt
         ? (["prompt", lit(settings.prompt)] as DefEntry)
         : null,
-    ...providerConfigEntries(providerConfig),
+    ...providerConfigEntries(type, providerConfig),
   ]);
 
   const entries: DefEntry[] = [["llm", obj(llm)]];
