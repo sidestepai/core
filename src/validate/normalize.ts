@@ -160,6 +160,12 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     case "description":
     case "sql_name":
       return v === "";
+    // An addon's `offset` — the response path its rows are spliced into. The
+    // engine persists `""` for an addon spliced at the root where the SDK omits
+    // it; both mean "no offset". Only the empty-string form drops, so the numeric
+    // paging `offset` nested under a list context is untouched.
+    case "offset":
+      return v === "";
     // Field-envelope members the engine fills with a fixed default on save. A
     // field saved by an older engine generation omits them entirely, while both
     // the current engine and the SDK always write them — the same lean-vs-full
@@ -344,6 +350,19 @@ export function normalize<T>(value: T): T {
       // re-exports the current form. `""` is a shape this SDK reads and never
       // writes.
       if (k === "customize" && isEmptyCustomize(v)) {
+        out[k] = {};
+        continue;
+      }
+      // An empty `context` arrives as `[]` from the engine and `{}` from the SDK:
+      // an empty associative collection serializes as a JSON array, so the two
+      // are the same "no context" state with no authoring distinction.
+      // Canonicalize forward to `{}` — the form the SDK writes — so the split
+      // does not fail an otherwise-equal statement, and so the `context.*` rules
+      // below always see one shape.
+      //
+      // Scoped to `context` deliberately. A blanket array→object coercion would
+      // corrupt every genuinely-empty list in the envelope.
+      if (k === "context" && isEmptyArray(v)) {
         out[k] = {};
         continue;
       }

@@ -201,3 +201,59 @@ describe("validate normalizer — null vs empty envelope spellings", () => {
     expect(normalize(once)).toEqual(once);
   });
 });
+
+/**
+ * U3: two more empty-vs-absent spellings. An empty `context` arrives as a JSON
+ * array from the engine and an object from the SDK — an empty associative
+ * collection serializes as `[]`. An addon spliced at the root persists
+ * `offset:""` where the SDK omits it.
+ *
+ * Both are tested on both sides. The `context` coercion in particular has to stay
+ * scoped: a blanket array→object rule would corrupt every genuinely-empty list in
+ * the envelope, so that negative case is explicit below.
+ */
+describe("validate normalizer — empty context and addon offset", () => {
+  it("treats an empty context as the same state whether array or object", () => {
+    expect(normalize({ context: [] })).toEqual({ context: {} });
+    expect(normalize({ context: [] })).toEqual(normalize({ context: {} }));
+  });
+
+  it("preserves a populated context rather than collapsing it", () => {
+    // `id` is deliberately absent here — it is a stripped server key, so it would
+    // not survive normalization and would not prove anything about this rule.
+    const populated = { context: { dbo: { as: "user" }, future: true } };
+    expect(normalize(populated)).toEqual(populated);
+    expect(normalize(populated)).not.toEqual(normalize({ context: [] }));
+  });
+
+  it("still normalizes the members of a populated context", () => {
+    // The coercion must not short-circuit recursion: `bind:[]` is an engine
+    // default and still has to drop from inside a kept context.
+    expect(normalize({ context: { bind: [], dbo: { as: "user" } } })).toEqual({
+      context: { dbo: { as: "user" } },
+    });
+  });
+
+  it("does not coerce an empty array outside the context slot", () => {
+    // The rule is scoped by key. Any other empty list stays a list.
+    expect(normalize({ schema: [], items: [] })).toEqual({ schema: [], items: [] });
+    expect(normalize({ addon: [] })).toEqual({}); // dropped by its own rule, not coerced
+  });
+
+  it("treats an empty addon offset as absent, and keeps a real one", () => {
+    expect(normalize({ offset: "" })).toEqual({});
+    expect(normalize({ offset: "items[]" })).toEqual({ offset: "items[]" });
+  });
+
+  it("leaves a numeric paging offset untouched", () => {
+    // `offset` is also a number under a list context's paging block. Only the
+    // empty-string form is an addon-splice default.
+    expect(normalize({ paging: { offset: 0, page: 1 } })).toEqual({ paging: { offset: 0, page: 1 } });
+  });
+
+  it("collapses an addon spliced at the root to match the SDK's omission", () => {
+    const stored = { addon: [{ as: "user", offset: "", input: null }] };
+    const encoded = { addon: [{ as: "user", input: [] }] };
+    expect(normalize(encoded)).toEqual(normalize(stored));
+  });
+});
