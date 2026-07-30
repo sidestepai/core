@@ -208,6 +208,15 @@ resolves a pulled query's payload, and a pulled agent still types `s.ai.agent.ru
 endpoint someone created and never filled in pulls as a def with no `stack`, which looks
 identical to a decode that gave up. The report is what tells the two apart.
 
+A few options exist only so a pull can be *faithful*, and reading them in generated code
+is the only time you should see them: `table: null` / `fn: null` (a statement whose target
+was deleted or never bound), `merge` / `hidden` on a field, and `paging: { enabled }` on a
+query. They describe what the source workspace actually stored — a pulled `table: null` is
+a defect to fix upstream, not a shape to copy — and each carries that warning at the call
+site. A blank reference also reports, because it has two causes worth telling apart: the
+target really is gone, or it sat outside this export's scope and was blanked on the way
+out. Re-pull with it in scope to know which.
+
 Then it checks its own work: the project it just wrote is loaded, exported, and diffed
 against the workspace it came from. A mismatch names the object and fails the command
 (`--no-verify` opts out). So "it compiled" and "it means the same thing" are separate
