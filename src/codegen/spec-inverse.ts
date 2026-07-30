@@ -29,8 +29,9 @@ import { s } from "../statements/s.js";
 import { encodeStatement, type Statement } from "../statements/statement.js";
 import { normalize } from "../validate/normalize.js";
 import { CORE_MODULE, type DecodeContext } from "./context.js";
-import { call, lit, obj, type Expr } from "./print.js";
+import { call, lit, obj, spread, type Expr } from "./print.js";
 import { deepEqual } from "./field.js";
+import { envelopePassthrough } from "./envelope-passthrough.js";
 import { recordProveAbort, recordProveDecline } from "./prove-diff.js";
 import { decodeCondition } from "./expression.js";
 import { decodeValue } from "./value.js";
@@ -226,6 +227,15 @@ export function decodeFromSpec(ctx: DecodeContext, stored: StackItemXdo): Expr |
   if (lean.length < recovered.length) candidates.push(lean);
   candidates.push(recovered);
 
+  // `disabled` is carried by every statement, not gated by a spec envelope flag,
+  // and no spec routes it as a rule field — so it rides the shared passthrough
+  // instead of `envelopeEntries`. (`description` stays an envelope entry: the
+  // interpreter does route it, but only where the spec permits it.)
+  const passthrough = envelopePassthrough(stored);
+  const disabledOverride =
+    passthrough.overrides.disabled === true ? { disabled: true as const } : {};
+  const disabledEntry = passthrough.entries.filter(([name]) => name === "disabled");
+
   for (const sPath of SPATHS_BY_NAME.get(stored.name) ?? []) {
     const factory = leafOf(sPath);
     if (!factory) continue;
@@ -235,7 +245,7 @@ export function decodeFromSpec(ctx: DecodeContext, stored: StackItemXdo): Expr |
 
       let encoded: StackItemXdo;
       try {
-        encoded = encodeStatement(factory(authored));
+        encoded = encodeStatement({ ...factory(authored), ...disabledOverride });
       } catch (error) {
         recordProveAbort(`spec:${sPath}`, stored.name, `factory threw: ${String(error)}`);
         continue;
@@ -247,7 +257,8 @@ export function decodeFromSpec(ctx: DecodeContext, stored: StackItemXdo): Expr |
 
       ctx.use(CORE_MODULE, "s");
       const args = candidate.length > 0 ? [obj(candidate.map((e) => [e.field, e.expr]))] : [];
-      return call(`s.${sPath}`, ...args);
+      const expression = call(`s.${sPath}`, ...args);
+      return disabledEntry.length > 0 ? spread(expression, disabledEntry) : expression;
     }
   }
   return null;

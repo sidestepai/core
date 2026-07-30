@@ -832,3 +832,82 @@ describe("miscellaneous specials", () => {
     );
   });
 });
+
+/**
+ * U5 — the envelope members no factory takes. `description` and `disabled` are
+ * authored in the editor and written by the encoder, but a decoder that rebuilds a
+ * statement by calling its factory cannot reproduce either, so every annotated or
+ * disabled statement used to degrade to `raw()`.
+ *
+ * `disabled` is the engine's commented-out state: the step stays in the stack and
+ * the run engine skips it. Both proof arms are covered — `set_var` and `foreach`
+ * reach a hand-written special, `security.create_uuid` a declarative spec.
+ */
+describe("envelope passthrough — description and disabled", () => {
+  it("round-trips a disabled statement through the specials arm", () => {
+    const source = roundTrip({ ...s.set_var("total", c.int(0)), disabled: true });
+    expect(source).toContain("disabled: true");
+    expect(source).not.toContain("raw(");
+  });
+
+  it("round-trips a disabled statement through the spec arm", () => {
+    const source = roundTrip({ ...s.security.create_uuid({ as: "id" }), disabled: true });
+    expect(source).toContain("disabled: true");
+    expect(source).not.toContain("raw(");
+  });
+
+  it("emits nothing for the default enabled state", () => {
+    const source = roundTrip(s.set_var("total", c.int(0)));
+    expect(source).toBe('s.set_var("total", c.int(0))');
+    expect(source).not.toContain("disabled");
+  });
+
+  it("emits nothing for an explicit disabled:false", () => {
+    // The default is implicit; writing it would be noise the normalizer elides.
+    const source = roundTrip({ ...s.set_var("total", c.int(0)), disabled: false });
+    expect(source).not.toContain("disabled");
+  });
+
+  it("carries description and disabled together, description first", () => {
+    const source = roundTrip({
+      ...s.set_var("total", c.int(0)),
+      description: "skipped for now",
+      disabled: true,
+    });
+    expect(source).toContain('description: "skipped for now"');
+    expect(source).toContain("disabled: true");
+    expect(source.indexOf("description")).toBeLessThan(source.indexOf("disabled"));
+  });
+
+  it("round-trips a disabled statement nested inside a loop", () => {
+    const source = roundTrip(
+      s.foreach({
+        as: "row",
+        list: ref("rows"),
+        body: [{ ...s.set_var("x", c.int(1)), disabled: true }],
+      }),
+    );
+    expect(source).toContain("disabled: true");
+    expect(source).not.toContain("raw(");
+  });
+
+  it("round-trips a disabled statement nested inside a conditional", () => {
+    const source = roundTrip(
+      s.conditional({
+        when: cmp(inp("a"), "==", c.int(1)),
+        then: [{ ...s.set_var("x", c.int(1)), disabled: true }],
+      }),
+    );
+    expect(source).toContain("disabled: true");
+  });
+
+  it("keeps a disabled statement's own arguments intact", () => {
+    // The override must not swallow what the factory built.
+    const source = roundTrip({
+      ...s.set_var("name", withFilters(inp("raw"), fl.trim())),
+      disabled: true,
+    });
+    expect(source).toContain("fl.trim()");
+    expect(source).toContain("disabled: true");
+  });
+});

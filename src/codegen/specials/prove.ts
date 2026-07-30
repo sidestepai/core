@@ -18,8 +18,9 @@ import { s } from "../../statements/s.js";
 import { encodeStatement, type Statement } from "../../statements/statement.js";
 import { normalize } from "../../validate/normalize.js";
 import { CORE_MODULE, type DecodeContext } from "../context.js";
-import { call, lit, spread, type Expr } from "../print.js";
+import { call, spread, type Expr } from "../print.js";
 import { deepEqual } from "../field.js";
+import { envelopePassthrough } from "../envelope-passthrough.js";
 import { recordProveAbort, recordProveDecline } from "../prove-diff.js";
 import type { RefIndex, ResolveOptions } from "../ref-index.js";
 
@@ -66,20 +67,15 @@ export function prove(
   const factory = leafOf(path);
   if (!factory) return null;
 
-  // A per-statement `description` is persisted by the engine and common in real
-  // workspaces, but **no hand-written statement factory takes one** — only the
-  // declarative specs route it as a field. Without this, every annotated
-  // statement in a pulled workspace would fall through to `raw()`, which is a
-  // large and entirely avoidable readability loss. `Statement.description` is
-  // part of the type, so overriding it on the factory's result is exact, and the
-  // comparison below still has to agree.
-  const description = (stored as { description?: unknown }).description;
-  const annotated = typeof description === "string" && description !== "";
+  // `description` and `disabled` are authored in the editor but are not arguments
+  // to any hand-written factory, so they are overridden on the result and spread
+  // over the emitted call. See {@link envelopePassthrough}.
+  const { overrides, entries } = envelopePassthrough(stored);
 
   let encoded: StackItemXdo;
   try {
     const built = factory(...runtime);
-    encoded = encodeStatement(annotated ? { ...built, description } : built);
+    encoded = encodeStatement({ ...built, ...overrides });
   } catch (error) {
     recordProveAbort("special", stored.name, `factory threw: ${String(error)}`);
     return null;
@@ -90,7 +86,7 @@ export function prove(
   }
   ctx.use(CORE_MODULE, "s");
   const expression = call(`s.${path}`, ...sourceArgs);
-  return annotated ? spread(expression, [["description", lit(description)]]) : expression;
+  return entries.length > 0 ? spread(expression, entries) : expression;
 }
 
 /** Read a dotted path out of a stored object. */
