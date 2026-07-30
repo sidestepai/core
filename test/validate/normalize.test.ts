@@ -605,14 +605,49 @@ describe("validate normalizer — object-level default envelope members", () => 
     ).toEqual({});
   });
 
+  it("drops a phase list the customize flag switches OFF, on both sides", () => {
+    // The engine's resolver reads a phase list ONLY when its `_customize` flag
+    // is set; otherwise it falls through to the parent tier without looking at
+    // the list at all. So an editor leftover in `pre` behind `pre_customize:
+    // false` is inert, and the SDK's empty `pre` is the same state — two real
+    // API groups differed by exactly this.
+    const leftover = {
+      middleware: { pre: [{ name: "mvp:middleware" }], post: [], pre_customize: false, post_customize: true },
+    };
+    const empty = { middleware: { pre: [], post: [], pre_customize: false, post_customize: true } };
+    expect(normalize(leftover)).toEqual(normalize(empty));
+  });
+
+  it("keeps a phase list the customize flag switches ON", () => {
+    // The paired negative, and the one that matters: a CUSTOMIZED phase is what
+    // the engine actually runs, so its entries must still compare.
+    const one = { middleware: { pre: [{ name: "mvp:middleware" }], post: [], pre_customize: true, post_customize: false } };
+    const none = { middleware: { pre: [], post: [], pre_customize: true, post_customize: false } };
+    expect(normalize(one)).not.toEqual(normalize(none));
+  });
+
+  it("does not treat a lookalike object as a middleware block", () => {
+    // `pre`/`post` are generic names; the rule only applies where a
+    // `_customize` flag says this is a middleware block.
+    const other = { pre: ["a"], post: ["b"] };
+    expect(normalize(other)).toEqual(other);
+  });
+
   it("keeps a middleware block that attaches or customizes anything", () => {
+    // The customized phase survives with its entries; the inert one drops.
     const attached = { middleware: { pre: [{ name: "mvp:middleware" }], post: [], pre_customize: true, post_customize: false } };
-    expect(normalize(attached)).toEqual(attached);
+    expect(normalize(attached)).toEqual({
+      middleware: { pre: [{ name: "mvp:middleware" }], pre_customize: true, post_customize: false },
+    });
     // A phase explicitly customized to run NOTHING is not the same as
-    // inheriting, so the block survives whole — no member rule empties it, and
-    // that is what keeps `pre: clear()` distinguishable from an absent phase.
+    // inheriting — the engine reads that empty list and runs nothing, where an
+    // inheriting phase would run the parent tier's chain. So `pre: clear()`
+    // stays distinguishable from an absent phase.
     const cleared = { middleware: { pre: [], post: [], pre_customize: true, post_customize: false } };
-    expect(normalize(cleared)).toEqual(cleared);
+    expect(normalize(cleared)).toEqual({
+      middleware: { pre: [], pre_customize: true, post_customize: false },
+    });
+    expect(normalize(cleared)).not.toEqual(normalize(attached));
   });
 });
 

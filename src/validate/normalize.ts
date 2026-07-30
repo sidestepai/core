@@ -521,9 +521,24 @@ export function normalize<T>(value: T): T {
     // licence to sort `input[]` anywhere else, where order IS meaningful (a row
     // write's columns, a lookup's leading field_name/field_value).
     const sortsInput = (value as { name?: unknown }).name === "mvp:create_auth";
+    // A middleware attachment block, identified by its own flags rather than by
+    // the generic names `pre`/`post`. A phase list is read ONLY when its
+    // `_customize` flag is set — the engine's resolver returns it on that branch
+    // and otherwise falls through to the parent tier without looking at the list
+    // — so a list sitting behind an off flag is an editor leftover the engine
+    // never runs, and compares equal to the empty list the SDK writes.
+    const isMiddlewareBlock =
+      "pre_customize" in (value as object) || "post_customize" in (value as object);
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
       if (STRIP_KEYS.has(k)) continue;
       if (isTable && k === "as") continue;
+      if (
+        isMiddlewareBlock &&
+        (k === "pre" || k === "post") &&
+        (value as Record<string, unknown>)[`${k}_customize`] !== true
+      ) {
+        continue;
+      }
       // Full-envelope members at their empty default: a representational
       // artifact between the parser and persisted generations — drop on both
       // sides (see {@link isDefaultEnvelopeMember}).
