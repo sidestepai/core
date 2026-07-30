@@ -810,3 +810,46 @@ describe("validate normalizer — an unset async runtime binding", () => {
     });
   });
 });
+
+/**
+ * Statements whose `input[]` the engine reads BY NAME, so stored order is inert.
+ *
+ * Real workspaces store the same entries in more than one order — 3
+ * `api_request` hoist `verify_host`/`verify_peer` to the front, and one each of
+ * the two document statements permute theirs. Every statement on the list was
+ * checked against the engine handler, which indexes its arguments by name
+ * (`$args["url"]`, `$args["base_url"]`) rather than by position.
+ */
+describe("validate normalizer — name-keyed input ordering", () => {
+  const entry = (name: string) => ({ name, tag: "const", value: name, filters: [] });
+
+  it("compares a permuted api_request input as equal", () => {
+    const a = { name: "mvp:api_request", input: [entry("url"), entry("method"), entry("verify_peer")] };
+    const b = { name: "mvp:api_request", input: [entry("verify_peer"), entry("url"), entry("method")] };
+    expect(normalize(a)).toEqual(normalize(b));
+  });
+
+  it("applies to both document statements too", () => {
+    for (const name of ["mvp:amazon_opensearch_document", "mvp:elasticsearch_document"]) {
+      const a = { name, input: [entry("base_url"), entry("method"), entry("index")] };
+      const b = { name, input: [entry("method"), entry("index"), entry("base_url")] };
+      expect(normalize(a), name).toEqual(normalize(b));
+    }
+  });
+
+  it("still compares the VALUES, not just the names", () => {
+    // Equalizing the ORDER must not equalize the content.
+    const a = { name: "mvp:api_request", input: [entry("url"), { ...entry("method"), value: "GET" }] };
+    const b = { name: "mvp:api_request", input: [entry("url"), { ...entry("method"), value: "POST" }] };
+    expect(normalize(a)).not.toEqual(normalize(b));
+  });
+
+  it("does NOT reorder a statement whose input order is meaningful", () => {
+    // The load-bearing negative. A lookup's `input[]` has to lead with
+    // `field_name`/`field_value`, and a row write's columns are positional —
+    // sorting either would silently change what the statement does.
+    const lead = { name: "mvp:dbo_getby", input: [entry("field_name"), entry("field_value"), entry("z")] };
+    const moved = { name: "mvp:dbo_getby", input: [entry("z"), entry("field_name"), entry("field_value")] };
+    expect(normalize(lead)).not.toEqual(normalize(moved));
+  });
+});

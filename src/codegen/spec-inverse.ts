@@ -28,6 +28,7 @@ import { STATEMENT_SURFACES, sPathOf } from "../statements/surfaces.js";
 import { s } from "../statements/s.js";
 import { encodeStatement, type Statement } from "../statements/statement.js";
 import { normalize } from "../validate/normalize.js";
+import { ignored as ignoredValue } from "../values/ignored.js";
 import { CORE_MODULE, type DecodeContext } from "./context.js";
 import { call, lit, obj, spread, type Expr } from "./print.js";
 import { deepEqual } from "./field.js";
@@ -160,6 +161,18 @@ function recoverRule(
       );
       const value = toTaggedValue(entry);
       if (!value) return null;
+      // A stored `ignore: true` entry is skipped by the engine but keeps its
+      // value. Wrapping it re-encodes the flag; without this the binding came
+      // back as an ordinary one and the statement degraded to `raw()`.
+      if ((entry as { ignore?: unknown })?.ignore === true) {
+        ctx.use(CORE_MODULE, "ignored");
+        return {
+          field: rule.field,
+          runtime: ignoredValue(value),
+          expr: call("ignored", decodeValue(ctx, value)),
+          isDefault: false,
+        };
+      }
       return { field: rule.field, runtime: value, expr: decodeValue(ctx, value), isDefault: false };
     }
     case "context-compare": {

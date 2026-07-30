@@ -470,3 +470,4 @@ export {
 
 // Types
 export type * from "./types/xdo.js";
+export { ignored } from "./values/ignored.js";

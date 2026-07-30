@@ -753,6 +753,10 @@ Reachable through the `s` namespace: `s.<path>({...})`. Declarative statements
 take one typed args object (field names match the engine) and their full field
 schema is listed per-namespace below. Specials (`[special]`) are hand-authored;
 their signatures are listed in **Specials — authored signatures** just below.
+Wrap any `value` field in `ignored(...)` to store it but SKIP it at runtime —
+  the engine records `<name>:ignore` and the parameter falls back to its default.
+  Not the same as an empty value, and not the same as omitting the field (which
+  stores no entry at all). Mostly seen on a pulled workspace.
 Fields marked `value` take a `Value` (`c.*`/`ref`/`inp`); `comparison` takes an
 `expr(...)`. A `→ as: <type>` suffix names what the statement's `as:` output var
 holds (curated, not exhaustive — absence means read the `[output]` flag and prose).

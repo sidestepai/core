@@ -18,7 +18,8 @@ import { RefIndex } from "../../src/codegen/ref-index.js";
 import { decodeStatement } from "../../src/codegen/statement.js";
 import { printExpr } from "../../src/codegen/print.js";
 import { deriveGuid } from "../../src/refs/guid.js";
-import "../../src/index.js";
+import { ignored, c, s } from "../../src/index.js";
+import { encodeStatement } from "../../src/statements/statement.js";
 
 function fallbackDetail(stored: Record<string, unknown>): string {
   const ctx = new DecodeContext();
@@ -130,5 +131,53 @@ describe("a conditional with an empty condition", () => {
       ),
     );
     expect(source).toContain("raw(");
+  });
+});
+
+/**
+ * An input binding the engine SKIPS (`ignore: true`).
+ *
+ * The engine records `"<name>:ignore"` and never binds the value, so the
+ * parameter falls back to its declared default — not the same as passing an
+ * empty value, and not the same as omitting the entry, which is still stored
+ * with its remembered value. 1,766 real entries carry the flag.
+ *
+ * The db row-write family already modelled it on a `data:` cell; spec-routed
+ * statements had nowhere to put it, so their bindings came back as ordinary
+ * ones and the statement degraded to `raw()`.
+ */
+describe("an ignored input binding", () => {
+  /** A REAL api_request envelope, with one binding's flag flipped. */
+  const stored = (ignore: boolean) => {
+    const st = encodeStatement(
+      s.api.request({ url: c.text("https://x.test"), params: c.obj({}) } as never),
+    ) as unknown as { input: Array<Record<string, unknown>> };
+    st.input.find((i) => i.name === "params")!.ignore = ignore;
+    return st;
+  };
+
+  it("recovers the flag instead of dropping the statement to raw()", () => {
+    const ctx = new DecodeContext();
+    const source = printExpr(decodeStatement(ctx, new RefIndex(), stored(true) as never, {} as never));
+    expect(source).not.toContain("raw(");
+    expect(source).toContain("ignored(");
+  });
+
+  it("says nothing for an ordinary binding", () => {
+    const ctx = new DecodeContext();
+    const source = printExpr(decodeStatement(ctx, new RefIndex(), stored(false) as never, {} as never));
+    expect(source).not.toContain("ignored(");
+  });
+
+  it("round-trips the flag back to the stored bytes", () => {
+    const marked = ignored(c.obj({}));
+    const entry = encodeStatement(
+      s.api.request({ url: c.text("https://x.test"), params: marked } as never),
+    ) as unknown as { input: Array<Record<string, unknown>> };
+    const params = entry.input.find((i) => i.name === "params")!;
+    expect(params.ignore).toBe(true);
+    // The value itself is untouched — the marker never reaches the bytes.
+    expect(params.tag).toBe("const:obj");
+    expect(Object.keys(params)).not.toContain("__ignored");
   });
 });

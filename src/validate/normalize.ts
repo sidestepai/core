@@ -172,6 +172,27 @@ const MINIMAL_CONTEXT_RETURN = { type: "list" };
  */
 const PAGING_INT_KEYS = new Set(["page", "per_page", "offset"]);
 
+/**
+ * Statements whose `input[]` entries the engine reads BY NAME, so their stored
+ * order carries nothing.
+ *
+ * Each one is on this list because the engine's own handler indexes its
+ * arguments by name (`$args["url"]`, `$args["base_url"]`, …) rather than by
+ * position, and because real workspaces store the same entries in more than one
+ * order — 3 `api_request`, and one each of the two document statements.
+ *
+ * This is an allowlist and must stay one. Order IS meaningful on other
+ * input-routed statements — a row write's columns, and a lookup whose `input[]`
+ * has to LEAD with `field_name`/`field_value` — so a blanket sort would quietly
+ * corrupt them.
+ */
+const NAME_KEYED_INPUT = new Set([
+  "mvp:create_auth",
+  "mvp:api_request",
+  "mvp:amazon_opensearch_document",
+  "mvp:elasticsearch_document",
+]);
+
 /** An expression group that nests nothing — what an omitted group means. */
 const EMPTY_SEARCH = { expression: [] };
 /** The engine's default `context.external` (paged-external input) — SDK omits it. */
@@ -595,7 +616,7 @@ export function normalize<T>(value: T): T {
     // position carries nothing — but that is a fact about this statement, not a
     // licence to sort `input[]` anywhere else, where order IS meaningful (a row
     // write's columns, a lookup's leading field_name/field_value).
-    const sortsInput = (value as { name?: unknown }).name === "mvp:create_auth";
+    const sortsInput = NAME_KEYED_INPUT.has((value as { name?: unknown }).name as string);
     // A middleware attachment block, identified by its own flags rather than by
     // the generic names `pre`/`post`. A phase list is read ONLY when its
     // `_customize` flag is set — the engine's resolver returns it on that branch
