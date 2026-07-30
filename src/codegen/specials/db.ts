@@ -89,19 +89,39 @@ function tableArg(a: SpecialArgs, guid: string): TableArg {
 }
 
 /**
- * An UNBOUND table — the engine's empty `context.dbo.id`.
+ * A blank `context.dbo.id` — recovered as `table: null`, and REPORTED.
  *
- * This is not a decode failure. A statement whose table was deleted (or one
- * freshly dropped into a stack and never bound) stores a blank id, and the
- * authoring surface models that state deliberately as `table: null` — the same
- * contract an addon's `table` has carried all along. Reading it as "no reference
- * to recover" degraded 83 db statements to `raw()` across the sweep, which is
- * strictly less readable for no gain in fidelity.
+ * The bytes are faithful either way (`raw()` would carry the same blank), and the
+ * authoring surface models the unbound state deliberately as `table: null` — the
+ * same contract an addon's `table` has carried all along. Reading it as "nothing
+ * to recover" degraded 83 db statements to `raw()` across the sweep.
+ *
+ * **But a blank reference has two indistinguishable causes, and only one of them
+ * is benign**, which is why this reports rather than emitting quietly:
+ *
+ *  - the target was deleted, or was never bound — a defect in the workspace, and
+ *    exactly what `table: null` is for;
+ *  - the export-side reference remap could not resolve the target because it sat
+ *    outside the export's scope, and blanked it rather than failing the export. The
+ *    reference still EXISTS upstream. Emitting `table: null` silently would present
+ *    a real lost binding as a deliberate one — a wrong default making authored data
+ *    invisible, which is worse than no rule.
+ *
+ * A narrower export is the ordinary way to hit the second case, so the report line
+ * names both and leaves the judgement to whoever reads it. Same contract the
+ * realtime kinds already hold blank bindings to (`test/codegen/realtime-blank-refs`),
+ * applied consistently here.
  *
  * The alias is left to {@link aliasEntry}, which reads `dbo.as` by presence: a
  * deleted table's alias frequently outlives it (`{as: "user", id: ""}`).
  */
-function unboundTableArg(): TableArg {
+function unboundTableArg(a: SpecialArgs, what: string): TableArg {
+  a.ctx.problem(
+    "unresolved-ref",
+    `${what} has a blank table reference, recovered as \`table: null\`; the table was ` +
+      "deleted or unbound, OR it sits outside this export's scope and was blanked on the " +
+      "way out — re-pull with the table in scope to tell the two apart",
+  );
   return { expr: lit(null), runtime: null };
 }
 
@@ -356,7 +376,9 @@ function dboOp(shape: DboOpShape): SpecialDecoder {
     const entriesIn = inputEntries(a.stored);
     if (!entriesIn) return null;
 
-    const table = isUnboundId(storedId) ? unboundTableArg() : tableArg(a, String(storedId));
+    const table = isUnboundId(storedId)
+      ? unboundTableArg(a, shape.path)
+      : tableArg(a, String(storedId));
     const entries: Array<[string, Expr]> = [["table", table.expr]];
     const runtime: Record<string, unknown> = { table: table.runtime };
     const alias = aliasEntry(a.stored.context);
@@ -481,7 +503,9 @@ const dbAddOrEdit: SpecialDecoder = (a) => {
 
   // Through the shared table argument like the rest of the family, which is what
   // gives this one the unbound state too — it used to resolve the guid inline.
-  const table = isUnboundId(storedId) ? unboundTableArg() : tableArg(a, String(storedId));
+  const table = isUnboundId(storedId)
+    ? unboundTableArg(a, "db.add_or_edit")
+    : tableArg(a, String(storedId));
   const entries: Array<[string, Expr]> = [["table", table.expr]];
   const runtime: Record<string, unknown> = { table: table.runtime };
   if (alias) {
@@ -620,7 +644,9 @@ const dbBulkDelete: SpecialDecoder = (a) => {
     return declineHere("db.bulk.delete: context.dbo.id is not a reference id");
   if (isBoundNumericId(storedId))
     return declineHere("db.bulk.delete: context.dbo.id is a numeric object reference");
-  const table = isUnboundId(storedId) ? unboundTableArg() : tableArg(a, String(storedId));
+  const table = isUnboundId(storedId)
+    ? unboundTableArg(a, "db.bulk.delete")
+    : tableArg(a, String(storedId));
   const entries: Array<[string, Expr]> = [["table", table.expr]];
   const runtime: Record<string, unknown> = { table: table.runtime };
   const alias = aliasEntry(context);
@@ -726,7 +752,9 @@ const dbQuery: SpecialDecoder = (a) => {
   if (Array.isArray(a.stored.input) && a.stored.input.length > 0)
     return declineHere("db.query: statement-level input[] is populated");
 
-  const table = isUnboundId(storedId) ? unboundTableArg() : tableArg(a, String(storedId));
+  const table = isUnboundId(storedId)
+    ? unboundTableArg(a, "db.query")
+    : tableArg(a, String(storedId));
   const entries: Array<[string, Expr]> = [["table", table.expr]];
   const runtime: Record<string, unknown> = { table: table.runtime };
   const alias = aliasEntry(context);

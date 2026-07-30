@@ -634,6 +634,39 @@ describe("db family — an unbound table", () => {
     expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
   });
 
+  it("REPORTS a blank table reference rather than presenting it as deliberate", () => {
+    // A blank reference has two indistinguishable causes: a deleted/never-bound
+    // table, or a real one the export-side remap blanked because it sat outside the
+    // export's scope. `table: null` is faithful to the bytes either way, but
+    // emitting it silently would present a lost binding as an intentional one — so
+    // the loss arrives as an error-severity line, the same contract the realtime
+    // kinds already hold blank bindings to.
+    const stored = unbind(s.db.get({ table: USERS, fieldValue: inp("id"), as: "user" }));
+    const ctx = new DecodeContext();
+    const source = printExpr(decodeStatement(ctx, DB_REFS, stored));
+    expect(source).toContain("table: null");
+
+    const unresolved = ctx.report.entries.filter((e) => e.category === "unresolved-ref");
+    expect(unresolved).toHaveLength(1);
+    // The message has to name BOTH causes — the decoder cannot tell them apart, and
+    // guessing one would send the reader down the wrong path.
+    expect(unresolved[0]!.detail).toMatch(/deleted or unbound/);
+    expect(unresolved[0]!.detail).toMatch(/export's scope/);
+  });
+
+  it("reports nothing for a table that resolves", () => {
+    // The paired negative: no false alarm on a healthy reference.
+    const ctx = new DecodeContext();
+    printExpr(
+      decodeStatement(
+        ctx,
+        DB_REFS,
+        encodeStatement(s.db.get({ table: USERS, fieldValue: inp("id"), as: "user" })),
+      ),
+    );
+    expect(ctx.report.entries.filter((e) => e.category === "unresolved-ref")).toEqual([]);
+  });
+
   it("treats a zero numeric id as unbound, like a blank guid", () => {
     // A reference id is a guid OR a number depending on how the referring object
     // was saved, so the empty form has two spellings and both mean "no target".

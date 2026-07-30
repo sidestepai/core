@@ -84,6 +84,18 @@ function callDecoder(shape: CallShape): SpecialDecoder {
       return declineHere(`${shape.path}: context.${shape.idPath} is a numeric object reference`);
     const guid = String(stored);
 
+    if (unbound) {
+      // Reported, not emitted quietly: a blank reference is either a deleted or
+      // never-bound target, or a real one the export-side remap blanked because it
+      // sat outside the export's scope. Those are indistinguishable in the bytes, and
+      // presenting the second as a deliberate `null` would hide a lost binding.
+      a.ctx.problem(
+        "unresolved-ref",
+        `${shape.path} has a blank ${shape.arg} reference, recovered as \`${shape.arg}: null\`; ` +
+          "the target was deleted or unbound, OR it sits outside this export's scope and was " +
+          "blanked on the way out — re-pull with the target in scope to tell the two apart",
+      );
+    }
     const target = unbound
       ? lit(null)
       : resolveReference(a.ctx, a.refs, guid, { ...a.resolve, unresolved: "object-ref" });
