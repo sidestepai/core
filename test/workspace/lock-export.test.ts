@@ -129,11 +129,9 @@ describe("lock-aware export", () => {
       "toolset:assistant",
       "trigger:on_insert",
       "workspace",
-      "workspace:realtime",
     ]);
     expect(ctx.observed["dbo:users"]?.guid).toBe(deriveGuid("dbo", "users"));
     expect(ctx.observed["workspace"]).toEqual({ canonical: "WsTok11" });
-    expect(ctx.observed["workspace:realtime"]).toEqual({ canonical: "RtTok11" });
     expect(ctx.observed["toolset:assistant"]?.canonical).toMatch(CANON);
   });
 
@@ -147,7 +145,7 @@ describe("lock-aware export", () => {
     };
     expect(ws.canonical).toBe("AdoptdWs");
     // The legacy realtime block is carried verbatim and models no canonical of its
-    // own, so an unauthored one contributes nothing to mint or observe.
+    // own, so it contributes nothing to mint, observe, or lock.
     expect(ws.realtime.canonical).toBeUndefined();
     expect(ctx.observed["workspace:realtime"]).toBeUndefined();
   });

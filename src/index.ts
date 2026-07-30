@@ -450,7 +450,6 @@ export {
   renameLockEntry,
   adoptFromBundle,
   WORKSPACE_KEY,
-  WORKSPACE_REALTIME_KEY,
 } from "./lock/lock.js";
 export type {
   LockFile,

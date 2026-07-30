@@ -19,7 +19,6 @@ import {
   mintCanonical,
   recordObserved,
   WORKSPACE_KEY,
-  WORKSPACE_REALTIME_KEY,
 } from "../lock/lock.js";
 import type { LockExportContext } from "../lock/lock.js";
 import type { FunctionDef } from "../function/define.js";
@@ -429,23 +428,17 @@ export class Xano {
           mintUnique();
       }
     }
-    // Workspace canonicals live under fixed keys (R5). Empty ones are filled
-    // from the lock (the `lock adopt` round-trip) but never minted — the
+    // The workspace canonical lives under a fixed key (R5). An empty one is
+    // filled from the lock (the `lock adopt` round-trip) but never minted — the
     // engine provisions workspace canonicals itself and its collision
     // semantics are the least-verified corner. @TODO(verify): whether an
     // emitted workspace canonical survives `provisionWorkspace` on import.
-    const ws = this.workspaceConfig as { canonical?: unknown; realtime?: { canonical?: unknown } };
+    const ws = this.workspaceConfig as { canonical?: unknown };
     if (ws.canonical === "") {
       ws.canonical = ctx.lock.objects[WORKSPACE_KEY]?.canonical ?? "";
     }
-    if (ws.realtime && ws.realtime.canonical === "") {
-      ws.realtime.canonical = ctx.lock.objects[WORKSPACE_REALTIME_KEY]?.canonical ?? "";
-    }
     if (typeof ws.canonical === "string" && ws.canonical !== "") {
       recordObserved(ctx, WORKSPACE_KEY, { canonical: ws.canonical });
-    }
-    if (typeof ws.realtime?.canonical === "string" && ws.realtime.canonical !== "") {
-      recordObserved(ctx, WORKSPACE_REALTIME_KEY, { canonical: ws.realtime.canonical });
     }
     // Report every guid-bearing object the bundle emits (guid conflicts with
     // the lock hard-error inside recordObserved — R3).

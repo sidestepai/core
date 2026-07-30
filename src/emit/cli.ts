@@ -52,7 +52,6 @@ import {
   serializeLock,
   validateLockModel,
   WORKSPACE_KEY,
-  WORKSPACE_REALTIME_KEY,
   type LockExportContext,
   type LockFile,
 } from "../lock/lock.js";
@@ -640,7 +639,7 @@ function warnOrphans(
   observed: Record<string, unknown>,
 ): void {
   for (const key of orphans) {
-    if (key === WORKSPACE_KEY || key === WORKSPACE_REALTIME_KEY) {
+    if (key === WORKSPACE_KEY) {
       warn(
         `xano.lock entry "${key}" matched nothing this export (no workspace canonical emitted). ` +
           `Run \`sidestep lock prune\` if that is intentional.`,

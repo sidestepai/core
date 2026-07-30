@@ -12,8 +12,8 @@
  * The lock file freezes both: every auto-derived guid and every minted
  * canonical is recorded here at export, keyed by the same `payloadKey:name`
  * seed the derivation uses (`dbo:users`, `app:public`, `function:sayHello`).
- * Workspace-level canonicals live under fixed keys (`workspace`,
- * `workspace:realtime`) — NOT keyed by the renameable workspace name.
+ * The workspace's own canonical lives under a fixed key (`workspace`) — NOT
+ * keyed by the renameable workspace name.
  * Precedence at emit is: explicit in-code value > lock entry > derivation.
  * The lock records explicit values too, so later removing an explicit `guid`
  * from code resolves through the lock to the same value instead of silently
@@ -43,8 +43,23 @@ export const LOCK_VERSION = 1;
 
 /** Fixed key for the workspace's own `canonical` (never keyed by workspace name). */
 export const WORKSPACE_KEY = "workspace";
-/** Fixed key for the workspace's `realtime.canonical`. */
-export const WORKSPACE_REALTIME_KEY = "workspace:realtime";
+
+/**
+ * Lock keys this build no longer writes, kept only to give a stale lock a useful
+ * error instead of a misleading one.
+ *
+ * `workspace:realtime` held the canonical of the legacy workspace-level realtime
+ * block. That block is no longer modelled — it is carried verbatim and has no
+ * identity this SDK mints — and the realtime primitives that replaced it
+ * (`realtime_server`, `channel`, `message`) each lock under their own
+ * `payloadKey:name` like any other object.
+ */
+const RETIRED_KEYS: ReadonlyMap<string, string> = new Map([
+  [
+    "workspace:realtime",
+    "the legacy workspace-level realtime block is no longer modelled; realtime servers and channels lock under their own keys",
+  ],
+]);
 
 /**
  * Payload keys whose objects carry an engine-tracked guid and are authorable
@@ -251,11 +266,12 @@ function validateLockObjects(raw: object, path: string): Record<string, LockEntr
     if (guid === undefined && canonical === undefined) {
       fail(path, `entry "${key}" carries neither \`guid\` nor \`canonical\`.`);
     }
-    // Identity values only make sense on the kinds that carry them: workspace
-    // keys are canonical-only, and only api groups / toolsets mint canonicals.
+    // Identity values only make sense on the kinds that carry them: the
+    // workspace key is canonical-only, and only api groups / toolsets mint
+    // canonicals.
     // A misplaced value is almost certainly a hand-edit mistake that would
     // otherwise sit silently unused.
-    const isWorkspaceKey = key === WORKSPACE_KEY || key === WORKSPACE_REALTIME_KEY;
+    const isWorkspaceKey = key === WORKSPACE_KEY;
     if (isWorkspaceKey && guid !== undefined) {
       fail(path, `entry "${key}" cannot carry a \`guid\` (workspace identities are canonical-only).`);
     }
@@ -265,7 +281,7 @@ function validateLockObjects(raw: object, path: string): Record<string, LockEntr
         fail(
           path,
           `entry "${key}" cannot carry a \`canonical\` — only ` +
-            `${[...CANONICAL_PAYLOAD_KEYS].join("/")} objects and the workspace keys have one.`,
+            `${[...CANONICAL_PAYLOAD_KEYS].join("/")} objects and the workspace key have one.`,
         );
       }
     }
@@ -295,14 +311,20 @@ function validateLockObjects(raw: object, path: string): Record<string, LockEntr
 }
 
 /**
- * Keys are either the fixed workspace keys or `<payloadKey>:<name>`. A
+ * Keys are either the fixed workspace key or `<payloadKey>:<name>`. A
  * `workspace:<anything-else>` key is REJECTED (not normalized): the workspace
- * section has exactly two lockable identities, and a stray
- * `workspace:my-app`-style key is almost certainly a hand-edit mistake that
- * would otherwise sit silently unused.
+ * section has exactly one lockable identity, and a stray `workspace:my-app`-style
+ * key is almost certainly a hand-edit mistake that would otherwise sit silently
+ * unused. A key this build *used* to write says so specifically — see
+ * {@link RETIRED_KEYS} — so a stale lock gets told what to delete rather than
+ * being accused of a typo.
  */
 function validateKey(key: string, path: string): void {
-  if (key === WORKSPACE_KEY || key === WORKSPACE_REALTIME_KEY) return;
+  if (key === WORKSPACE_KEY) return;
+  const retired = RETIRED_KEYS.get(key);
+  if (retired !== undefined) {
+    fail(path, `key "${key}" is retired — ${retired}. Remove the entry.`);
+  }
   const idx = key.indexOf(":");
   const prefix = idx === -1 ? key : key.slice(0, idx);
   const name = idx === -1 ? "" : key.slice(idx + 1);
@@ -310,7 +332,7 @@ function validateKey(key: string, path: string): void {
     fail(
       path,
       `key "${key}" is not a lockable workspace identity ` +
-        `(only "${WORKSPACE_KEY}" and "${WORKSPACE_REALTIME_KEY}" exist).`,
+        `(only "${WORKSPACE_KEY}" exists).`,
     );
   }
   if (idx === -1 || name === "" || !LOCK_PAYLOAD_KEYS.has(prefix)) {
@@ -568,17 +590,13 @@ export function adoptFromBundle(lock: LockFile, bundle: unknown, bundlePath: str
     }
   }
 
-  // Workspace canonicals land under the fixed keys.
+  // The workspace canonical lands under its fixed key.
   const ws = sections["workspace"];
   if (ws && typeof ws === "object" && !Array.isArray(ws)) {
-    const w = ws as { canonical?: unknown; realtime?: { canonical?: unknown } };
+    const w = ws as { canonical?: unknown };
     if (typeof w.canonical === "string" && w.canonical !== "") {
       canonicalsSeen = true;
       applyEntry(WORKSPACE_KEY, { canonical: w.canonical });
-    }
-    if (typeof w.realtime?.canonical === "string" && w.realtime.canonical !== "") {
-      canonicalsSeen = true;
-      applyEntry(WORKSPACE_REALTIME_KEY, { canonical: w.realtime.canonical });
     }
   }
 
