@@ -389,7 +389,15 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     // defaults, not authored). The SDK omits it on a toolset; drop the inheriting
     // form on both sides. A customized (`inherit:false`) history is preserved.
     case "history":
-      return v !== null && typeof v === "object" && (v as { inherit?: unknown }).inherit === true;
+      // An ARRAY is not a settings block — it is the engine's own record of past
+      // runs, which the generated tree deliberately does not carry. Dropping it
+      // from both sides is what stops that deliberate omission ALSO reading as a
+      // failed round trip; the two mean opposite things and an object must not
+      // report both.
+      return (
+        Array.isArray(v) ||
+        (v !== null && typeof v === "object" && (v as { inherit?: unknown }).inherit === true)
+      );
     // An MCP-server toolset persists `agent_settings:null` (only agents carry a
     // real settings block); the SDK omits it. Drop the null form.
     case "agent_settings":

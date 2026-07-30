@@ -73,6 +73,14 @@ describe("validate normalizer — per-kind default/serialization rules", () => {
     expect(normalize({ obj_id: guid })).toEqual({ obj_id: guid });
   });
 
+  it("drops engine-recorded run history, which is telemetry rather than settings", () => {
+    // A task that has run carries `history` as an ARRAY of past runs. The
+    // generated tree deliberately does not carry it, so the comparison must not
+    // report that omission as a failed round trip too.
+    expect(normalize({ history: [{ on: "2022-01-14 23:16:11+0000", duration: 0.16 }] })).toEqual({});
+    expect(normalize({ history: [] })).toEqual({});
+  });
+
   it("drops an inheriting history block but keeps a customized one", () => {
     expect(normalize({ history: { inherit: true, tool_limit: 100, tool_enabled: true } })).toEqual({});
     const custom = { history: { inherit: false, limit: 5, enabled: true } };
