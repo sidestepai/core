@@ -20,7 +20,7 @@ import { normalize } from "../../validate/normalize.js";
 import { CORE_MODULE, type DecodeContext } from "../context.js";
 import { call, spread, type Expr } from "../print.js";
 import { deepEqual } from "../field.js";
-import { envelopePassthrough } from "../envelope-passthrough.js";
+import { applyPassthrough, envelopePassthrough } from "../envelope-passthrough.js";
 import { declineHere, recordProveAbort, recordProveDecline } from "../prove-diff.js";
 import type { RefIndex, ResolveOptions } from "../ref-index.js";
 
@@ -70,12 +70,14 @@ export function prove(
   // `description` and `disabled` are authored in the editor but are not arguments
   // to any hand-written factory, so they are overridden on the result and spread
   // over the emitted call. See {@link envelopePassthrough}.
-  const { overrides, entries } = envelopePassthrough(stored);
+  const passthrough = envelopePassthrough(stored);
 
   let encoded: StackItemXdo;
+  let entries: ReadonlyArray<readonly [string, Expr]> = passthrough.entries;
   try {
-    const built = factory(...runtime);
-    encoded = encodeStatement({ ...built, ...overrides });
+    const applied = applyPassthrough(factory(...runtime), passthrough);
+    entries = applied.entries;
+    encoded = encodeStatement(applied.statement);
   } catch (error) {
     recordProveAbort("special", stored.name, `factory threw: ${String(error)}`);
     return null;

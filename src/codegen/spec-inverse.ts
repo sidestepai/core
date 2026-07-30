@@ -31,7 +31,7 @@ import { normalize } from "../validate/normalize.js";
 import { CORE_MODULE, type DecodeContext } from "./context.js";
 import { call, lit, obj, spread, type Expr } from "./print.js";
 import { deepEqual } from "./field.js";
-import { envelopePassthrough } from "./envelope-passthrough.js";
+import { applyPassthrough, envelopePassthrough } from "./envelope-passthrough.js";
 import { declineHere, recordProveAbort, recordProveDecline } from "./prove-diff.js";
 import { decodeCondition } from "./expression.js";
 import { decodeValue } from "./value.js";
@@ -141,7 +141,15 @@ function recoverRule(
       return { field: rule.field, runtime: value, expr: decodeValue(ctx, value), isDefault: false };
     }
     case "context-nest": {
-      const value = toTaggedValue(getPath(context, rule.route.path));
+      const stored_ = getPath(context, rule.route.path);
+      // The engine keeps whichever spelling it is given here: a tagged value, or
+      // the bare string the editor writes (live-verified on `precondition.error`,
+      // where real workspaces store `error: "Access Denied."` while the schema
+      // declares a value). Both are authorable, so both decode.
+      if (typeof stored_ === "string") {
+        return { field: rule.field, runtime: stored_, expr: lit(stored_), isDefault: false };
+      }
+      const value = toTaggedValue(stored_);
       if (!value) return null;
       return { field: rule.field, runtime: value, expr: decodeValue(ctx, value), isDefault: false };
     }
@@ -255,8 +263,13 @@ export function decodeFromSpec(ctx: DecodeContext, stored: StackItemXdo): Expr |
       for (const entry of candidate) authored[entry.field] = entry.runtime;
 
       let encoded: StackItemXdo;
+      let entries = spreadEntries;
       try {
-        encoded = encodeStatement({ ...factory(authored), ...overrides });
+        const applied = applyPassthrough(factory(authored), passthrough, overrides);
+        entries = applied.entries.filter(
+          ([name]) => !(routesDescription && name === "description"),
+        );
+        encoded = encodeStatement(applied.statement);
       } catch (error) {
         recordProveAbort(`spec:${sPath}`, stored.name, `factory threw: ${String(error)}`);
         continue;
@@ -269,7 +282,7 @@ export function decodeFromSpec(ctx: DecodeContext, stored: StackItemXdo): Expr |
       ctx.use(CORE_MODULE, "s");
       const args = candidate.length > 0 ? [obj(candidate.map((e) => [e.field, e.expr]))] : [];
       const expression = call(`s.${sPath}`, ...args);
-      return spreadEntries.length > 0 ? spread(expression, spreadEntries) : expression;
+      return entries.length > 0 ? spread(expression, entries) : expression;
     }
   }
   return null;

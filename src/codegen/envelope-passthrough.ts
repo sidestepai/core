@@ -28,6 +28,17 @@ export interface EnvelopePassthrough {
   readonly overrides: Partial<Statement>;
   /** The same members as source entries, to spread over the emitted call. */
   readonly entries: ReadonlyArray<readonly [string, Expr]>;
+  /**
+   * Stored `input[]` entries for a statement whose schema declares none.
+   *
+   * Applied by the caller ONLY when the factory itself produced no input, so it
+   * can never mask a real disagreement about entries the statement does declare.
+   * `create_image` is the case that motivates it: 26 real statements store an
+   * auth binding its declared context schema has no slot for, and a live round
+   * trip confirms the engine persists it verbatim — so dropping it would discard
+   * a stored binding, which is the one thing this decoder must never do.
+   */
+  readonly undeclaredInput: readonly unknown[] | undefined;
 }
 
 /**
@@ -53,5 +64,32 @@ export function envelopePassthrough(stored: StackItemXdo): EnvelopePassthrough {
     entries.push(["disabled", lit(true)]);
   }
 
-  return { overrides, entries };
+  const input = (stored as { input?: unknown }).input;
+  const undeclaredInput = Array.isArray(input) && input.length > 0 ? input : undefined;
+
+  return { overrides, entries, undeclaredInput };
+}
+
+/**
+ * Merge the passthrough into a freshly built statement, adding the stored
+ * `input[]` only when the factory produced none of its own.
+ *
+ * Returns the statement to encode plus any extra source entries to spread, so
+ * both proof arms apply the same rule rather than each deciding for itself.
+ */
+export function applyPassthrough(
+  built: Statement,
+  passthrough: EnvelopePassthrough,
+  overrides: Partial<Statement> = passthrough.overrides,
+): { statement: Statement; entries: ReadonlyArray<readonly [string, Expr]> } {
+  const statement = { ...built, ...overrides };
+  const ownInput = (built as { input?: unknown }).input;
+  if (passthrough.undeclaredInput && !(Array.isArray(ownInput) && ownInput.length > 0)) {
+    (statement as { input?: unknown }).input = passthrough.undeclaredInput;
+    return {
+      statement,
+      entries: [...passthrough.entries, ["input", lit(passthrough.undeclaredInput)] as const],
+    };
+  }
+  return { statement, entries: passthrough.entries };
 }

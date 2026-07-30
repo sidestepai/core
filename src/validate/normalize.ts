@@ -439,6 +439,19 @@ export function normalize<T>(value: T): T {
     // golden export fixtures store a top-level `as:<name>` on tables; live
     // `mvp_dbo` never does (a table returns nothing). Drop it on both sides.
     const isTable = "schema" in (value as object) && !("context" in (value as object));
+    // `mvp:create_auth` stores its four named entries in two different orders —
+    // `dbtable, extras, expiration, id` on 21 of 25 real statements and
+    // `id, dbtable, extras, expiration` on the other 4 — and the SDK can only
+    // write one of them. Ordering them by name on BOTH sides makes the two
+    // spellings compare equal.
+    //
+    // Scoped to this one statement, and only because a live round trip settled
+    // it: both orders mint a token, and the engine persists whichever order it
+    // is handed rather than canonicalizing. The entries are named parameters, so
+    // position carries nothing — but that is a fact about this statement, not a
+    // licence to sort `input[]` anywhere else, where order IS meaningful (a row
+    // write's columns, a lookup's leading field_name/field_value).
+    const sortsInput = (value as { name?: unknown }).name === "mvp:create_auth";
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
       if (STRIP_KEYS.has(k)) continue;
       if (isTable && k === "as") continue;
@@ -476,6 +489,16 @@ export function normalize<T>(value: T): T {
       //
       // Scoped to `context` deliberately. A blanket array→object coercion would
       // corrupt every genuinely-empty list in the envelope.
+      if (sortsInput && k === "input" && Array.isArray(v)) {
+        out[k] = [...v]
+          .sort((a, b) =>
+            String((a as { name?: unknown })?.name ?? "").localeCompare(
+              String((b as { name?: unknown })?.name ?? ""),
+            ),
+          )
+          .map((entry) => normalize(entry));
+        continue;
+      }
       if (k === "context" && isEmptyArray(v)) {
         out[k] = {};
         continue;

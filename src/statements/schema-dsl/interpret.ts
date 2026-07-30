@@ -198,7 +198,15 @@ export function encodeFromSpec(spec: StatementSpec, authored: Authored): Stateme
         Object.assign(context, valueFields(provided as Value));
         break;
       case "context-nest":
-        setPath(context, rule.route.path, nestedValueFields(provided as Value));
+        // A bare string is written bare. The engine keeps whichever spelling it
+        // is given (live-verified on `precondition.error`, where the editor
+        // writes a plain string and the schema declares a value), so both are
+        // authorable and a pulled workspace can reproduce what it stored.
+        setPath(
+          context,
+          rule.route.path,
+          typeof provided === "string" ? provided : nestedValueFields(provided as Value),
+        );
         break;
       case "context-compare":
         setPath(context, rule.route.path, encodeComparison(provided as Condition));
