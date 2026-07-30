@@ -16,8 +16,10 @@
  *     message given a bare channel path must also be given a `server`.
  *
  *  2. A channel's `input` types its PATH parameters; a message's `input` types
- *     the message PAYLOAD. Both reach the stack. They are different schemas for
- *     different things — see `roomChannel` (path) vs `sendMessage` (payload).
+ *     the message PAYLOAD. Both reach the stack as ordinary declared inputs, read
+ *     with `inp()` — `inp("room_id")` for the channel's path param, `inp("body")`
+ *     for the payload field. They are different schemas for different things —
+ *     see `roomChannel` (path) vs `sendMessage` (payload), whose stack reads both.
  *
  *  3. DERIVE the client's socket URL and channel path from the defs —
  *     `chatServer.getUrl(baseUrl)` and `roomChannel.getChannel({ room_id })` —
@@ -30,8 +32,8 @@ import {
   realtimeServerTrigger,
   realtimeChannelTrigger,
   input,
+  inp,
   s,
-  c,
 } from "@sidestep/core";
 
 /** Gate 1 — the server: the canonical-addressed container. Off until enabled. */
@@ -81,7 +83,13 @@ export const sendMessage = realtimeMessage({
   // Everyone in the channel receives the result (the default). `sender` would
   // make it request/response over the socket; `others` excludes the sender.
   deliverTo: "channel",
-  stack: [s.debug.log({ value: c.text("message received") })],
+  // BOTH input surfaces read the same way — `inp()`. `inp("body")` is this
+  // message's payload; `inp("room_id")` is the CHANNEL's path param, bound once
+  // when the client joined `rooms/42` and read from the connection thereafter
+  // (never from the frame, so a sender cannot post into a room it did not join).
+  // A persisting handler swaps the log for `s.db.add({ table, data: { ... } })`.
+  stack: [s.debug.log({ value: inp("room_id") })],
+  response: { room_id: inp("room_id"), body: inp("body") },
 });
 
 /** A second handler on the same channel — a channel owns N named message types. */

@@ -173,6 +173,20 @@ function assertTenant(tenant: string): string {
  *    traffic), and `error` (`payload.message`, plus `payload.code` /
  *    `payload.retry_after` when rate limited). An `error` is a per-frame
  *    refusal, not a disconnect.
+ *  - PRESENCE frames (only on a `presence: true` channel) carry a roster:
+ *    `presence_full` → `payload.members` (an ARRAY — the whole roster, INCLUDING
+ *    the receiving client), `presence_join`/`presence_leave` → `payload.member`
+ *    (a single entry). A member is
+ *    `{ id, dbo_id, authenticated, extras, joined_at }` — `id` is the auth row id
+ *    as a string (`""` for an anonymous client), `dbo_id` the auth table's id
+ *    (`0` when anonymous), `extras` the connection's extras object, `joined_at`
+ *    epoch SECONDS. Render the roster from `presence_full` and apply the deltas;
+ *    the count is members, not connections — the roster is refcounted per
+ *    identity, so a second tab of the same user fires no second `presence_join`.
+ *    Order on join is: `join` ack → `presence_full` → (others see
+ *    `presence_join`) → conversation replay. A joined client can re-request the
+ *    snapshot at any time by sending `{ action: "presence", channel }`; it
+ *    answers with `presence_full`, or an `error` if you never joined.
  */
 export type RealtimeServerHandle = RealtimeServerDef & {
   /** The server's resolved `canonical` token; throws if none resolves. */

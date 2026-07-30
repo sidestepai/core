@@ -37,13 +37,29 @@ export interface SeedContentFile {
  */
 export const SEED_PAGE_TARGET_BYTES = 512 * 1024;
 
-/** Resolve a {@link SeedSource} (array, thunk, or async thunk) to its rows. */
+/**
+ * Resolve a {@link SeedSource} (array, thunk, or async thunk) to its rows.
+ *
+ * A dynamic `import()` of a JSON file — `seed: () => import("./seed.json")`, the
+ * form the docs recommend — resolves to a MODULE NAMESPACE, not the array: the
+ * rows are on `.default`. TypeScript types `import("./x.json")` as the JSON shape
+ * itself, so the thunk type-checks and only the runtime disagrees. Unwrap it here
+ * (issue #164) rather than making every author remember `.then(m => m.default)`.
+ */
 export async function resolveSeedRows(source: SeedSource): Promise<SeedRow[]> {
-  const rows = typeof source === "function" ? await source() : source;
+  const resolved = typeof source === "function" ? await source() : source;
+  const rows = Array.isArray(resolved) ? resolved : unwrapDefaultExport(resolved);
   if (!Array.isArray(rows)) {
-    throw new Error(`seed source did not resolve to an array of rows (got ${typeof rows}).`);
+    throw new Error(`seed source did not resolve to an array of rows (got ${typeof resolved}).`);
   }
   return rows as SeedRow[];
+}
+
+/** The `default` export of a module namespace, when it holds the row array. */
+function unwrapDefaultExport(value: unknown): unknown {
+  if (value === null || typeof value !== "object") return value;
+  const fallback = (value as { default?: unknown }).default;
+  return Array.isArray(fallback) ? fallback : value;
 }
 
 /**

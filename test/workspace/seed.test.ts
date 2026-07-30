@@ -34,6 +34,15 @@ describe("resolveSeedRows", () => {
     expect(await resolveSeedRows(async () => rows)).toEqual(rows);
   });
 
+  it("unwraps a JSON module namespace (`() => import(\"./seed.json\")`)", async () => {
+    const rows = [{ name: "a" }];
+    // What a dynamic JSON import actually hands back at runtime — the rows on
+    // `.default`, not the array TypeScript types the specifier as (#164).
+    const jsonModule = { default: rows, [Symbol.toStringTag]: "Module" };
+    expect(await resolveSeedRows(() => jsonModule as unknown as typeof rows)).toEqual(rows);
+    expect(await resolveSeedRows(async () => jsonModule as unknown as typeof rows)).toEqual(rows);
+  });
+
   it("throws when a source resolves to a non-array", async () => {
     // @ts-expect-error — exercising the runtime guard on a bad source
     await expect(resolveSeedRows(() => ({}))).rejects.toThrow(/did not resolve to an array/);

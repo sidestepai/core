@@ -3,7 +3,7 @@
     {
       "as": "",
       "name": "mvp:debug_log",
-      "_xsid": "f:666b7adc-52b4-4a6c-90b3-6b86ce1038fd",
+      "_xsid": "f:2fef9a34-b69d-46bf-8d8e-d9cd7dac2135",
       "addon": [],
       "input": [],
       "mocks": {},
@@ -13,8 +13,8 @@
         "customize": false
       },
       "context": {
-        "tag": "const",
-        "value": "message received",
+        "tag": "input",
+        "value": "room_id",
         "filters": []
       },
       "runtime": null,
@@ -25,7 +25,7 @@
   ],
   "tag": [],
   "auth": false,
-  "guid": "JBRBlrvophGGK57U2Nf4McmZ1Rc",
+  "guid": "zTIUax3_9Y3RR8IffNF88e0oyj0",
   "name": "send",
   "input": [
     {
@@ -36,7 +36,7 @@
       "mode": "",
       "name": "body",
       "type": "text",
-      "_xsid": "i:81bec163-febb-4aad-bd17-409cd265d576",
+      "_xsid": "i:9d1b47f7-ae23-41e6-8611-05d9a0b7b258",
       "merge": false,
       "style": {
         "type": "single"
@@ -70,12 +70,29 @@
     "id": 0
   },
   "output": [],
-  "result": [],
+  "result": [
+    {
+      "tag": "input",
+      "name": "room_id",
+      "_xsid": "r:ef383f07-7773-4e3c-bb52-93a87fd32c17",
+      "value": "room_id",
+      "filters": [],
+      "disabled": false
+    },
+    {
+      "tag": "input",
+      "name": "body",
+      "_xsid": "r:adf0c466-e46f-4fce-a32c-54cdc2430cd0",
+      "value": "body",
+      "filters": [],
+      "disabled": false
+    }
+  ],
   "server": {
-    "id": "MWT3En76DWAq0PJaXBsodu2nA9E"
+    "id": "cXlT6wOrR1JqrzEJWMp2K2qOzJI"
   },
   "channel": {
-    "id": "twLNeRZEeAbpwze-Nuz83XIHvrU"
+    "id": "0PjvlXngZCw-dcd9cwUwMaYY838"
   },
   "history": {
     "limit": 100,

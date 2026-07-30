@@ -8,7 +8,7 @@ import type { FieldXdo, ExprNode } from "../types/xdo.js";
 import { encodeField, COLUMN_CONTEXT } from "../fields/field.js";
 import type { FieldOptions } from "../fields/field.js";
 import type { FieldMap } from "../fields/catalog.js";
-import type { RowFromFieldMap, Prettify } from "../fields/value-types.js";
+import type { RowFromFieldMap, FromFieldMap, Prettify } from "../fields/value-types.js";
 import { encodeComparison } from "../statements/conditional.js";
 import type { Condition } from "../statements/conditional.js";
 import { registerKind } from "./kind.js";
@@ -204,12 +204,37 @@ export type SeedRow<Row = unknown> = [Row] extends [never]
         Omit<Row & object, "id" | "created_at">;
 
 /**
+ * The AUTHORING shape of one seed row for a {@link FieldMap} schema — a write
+ * payload, not a read row: a column without `required: true` is an OPTIONAL key
+ * (the engine applies its default for an absent column, and `coerceSeedRows`
+ * leaves it absent), while a `required` one must be supplied. Only the injected
+ * system columns are added, and those are optional too.
+ *
+ * Distinct from {@link RowOf}, the READ shape, where every declared column is
+ * present. Using the read shape here demanded every column on every seed row —
+ * stricter than both the runtime validator and the engine (issue #164).
+ */
+export type SeedRowOf<
+  S extends FieldMap,
+  IdT extends "int" | "uuid" = "int",
+  Sys extends boolean = true,
+> = Prettify<
+  ([Sys] extends [false] ? Record<never, never> : Partial<Omit<SystemRow<IdT>, keyof S>>) &
+    FromFieldMap<S>
+>;
+
+/**
  * How a table's seed rows are supplied. Either the rows directly, or — the
  * frontend-safe form — a **deferred source**: a thunk (optionally async, e.g.
  * `() => import("./seed.json")`) resolved only in the Node deploy pipeline. A
  * deferred source keeps large or sensitive seed data out of any frontend bundle
  * that value-imports the table def, and is erased entirely under `import type`.
- * Prefer the thunk form for anything beyond a handful of inline rows.
+ * Prefer the thunk form for anything beyond a handful of inline rows — it costs
+ * no typing (row and column inference survive every form; issue #164).
+ *
+ * A JSON `import()` resolves to a module namespace at runtime, not the array
+ * TypeScript types the specifier as; the deploy path unwraps `.default`, so
+ * `() => import("./seed.json")` works as written.
  */
 export type SeedSource<Row = unknown> =
   | ReadonlyArray<SeedRow<Row>>
@@ -510,10 +535,23 @@ export function table<
     idType?: IdT;
     system?: Sys;
     /** Seed rows typed against this table's row shape (system columns optional). */
-    seed?: SeedSource<RowOf<S, IdT, Sys>>;
+    seed?: SeedSource<SeedRowOf<S, IdT, Sys>>;
   },
 ): TableDef<SchemaCols<S>, RowOf<S, IdT, Sys>>;
-export function table(def: TableDef): TableDef;
+/**
+ * Raw-schema escape hatch: a table authored with a `ColumnDef[]` schema (no field
+ * brands, so nothing to infer) stays loosely typed.
+ *
+ * This overload is deliberately narrowed to `ColumnDef[]` rather than accepting
+ * any `TableDef`. A `FieldMap` schema would match a `TableDef`-wide signature
+ * too, and TypeScript's overload resolution silently falls through to a later
+ * candidate whenever the generic one does not resolve on the first pass — which
+ * a function-form `seed` triggers. The result was a table whose `Cols` and `Row`
+ * both collapsed with no error reported at the `table()` call (issue #164). With
+ * this overload unable to match a `FieldMap`, the generic signature is the only
+ * candidate and resolves, or reports a real error.
+ */
+export function table(def: Omit<TableDef, "schema"> & { schema: ColumnDef[] }): TableDef;
 export function table(def: TableDef): TableDef {
   return def;
 }
