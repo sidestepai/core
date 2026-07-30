@@ -94,8 +94,63 @@ const RESERVED_SYMBOLS: readonly string[] = [
   "raw",
 ];
 
+/**
+ * Identifiers the language itself refuses as a binding name.
+ *
+ * A workspace may legally hold a table called `new` or a function called
+ * `default`, and `toSymbol` only sanitizes *characters* — so the name reached the
+ * generated file verbatim and the whole tree failed to parse (`import { …, new }`
+ * is a syntax error, not a type error). That took 15 of the workspaces in the
+ * sweep from verbose to unusable.
+ *
+ * Every binding a generated file emits is a module-level `const`, so the strict
+ * mode and future-reserved sets apply alongside the plain keywords. These are
+ * seeded into the same map as {@link RESERVED_SYMBOLS}, which means a reserved
+ * name is disambiguated by the one mechanism that already handles cross-kind
+ * collisions rather than by a second, parallel escape.
+ */
+const RESERVED_WORDS: readonly string[] = [
+  // keywords
+  "break", "case", "catch", "class", "const", "continue", "debugger", "default",
+  "delete", "do", "else", "enum", "export", "extends", "false", "finally", "for",
+  "function", "if", "import", "in", "instanceof", "new", "null", "return",
+  "super", "switch", "this", "throw", "true", "try", "typeof", "var", "void",
+  "while", "with",
+  // strict mode + future reserved
+  "implements", "interface", "let", "package", "private", "protected", "public",
+  "static", "yield", "await",
+  // not reserved, but a binding that shadows them is a footgun in generated code
+  "arguments", "eval", "undefined", "NaN", "Infinity",
+];
+
 /** The kind slot reserved names occupy, so a real object never matches it. */
 const RESERVED_KIND = "\0core";
+
+/** `api_group` → `ApiGroup`. */
+function pascal(snake: string): string {
+  return snake
+    .split("_")
+    .filter((part) => part !== "")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join("");
+}
+
+/**
+ * The word appended when a symbol needs disambiguating — the object's kind, which
+ * reads far better than an ordinal (`newFunction`, not `new_2`).
+ *
+ * A query takes its HTTP verb too: two queries may share a path and differ only
+ * by verb, so the kind alone would not separate them and they would fall through
+ * to ordinals that say nothing about which is which.
+ */
+function kindWord(candidate: Candidate): string {
+  const kind = candidate.object.kind;
+  if (kind !== "query") return pascal(kind);
+  const verb = candidate.stored["verb"];
+  return typeof verb === "string" && verb !== ""
+    ? `${pascal(verb.toLowerCase())}Query`
+    : "Query";
+}
 
 /** Turn a Xano object name into a valid TypeScript identifier. */
 export function toSymbol(name: string): string {
@@ -225,14 +280,18 @@ function candidates(refs: RefIndex, payload: Record<string, unknown>): Candidate
  */
 function assignSymbols(list: readonly Candidate[]): string[] {
   const used = new Map<string, string>();
-  for (const name of RESERVED_SYMBOLS) used.set(name, RESERVED_KIND);
+  for (const name of [...RESERVED_SYMBOLS, ...RESERVED_WORDS]) used.set(name, RESERVED_KIND);
   return list.map((candidate) => {
     const base = toSymbol(String(candidate.stored.name ?? ""));
     const kind = candidate.object.kind;
     let symbol = base;
     const holder = used.get(symbol);
-    if (holder !== undefined && holder !== kind) symbol = `${base}_${kind}`;
-    for (let n = 2; used.has(symbol); n += 1) symbol = `${base}_${n}`;
+    if (holder !== undefined && holder !== kind) symbol = `${base}${kindWord(candidate)}`;
+    // Ordinals build on the disambiguated symbol, so a reserved name held by two
+    // same-kind objects stays readable (`newFunction`, `newFunction_2`) instead of
+    // reverting to a bare `new_2`.
+    const disambiguated = symbol;
+    for (let n = 2; used.has(symbol); n += 1) symbol = `${disambiguated}_${n}`;
     used.set(symbol, kind);
     return symbol;
   });
