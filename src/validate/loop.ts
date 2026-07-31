@@ -18,7 +18,7 @@ import type { ImportResult } from "./meta-client.js";
 
 /** The client surface the loop needs (satisfied structurally by MetaClient). */
 export interface LoopClient {
-  importBundle(bundle: string, opts?: { reset?: boolean }): Promise<ImportResult>;
+  importBundle(bundle: string): Promise<ImportResult>;
   exportWorkspace(workspaceId: number): Promise<{ payload: Record<string, unknown> }>;
 }
 
@@ -54,22 +54,14 @@ export interface ValidateResult {
   unchecked: Array<{ kind: string; count: number }>;
 }
 
-export interface ValidateLoopOptions {
-  reset?: boolean;
-}
-
 /** Run import → round-trip for one compiled bundle. */
-export async function runValidateLoop(
-  client: LoopClient,
-  bundleText: string,
-  opts: ValidateLoopOptions = {},
-): Promise<ValidateResult> {
+export async function runValidateLoop(client: LoopClient, bundleText: string): Promise<ValidateResult> {
   const bundle = JSON.parse(bundleText) as { payload?: Record<string, unknown> };
   const payload = bundle.payload ?? {};
 
   let imported: ImportResult;
   try {
-    imported = await client.importBundle(bundleText, { reset: opts.reset ?? true });
+    imported = await client.importBundle(bundleText);
   } catch (err) {
     return {
       accepted: false,

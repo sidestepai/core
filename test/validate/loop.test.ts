@@ -37,7 +37,7 @@ describe("runValidateLoop", () => {
     const bundle = bundleWith({ function: [{ name: "f" }] });
     const client = fakeClient({
       importBundle: async () => {
-        throw new Error("Deploy to /api:meta/sandbox/bundle failed (422): bad field");
+        throw new Error("import failed (422 Unprocessable Content): bad field");
       },
     });
     const res = await runValidateLoop(client, bundle);

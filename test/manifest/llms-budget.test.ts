@@ -79,7 +79,17 @@ import { measureCommittedLlms } from "../../scripts/measure-llms.js";
 // The scope rule has to ride along (it reads empty outside the catch arm), since
 // a value that is legal everywhere and correct in one place is the kind of thing
 // that gets copied into the try arm and quietly returns "".
-const CEILING_TOKENS = 28_700;
+// Raised again from 28.7k for `s.realtime.publish` — a whole new authorable
+// statement, not a clarifying line, and the largest single thing an agent can get
+// wrong about realtime right now. The three properties in that entry are each a
+// silent failure: it does not invoke a message handler (so "publish to run my
+// handler" quietly runs nothing), it bypasses `publish.who` (so an agent that
+// treats it as a client publish ships an unguarded broadcast), and it is fail-soft
+// (so a wrong server or channel produces no error anywhere — the one class of bug
+// no test the author writes will catch). The entry also has to say what it is NOT:
+// `deliverTo: "explicit"` still delivers to nobody, and an agent that reads the
+// two lines together would otherwise conclude the gap is closed.
+const CEILING_TOKENS = 28_950;
 
 describe("llms.txt token budget", () => {
   it("stays under the bloat-tripwire ceiling", () => {

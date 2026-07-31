@@ -159,6 +159,74 @@ const realtimeEvent: SpecialDecoder = (a) => {
 };
 
 /**
+ * `realtime.publish` — the current-layer send statement.
+ *
+ * Two asymmetries with `api.realtime_event` above, both load-bearing:
+ *  - `realtime_server` is a NAME, not a guid, so it decodes back to a plain string
+ *    rather than through the reference index. A bare `const` name round-trips as the
+ *    string the author wrote; any other tag keeps its value expression.
+ *  - Every field but `realtime_server`/`channel`/`data` is optional AND the whole
+ *    `auth` block may be absent, so an absent key means "not authored" rather than
+ *    malformed — re-materializing it would write bytes the engine never held.
+ */
+const realtimePublish: SpecialDecoder = (a) => {
+  const context = (a.stored.context ?? {}) as Record<string, unknown>;
+  const known = new Set(["realtime_server", "channel", "data", "message", "auth"]);
+  const unmodelled = Object.keys(context).find((key) => !known.has(key));
+  if (unmodelled !== undefined)
+    return declineHere(`realtime.publish: unmodelled context key "${unmodelled}"`);
+
+  const server = toValue(context.realtime_server);
+  const channel = toValue(context.channel);
+  const data = toValue(context.data);
+  if (!server || !channel || !data)
+    return declineHere("realtime.publish: realtime_server, channel, or data is not a tagged value");
+
+  const entries: Array<[string, Expr]> = [];
+  const runtime: Record<string, unknown> = {};
+  // A plain `const` name is what an author writes as `server: "chat"`; anything else
+  // (an input, a var, a filtered value) keeps its expression form.
+  if (server.tag === "const" && server.filters.length === 0) {
+    entries.push(["server", lit(server.value)]);
+    runtime.server = server.value;
+  } else {
+    entries.push(["server", decodeValue(a.ctx, server)]);
+    runtime.server = server;
+  }
+  entries.push(["channel", decodeValue(a.ctx, channel)]);
+  entries.push(["data", decodeValue(a.ctx, data)]);
+  runtime.channel = channel;
+  runtime.data = data;
+
+  const message = context.message === undefined ? null : toValue(context.message);
+  if (context.message !== undefined) {
+    if (!message) return declineHere("realtime.publish: context.message is not a tagged value");
+    entries.push(["message", decodeValue(a.ctx, message)]);
+    runtime.message = message;
+  }
+
+  if (context.auth !== undefined) {
+    const tableGuid = getPath(context, "auth.dbo_id");
+    if (typeof tableGuid === "string" && tableGuid !== "") {
+      entries.push([
+        "authTable",
+        resolveReference(a.ctx, a.refs, tableGuid, { ...a.resolve, unresolved: "object-ref" }),
+      ]);
+      runtime.authTable = { name: "", guid: tableGuid };
+    }
+    const rowId = getPath(context, "auth.row_id");
+    if (rowId !== undefined) {
+      const authId = toValue(rowId);
+      if (!authId) return declineHere("realtime.publish: context.auth.row_id is not a tagged value");
+      entries.push(["authId", decodeValue(a.ctx, authId)]);
+      runtime.authId = authId;
+    }
+  }
+
+  return prove(a.ctx, a.stored, "realtime.publish", [runtime], [obj(entries)]);
+};
+
+/**
  * `security.create_auth_token` — the auth table rides a bare-guid `const` input
  * entry rather than a `context` reference, and `extras`/`expiration` carry
  * encoder defaults (`{}` / 24h) that are elided when unchanged.
@@ -357,6 +425,7 @@ export const MISC_DECODERS: ReadonlyMap<string, SpecialDecoder> = new Map<string
     ]),
   ],
   ["mvp:realtime_event", realtimeEvent],
+  ["mvp:realtime_publish", realtimePublish],
   ["mvp:create_auth", createAuthToken],
   ["mvp:guid", createGuid],
   ["mvp:action_package", actionPackageCall],

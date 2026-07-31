@@ -1,0 +1,47 @@
+{
+  "as": "",
+  "name": "mvp:realtime_publish",
+  "_xsid": "f:bd64305f-b2bf-4f6b-b827-229119bc7cb9",
+  "addon": [],
+  "input": [],
+  "mocks": {},
+  "output": {
+    "items": [],
+    "filters": [],
+    "customize": false
+  },
+  "context": {
+    "auth": {
+      "dbo_id": "0F9xUJPoB0b1TRv1zCT1cges1Ak",
+      "row_id": {
+        "tag": "const:int",
+        "value": 7,
+        "filters": []
+      }
+    },
+    "data": {
+      "tag": "const:expr2",
+      "value": "{ a: 1 }",
+      "filters": []
+    },
+    "channel": {
+      "tag": "const",
+      "value": "lobby",
+      "filters": []
+    },
+    "message": {
+      "tag": "const",
+      "value": "post",
+      "filters": []
+    },
+    "realtime_server": {
+      "tag": "const",
+      "value": "chat",
+      "filters": []
+    }
+  },
+  "runtime": null,
+  "disabled": false,
+  "description": "",
+  "settings_registry": null
+}

@@ -1,6 +1,6 @@
 {
   "name": "sidestep",
-  "version": "4.1.13",
+  "version": "4.1.14",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
@@ -8,8 +8,8 @@
       "total": 30
     },
     "statements": {
-      "implemented": 215,
-      "total": 215
+      "implemented": 216,
+      "total": 216
     },
     "filters": {
       "typed": 129,
@@ -3099,6 +3099,13 @@
           "default": ""
         }
       ]
+    },
+    {
+      "surface": "realtime.publish",
+      "storedName": "mvp:realtime_publish",
+      "sPath": "realtime.publish",
+      "registered": true,
+      "declarative": false
     },
     {
       "surface": "redis.count",

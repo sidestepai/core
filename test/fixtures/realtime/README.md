@@ -58,3 +58,31 @@ is engine-verified regardless; it came from the live capture.
    deliver event also supplies the message payload and a recipient identity distinct
    from the sender is the one part of that trigger's typed surface that was
    deliberately not guessed — see `src/kinds/trigger-inputs.ts`.
+
+## The archive round trip, confirmed on a realtime-serving instance
+
+The promotion above was captured before any instance in reach actually ran the
+realtime tier. It has now been re-confirmed against one that does: a realtime server,
+a channel, and a message were pushed and read back out of the workspace archive, and
+their cross-references came back as guids pointing at the freshly-imported rows — the
+channel's `server.id` at the server, the message's `server.id` and `channel.id` at
+both of its parents. That is the shape SideStep emits, so the reference contract is
+evidence now rather than inference.
+
+Two things that cost time and are worth writing down:
+
+- The workspace archive **lags a write by a beat**. An export issued immediately after
+  a push returns the pre-push state — objects present, stacks empty. An empty `run[]`
+  right after a push means "read too early", not "the engine dropped the stack".
+- Realtime object CRUD is **not** on the same API as the rest of the meta surface, and
+  it answers 401 to an instance token. Objects a probe creates can be read back through
+  the archive but cannot be deleted with the same credential.
+
+## The `realtime.publish` statement goldens
+
+`statements/realtime_publish.json` and `statements/realtime_publish-min.json` are
+engine-captured by `scripts/probe-realtime-publish.ts` (manually run; see its header).
+Two authorings, because what the engine does NOT store is the interesting half: the
+minimal one persists three context keys and no `auth` block at all, even though the
+engine renders the script back with `auth_table = ""` filled in. Trusting the rendered
+script over the stored bytes would write a key the engine never held.

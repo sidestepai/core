@@ -156,14 +156,13 @@ export interface RealtimeEventArgs {
 /**
  * `api.realtime_event { … }` — publish a realtime event (`mvp:realtime_event`).
  *
- * @deprecated Superseded. This publishes to Xano's older workspace-global realtime
- * layer, NOT to a `realtimeChannel()` — its `channel` is a string against that layer,
- * so pointing it at a current-layer channel path publishes into the void.
+ * @deprecated Superseded by {@link realtimePublish}. This publishes to Xano's older
+ * workspace-global realtime layer, NOT to a `realtimeChannel()` — its `channel` is a
+ * string against that layer, so pointing it at a current-layer channel path publishes
+ * into the void.
  *
- * There is no current-layer send statement yet, so this is not a stand-in for one:
- * to move a payload out over the current layer, return it from a `realtimeMessage()`
- * handler and let its `deliverTo` (`channel` / `sender` / `others`) decide who
- * receives it.
+ * To originate an event on the current layer, use `s.realtime.publish`, which names the
+ * owning `realtimeServer()` and so addresses a real `realtimeChannel()`.
  *
  * Still exported and still supported so `sidestep codegen` can bring back a workspace
  * that holds one. Withheld from the `llms.txt` statement catalog and named only under
@@ -177,6 +176,121 @@ export function realtimeEvent(a: RealtimeEventArgs): Statement {
     context: { channel: vf(a.channel), data: vf(a.data), auth },
     input: [],
   };
+}
+
+// --- realtime publish (declarative) ----------------------------------------
+
+/**
+ * The realtime server to publish onto: a `realtimeServer()` handle, its bare name, or
+ * a `Value` when the name is computed at runtime.
+ *
+ * The engine resolves this server by NAME within the current workspace and branch —
+ * not by guid — so a handle contributes its `name`, not its identity.
+ */
+export type RealtimePublishServer = string | { name: string } | Value;
+
+export interface RealtimePublishArgs {
+  /**
+   * The owning realtime server, by name. Required: a channel path is unique only
+   * within its server, so the path alone cannot be addressed.
+   */
+  server: RealtimePublishServer;
+  /**
+   * The channel PATH to publish onto, already filled in — `c.text("rooms/42")`, not
+   * the `rooms/{room_id}` template. Build it with `realtimeChannel().getChannel({…})`
+   * rather than concatenating by hand.
+   */
+  channel: Value;
+  /** The event payload delivered to subscribers. */
+  data: Value;
+  /**
+   * Optional message TYPE stamped on the frame, so a client that switches on type can
+   * route a server-originated event the same way it routes a `realtimeMessage()` one.
+   * Naming a type does NOT invoke that message's handler — see the note on delivery below.
+   */
+  message?: Value;
+  /**
+   * Optional ASSERTED identity attributed to the event: name an auth **table** (a
+   * `table({ auth: true })` def or its name) and it resolves to that table's guid.
+   *
+   * This is attribution carried on the frame, NOT a credential — nothing validates it
+   * and no auth gate consumes it. Do not use it to grant a publish that a channel's
+   * `publish.who` would otherwise refuse; this statement bypasses that gate entirely.
+   */
+  authTable?: ObjectRef;
+  /** The asserted identity's row id. Attribution only — see {@link RealtimePublishArgs.authTable}. */
+  authId?: Value;
+}
+
+/**
+ * `realtime.publish { … }` — originate a server-authored event onto a realtime channel
+ * from any function stack (`mvp:realtime_publish`).
+ *
+ * This is how a query, task, function, or trigger pushes to connected clients without a
+ * client frame arriving first: "the auction closed", "the job finished", "row 42 changed".
+ *
+ * Three properties decide whether this is the right tool, and all three surprise people:
+ *
+ *  - **Delivery-only.** The event is fanned out to subscribers as-is. It does NOT invoke
+ *    a `realtimeMessage()` handler, even when `message` names one, so no stack of yours
+ *    runs on the delivery side. A channel `deliver` trigger still applies (it belongs to
+ *    the channel, not to the message).
+ *  - **Server-authoritative.** It bypasses the channel's `publish.who` policy — that gate
+ *    governs CLIENTS. Any stack that can run this can publish, so guard it in your own
+ *    stack if that matters.
+ *  - **Fail-soft.** A missing or disabled server, a server with no minted canonical, or an
+ *    unreachable bus is logged engine-side and returns quietly. NOTHING throws into your
+ *    stack and there is no return value to check, so a mis-targeted publish is SILENT.
+ *    The two references this SDK can check — `server` and `channel` — throw here at author
+ *    time instead, because that is the only loud failure available.
+ *
+ * It does not rescue `deliverTo: "explicit"` on a `realtimeMessage()`: this originates an
+ * event INTO a channel and never selects recipients from inside a handler.
+ *
+ * ```ts
+ * const rooms = realtimeChannel({ name: "rooms/{room_id}", server: chat, input: { room_id: input.int() } });
+ * s.realtime.publish({
+ *   server: chat,
+ *   channel: c.text(rooms.getChannel({ room_id: 42 })),
+ *   message: c.text("post"),
+ *   data: obj({ body: "the auction closed" }),
+ * });
+ * ```
+ */
+export function realtimePublish(a: RealtimePublishArgs): Statement {
+  const server = publishServerValue(a.server);
+  if (!a.channel || a.channel.value === "") {
+    throw new Error(
+      "realtime.publish: `channel` is required — the filled-in channel path to publish onto (use `realtimeChannel().getChannel({…})`).",
+    );
+  }
+  const context: Record<string, unknown> = {
+    realtime_server: server,
+    channel: vf(a.channel),
+    data: vf(a.data),
+  };
+  if (a.message !== undefined) context.message = vf(a.message);
+  const auth: Record<string, unknown> = {};
+  if (a.authTable !== undefined) auth.dbo_id = resolveRef("dbo", a.authTable);
+  if (a.authId !== undefined) auth.row_id = vf(a.authId);
+  if (Object.keys(auth).length > 0) context.auth = auth;
+  return { name: "mvp:realtime_publish", context, input: [] };
+}
+
+/** Coerce the `server` argument to its stored value form — always the server's NAME. */
+function publishServerValue(server: RealtimePublishServer): { value: string; tag: string; filters: unknown[] } {
+  if (typeof server === "string") {
+    if (server === "") throw new Error("realtime.publish: `server` is required — the owning realtime server's name.");
+    return { value: server, tag: "const", filters: [] };
+  }
+  if (server && typeof server === "object" && "tag" in server) return vf(server as Value);
+  const name = server && typeof server === "object" ? server.name : undefined;
+  if (!name) {
+    throw new Error(
+      "realtime.publish: `server` is required — pass the `realtimeServer()` handle, its name, or a value naming it.",
+    );
+  }
+  return { value: name, tag: "const", filters: [] };
 }
 
 // --- auth token (declarative) ----------------------------------------------
@@ -280,5 +394,6 @@ registerStatement("mvp:placeholder", placeholder);
 registerStatement("mvp:get_input", getRawInput);
 registerStatement("mvp:post_process", postProcess);
 registerStatement("mvp:realtime_event", realtimeEvent);
+registerStatement("mvp:realtime_publish", realtimePublish);
 registerStatement("mvp:create_auth", createAuthToken);
 registerStatement("mvp:test_expect_to_throw", expectToThrow);
