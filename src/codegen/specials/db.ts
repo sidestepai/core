@@ -640,6 +640,16 @@ function sqlEntries(
   a: SpecialArgs,
   context: Record<string, unknown>,
 ): { entries: Array<[string, Expr]>; runtime: Record<string, unknown> } | null {
+  // An UNCONFIGURED statement — the engine writes `context: {}` for one that was
+  // dropped into a stack and never filled in, and all 6 in the survey corpus are
+  // that, not a malformed `code`. Left as `raw()` deliberately: five of the six
+  // are external-engine variants whose `connection_string_flex` is a nested
+  // object, and the optional-schema pass does not materialize those (see the
+  // note by {@link filledContext}), so there is no connection string to recover
+  // and the factory could not be called at all. The message says which it is.
+  if (context.code === undefined && Object.keys(context).length === 0) {
+    return declineHere("raw SQL: context is empty — the statement was never configured");
+  }
   if (typeof context.code !== "string") return declineHere("raw SQL: context.code is not a string");
   const entries: Array<[string, Expr]> = [["sql", lit(context.code)]];
   const runtime: Record<string, unknown> = { sql: context.code };

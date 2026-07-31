@@ -817,6 +817,22 @@ const EMPTY_CONTEXT_FILL: ReadonlyMap<string, { tag: string; named: boolean }> =
 /**
  * A loop whose iterand is ABSENT, and the empty iterand it is REPAIRED to.
  *
+ * **What the engine's optional-schema pass does and does not fill**, since this
+ * keeps coming up and the answer is not uniform. `XS::optional` walks a context
+ * schema and, for each absent member:
+ *
+ *  - SCALAR (`value: text`, `response_type?=list`) → filled with the type's
+ *    default. This is why {@link EMPTY_CONTEXT_FILL} works.
+ *  - LIST (`arg[]`, `filters[]`) → filled with `[]`.
+ *  - NESTED OBJECT (`list:`, `cnt:`, `connection_string_flex:`) → defaulted to
+ *    the literal STRING `"{}"`, which materializes nothing. The statement class
+ *    then reads the key directly and faults.
+ *
+ * So "the schema declares a default" is not enough — the member's SHAPE decides.
+ * Two clusters were mis-read on that: the loops below, and the raw-SQL family,
+ * whose empty contexts look fillable until you notice `connection_string_flex`
+ * is a nested object with nothing to recover.
+ *
  * This is not a default the engine supplies — that was checked, and it does not.
  * `ForEachLoop`/`ForLoop` declare `list`/`cnt` as nested `{value, tag?=…,
  * filters[]}` objects with default tags and run them through the same
