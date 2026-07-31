@@ -80,7 +80,14 @@ export function prove(
     encoded = encodeStatement(applied.statement);
   } catch (error) {
     recordProveAbort("special", stored.name, `factory threw: ${String(error)}`);
-    return null;
+    // The authoring surface rejected the recovered arguments. That message is
+    // written for a human and names the exact conflict, so it beats "could not
+    // reproduce" by a wide margin — carried through to the fallback report.
+    return ctx.declined(
+      `the recovered arguments were rejected by the authoring surface — ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
   }
   if (!deepEqual(normalize(encoded), normalize(stored))) {
     recordProveDecline("special", stored.name, normalize(encoded), normalize(stored));

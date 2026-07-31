@@ -178,11 +178,20 @@ export function decodeCondition(ctx: DecodeContext, block: unknown): DecodedCond
   // container as an array would quietly change what it means.
   const nodes = expression as Array<{ or?: unknown }>;
   const ored = nodes.map((node, i) => i > 0 && node?.or === true);
-  if (nodes[0]?.or === true) return null;
+  if (nodes[0]?.or === true)
+    return ctx.declined(
+      "the condition's first sibling carries an `or` flag, which joins it to nothing — " +
+        "there is no preceding term for it to OR with, and no authored form says it",
+    );
   if (ored.some(Boolean)) {
     // A mixed container (`a AND b OR c`) has no authored form — `or(...)` would
     // re-encode every sibling as ORed. Decline instead of emitting the wrong join.
-    if (!ored.slice(1).every(Boolean)) return null;
+    if (!ored.slice(1).every(Boolean))
+      return ctx.declined(
+        "the condition mixes AND and OR at one level (`a AND b OR c`), which has no authored " +
+          "form — `and(...)` and `or(...)` each join every sibling the same way, so spelling " +
+          "it either way would change which rows match. Carried exactly as stored instead",
+      );
     ctx.use(CORE_MODULE, "or");
     return {
       expr: call("or", ...decoded.map((d) => d.expr)),

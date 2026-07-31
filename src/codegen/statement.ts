@@ -73,11 +73,17 @@ function dispatch(
         decodeStack: (run) => decodeNested(ctx, refs, run, resolve),
       }),
     );
-    if (decoded) return decoded;
+    if (decoded) {
+      ctx.takeDeclineNote();
+      return decoded;
+    }
   }
 
   const fromSpec = ctx.speculate(() => decodeFromSpec(ctx, stored));
-  if (fromSpec) return fromSpec;
+  if (fromSpec) {
+    ctx.takeDeclineNote();
+    return fromSpec;
+  }
 
   // "has no decoder" was reported for EVERY fallback, including the ones where a
   // decoder exists and simply declined — 81 of 181 sweep rows said it of
@@ -90,10 +96,15 @@ function dispatch(
   const label = typeof name === "string" ? name : "(unnamed)";
   const modelled =
     typeof name === "string" && (SPECIAL_DECODERS.has(name) || SPECS_BY_NAME.has(name));
+  // A decoder that knew exactly why it could not spell this says so here, rather
+  // than leaving "could not reproduce" as the only clue (see `declined`).
+  const why = ctx.takeDeclineNote();
   ctx.problem(
     "raw-fallback",
     modelled
-      ? `${label} is modelled, but its decoder could not reproduce the stored statement; emitted verbatim via raw()`
+      ? `${label} is modelled, but its decoder could not reproduce the stored statement` +
+        (why ? `: ${why}. Emitted` : "; emitted") +
+        " verbatim via raw()"
       : `${label} has no decoder; emitted verbatim via raw()`,
   );
   ctx.use(CODEGEN_MODULE, "raw");

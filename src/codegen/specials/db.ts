@@ -665,7 +665,12 @@ function sqlEntries(
   // note by {@link filledContext}), so there is no connection string to recover
   // and the factory could not be called at all. The message says which it is.
   if (context.code === undefined && Object.keys(context).length === 0) {
-    return declineHere("raw SQL: context is empty — the statement was never configured");
+    declineHere("raw SQL: context is empty — the statement was never configured");
+    return a.ctx.declined(
+      "the statement stores an entirely empty context — it was added to the stack and never " +
+        "configured, so there is no SQL and no connection to recover. `raw()` is what an " +
+        "unconfigured stub looks like",
+    );
   }
   if (typeof context.code !== "string") return declineHere("raw SQL: context.code is not a string");
   const entries: Array<[string, Expr]> = [["sql", lit(context.code)]];

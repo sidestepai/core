@@ -131,6 +131,49 @@ describe("a conditional with an empty condition", () => {
       ),
     );
     expect(source).toContain("raw(");
+    // …and it SAYS why. "could not reproduce" sends a maintainer looking for a
+    // decoder bug; the real answer is that no authored form exists.
+    const detail = ctx.report.entries.find((e) => e.category === "raw-fallback")?.detail ?? "";
+    expect(detail).toContain("mixes AND and OR");
+    expect(detail).toContain("raw()");
+  });
+
+  it("explains a leading `or` flag, which joins to nothing", () => {
+    const node = (or: boolean) => ({
+      or,
+      type: "statement",
+      group: { expression: [] },
+      statement: { op: "=", left: { tag: "var", operand: "a", filters: [] }, right: { tag: "const", operand: "1", filters: [] } },
+    });
+    const ctx = new DecodeContext();
+    const source = printExpr(
+      decodeStatement(ctx, new RefIndex(), conditional({ expression: [node(true)] }) as never, {} as never),
+    );
+    expect(source).toContain("raw(");
+    expect(ctx.report.entries.find((e) => e.category === "raw-fallback")?.detail).toContain(
+      "joins it to nothing",
+    );
+  });
+
+  it("clears a pending decline note as soon as anything decodes", () => {
+    // The contract that makes the note safe. A decline is an upper bound — a
+    // later arm may still prove — so a reason left lying around would be
+    // attached to some unrelated statement further down the stack and read as
+    // fact. Set one by hand, decode something that SUCCEEDS, then fall back on a
+    // statement nothing models: the borrowed reason must be gone.
+    const ctx = new DecodeContext();
+    ctx.declined("a reason from an arm that lost");
+    const ok = printExpr(
+      decodeStatement(ctx, new RefIndex(), conditional({ expression: [] }) as never, {} as never),
+    );
+    expect(ok).not.toContain("raw(");
+
+    // A MODELLED statement whose own decline sets no note — so the only way a
+    // reason could appear on it is by leaking from before.
+    decodeStatement(ctx, new RefIndex(), { name: "mvp:dbo_view", context: {} } as never, {} as never);
+    const detail = ctx.report.entries.find((e) => e.category === "raw-fallback")?.detail ?? "";
+    expect(detail).toContain("could not reproduce");
+    expect(detail).not.toContain("an arm that lost");
   });
 });
 
