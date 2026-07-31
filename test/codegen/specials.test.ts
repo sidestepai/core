@@ -469,6 +469,35 @@ describe("call family", () => {
     // read as a NAME and re-derive into a different guid.
     expect(source).toContain("ffffffffffffffffffffffffffffffff");
   });
+
+  // `mvp:action` targets a MARKETPLACE action-package version, not a workspace
+  // object, so its id is never in the bundle's object graph and reporting it as
+  // a missing guid is a false error. All 3 in the survey corpus were absent, and
+  // one of them appeared in two different workspaces — which a workspace-local
+  // guid cannot do.
+  it("does not report an action.call target as an unresolved workspace reference", () => {
+    const ctx = new DecodeContext();
+    const stored = encodeStatement(
+      s.action.call({ action: { name: "", guid: "20c63dfc-dfcf-420e-8435-8212d1a8305d" } }),
+    ) as StackItemXdo;
+    const source = printExpr(decodeStatement(ctx, EMPTY_REFS, stored, {}));
+
+    expect(source).toContain("20c63dfc-dfcf-420e-8435-8212d1a8305d");
+    expect(ctx.report.entries.filter((e) => e.category === "unresolved-ref")).toEqual([]);
+    // The bytes are unchanged by the fix — only the report is.
+    expect(normalize(encodeStatement(evaluate(source)))).toEqual(normalize(stored));
+  });
+
+  it("still reports a FUNCTION call whose target is genuinely missing", () => {
+    // The paired negative: skipping resolution is scoped to the external
+    // surface, so an ordinary workspace call must keep reporting.
+    const ctx = new DecodeContext();
+    const stored = encodeStatement(
+      s.function.run({ fn: { name: "gone", guid: "ffffffffffffffffffffffffffffffff" } }),
+    ) as StackItemXdo;
+    printExpr(decodeStatement(ctx, EMPTY_REFS, stored, {}));
+    expect(ctx.report.entries.some((e) => e.category === "unresolved-ref")).toBe(true);
+  });
 });
 
 describe("misc specials", () => {

@@ -125,6 +125,56 @@ describe("create_auth stores its named entries in either order", () => {
     });
   }
 
+  /**
+   * `dbtable`'s THIRD stored spelling: the table's NAME, which older workspaces
+   * write where newer ones write a guid. The two cases below differ only in
+   * whether that named table is still in the bundle, and the corpus partitions
+   * cleanly — 179 resolve as guids, 0 are guid-shaped but absent, 7 name a table
+   * that is present, 6 name one that is not.
+   */
+  function storedNamed(dbtable: string): StackItemXdo {
+    return {
+      as: "tok",
+      name: "mvp:create_auth",
+      addon: [],
+      input: [entry("id", "1", "const:int"), entry("dbtable", dbtable, "const")],
+      output: { items: [], filters: [], customize: false },
+      context: {},
+      disabled: false,
+      description: "",
+      settings_registry: null,
+    } as unknown as StackItemXdo;
+  }
+
+  it("reports a name-spelled dbtable whose table is PRESENT as a lost symbol link", () => {
+    const ctx = new DecodeContext();
+    const stored = storedNamed(USERS.name);
+    const source = printExpr(decodeStatement(ctx, REFS, stored));
+
+    expect(source).not.toContain("raw(");
+    expect(normalize(encodeStatement(evaluateAuth(source)))).toEqual(normalize(stored));
+    // Readability only — the bytes survive, so it is not an unresolved reference.
+    expect(ctx.report.entries.map((e) => e.category)).toEqual(["value-fallback"]);
+  });
+
+  it("reports a name-spelled dbtable whose table is ABSENT without calling it a guid", () => {
+    // Regression: keying the name-spelled check on "a table of that name exists"
+    // let this case fall through to guid resolution, which reported
+    // `guid user is not present in this bundle` — an error about a guid that was
+    // never a guid, 6 times in the survey corpus.
+    const ctx = new DecodeContext();
+    const stored = storedNamed("user");
+    const source = printExpr(decodeStatement(ctx, REFS, stored));
+
+    expect(source).not.toContain("raw(");
+    expect(normalize(encodeStatement(evaluateAuth(source)))).toEqual(normalize(stored));
+    // Still an error — the reference really is dangling — but a truthful one.
+    expect(ctx.report.entries).toHaveLength(1);
+    expect(ctx.report.entries[0]!.category).toBe("unresolved-ref");
+    expect(ctx.report.entries[0]!.detail).toContain("neither by guid nor by name");
+    expect(ctx.report.entries[0]!.detail).not.toMatch(/^guid /);
+  });
+
   it("still compares the entry VALUES — sorting is not a licence to ignore them", () => {
     // The paired negative the invariant requires: reordering compares equal, but
     // a changed value must not.

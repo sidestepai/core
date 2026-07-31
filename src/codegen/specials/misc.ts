@@ -194,12 +194,31 @@ const createAuthToken: SpecialDecoder = (a) => {
   // to the table's symbol, which is a readability loss and reported as one.
   // Resolving it to the symbol would be worse than useless: re-encoding a table
   // handle writes the table's real guid, changing the stored bytes.
-  const named = unbound ? undefined : a.refs.all().find((o) => o.kind === "table" && o.name === table.value);
-  const nameSpelled = named !== undefined && a.refs.lookup(table.value) === undefined;
-  if (nameSpelled) {
+  //
+  // Keyed on whether the value RESOLVES as a guid, not on whether a table of
+  // that name happens to exist. Keying it on the name match left the case where
+  // the named table is ABSENT falling through to guid resolution — which
+  // reported "guid user is not present in this bundle", the very error this
+  // comment claims to have fixed, 6 more times. The corpus partitions cleanly:
+  // 179 resolve as guids, 0 are guid-shaped but absent, 7 name a table that is
+  // present, 6 name one that is not, 5 are blank.
+  const resolvesAsGuid = !unbound && a.refs.lookup(table.value) !== undefined;
+  const nameSpelled = !unbound && !resolvesAsGuid;
+  const namedTable = nameSpelled
+    ? a.refs.all().find((o) => o.kind === "table" && o.name === table.value)
+    : undefined;
+  if (nameSpelled && namedTable !== undefined) {
     a.ctx.problem(
       "value-fallback",
       `security.create_auth_token references table "${table.value}" by name rather than by guid, as older workspaces store it; carried verbatim, so it is not linked to the table's symbol`,
+    );
+  } else if (nameSpelled) {
+    // Genuinely dangling, and still worth an error — but not the guid one. The
+    // wording states what was checked rather than asserting which namespace the
+    // value came from, so it stays true if a guid-spelled table is ever deleted.
+    a.ctx.problem(
+      "unresolved-ref",
+      `security.create_auth_token references table "${table.value}", which this bundle holds neither by guid nor by name — older workspaces store this field by NAME, so renaming or deleting the table breaks it. Carried verbatim; a re-deploy will not re-link it`,
     );
   }
   const entries: Array<[string, Expr]> = [

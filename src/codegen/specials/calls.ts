@@ -61,6 +61,27 @@ interface CallShape {
    * factory that does not take it would just abort inside `prove`.
    */
   readonly unbindable?: boolean;
+  /**
+   * The target id is NOT a workspace object reference — it names something that
+   * lives outside the bundle's object graph entirely, so routing it through the
+   * ref index reports a missing guid for a reference that was never
+   * workspace-local.
+   *
+   * Only `mvp:action` sets this. Its `run_version.id` is a marketplace
+   * action-package VERSION id, and three things say so independently: the
+   * encoder already carries a `@TODO` admitting it resolves via the "function"
+   * migrate type and that actions are a distinct namespace; action packages are
+   * an unsupported payload section, so an installed action is never in the tree
+   * to resolve against; and in the survey corpus all 3 stored ids are absent
+   * from their bundle while ONE OF THEM APPEARS IN TWO DIFFERENT WORKSPACES —
+   * a workspace-local guid cannot do that. They are also UUIDs, where every
+   * workspace guid in the corpus is a 27-character base64url token.
+   *
+   * The emitted expression is unchanged: `resolveReference`'s miss branch
+   * already returns this exact `{name:"", guid}` form, so this drops the false
+   * error without touching a byte.
+   */
+  readonly external?: boolean;
   /** Extra entries derived from the stored context (headers, auth, …). */
   readonly extra?: (a: SpecialArgs) => {
     entries: Array<[string, Expr]>;
@@ -98,7 +119,12 @@ function callDecoder(shape: CallShape): SpecialDecoder {
     }
     const target = unbound
       ? lit(null)
-      : resolveReference(a.ctx, a.refs, guid, { ...a.resolve, unresolved: "object-ref" });
+      : shape.external
+        ? obj([
+            ["name", lit("")],
+            ["guid", lit(guid)],
+          ])
+        : resolveReference(a.ctx, a.refs, guid, { ...a.resolve, unresolved: "object-ref" });
     // The runtime side references the target by guid directly: `resolveRef`
     // returns an explicit guid verbatim, so proving does not depend on whether a
     // symbol was available at this call site.
@@ -217,5 +243,8 @@ export const CALL_DECODERS: ReadonlyMap<string, SpecialDecoder> = new Map<string
     callDecoder({ path: "middleware.call", arg: "middleware", idPath: "id" }),
   ],
   ["mvp:workspace_run_addon", callDecoder({ path: "addon.call", arg: "addon", idPath: "id" })],
-  ["mvp:action", callDecoder({ path: "action.call", arg: "action", idPath: "run_version.id" })],
+  [
+    "mvp:action",
+    callDecoder({ path: "action.call", arg: "action", idPath: "run_version.id", external: true }),
+  ],
 ]);
