@@ -104,9 +104,13 @@ export interface RealtimeMessageDef<
   /**
    * Who receives this handler's response. Defaults to `"channel"`.
    *
-   * `"explicit"` hands recipient choice to the stack. The engine's realtime send
-   * statements are not yet exposed in this SDK, so `"explicit"` currently
-   * delivers to nobody — prefer another value until they land.
+   * `"explicit"` hands recipient choice to the stack — and nothing can take it.
+   * There is still no statement that SELECTS recipients from inside a handler, so
+   * `"explicit"` delivers to nobody; prefer another value.
+   *
+   * `s.realtime.publish` is NOT the missing piece: it originates an event INTO a
+   * channel from an ordinary stack (the push direction) and never chooses who a
+   * handler's own response reaches.
    */
   deliverTo?: MessageDeliverTo;
   /** The message PAYLOAD schema. Distinct from the channel's path parameters. */

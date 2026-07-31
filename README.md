@@ -719,6 +719,26 @@ params, and the caller's identity/extras) for the "who is this sender" question 
 anonymous-client channel; it is only meaningful in a realtime message or channel-trigger
 stack.
 
+Everything above is the *pull* direction — a client sends a frame, a handler answers. For
+the *push* direction, `s.realtime.publish({ server, channel, data, message?, authTable?,
+authId? })` originates a server-authored event onto a channel from any ordinary stack: "the
+auction closed", "the import finished". Pass the `realtimeServer()` handle and the filled-in
+path (`channel.getChannel({ room_id: 42 })`, never the template). Three things to know
+before you reach for it, because each one bites:
+
+- It is **delivery-only**. The payload is fanned out as-is; naming a `message` type does not
+  invoke that handler. A channel `deliver` trigger still runs, because that belongs to the
+  channel rather than the message.
+- It is **server-authoritative** — it bypasses the channel's `publish.who`, which governs
+  clients. Any stack that can run it can publish, so the authorization belongs in your stack.
+- It is **fail-soft**. A missing or disabled server, or an unreachable bus, is swallowed by
+  the engine: nothing throws, nothing is returned, and a mis-targeted publish is silent.
+  SideStep throws on the two references it can actually check, `server` and `channel`, which
+  is the only loud failure available.
+
+`authTable`/`authId` stamp an **asserted** identity on the frame for a client to render. They
+are attribution, not a credential — nothing validates them and no auth gate reads them.
+
 **The superseded realtime layer.** Xano has had two realtime generations, and they reuse
 the same words — "realtime", "channel" — for different objects. Everything above is the
 current one. Two superseded surfaces are still supported, because `sidestep codegen` has to
@@ -730,9 +750,10 @@ be able to bring back a workspace that holds them:
   `realtimeMessage()` handler, because a message is an authored unit rather than a trigger
   action.
 - `s.api.realtime_event({ channel, data, ... })` — publishes to the old layer. It is **not**
-  a way to publish to a `realtimeChannel()`, and there is no current-layer send statement
-  yet: to move a payload out over the current layer, return it from a `realtimeMessage()`
-  handler and let its `deliverTo` decide who receives it.
+  a way to publish to a `realtimeChannel()`: its `channel` is a string against that layer, so
+  aiming it at a current-layer channel path publishes into the void. Reach for
+  `s.realtime.publish({ server, channel, data, ... })` instead — it names the owning
+  `realtimeServer()`, which is what makes the channel resolvable.
 
 Both are **absent from the `## Object kinds` and `## Statements` catalogs in `llms.txt`** and
 named only under `## Legacy` — the same treatment `c.expressionLegacy` gets. The point is
