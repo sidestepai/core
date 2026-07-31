@@ -457,8 +457,9 @@ export function decodeField(
   if (dbLinkGuid !== null && surface === "input") {
     // `merge` is what makes the engine expand the link, so `input.dbLink` forces
     // it — emitting it back would be redundant, and it is not authorable here.
-    const { merge: _merge, ...rest } = opts;
-    const restExpr = optionsExpr(rest as FieldOptions);
+    const rest = { ...opts };
+    delete rest.merge;
+    const restExpr = optionsExpr(rest);
     const args: Expr[] = [
       resolveReference(ctx, refs, dbLinkGuid, { ...resolve, unresolved: "object-ref" }),
     ];
