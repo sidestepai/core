@@ -127,10 +127,13 @@ describe("create_auth stores its named entries in either order", () => {
 
   /**
    * `dbtable`'s THIRD stored spelling: the table's NAME, which older workspaces
-   * write where newer ones write a guid. The two cases below differ only in
-   * whether that named table is still in the bundle, and the corpus partitions
-   * cleanly — 179 resolve as guids, 0 are guid-shaped but absent, 7 name a table
-   * that is present, 6 name one that is not.
+   * write where newer ones write a guid.
+   *
+   * **SideStep resolves references by guid only** — it never maps a name back to
+   * an object — so the two cases below are deliberately indistinguishable to it.
+   * Whether the named table is still in the bundle changes nothing: both carry
+   * the value verbatim and both report the same lost symbol link. The corpus is
+   * 179 guids, 13 names, 5 blanks.
    */
   function storedNamed(dbtable: string): StackItemXdo {
     return {
@@ -146,33 +149,40 @@ describe("create_auth stores its named entries in either order", () => {
     } as unknown as StackItemXdo;
   }
 
-  it("reports a name-spelled dbtable whose table is PRESENT as a lost symbol link", () => {
+  for (const [label, dbtable] of [
+    ["whose table is in the bundle", USERS.name],
+    ["whose table is NOT in the bundle", "user"],
+  ] as const) {
+    it(`carries a name-spelled dbtable ${label}, reported the same way`, () => {
+      // Regression on both halves. Keying the check on "a table of that name
+      // exists" was a name lookup in all but direction, AND it let the absent
+      // case fall through to guid resolution, which reported
+      // `guid user is not present in this bundle` — an error about a guid that
+      // was never a guid, 6 times in the survey corpus.
+      const ctx = new DecodeContext();
+      const stored = storedNamed(dbtable);
+      const source = printExpr(decodeStatement(ctx, REFS, stored));
+
+      expect(source).not.toContain("raw(");
+      expect(normalize(encodeStatement(evaluateAuth(source)))).toEqual(normalize(stored));
+      // A warning, not an unresolved-reference error: the engine keys this field
+      // by name on the workspaces that store it that way, so the statement works
+      // and the bytes survive. Only the symbol link is lost.
+      expect(ctx.report.entries.map((e) => e.category)).toEqual(["value-fallback"]);
+      expect(ctx.report.entries[0]!.detail).not.toMatch(/^guid /);
+    });
+  }
+
+  it("resolves a GUID-spelled dbtable to the table's symbol, and reports nothing", () => {
+    // The paired positive: dropping the name lookup must not cost the guid path
+    // its resolution, which is the only mapping SideStep does.
     const ctx = new DecodeContext();
-    const stored = storedNamed(USERS.name);
+    const stored = storedNamed(USERS.guid);
     const source = printExpr(decodeStatement(ctx, REFS, stored));
 
     expect(source).not.toContain("raw(");
     expect(normalize(encodeStatement(evaluateAuth(source)))).toEqual(normalize(stored));
-    // Readability only — the bytes survive, so it is not an unresolved reference.
-    expect(ctx.report.entries.map((e) => e.category)).toEqual(["value-fallback"]);
-  });
-
-  it("reports a name-spelled dbtable whose table is ABSENT without calling it a guid", () => {
-    // Regression: keying the name-spelled check on "a table of that name exists"
-    // let this case fall through to guid resolution, which reported
-    // `guid user is not present in this bundle` — an error about a guid that was
-    // never a guid, 6 times in the survey corpus.
-    const ctx = new DecodeContext();
-    const stored = storedNamed("user");
-    const source = printExpr(decodeStatement(ctx, REFS, stored));
-
-    expect(source).not.toContain("raw(");
-    expect(normalize(encodeStatement(evaluateAuth(source)))).toEqual(normalize(stored));
-    // Still an error — the reference really is dangling — but a truthful one.
-    expect(ctx.report.entries).toHaveLength(1);
-    expect(ctx.report.entries[0]!.category).toBe("unresolved-ref");
-    expect(ctx.report.entries[0]!.detail).toContain("neither by guid nor by name");
-    expect(ctx.report.entries[0]!.detail).not.toMatch(/^guid /);
+    expect(ctx.report.entries).toEqual([]);
   });
 
   it("still compares the entry VALUES — sorting is not a licence to ignore them", () => {

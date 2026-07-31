@@ -1465,10 +1465,14 @@ describe("miscellaneous specials", () => {
   });
 
   it("carries an auth table stored by name rather than by guid, without calling it an unresolved guid", () => {
-    // `dbtable` has three stored spellings: the guid (179 of 191 across the
-    // sweep), blank (5), and — on older workspaces — the table's NAME (7).
+    // `dbtable` has three stored spellings: the guid (179 of 197 across the
+    // sweep), blank (5), and — on older workspaces — the table's NAME (13).
     // Routing a name through guid resolution reported `guid users is not
     // present in this bundle`, an ERROR about a guid that was never one.
+    //
+    // SideStep resolves by guid ONLY and does not map the name back to the
+    // table, so this reports the lost symbol link and carries the value — it
+    // does not matter whether a table of that name is in the bundle.
     const stored = encodeStatement(
       s.security.create_auth_token({ table: USERS, id: ref("user.id"), as: "token" }),
     ) as StackItemXdo;
@@ -1486,7 +1490,7 @@ describe("miscellaneous specials", () => {
     const categories = ctx.report.entries.map((e) => e.category);
     expect(categories).not.toContain("unresolved-ref");
     expect(categories).toContain("value-fallback");
-    expect(ctx.report.entries[0]!.detail).toContain("by name rather than by guid");
+    expect(ctx.report.entries[0]!.detail).toContain("resolves references by guid only");
   });
 
   it("round-trips the call-family tail that does not share the uniform call shape", () => {

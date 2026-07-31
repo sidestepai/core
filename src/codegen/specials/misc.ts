@@ -195,30 +195,28 @@ const createAuthToken: SpecialDecoder = (a) => {
   // Resolving it to the symbol would be worse than useless: re-encoding a table
   // handle writes the table's real guid, changing the stored bytes.
   //
-  // Keyed on whether the value RESOLVES as a guid, not on whether a table of
-  // that name happens to exist. Keying it on the name match left the case where
-  // the named table is ABSENT falling through to guid resolution — which
-  // reported "guid user is not present in this bundle", the very error this
-  // comment claims to have fixed, 6 more times. The corpus partitions cleanly:
-  // 179 resolve as guids, 0 are guid-shaped but absent, 7 name a table that is
-  // present, 6 name one that is not, 5 are blank.
-  const resolvesAsGuid = !unbound && a.refs.lookup(table.value) !== undefined;
-  const nameSpelled = !unbound && !resolvesAsGuid;
-  const namedTable = nameSpelled
-    ? a.refs.all().find((o) => o.kind === "table" && o.name === table.value)
-    : undefined;
-  if (nameSpelled && namedTable !== undefined) {
+  // Keyed on whether the value RESOLVES AS A GUID, and on nothing else.
+  // **SideStep resolves references by guid only and never maps a name to an
+  // object.** An earlier version keyed this on "a table of that name exists",
+  // which was a name lookup in all but direction, and it also left the case
+  // where that table is ABSENT falling through to guid resolution — reporting
+  // `guid user is not present in this bundle`, the very error this comment
+  // claims to have fixed, 6 more times.
+  //
+  // So both cases are one case, reported once. The corpus: 179 resolve as
+  // guids, 0 are guid-shaped but absent, 13 are names (7 whose table is in the
+  // bundle, 6 whose table is not — a distinction this deliberately does not
+  // draw), 5 are blank.
+  //
+  // A WARNING rather than an unresolved-reference error, because the output is
+  // not wrong: the engine keys this field by name on the workspaces that store
+  // it that way, so the statement works, and the bytes re-encode exactly. What
+  // is lost is only the link to the table's symbol.
+  const nameSpelled = !unbound && a.refs.lookup(table.value) === undefined;
+  if (nameSpelled) {
     a.ctx.problem(
       "value-fallback",
-      `security.create_auth_token references table "${table.value}" by name rather than by guid, as older workspaces store it; carried verbatim, so it is not linked to the table's symbol`,
-    );
-  } else if (nameSpelled) {
-    // Genuinely dangling, and still worth an error — but not the guid one. The
-    // wording states what was checked rather than asserting which namespace the
-    // value came from, so it stays true if a guid-spelled table is ever deleted.
-    a.ctx.problem(
-      "unresolved-ref",
-      `security.create_auth_token references table "${table.value}", which this bundle holds neither by guid nor by name — older workspaces store this field by NAME, so renaming or deleting the table breaks it. Carried verbatim; a re-deploy will not re-link it`,
+      `security.create_auth_token references table "${table.value}" by a value that is not a guid in this bundle — older workspaces store this field by NAME, and SideStep resolves references by guid only. Carried verbatim, so the bytes are preserved but it is not linked to the table's symbol`,
     );
   }
   const entries: Array<[string, Expr]> = [
