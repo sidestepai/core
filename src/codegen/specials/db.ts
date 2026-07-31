@@ -249,6 +249,15 @@ function decodeAddonSpec(
   const block = stored as Record<string, unknown>;
   const guid = block.id;
   const alias = block.as;
+  // A NUMERIC id is a bound row reference, not portable identity — the same
+  // settled case the call family declines by name, and the only shape in the
+  // survey corpus that reaches this guard (3 attachments; every other one
+  // carries a string id, blank or otherwise). It was reported as "has no id",
+  // which is false and sent the reader looking for a missing key.
+  if (typeof guid === "number" && isBoundNumericId(guid))
+    return declineHere(
+      `addon[]: attachment id ${JSON.stringify(guid)} is a numeric object reference, not portable identity`,
+    );
   if (typeof guid !== "string" || typeof alias !== "string")
     return declineHere("addon[]: attachment has no id or no as");
 
@@ -718,7 +727,7 @@ const dbBulkDelete: SpecialDecoder = (a) => {
   }
 
   if (!isUnauthored("search", context.search)) {
-    const where = decodeWhere(a, context.search);
+    const where = decodeWhere(a, context.search, "db.bulk.delete search");
     if (!where) return null;
     entries.push(["where", where.expr]);
     runtime.where = where.runtime;
@@ -753,12 +762,24 @@ const dbTransaction: SpecialDecoder = (a) => {
  *
  * Null is always fatal for a caller (a search filter cannot be dropped), so the
  * decline is recorded here rather than at each call site.
+ *
+ * `site` names WHICH where failed. A query has three of them — its own search,
+ * a `bind[]` join's, and an addon attachment's — and the bare message named
+ * none, so six declines in the survey corpus all read identically and could not
+ * be told apart without re-deriving the call site by hand.
  */
-function decodeWhere(a: SpecialArgs, stored: unknown): { expr: Expr; runtime: unknown } | null {
+function decodeWhere(
+  a: SpecialArgs,
+  stored: unknown,
+  site: string,
+): { expr: Expr; runtime: unknown } | null {
   const condition = decodeCondition(a.ctx, stored);
   if (condition) return { expr: condition.expr, runtime: condition.runtime };
   const value = toValue(stored);
-  if (!value) return declineHere("where: neither a decodable condition tree nor a tagged value");
+  if (!value)
+    return declineHere(
+      `where (${site}): neither a decodable condition tree nor a tagged value — stored ${JSON.stringify(stored).slice(0, 80)}`,
+    );
   return { expr: decodeValue(a.ctx, value), runtime: value };
 }
 
@@ -833,7 +854,7 @@ const dbQuery: SpecialDecoder = (a) => {
   }
 
   if (!isUnauthored("search", context.search)) {
-    const where = decodeWhere(a, context.search);
+    const where = decodeWhere(a, context.search, "db.query search");
     if (!where) return null;
     entries.push(["where", where.expr]);
     runtime.where = where.runtime;
@@ -849,6 +870,13 @@ const dbQuery: SpecialDecoder = (a) => {
       const bindAlias = getPath(stored, "dbo.as");
       if (typeof bindGuid !== "string")
         return declineHere("db.query: a context.bind[] join has no dbo.id");
+      // A join to an UNBOUND table. The top-level `table` models this as `null`
+      // and `DbBind.table` does not, so the factory throws on the blank guid —
+      // and a factory throw takes the whole statement to `raw()` rather than
+      // just this join. Declined by name instead, so the dump says which join is
+      // unbound rather than reporting an unresolvable reference from nowhere.
+      if (isUnboundId(bindGuid))
+        return declineHere("db.query: a context.bind[] join has a blank table reference");
       const joined = tableArg(a, bindGuid);
       const cells: Array<[string, Expr]> = [["table", joined.expr]];
       const entry: Record<string, unknown> = { table: joined.runtime };
@@ -862,9 +890,14 @@ const dbQuery: SpecialDecoder = (a) => {
         cells.push(["join", lit(join)]);
         entry.join = join;
       }
+      // A join's own filter gets the same "empty means unauthored" treatment the
+      // query's top-level search has always had. Testing only `!== undefined`
+      // sent the engine's unconditional `{expression: []}` into the condition
+      // inverse, which cannot build an empty tree — so five joined queries in
+      // the survey corpus fell back to `raw()` for filtering on nothing.
       const search = (stored as { search?: unknown }).search;
-      if (search !== undefined) {
-        const where = decodeWhere(a, search);
+      if (!isUnauthored("search", search)) {
+        const where = decodeWhere(a, search, "db.query bind[] join");
         if (!where) return null;
         cells.push(["where", where.expr]);
         entry.where = where.runtime;

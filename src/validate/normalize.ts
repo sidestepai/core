@@ -222,6 +222,40 @@ const NAME_KEYED_INPUT = new Set([
 
 /** An expression group that nests nothing — what an omitted group means. */
 const EMPTY_SEARCH = { expression: [] };
+
+/**
+ * The inert `statement` the engine writes on an expression node whose `type` is
+ * `"group"`.
+ *
+ * Every node carries BOTH members — `group` and `statement` — and `type` selects
+ * which one is live. The engine dispatches on it in two independent walkers, and
+ * neither ever reads the off-branch member: the search evaluator's
+ * `case "group"` recurses into `$statement["group"]` alone, and the
+ * expression-to-config converter's `case "group"` reads only
+ * `$expr["group"]["expression"]`. The mirror of this is already handled — an
+ * empty `group` on a `type:"statement"` node is dropped as a default (see the
+ * `"group"` case in {@link isDefaultEnvelopeMember}) — and this is the missing
+ * half, worth 6 `db.query` statements that fell back for carrying scaffolding.
+ *
+ * **Scoped to the BLANK placeholder deliberately.** 11 group nodes in the survey
+ * corpus carry a blank one and 11 carry a REAL comparison, dead but authored —
+ * someone toggled a row from statement to group in the editor and the old
+ * comparison stayed behind. The engine ignores both, but dropping the second
+ * would discard something a user wrote, and a normalizer must never normalize
+ * INTO user data. Those keep falling back to `raw()`, where the bytes survive
+ * exactly — the same call the contradictory `external`/`simpleExternal` pair got.
+ */
+function isBlankGroupStatement(v: unknown): boolean {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return false;
+  const node = v as { op?: unknown; left?: unknown; right?: unknown };
+  if (node.op !== "=") return false;
+  const blankSide = (side: unknown): boolean =>
+    side !== null &&
+    typeof side === "object" &&
+    (side as { tag?: unknown }).tag === "const" &&
+    (side as { operand?: unknown }).operand === "";
+  return blankSide(node.left) && blankSide(node.right);
+}
 /** The engine's default `context.external` (paged-external input) — SDK omits it. */
 const DEFAULT_CONTEXT_EXTERNAL = {
   tag: "input",
@@ -788,6 +822,10 @@ export function normalize<T>(value: T): T {
     // statement — substitute the members the engine would supply so the two
     // spellings compare equal (see {@link blankVarContext}).
     const varBlank = blankVarContext(value);
+    // An expression node whose live branch is the nested group: its `statement`
+    // member is scaffolding the engine never reads (see
+    // {@link isBlankGroupStatement}).
+    const isGroupNode = (value as { type?: unknown }).type === "group";
     // A middleware attachment block, identified by its own flags rather than by
     // the generic names `pre`/`post`. A phase list is read ONLY when its
     // `_customize` flag is set — the engine's resolver returns it on that branch
@@ -800,6 +838,7 @@ export function normalize<T>(value: T): T {
       if (STRIP_KEYS.has(k)) continue;
       if (isTable && k === "as") continue;
       if (k === "test" && isSavedTestList(v)) continue;
+      if (isGroupNode && k === "statement" && isBlankGroupStatement(v)) continue;
       if (
         isMiddlewareBlock &&
         (k === "pre" || k === "post") &&

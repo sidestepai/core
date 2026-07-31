@@ -938,6 +938,87 @@ describe("db.query", () => {
     expect(source).toBe('s.db.query({\n  table: posts,\n  as: "rows",\n})');
   });
 
+  // The engine writes `search: {expression: []}` on a join that filters on
+  // nothing, exactly as it does on the query's own search. The top-level read
+  // has always treated that as unauthored; the join's did not, and sent the
+  // empty tree into the condition inverse — which cannot build one — so five
+  // joined queries in the survey corpus fell back for filtering on nothing.
+  it("reads an EMPTY bind[] join search as unauthored rather than a filter it cannot parse", () => {
+    const stored = encodeStatement(
+      s.db.query({ table: POSTS, bind: [{ table: USERS }], as: "rows" }),
+    ) as StackItemXdo;
+    const bind = (stored.context as { bind: Array<Record<string, unknown>> }).bind;
+    bind[0]!.search = { expression: [] };
+
+    const source = printExpr(decodeStatement(new DecodeContext(), DB_REFS, stored, {}));
+    expect(source).not.toContain("raw(");
+    expect(source).not.toContain("where");
+    expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+  });
+
+  // Every expression node carries BOTH a `group` and a `statement`, and `type`
+  // selects which is live — the engine's two walkers each switch on it and never
+  // read the other. The empty `group` on a statement node was already dropped;
+  // the blank `statement` on a GROUP node is the missing half.
+  describe("the scaffolding on an expression node's dead branch", () => {
+    const BLANK_STATEMENT = {
+      op: "=",
+      left: { tag: "const", filters: [], operand: "" },
+      right: { tag: "const", filters: [], operand: "", ignore_empty: false },
+    };
+
+    /** `a AND (b OR c)` — the shape that carries a group node at the root. */
+    function grouped(): StackItemXdo {
+      return encodeStatement(
+        s.db.query({
+          table: POSTS,
+          where: and(
+            expr(col("published"), "=", c.bool(true)),
+            or(expr(col("score"), ">", c.int(10)), expr(col("score"), "<", c.int(99))),
+          ),
+          as: "rows",
+        }),
+      ) as StackItemXdo;
+    }
+
+    /** The root group node the engine would hang its dead `statement` off. */
+    function groupNode(stored: StackItemXdo): Record<string, unknown> {
+      const expression = (
+        stored.context as { search: { expression: Array<Record<string, unknown>> } }
+      ).search.expression;
+      const node = expression.find((e) => e.type === "group");
+      expect(node, "the fixture must contain a group node").toBeDefined();
+      return node!;
+    }
+
+    it("ignores the BLANK placeholder statement the engine writes there", () => {
+      const stored = grouped();
+      groupNode(stored).statement = BLANK_STATEMENT;
+
+      const source = printExpr(decodeStatement(new DecodeContext(), DB_REFS, stored, {}));
+      expect(source).not.toContain("raw(");
+      expect(source).toContain("or(");
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+    });
+
+    it("still falls back when that branch holds a REAL comparison", () => {
+      // The paired negative, and the reason this is scoped to the blank form. 11
+      // group nodes in the corpus carry a live-looking comparison the engine
+      // ignores — dead, but authored by someone. Dropping it would normalize
+      // into user data, so those keep the exact bytes `raw()` gives them.
+      const stored = grouped();
+      groupNode(stored).statement = {
+        op: "!=",
+        left: { tag: "var", filters: [], operand: "$this.predicted_in" },
+        right: { tag: "const:null", filters: [], operand: "null", ignore_empty: false },
+      };
+
+      const source = printExpr(decodeStatement(new DecodeContext(), DB_REFS, stored, {}));
+      expect(source).toContain("raw(");
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+    });
+  });
+
   it("preserves a nested where-tree's structure and join mode", () => {
     // The `or` flag rides the second sibling, so an and/or mix is exactly where a
     // naive inverse flattens the tree into the wrong logic.
