@@ -26,10 +26,24 @@ import type { Value } from "../values/value.js";
 // the discoverable default; `cmp()` below is the full-operator power surface.
 // ---------------------------------------------------------------------------
 
-const SUPPORTED_OPS = ["=", "!=", ">", "<", ">=", "<="] as const;
+/**
+ * The comparison operators, INCLUDING the strict pair.
+ *
+ * `===`/`!==` are not spellings of `=`/`!=` — the engine evaluates them with PHP
+ * semantics, `$l === $r` against `$l == $r`, so they differ exactly where type
+ * coercion does (`"1" == 1` holds, `"1" === 1` does not). They used to be
+ * aliased onto the loose forms, which silently downgraded every strict
+ * comparison an author wrote and rewrote a pulled one into a different
+ * predicate. They are their own operators.
+ */
+const SUPPORTED_OPS = ["=", "!=", "===", "!==", ">", "<", ">=", "<="] as const;
 type EngineOp = (typeof SUPPORTED_OPS)[number];
-/** JS-style operators accepted for ergonomics; normalized to the engine form. */
-const OP_ALIASES = { "==": "=", "===": "=", "!==": "!=" } as const;
+/**
+ * The one JS-style spelling that IS a synonym: the engine's own evaluator runs
+ * `=` and `==` through the same loose branch (`case '=': case '==':`), so
+ * normalizing `==` to `=` changes nothing. Nothing else belongs here.
+ */
+const OP_ALIASES = { "==": "=" } as const;
 export type ComparisonOp = EngineOp | keyof typeof OP_ALIASES;
 
 /** A minimal single binary comparison: `left op right`. */
@@ -44,7 +58,7 @@ export function expr(left: Value, op: ComparisonOp, right: Value): Comparison {
   const normalized = (OP_ALIASES as Record<string, EngineOp>)[op] ?? (op as EngineOp);
   if (!SUPPORTED_OPS.includes(normalized)) {
     throw new Error(
-      `Unsupported conditional operator "${op}". Supported: ${SUPPORTED_OPS.join(", ")} (also == === !==)`,
+      `Unsupported conditional operator "${op}". Supported: ${SUPPORTED_OPS.join(", ")} (also ==, a synonym for =)`,
     );
   }
   return { left, op: normalized, right };
@@ -63,6 +77,8 @@ export type SearchOp =
   | "="
   | "=="
   | "!="
+  | "==="
+  | "!=="
   | "<"
   | "<="
   | ">"
@@ -87,7 +103,7 @@ export type SearchOp =
   | "search";
 
 const SEARCH_OPS = new Set<string>([
-  "=", "==", "!=", "<", "<=", ">", ">=", "in", "not in", "like", "not like", "ilike",
+  "=", "==", "!=", "===", "!==", "<", "<=", ">", ">=", "in", "not in", "like", "not like", "ilike",
   "not ilike", "~", "!~", "between", "not between", "@>", "contains", "not contains",
   "includes", "not includes", "overlaps", "not overlaps", "search",
 ]);

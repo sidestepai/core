@@ -228,14 +228,38 @@ const DEFAULT_CONTEXT_EXTERNAL = {
   value: "",
   permissions: { page: true, sort: true, search: true, per_page: false },
 };
-/** The engine's default `context.simpleExternal` (per-facet input) — SDK omits it. */
-const DEFAULT_CONTEXT_SIMPLE_EXTERNAL = {
-  page: { tag: "input", value: "" },
-  sort: { tag: "input", value: "" },
-  offset: { tag: "input", value: "" },
-  search: { tag: "input", value: "" },
-  per_page: { tag: "input", value: "" },
-};
+/**
+ * A `context.simpleExternal` block whose every facet binds NOTHING — the empty
+ * scaffold the editor writes on a query that binds no paging facet.
+ *
+ * Keyed on the VALUE rather than on one frozen shape, because the scaffold has
+ * more than one stored spelling: 61 across the sweep write each facet as
+ * `{tag:"input", value:""}` and 3 as `{tag:"const", value:""}`. Both bind the
+ * same nothing — an input named `""` does not exist, and an empty const parses
+ * to nothing through the `int|min(1)` the engine declares.
+ *
+ * Reading the scaffold as authored was expensive out of proportion to its size:
+ * five blank facets came back as five bound paging Values, and because the SDK
+ * (correctly) refuses to author `external` alongside input-bound paging, the
+ * recovered call did not merely mismatch — it THREW, taking the whole db.query
+ * down to `raw()`. A blank facet is not a bind.
+ *
+ * The 4 genuinely populated blocks in the corpus keep every facet: a non-empty
+ * value anywhere means the block was authored.
+ */
+function bindsNoPagingFacet(value: unknown): boolean {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const facets = Object.values(value as Record<string, unknown>);
+  if (facets.length === 0) return false;
+  return facets.every(
+    (facet) =>
+      facet !== null &&
+      typeof facet === "object" &&
+      !Array.isArray(facet) &&
+      (facet as { value?: unknown }).value === "" &&
+      ((facet as { filters?: unknown[] }).filters ?? []).length === 0,
+  );
+}
 
 /**
  * The engine's default API-group CORS block — every facet off, no origins.
@@ -399,6 +423,12 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
       return v === false;
     case "distinct":
       return v === "auto";
+    // `s.setheader`'s duplicate-handling mode. The engine declares it
+    // `duplicates?=replace` and reads it as `($data["duplicates"] ?? "replace")`,
+    // so an absent key IS "replace"; 3 real statements omit it against 8 that
+    // store it present-at-default. The key appears on no other statement.
+    case "duplicates":
+      return v === "replace";
     // A return sub-block whose every member sat at a default. These are checked
     // against their NORMALIZED form because the member rules above are what empty
     // them — without this the block survives as `{}` and the whole return envelope
@@ -406,8 +436,27 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     //
     // `list` also names a foreach's iterated value; a tagged value never
     // normalizes to empty, so that one is untouched.
-    case "paging":
-      return isEmptyObject(normalize(v));
+    //
+    // `enabled:false` is the one member no rule above empties, deliberately — it
+    // is meaningful on a history block, so it cannot be dropped by name. It IS
+    // droppable here, where the key says the block is paging: 7 real db.query
+    // statements omit `paging` outright against 149 that store it present at
+    // `enabled:false`, and the two spellings mean the same thing.
+    //
+    // Evidenced twice before being trusted. Every engine consumer reads the flag
+    // as `["paging"]["enabled"] ?? false`, so an absent block IS a disabled one,
+    // and the serializer returns before writing anything when it is off — a
+    // disabled block emits no source at all. The siblings are provably inert
+    // meanwhile: every read of `page`/`per_page`/`offset`/`metadata` sits behind
+    // that same gate.
+    //
+    // Still narrow: this fires only once every OTHER member has normalized away.
+    // A disabled block that customizes something (`{enabled:false, per_page:50}`)
+    // keeps both and compares as itself.
+    case "paging": {
+      const normalized = normalize(v);
+      return isEmptyObject(normalized) || deepEqual(normalized, { enabled: false });
+    }
     // The same four blocks, plus the residue the member rules above cannot reach.
     //
     // The engine writes ALL FOUR result-shape blocks on every query; the SDK writes
@@ -584,7 +633,7 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     case "external":
       return deepEqual(normalize(v), normalize(DEFAULT_CONTEXT_EXTERNAL));
     case "simpleExternal":
-      return deepEqual(normalize(v), normalize(DEFAULT_CONTEXT_SIMPLE_EXTERNAL));
+      return bindsNoPagingFacet(v);
     default:
       return false;
   }

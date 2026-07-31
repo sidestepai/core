@@ -376,10 +376,18 @@ describe("validate normalizer — per-statement context defaults", () => {
     expect(normalize(nested)).not.toEqual(normalize({ group: { expression: [] } }));
   });
 
-  it("does not touch an aggregate's empty group array", () => {
+  it("does not touch an empty group array", () => {
     // `group` is also a sort/grouping LIST under an aggregate return. Only the
     // nested-search object form is a condition default.
-    expect(normalize({ aggregate: { group: [] } })).toEqual({ aggregate: { group: [] } });
+    //
+    // Asserted bare rather than under `aggregate`: once a disabled all-default
+    // paging block collapses, `{group: []}` IS the whole normalized default
+    // aggregate block, so wrapping it tested block collapse rather than this.
+    expect(normalize({ group: [] })).toEqual({ group: [] });
+    // Still a real grouping list when it holds anything.
+    expect(normalize({ aggregate: { group: [{ name: "x" }] } })).toEqual({
+      aggregate: { group: [{ name: "x" }] },
+    });
   });
 
   it("drops a default-false or-flag and keeps a real one", () => {
@@ -429,6 +437,82 @@ describe("validate normalizer — return-block paging defaults", () => {
 
   it("accepts the numeric-string spelling of each default", () => {
     expect(normalize({ paging: { page: "1", offset: "0", per_page: "25" } })).toEqual({});
+  });
+
+  it("reads an absent paging block and a switched-off one as the same thing", () => {
+    // The SDK writes `paging:{enabled:false}` whenever nothing was authored; 7
+    // real db.query statements omit the key entirely against 149 storing it
+    // present-at-default. Every engine consumer reads the flag as
+    // `["paging"]["enabled"] ?? false`, and the serializer emits nothing for a
+    // disabled block — so absent IS disabled.
+    expect(normalize({ paging: { enabled: false } })).toEqual({});
+    expect(normalize({ paging: { enabled: false } })).toEqual(normalize({}));
+    expect(
+      normalize({ paging: { page: 1, offset: 0, totals: false, enabled: false, metadata: true, per_page: 25 } }),
+    ).toEqual({});
+  });
+
+  it("drops setheader's duplicate mode at the value the engine reads from an absent key", () => {
+    // Declared `duplicates?=replace` and read as `($data["duplicates"] ?? "replace")`;
+    // 3 real statements omit it against 8 storing it present-at-default.
+    expect(normalize({ duplicates: "replace" })).toEqual({});
+    expect(normalize({ duplicates: "append" })).toEqual({ duplicates: "append" });
+  });
+
+  it("reads an unbound simpleExternal scaffold through BOTH stored spellings", () => {
+    // The editor writes all five facets on a query that binds none of them, and
+    // spells the blank two ways — 61 as `input`, 3 as `const`. Both bind the
+    // same nothing. Read as authored they became five bound paging Values, and
+    // since the SDK refuses to author `external` alongside input-bound paging,
+    // the recovered call THREW and took the whole db.query to raw().
+    const blank = (tag: string) =>
+      Object.fromEntries(
+        ["page", "sort", "offset", "search", "per_page"].map((k) => [k, { tag, value: "", filters: [] }]),
+      );
+    expect(normalize({ simpleExternal: blank("input") })).toEqual({});
+    expect(normalize({ simpleExternal: blank("const") })).toEqual({});
+  });
+
+  it("keeps a simpleExternal that binds any facet at all", () => {
+    // Asserted on the normalized form — an empty `filters` list drops here for
+    // unrelated reasons. What matters is that the block SURVIVES.
+    expect(
+      normalize({
+        simpleExternal: {
+          page: { tag: "input", value: "page", filters: [] },
+          per_page: { tag: "input", value: "per_page", filters: [] },
+        },
+      }),
+    ).toEqual({
+      simpleExternal: { page: { tag: "input", value: "page" }, per_page: { tag: "input", value: "per_page" } },
+    });
+    // One real facet among blanks is still authored.
+    expect(
+      normalize({
+        simpleExternal: {
+          page: { tag: "const", value: "", filters: [] },
+          offset: { tag: "const:int", value: "12", filters: [] },
+        },
+      }),
+    ).toEqual({
+      simpleExternal: { page: { tag: "const", value: "" }, offset: { tag: "const:int", value: "12" } },
+    });
+  });
+
+  it("keeps a switched-off paging block that still customizes something", () => {
+    // The narrowness that makes the rule safe: it fires only once every OTHER
+    // member has normalized away. A disabled block holding a real `per_page` is
+    // not the same as no block at all.
+    expect(normalize({ paging: { enabled: false, per_page: 50 } })).toEqual({
+      paging: { enabled: false, per_page: 50 },
+    });
+    expect(normalize({ paging: { enabled: true } })).toEqual({ paging: { enabled: true } });
+  });
+
+  it("still treats enabled:false as meaningful outside a paging block", () => {
+    // `enabled` cannot be dropped by name — it gates a history block, where
+    // false is the authored value, not an absence.
+    expect(normalize({ history: { enabled: false } })).toEqual({ history: { enabled: false } });
   });
 
   it("preserves every customized paging member", () => {
