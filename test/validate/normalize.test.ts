@@ -452,6 +452,26 @@ describe("validate normalizer — return-block paging defaults", () => {
     ).toEqual({});
   });
 
+  it("clears a LOCAL table reference inside customize, on both sides of the comparison", () => {
+    // The decoder rewrites these to unbound; normalize applies the SAME rewrite
+    // so that deliberate change does not also read as a failed round trip.
+    const withLocal = { customize: { c: { methods: [{ name: "@", arg: ["dbo=14"] }] } } };
+    const unbound = { customize: { c: { methods: [{ name: "@", arg: ["dbo="] }] } } };
+    expect(normalize(withLocal)).toEqual(normalize(unbound));
+  });
+
+  it("keeps a guid-form reference inside customize, and every reference outside one", () => {
+    const guid = "1111000000000000000000000000aaaa";
+    expect(
+      normalize({ customize: { c: { methods: [{ name: "@", arg: [`dbo=${guid}`] }] } } }),
+    ).toEqual({ customize: { c: { methods: [{ name: "@", arg: [`dbo=${guid}`] }] } } });
+    // A numeric reference at FIELD level is a different, already-settled case:
+    // it stays verbatim and decodes to raw() rather than being rewritten here.
+    expect(normalize({ methods: [{ name: "@", arg: ["dbo=14"] }] })).toEqual({
+      methods: [{ name: "@", arg: ["dbo=14"] }],
+    });
+  });
+
   it("drops setheader's duplicate mode at the value the engine reads from an absent key", () => {
     // Declared `duplicates?=replace` and read as `($data["duplicates"] ?? "replace")`;
     // 3 real statements omit it against 8 storing it present-at-default.

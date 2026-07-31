@@ -24,7 +24,7 @@ import { input } from "../inputs/input.js";
 import { CODEGEN_MODULE, CORE_MODULE, type DecodeContext } from "./context.js";
 import { call, lit, obj, type Expr } from "./print.js";
 import { resolveReference, type RefIndex, type ResolveOptions } from "./ref-index.js";
-import { normalize } from "../validate/normalize.js";
+import { clearLocalDboRefs, normalize } from "../validate/normalize.js";
 import { decodeValue } from "./value.js";
 
 /** Which authoring catalog to emit against: table columns (`f`) or inputs (`input`). */
@@ -310,41 +310,22 @@ function tableRefGuid(stored: FieldXdo): string | null {
 }
 
 /**
- * The warning a `customize` block earns when it references tables by LOCAL id.
+ * Reset every LOCAL table reference inside a `customize` block to the unbound
+ * spelling, returning the rewritten field and the targets that were cleared.
  *
- * A `customize` block carries per-column overrides, and those can include an `@`
- * table reference. The export remaps `@` targets to portable guids everywhere
- * else — 483 of them at field level across the sweep — but not inside
- * `customize`: all 60 references found there were still local numeric ids
- * (`dbo=14`). They are carried through byte-for-byte, so nothing is lost here,
- * but they name a row id in the SOURCE workspace and will point at whatever
- * happens to hold that id in a different one.
- *
- * That is also why `customize` has no authoring surface and should not get one:
- * a readable form would present unportable data as if it were authorable
- * (issue #171).
+ * The rewrite itself lives in `normalize` so the decoder and the round-trip
+ * comparison apply exactly one rule; this wraps it with the reporting the change
+ * earns. A cleared reference is a real loss — a same-workspace redeploy would
+ * have resolved that id — so every target is named rather than quietly dropped,
+ * the same way a blanked table reference is.
  */
-function describeCustomizePortability(stored: FieldXdo): string {
+function unbindLocalCustomizeRefs(stored: FieldXdo): { field: FieldXdo; unbound: string[] } {
   const customize = (stored as { customize?: unknown }).customize;
-  if (customize === null || typeof customize !== "object") return "";
-  const local = new Set<string>();
-  const walk = (value: unknown): void => {
-    if (Array.isArray(value)) return value.forEach(walk);
-    if (value === null || typeof value !== "object") return;
-    const method = value as { name?: unknown; arg?: unknown };
-    if (method.name === "@" && Array.isArray(method.arg)) {
-      const target = method.arg[0];
-      if (typeof target === "string" && /^dbo=\d+$/.test(target)) local.add(target);
-    }
-    Object.values(value).forEach(walk);
-  };
-  walk(customize);
-  if (local.size === 0) return "";
-  return (
-    `. Its customize references ${[...local].sort().join(", ")} by LOCAL row id rather than by guid — ` +
-    `the export does not remap table references inside customize, so these carry verbatim but do not ` +
-    `identify the same table in another workspace`
-  );
+  if (customize === null || typeof customize !== "object") return { field: stored, unbound: [] };
+  const cleared = new Set<string>();
+  const rewritten = clearLocalDboRefs(customize, cleared);
+  if (cleared.size === 0) return { field: stored, unbound: [] };
+  return { field: { ...stored, customize: rewritten } as FieldXdo, unbound: [...cleared].sort() };
 }
 
 /** Render recovered options as a source object literal, decoding nested children. */
@@ -386,10 +367,21 @@ export function decodeField(
     ctx.use(CODEGEN_MODULE, "rawField");
     ctx.problem(
       "value-fallback",
-      `field "${stored.name}" stores ${missing.join(", ")} in a shape no authoring surface can produce; emitted verbatim via rawField()` +
-        describeCustomizePortability(stored),
+      `field "${stored.name}" stores ${missing.join(", ")} in a shape no authoring surface can produce; emitted verbatim via rawField()`,
     );
-    return { idiomatic: false, expr: call("rawField", lit(stored)) };
+    // The one thing NOT carried verbatim: a table reference inside `customize`
+    // that names its target by local row id. Reported separately because it is a
+    // change to the pulled tree, not a passthrough.
+    const { field, unbound } = unbindLocalCustomizeRefs(stored);
+    if (unbound.length > 0) {
+      ctx.problem(
+        "unresolved-ref",
+        `field "${stored.name}" references ${unbound.join(", ")} inside \`customize\` by LOCAL row id rather than by guid — ` +
+          `an internal id is not portable identity, so it is recovered as unbound (\`dbo=\`). ` +
+          `A re-deploy will not re-link it, including back into the workspace it came from`,
+      );
+    }
+    return { idiomatic: false, expr: call("rawField", lit(field)) };
   }
 
   /**

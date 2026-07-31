@@ -658,6 +658,45 @@ export function isEmptyOutput(v: unknown): boolean {
   return noItems && o.customize !== true;
 }
 
+/** An `@` target naming a table by local row id (`dbo=14`) rather than by guid. */
+const LOCAL_DBO_REF = /^dbo=\d+$/;
+
+/**
+ * Rewrite every LOCAL table reference in a `customize` subtree to the unbound
+ * spelling, and report which targets were cleared.
+ *
+ * A per-column override inside `customize` can carry an `@` table reference, and
+ * an old engine version did not remap those to portable guids on export the way
+ * it does everywhere else. What is left is a row id in the SOURCE workspace,
+ * naming whatever happens to hold that id anywhere else — not identity, the same
+ * conclusion {@link isBoundNumericId} reaches for a numeric reference generally.
+ *
+ * The decoder clears them so a pulled tree carries no confidently-wrong
+ * reference, and the comparison applies the same rewrite so that deliberate
+ * change does not ALSO read as a failed round trip. One implementation, used
+ * from both sides, because two copies of this rule would drift.
+ */
+export function clearLocalDboRefs<T>(value: T, cleared?: Set<string>): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => clearLocalDboRefs(item, cleared)) as unknown as T;
+  }
+  if (value === null || typeof value !== "object") return value;
+  const next = Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, member]) => [
+      key,
+      clearLocalDboRefs(member, cleared),
+    ]),
+  ) as { name?: unknown; arg?: unknown };
+  if (next.name === "@" && Array.isArray(next.arg)) {
+    const target = next.arg[0];
+    if (typeof target === "string" && LOCAL_DBO_REF.test(target)) {
+      cleared?.add(target);
+      return { ...next, arg: ["dbo=", ...next.arg.slice(1)] } as unknown as T;
+    }
+  }
+  return next as unknown as T;
+}
+
 export function normalize<T>(value: T): T {
   if (Array.isArray(value)) {
     return value.map((v) => normalize(v)) as unknown as T;
@@ -735,6 +774,14 @@ export function normalize<T>(value: T): T {
       // writes.
       if (k === "customize" && isEmptyCustomize(v)) {
         out[k] = {};
+        continue;
+      }
+      // A populated customize: clear any LOCAL table reference inside it before
+      // comparing, matching the decoder's own rewrite (see
+      // {@link clearLocalDboRefs}). Scoped to this subtree — a numeric reference
+      // at FIELD level is a different, already-settled case that stays verbatim.
+      if (k === "customize") {
+        out[k] = normalize(clearLocalDboRefs(v));
         continue;
       }
       // An empty `context` arrives as `[]` from the engine and `{}` from the SDK:

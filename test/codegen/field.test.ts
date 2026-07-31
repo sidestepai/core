@@ -327,12 +327,11 @@ describe("decodeField — inputs", () => {
     identity("users__", input.dbLink({ name: "users", guid }, { hidden: ["created_at"] }), "input", refs);
   });
 
-  it("names the local table ids a customize block hides from the export's guid remap", () => {
-    // The export remaps `@` targets to portable guids everywhere else, but not
-    // inside `customize`: every one of the 60 found there across the sweep was
-    // still a local numeric id. They round-trip byte-for-byte, so this is not a
-    // fidelity loss — but they do not identify the same table elsewhere, which
-    // is also why `customize` should not get a readable authoring surface.
+  it("clears a customize table reference stored as a LOCAL row id, and says so", () => {
+    // An old engine version did not remap `@` targets inside `customize` to
+    // portable guids the way it does everywhere else, so a legacy workspace can
+    // hold `dbo=14`. An internal row id is not identity, so it is recovered as
+    // unbound rather than carried somewhere it would name a different table.
     const guid = "9f3c81a04be27d6510aa4c8831ef25b7";
     const stored = {
       ...encodeField("users__", `${guid}_mvpschema`, { merge: true }, INPUT_CONTEXT),
@@ -342,10 +341,32 @@ describe("decodeField — inputs", () => {
     };
     const ctx = new DecodeContext();
     const decoded = decodeField(ctx, refsFor(), stored as never, "input");
-    expect(printExpr(decoded.expr)).toContain("rawField(");
-    const detail = String(ctx.report.entries[0]!.detail);
+    const source = printExpr(decoded.expr);
+    expect(source).toContain("rawField(");
+    // Reset to the unbound spelling, not carried.
+    expect(source).toContain('"dbo="');
+    expect(source).not.toContain("dbo=14");
+    // Warned about by name — a cleared reference is a real loss, not a passthrough.
+    const detail = ctx.report.entries.map((e) => String(e.detail)).join(" | ");
     expect(detail).toContain("dbo=14");
     expect(detail).toContain("LOCAL row id");
+    expect(ctx.report.entries.some((e) => e.category === "unresolved-ref")).toBe(true);
+  });
+
+  it("leaves a guid-form customize reference alone", () => {
+    // Only the LOCAL spelling is unportable. A real guid is identity and stays.
+    const guid = "9f3c81a04be27d6510aa4c8831ef25b7";
+    const target = "1111000000000000000000000000aaaa";
+    const stored = {
+      ...encodeField("users__", `${guid}_mvpschema`, { merge: true }, INPUT_CONTEXT),
+      customize: {
+        owner_id: { hidden: false, default: "", required: false, customize: [], methods: [{ name: "@", arg: [`dbo=${target}`] }] },
+      },
+    };
+    const ctx = new DecodeContext();
+    const decoded = decodeField(ctx, refsFor(), stored as never, "input");
+    expect(printExpr(decoded.expr)).toContain(target);
+    expect(ctx.report.entries.some((e) => e.category === "unresolved-ref")).toBe(false);
   });
 
   it("keeps the database link off the column surface", () => {
