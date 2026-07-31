@@ -12,7 +12,7 @@ import type { TaggedValue } from "../../types/xdo.js";
 import { arr, lit, obj, type Expr } from "../print.js";
 import { decodeValue } from "../value.js";
 import { decodeConditionOrEmpty } from "../expression.js";
-import { blankVarContext } from "../../validate/normalize.js";
+import { filledContext } from "../../validate/normalize.js";
 import { declineHere, getPath, prove, type SpecialArgs, type SpecialDecoder } from "./prove.js";
 
 /** Coerce a stored `{value, tag, filters}` block to a tagged value. */
@@ -36,8 +36,8 @@ function nested(a: SpecialArgs, path: string): { exprs: Expr[]; statements: unkn
 /** `var $as { value }` — 78% of a typical workspace's statements. */
 const setVar: SpecialDecoder = (a) => {
   // An empty context is the blank const the engine's optional-schema pass fills
-  // in, not an unreadable statement (see {@link blankVarContext}).
-  const value = toValue(a.stored.context) ?? toValue(blankVarContext(a.stored));
+  // in, not an unreadable statement (see {@link filledContext}).
+  const value = toValue(a.stored.context) ?? toValue(filledContext(a.stored));
   const as = (a.stored as { as?: unknown }).as;
   if (!value) return declineHere("set_var: context is not a tagged value");
   if (typeof as !== "string" || as === "") return declineHere("set_var: as is blank");
@@ -173,6 +173,12 @@ function loopDecoder(path: string, storedField: string, defField: string): Speci
   return (a) => {
     const context = (a.stored.context ?? {}) as Record<string, unknown>;
     const as = context.as;
+    // An ABSENT iterand stays a decline. Its schema looks exactly like the
+    // empty-context family — a nested `{value, tag?=…, filters[]}` with a
+    // declared default, run through the same optional pass — but a live engine
+    // says the analogy fails: `foreach` raises "missing list argument" and `for`
+    // faults on `Undefined array key "cnt"`, neither of which the filled form
+    // does. See the note by `filledContext`.
     const value = toValue(context[storedField]);
     if (typeof as !== "string") return declineHere(`${path}: context.as is not a string`);
     if (!value) return declineHere(`${path}: context.${storedField} is not a tagged value`);

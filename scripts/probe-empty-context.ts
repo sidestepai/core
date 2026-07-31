@@ -73,6 +73,11 @@ interface Case {
   readonly tag: string;
   /** Whether this statement's context also carries the target variable's name. */
   readonly named: boolean;
+  /**
+   * Set when the default lives on ONE context MEMBER rather than on the whole
+   * context — the loops. "Empty" then means that member absent, not `{}`.
+   */
+  readonly member?: string;
   readonly build: () => unknown;
 }
 
@@ -94,6 +99,12 @@ const CASES: readonly Case[] = [
   // analogy from `set_var` would have got wrong.
   { route: "setheader", stored: "mvp:setheader", named: false, tag: "input",
     build: () => (s as never as Record<string, Record<string, (a: unknown) => unknown>>).util.set_header({ value: c.text("x-probe: 1") }) },
+  // Member-level defaults: the iterand is one key of the loop's context, so
+  // "empty" is that key ABSENT. `foreach` defaults to a var REFERENCE.
+  { route: "foreach", stored: "mvp:foreach", named: false, tag: "var", member: "list",
+    build: () => s.foreach({ as: "row", list: ref("acc_a"), body: [] }) },
+  { route: "forloop", stored: "mvp:for", named: false, tag: "const:int", member: "cnt",
+    build: () => s.for({ as: "i", count: c.int(2), body: [] }) },
 ];
 
 const defs = (xs: unknown[]) => xs as never[];
@@ -140,9 +151,15 @@ function rewriteContexts(node: unknown, mode: "empty" | "fill"): unknown {
   const rec = node as Record<string, unknown>;
   const cs = typeof rec.name === "string" ? UNDER_TEST.get(rec.name) : undefined;
   if (cs) {
-    const fill = cs.named
-      ? { name: "", value: "", tag: cs.tag, filters: [] }
-      : { value: "", tag: cs.tag, filters: [] };
+    const blank = { value: "", tag: cs.tag, filters: [] };
+    if (cs.member) {
+      // Member-level: drop the key, or set it to the blank value.
+      const ctx = { ...(rec.context as Record<string, unknown>) };
+      if (mode === "empty") delete ctx[cs.member];
+      else ctx[cs.member] = blank;
+      return { ...rec, context: ctx };
+    }
+    const fill = cs.named ? { name: "", ...blank } : blank;
     return { ...rec, context: mode === "empty" ? {} : fill };
   }
   const out: Record<string, unknown> = {};
@@ -179,7 +196,7 @@ async function deployAndProbe(
   const responses: Record<string, string> = {};
   for (const cs of CASES) {
     const res = await fetch(`${baseUrl}/api:probe/${cs.route}`);
-    responses[cs.route] = `${res.status} ${JSON.stringify(await res.json())}`;
+    responses[cs.route] = `${res.status} ${(await res.text()).slice(0, 160)}`;
   }
   const exported = await exportWorkspaceBundle(auth, {
     base: baseUrl,

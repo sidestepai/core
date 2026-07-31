@@ -16,7 +16,7 @@ import { and, cmp, expr, or } from "../../src/statements/expression.js";
 import { encodeStatement } from "../../src/statements/statement.js";
 import type { Statement } from "../../src/statements/statement.js";
 import type { StackItemXdo } from "../../src/types/xdo.js";
-import { blankVarContext, normalize } from "../../src/validate/normalize.js";
+import { filledContext, normalize } from "../../src/validate/normalize.js";
 import { c, col, auth, env, inp, out, ref, setting, withFilters } from "../../src/values/value.js";
 import { fl } from "../../src/values/generated/filters.generated.js";
 import { rawValue } from "../../src/values/raw-value.js";
@@ -338,7 +338,7 @@ describe("an empty context is the members the engine fills in", () => {
     let covered = 0;
     for (const spec of GENERATED_SPECS) {
       const stored = storedEmpty(spec.name);
-      const fill = blankVarContext(stored) as Record<string, unknown> | null;
+      const fill = filledContext(stored) as Record<string, unknown> | null;
       if (!fill) continue; // not in the table — nothing to keep in step
       covered++;
 

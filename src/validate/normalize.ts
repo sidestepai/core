@@ -815,27 +815,65 @@ const EMPTY_CONTEXT_FILL: ReadonlyMap<string, { tag: string; named: boolean }> =
 ]);
 
 /**
- * The context an EMPTY-context statement stands for, or null when the statement
- * is not one (see {@link EMPTY_CONTEXT_FILL}).
+ * A loop's ABSENT iterand is deliberately NOT filled, and this note is here so
+ * the next reader does not re-derive it.
+ *
+ * The schemas look like they say otherwise: `ForEachLoop`/`ForLoop` declare
+ * `list`/`cnt` as nested `{value, tag?=…, filters[]}` objects with a default tag
+ * (`var` and `const:int`), run them through the same `XS::optional` pass, and 9
+ * real statements store the key absent — the exact signature that made
+ * {@link EMPTY_CONTEXT_FILL} correct one level up.
+ *
+ * It is not correct here, and only a live engine said so
+ * (`scripts/probe-empty-context.ts`). Against the filled form, an absent iterand
+ * behaves DIFFERENTLY: `foreach` raises "For Each Loop: missing list argument"
+ * where the filled form raises "Missing var entry: ", and `for` faults outright
+ * on `Undefined array key "cnt"`. The optional pass defaults a nested object to
+ * the literal string `"{}"` rather than materializing its members, and the
+ * statement classes read the key directly.
+ *
+ * So those 9 stay `raw()`, which preserves their bytes exactly. **An analogy
+ * from a rule that IS evidenced is still an analogy** — the same shape one level
+ * down defaulted the opposite way.
+ */
+
+/** A blank value at `tag` — what the engine's optional-schema pass materializes. */
+function blankValue(tag: string): Record<string, unknown> {
+  return { value: "", tag, filters: [] };
+}
+
+/**
+ * The `context` the engine's optional-schema pass would produce for `stored`,
+ * or null when this statement has no such fill.
+ *
+ * Scoped to statements whose whole context IS the value
+ * ({@link EMPTY_CONTEXT_FILL}), stored `{}`. It deliberately does not extend to
+ * a context MEMBER the engine appears to default the same way — see the note
+ * above on the loops, where a live engine showed the analogy fails.
  *
  * The decoder reads this to recover the value, and the comparison reads it so
- * the recovered statement's explicit re-encode still matches the empty stored
+ * the recovered statement's explicit re-encode still matches the sparse stored
  * spelling. One implementation, used from both sides, because two copies of this
  * rule would drift and the drift would be invisible.
  */
-export function blankVarContext(stored: unknown): Record<string, unknown> | null {
+export function filledContext(stored: unknown): Record<string, unknown> | null {
   if (stored === null || typeof stored !== "object") return null;
   const { name, context } = stored as { name?: unknown; context?: unknown };
-  const fill = typeof name === "string" ? EMPTY_CONTEXT_FILL.get(name) : undefined;
-  if (!fill) return null;
-  // Both empty spellings: `{}` from the SDK, `[]` from the engine's serializer.
-  const empty =
-    (Array.isArray(context) && context.length === 0) ||
-    (context !== null && typeof context === "object" && Object.keys(context).length === 0);
-  if (!empty) return null;
-  return fill.named
-    ? { name: "", value: "", tag: fill.tag, filters: [] }
-    : { value: "", tag: fill.tag, filters: [] };
+  if (typeof name !== "string") return null;
+
+  const whole = EMPTY_CONTEXT_FILL.get(name);
+  if (whole) {
+    // Both empty spellings: `{}` from the SDK, `[]` from the engine's serializer.
+    const empty =
+      (Array.isArray(context) && context.length === 0) ||
+      (context !== null && typeof context === "object" && Object.keys(context).length === 0);
+    if (!empty) return null;
+    return whole.named
+      ? { name: "", ...blankValue(whole.tag) }
+      : blankValue(whole.tag);
+  }
+
+  return null;
 }
 
 export function normalize<T>(value: T): T {
@@ -873,10 +911,10 @@ export function normalize<T>(value: T): T {
     // licence to sort `input[]` anywhere else, where order IS meaningful (a row
     // write's columns, a lookup's leading field_name/field_value).
     const sortsInput = NAME_KEYED_INPUT.has((value as { name?: unknown }).name as string);
-    // An empty `set_var` context is the blank-const spelling of the same
-    // statement — substitute the members the engine would supply so the two
-    // spellings compare equal (see {@link blankVarContext}).
-    const varBlank = blankVarContext(value);
+    // A sparse context — empty, or missing a loop's iterand — is one spelling of
+    // the members the engine's optional-schema pass supplies. Substitute them so
+    // that spelling compares equal to the explicit one (see {@link filledContext}).
+    const contextFill = filledContext(value);
     // An expression node whose live branch is the nested group: its `statement`
     // member is scaffolding the engine never reads (see
     // {@link isBlankGroupStatement}).
@@ -953,8 +991,8 @@ export function normalize<T>(value: T): T {
           .map((entry) => normalize(entry));
         continue;
       }
-      if (k === "context" && varBlank) {
-        out[k] = normalize(varBlank);
+      if (k === "context" && contextFill) {
+        out[k] = normalize(contextFill);
         continue;
       }
       if (k === "context" && isEmptyArray(v)) {

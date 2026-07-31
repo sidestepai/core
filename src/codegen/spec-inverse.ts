@@ -27,7 +27,7 @@ import type { FieldRule, StatementSpec } from "../statements/schema-dsl/interpre
 import { STATEMENT_SURFACES, sPathOf } from "../statements/surfaces.js";
 import { s } from "../statements/s.js";
 import { encodeStatement, type Statement } from "../statements/statement.js";
-import { blankVarContext, normalize } from "../validate/normalize.js";
+import { filledContext, normalize } from "../validate/normalize.js";
 import { ignored as ignoredValue } from "../values/ignored.js";
 import { CORE_MODULE, type DecodeContext } from "./context.js";
 import { call, lit, obj, spread, type Expr } from "./print.js";
@@ -142,8 +142,8 @@ function recoverRule(
       // in, at this statement's declared default tag — one stored spelling of
       // the blank value, not an unreadable statement. 22 statements in the
       // survey corpus stored it, one each, and every one of them fell back to
-      // `raw()` on the same required-field guard (see {@link blankVarContext}).
-      const value = toTaggedValue(context) ?? toTaggedValue(blankVarContext(stored));
+      // `raw()` on the same required-field guard (see {@link filledContext}).
+      const value = toTaggedValue(context) ?? toTaggedValue(filledContext(stored));
       if (!value) return null;
       return { field: rule.field, runtime: value, expr: decodeValue(ctx, value), isDefault: false };
     }
