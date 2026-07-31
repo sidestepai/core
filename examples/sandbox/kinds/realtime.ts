@@ -121,9 +121,11 @@ export const onChatConnect = realtimeServerTrigger({
  * normalizes the scheme to `wss://`; a remote host must be `wss` (a `ws://`
  * socket fails as an opaque 1006).
  *
- * ON A TENANT INSTANCE, both halves of the client must name the tenant: the
- * socket carries it in the path (`{ tenant }` above), while HTTP has no URL form
- * and takes an `X-Tenant: <tenant>` HEADER on `/api:<canonical>/…` calls. Tokens
+ * ON A TENANT INSTANCE, both halves of the client must name the tenant, and both
+ * do it in the URL — but not in the same shape. The socket glues it on with a
+ * colon inside ONE segment (`/ws/<tenant>:<canonical>`, `{ tenant }` above),
+ * while HTTP gives it a segment of its own
+ * (`/tenant/<tenant>/api:<canonical>/…`). No request header either way. Tokens
  * are tenant-scoped, so one minted through the instance workspace is rejected by
  * the tenant's realtime server — authenticate and dial through the same tenant.
  *
