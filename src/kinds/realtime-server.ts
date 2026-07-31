@@ -142,6 +142,14 @@ export interface RealtimeUrlOptions {
    * `<tenant>:<license>` rather than the bare license, so one minted through the
    * instance workspace is rejected by a tenant's realtime server (and vice
    * versa). Authenticate and dial through the same tenant.
+   *
+   * OFTEN YOU CAN OMIT THIS: `getUrl` LIFTS the tenant out of a base URL that
+   * already names one (`https://<host>/tenant/<name>` — what `sidestep sandbox
+   * details` prints and what deploy injects as `window.XANO_HOST`), rewriting it
+   * to the socket's colon form. Pass it explicitly when the base URL does NOT
+   * name the tenant — notably a tenant on its own domain, where HTTP resolves
+   * the tenant from the hostname but the socket cannot (the connection hash is
+   * the websocket tier's only signal).
    */
   tenant?: string;
 }
@@ -155,6 +163,38 @@ function assertTenant(tenant: string): string {
     );
   }
   return tenant;
+}
+
+/**
+ * Lift a `/tenant/<name>` prefix off a base URL into the socket's tenant slot.
+ *
+ * A tenant's public base URL names the tenant as its OWN leading path segment
+ * (`https://<host>/tenant/<name>`) — the value `sidestep sandbox details` prints
+ * and deploy injects as `window.XANO_HOST`. The socket spells the same tenant
+ * differently: glued to the canonical inside one segment. Left alone, that base
+ * URL yields `wss://<host>/tenant/<name>/ws/<canonical>`, which is wrong twice —
+ * no tenant is applied, AND the leftover segments are read as part of the
+ * connection hash, so the canonical does not resolve either. It fails as an
+ * opaque 1006 with nothing on the wire to explain it, so we translate instead.
+ */
+function liftTenantFromBase(
+  socketBase: string,
+  explicit: string | undefined,
+): { base: string; tenant: string | undefined } {
+  const m = /^(wss?:\/\/[^/]+)\/tenant\/([^/]+)(\/.*)?$/i.exec(socketBase);
+  if (!m) return { base: socketBase, tenant: explicit };
+  // Groups 1 and 2 are not optional in the pattern — a match always has them.
+  const origin = m[1] as string;
+  const fromBase = m[2] as string;
+  const rest = m[3] ?? "";
+  if (explicit !== undefined && explicit !== fromBase) {
+    throw new Error(
+      `realtime server: \`getUrl\` was given tenant ${JSON.stringify(explicit)} but the base URL names ` +
+        `${JSON.stringify(fromBase)} (".../tenant/${fromBase}"). Refusing to guess which one you meant — pass the ` +
+        `matching tenant, or a base URL without the "/tenant/<name>" prefix.`,
+    );
+  }
+  return { base: `${origin}${rest}`, tenant: assertTenant(fromBase) };
 }
 
 /**
@@ -221,6 +261,16 @@ export type RealtimeServerHandle = RealtimeServerDef & {
    * opaque 1006 close with no reason. Pass the instance base URL (`https://…`,
    * or `wss://…`); this is the only form `getUrl` builds.
    *
+   * A base URL that already names a tenant (`https://<host>/tenant/<name>` —
+   * `sidestep sandbox details`' `baseUrl`, and the injected `window.XANO_HOST`)
+   * has that tenant LIFTED into the socket's own form, so
+   * `getUrl(window.XANO_HOST)` alone reaches the right database:
+   * `https://h/tenant/ab-cd` → `wss://h/ws/ab-cd:<canonical>`. Passing a
+   * DIFFERENT `{ tenant }` alongside such a base URL throws rather than picks a
+   * winner. A tenant served on its own domain has nothing to lift — HTTP
+   * resolves that tenant by hostname, but the websocket tier only ever reads the
+   * connection hash — so pass `{ tenant }` explicitly there.
+   *
    * `/ws` is the INSTANCE INGRESS's routing segment, stripped before the
    * websocket tier sees the path — the tier reads whatever remains, whole, as
    * the connection hash. That matters in exactly one case: a direct dial at a
@@ -260,7 +310,10 @@ export function realtimeServer(def: RealtimeServerDef): RealtimeServerHandle {
       : /^https?:\/\//i.test(base)
         ? base.replace(/^http/i, "ws")
         : `wss://${base}`;
-    return `${socketBase}${getPath(opts)}`;
+    // A tenant base URL names its tenant in a shape the socket does not use;
+    // translate rather than concatenate. See liftTenantFromBase.
+    const lifted = liftTenantFromBase(socketBase, opts?.tenant);
+    return `${lifted.base}${getPath({ ...opts, tenant: lifted.tenant })}`;
   };
   return { ...def, getCanonical, getPath, getUrl };
 }

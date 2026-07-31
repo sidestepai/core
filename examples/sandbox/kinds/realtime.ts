@@ -114,6 +114,7 @@ export const onChatConnect = realtimeServerTrigger({
  * defs, so a rename or a re-minted canonical cannot desync the client:
  *
  *   chatServer.getUrl("https://x.dev.xano.io")      // wss://x.dev.xano.io/ws/<canonical>
+ *   chatServer.getUrl("https://x/tenant/a-b-c")     // /ws/a-b-c:<canonical> — lifted from the URL
  *   chatServer.getUrl(base, { tenant: "a-b-c" })    // /ws/<tenant>:<canonical> — tenant DB
  *   roomChannel.getChannel({ room_id: 42 })         // "rooms/42" — the frame's `channel`
  *
@@ -125,9 +126,14 @@ export const onChatConnect = realtimeServerTrigger({
  * do it in the URL — but not in the same shape. The socket glues it on with a
  * colon inside ONE segment (`/ws/<tenant>:<canonical>`, `{ tenant }` above),
  * while HTTP gives it a segment of its own
- * (`/tenant/<tenant>/api:<canonical>/…`). No request header either way. Tokens
- * are tenant-scoped, so one minted through the instance workspace is rejected by
- * the tenant's realtime server — authenticate and dial through the same tenant.
+ * (`/tenant/<tenant>/api:<canonical>/…`). No request header either way. So
+ * `getUrl` TRANSLATES a tenant base URL rather than concatenating it: pass the
+ * `window.XANO_HOST` deploy injects (`https://<host>/tenant/<name>`) and the
+ * tenant is lifted into the socket form with no `{ tenant }` needed; a
+ * conflicting `{ tenant }` throws. A tenant on its OWN DOMAIN has nothing to
+ * lift — pass `{ tenant }` there. Tokens are tenant-scoped, so one minted
+ * through the instance workspace is rejected by the tenant's realtime server —
+ * authenticate and dial through the same tenant.
  *
  * Auth is a bearer token passed as the
  * websocket SUBPROTOCOL — `new WebSocket(url, token)` — with no token meaning an

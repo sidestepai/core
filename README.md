@@ -667,6 +667,7 @@ socket URL; a channel handle builds the path a client joins:
 
 ```ts
 chat.getUrl("https://your-instance.xano.io");        // wss://your-instance.xano.io/ws/<canonical>
+chat.getUrl("https://host/tenant/xxxx-xxxx-xxxx");   // wss://host/ws/<tenant>:<canonical> — lifted
 chat.getUrl(BASE, { tenant: "xxxx-xxxx-xxxx" });     // wss://…/ws/<tenant>:<canonical>
 room.getChannel({ room_id: 42 });                    // "rooms/42"
 ```
@@ -680,12 +681,22 @@ different channel.
 
 **On a tenant instance, both halves of the client must name the tenant — the URL is all
 either half needs, but they spell it differently.** The socket glues it onto the canonical
-with a colon *inside one path segment* — `/ws/<tenant>:<canonical>` (`{ tenant }` above) —
-which is unlike every other tenant-addressed URL: HTTP calls take a separate leading
-segment, `https://<host>/tenant/<tenant>/api:<canonical>/…`. Don't derive one from the
-other, and no request header is required for either. Tokens are tenant-scoped, so one
-minted through the instance workspace is rejected by a tenant's realtime server —
-authenticate and dial through the same tenant. (The `/ws` segment belongs to the instance ingress and is stripped
+with a colon *inside one path segment* — `/ws/<tenant>:<canonical>` — which is unlike every
+other tenant-addressed URL: HTTP calls take a separate leading segment,
+`https://<host>/tenant/<tenant>/api:<canonical>/…`. No request header is required for
+either.
+
+Because the two shapes differ, **`getUrl` translates a tenant base URL rather than
+concatenating it**: hand it the `https://<host>/tenant/<name>` that `sidestep sandbox
+details` prints (and that deploy injects as `window.XANO_HOST`) and the tenant is lifted
+into the socket's form, so `chat.getUrl(window.XANO_HOST)` alone reaches the right
+database. Pass a *different* `{ tenant }` alongside such a base URL and it throws rather
+than pick a winner. One case still needs `{ tenant }` explicitly: a tenant served on **its
+own domain**, where HTTP resolves the tenant from the hostname but the websocket tier
+cannot — the connection hash is all it reads.
+
+Tokens are tenant-scoped, so one minted through the instance workspace is rejected by a
+tenant's realtime server — authenticate and dial through the same tenant. (The `/ws` segment belongs to the instance ingress and is stripped
 before the websocket tier reads the rest of the path as the connection hash — only a direct
 dial at a local dev websocket port, which bypasses the ingress, wants the bare canonical
 with no `/ws`.)

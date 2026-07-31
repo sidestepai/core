@@ -90,15 +90,27 @@ import { measureCommittedLlms } from "../../scripts/measure-llms.js";
 // `deliverTo: "explicit"` still delivers to nobody, and an agent that reads the
 // two lines together would otherwise conclude the gap is closed.
 // Raised again from 28.95k for tenant instances. A tenant client has TWO places
-// to name the tenant and they share no syntax — a `<tenant>:<canonical>` prefix
-// on the socket path, an `X-Tenant` header on HTTP — and the failure when you
-// set one and not the other is the worst kind: tokens are tenant-scoped, so
+// to name the tenant and they share no syntax — the socket glues it to the
+// canonical inside one segment (`<tenant>:<canonical>`), while HTTP gives it a
+// segment of its own (`/tenant/<tenant>/api:<canonical>`) — and the failure when
+// you set one and not the other is the worst kind: tokens are tenant-scoped, so
 // authenticating through the instance workspace mints a token the tenant's
-// realtime server rejects, and nothing on the wire says why. An agent cannot
-// infer the header from the path form (there is no URL form to generalize), nor
-// guess that a bare canonical on a tenant host silently resolves against a
-// different workspace's channels rather than erroring.
-const CEILING_TOKENS = 29_250;
+// realtime server rejects, and nothing on the wire says why. Neither form is
+// derivable from the other, and an agent cannot guess that a bare canonical on a
+// tenant host silently resolves against a different workspace's channels rather
+// than erroring. (This note originally claimed HTTP had no URL form and required
+// an `X-Tenant` header; corrected in 4.1.16 — the header is not required.)
+// Raised again from 29.25k for the `getUrl` tenant LIFT that closes that trap in
+// code rather than prose. The SDK's own `sandbox details` baseUrl and injected
+// `window.XANO_HOST` are `https://<host>/tenant/<name>` — the HTTP shape — so the
+// obvious `getUrl(window.XANO_HOST)` used to emit a URL that was wrong twice over
+// (no tenant applied, and the leftover segments swallowed into the connection
+// hash) and failed as an opaque 1006. The behavior is now "translate, not
+// concatenate", and the doc has to carry all three parts or it is a new trap of
+// its own: the lift, the throw on a conflicting `{ tenant }`, and the one case
+// that still needs an explicit tenant (a tenant on its own domain, where the
+// websocket tier reads only the hash and there is nothing in the URL to lift).
+const CEILING_TOKENS = 29_450;
 
 describe("llms.txt token budget", () => {
   it("stays under the bloat-tripwire ceiling", () => {

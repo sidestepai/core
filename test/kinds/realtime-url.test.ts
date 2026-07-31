@@ -76,6 +76,54 @@ describe("realtimeServer().getPath()/getUrl()", () => {
     );
   });
 
+  /**
+   * A tenant's public base URL names the tenant as its own leading segment
+   * (`/tenant/<name>` — what `sandbox details` prints and deploy injects as
+   * `window.XANO_HOST`); the socket glues it to the canonical instead. Left
+   * un-translated it would emit `/tenant/<name>/ws/<canonical>`: no tenant
+   * applied AND an unresolvable hash.
+   */
+  it("lifts a /tenant/<name> base URL into the socket's <tenant>:<canonical>", () => {
+    const s = realtimeServer({ name: "chat", canonical: "rtmain01" });
+    expect(s.getUrl("https://xare-rvr8-mnnt.dev.xano.io/tenant/eh4g-i3ee-0888")).toBe(
+      "wss://xare-rvr8-mnnt.dev.xano.io/ws/eh4g-i3ee-0888:rtmain01",
+    );
+    // trailing slash, and the ws(s) form, land in the same place
+    expect(s.getUrl("https://xare-rvr8-mnnt.dev.xano.io/tenant/eh4g-i3ee-0888/")).toBe(
+      "wss://xare-rvr8-mnnt.dev.xano.io/ws/eh4g-i3ee-0888:rtmain01",
+    );
+    expect(s.getUrl("wss://xare-rvr8-mnnt.dev.xano.io/tenant/eh4g-i3ee-0888")).toBe(
+      "wss://xare-rvr8-mnnt.dev.xano.io/ws/eh4g-i3ee-0888:rtmain01",
+    );
+  });
+
+  it("accepts a redundant { tenant } that agrees with the base URL", () => {
+    const s = realtimeServer({ name: "chat", canonical: "rtmain01" });
+    expect(s.getUrl("https://x.dev.xano.io/tenant/ab-cd", { tenant: "ab-cd" })).toBe(
+      "wss://x.dev.xano.io/ws/ab-cd:rtmain01",
+    );
+  });
+
+  it("throws when { tenant } and the base URL name DIFFERENT tenants", () => {
+    const s = realtimeServer({ name: "chat", canonical: "rtmain01" });
+    expect(() => s.getUrl("https://x.dev.xano.io/tenant/ab-cd", { tenant: "ef-gh" })).toThrow(
+      /but the base URL names "ab-cd"/,
+    );
+  });
+
+  it("leaves a non-tenant base URL alone (a tenant on its own domain needs { tenant })", () => {
+    const s = realtimeServer({ name: "chat", canonical: "rtmain01" });
+    // no /tenant/ segment to lift — the host IS the tenant, which the socket cannot read
+    expect(s.getUrl("https://acme.example.com")).toBe("wss://acme.example.com/ws/rtmain01");
+    expect(s.getUrl("https://acme.example.com", { tenant: "ab-cd" })).toBe(
+      "wss://acme.example.com/ws/ab-cd:rtmain01",
+    );
+    // a path that merely mentions tenant elsewhere is not the prefix
+    expect(s.getUrl("https://x.dev.xano.io/foo/tenant/ab-cd")).toBe(
+      "wss://x.dev.xano.io/foo/tenant/ab-cd/ws/rtmain01",
+    );
+  });
+
   it("throws on an empty base URL", () => {
     const s = realtimeServer({ name: "chat", canonical: "rtmain01" });
     expect(() => s.getUrl("   ")).toThrow(/needs a base URL/);
