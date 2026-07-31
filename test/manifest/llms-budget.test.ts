@@ -122,7 +122,21 @@ import { measureCommittedLlms } from "../../scripts/measure-llms.js";
 // omits, like the author's name, is gone on replay), and that the ring is
 // capped by `limit`/`ttl`, which is the real and much narrower reason to
 // persist to a table.
-const CEILING_TOKENS = 29_600;
+// Raised again from 29.6k for the realtime v2 source audit — the largest single
+// rise here, and the one with the clearest justification, because reading the
+// tier turned up a cluster of options whose NAMES actively mislead. Four of them
+// fail SILENTLY, which is the category this doc exists for: `conversation:
+// { enabled: true }` with no `limit` records and replays nothing (0 means retain
+// none, not retain everything); `at_least_once` is a CLIENT contract, so an
+// anonymous client that sends no durable id at join has no cursor and quietly
+// drops to at_most_once; a `deliver` trigger suppresses a message only on an
+// explicit null, so `return false` — how anyone writes a yes/no filter — sends
+// the message it was meant to hide; and an idle socket is reaped after ~10
+// minutes, so the listen-only client that most realtime UIs are gets
+// disconnected unless it pings. None of these throw, none appear in a def, and
+// an agent cannot infer any of them from the option name — which is precisely
+// the grounding that must never be cut to fit a number.
+const CEILING_TOKENS = 31_500;
 
 describe("llms.txt token budget", () => {
   it("stays under the bloat-tripwire ceiling", () => {
