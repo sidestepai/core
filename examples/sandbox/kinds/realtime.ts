@@ -71,6 +71,12 @@ export const roomChannel = realtimeChannel({
   // frontend's hydration; do not write a "fetch recent messages" endpoint for
   // it. Log to a table only for durability/search beyond this window.
   // Distinct from `history`, which is execution history for debugging.
+  //
+  // `limit` IS NOT OPTIONAL IN PRACTICE — it defaults to 0, and 0 means retain
+  // NONE rather than retain everything, so `{ enabled: true }` on its own
+  // records nothing, replays nothing, and reports no error. Note also that what
+  // a handler broadcasts IS the stored row (see `sendMessage.response` below):
+  // anything the response omits is simply gone on replay.
   conversation: { enabled: true, limit: 50 },
 });
 
@@ -151,11 +157,49 @@ export const onChatConnect = realtimeServerTrigger({
  *     ws.send(JSON.stringify({ action: "broadcast", channel, type: "send", payload: { body: "hi" } }));
  *   }, 500); // the server finishes its handshake first; an early frame is refused
  *
+ *   // KEEP IT ALIVE. An idle socket is reaped after ~10 minutes, which is easy
+ *   // to miss because a chatty client never hits it — but a listen-only client
+ *   // (a feed, a dashboard, a presence sidebar) joins and then goes quiet, and
+ *   // silently drops. Any frame resets the clock; `ping` exists for this.
+ *   setInterval(() => ws.send(JSON.stringify({ action: "ping" })), 60_000);
+ *
+ * IF YOU SET `delivery: { guarantee: "at_least_once" }` on a channel, the client
+ * has to hold up its end or the guarantee is silently absent. It must ack what
+ * it receives — `{ action: "ack", channel, id }` — and if it may be ANONYMOUS it
+ * must also send a durable id once, in the join frame:
+ *
+ *   ws.send(JSON.stringify({ action: "join", channel, options: { client_id: DEVICE_ID } }));
+ *
+ * An authenticated client is keyed by its identity and needs no `client_id`; an
+ * anonymous one without it has no cursor, its acks are ignored, and it quietly
+ * falls back to at-most-once. The gap it missed then arrives as `replay` frames
+ * — which are NOT the transcript above: `conversation_*` is the shared "what was
+ * said before I arrived", `replay` is the per-client "what I missed while
+ * disconnected".
+ *
  * A canonical is minted and frozen by `sidestep export --lock`, so these throw
  * (rather than guess) until one is pinned in code or in `xano.lock`.
  */
 
-/** Channel lifecycle trigger — fires on join/leave of a specific channel. */
+/**
+ * Channel lifecycle trigger — fires on join/leave of a specific channel.
+ *
+ * `join` GATES: it runs before the client becomes a member, so a denial means it
+ * never receives a fan-out. Return `{ allowed: true }` (an optional `reason`
+ * reaches the client) or any truthy value to admit — an EMPTY OR FALSY return
+ * DENIES.
+ *
+ * WHICH MEANS `response` IS NOT OPTIONAL ON A GATING TRIGGER. A `join` trigger
+ * with a stack but no `response` returns nothing, and nothing is falsy — it
+ * refuses every join on the channel it was added to protect. A `leave` trigger
+ * may omit `response` safely; a `join` one may not.
+ *
+ * This example still omits it, and that is a known bug being fixed separately:
+ * adding the response changes compiled output and its conformance golden, which
+ * is not a documentation change. Write yours as
+ * `response: () => ({ allowed: c.bool(true) })` (a bare `true` is not a value —
+ * it needs `c.bool`), with a real decision in place of the constant.
+ */
 export const onRoomJoin = realtimeChannelTrigger({
   name: "ex_kind_trigger_on_room_join",
   channel: roomChannel,
@@ -168,11 +212,17 @@ export const onRoomJoin = realtimeChannelTrigger({
  * runs once per RECIPIENT of a message, not once per channel event.
  *
  * `join` gates the join and `leave` only observes, but `deliver` gates each
- * individual delivery — its return rewrites that recipient's copy of the payload,
- * drops the message for that recipient, or passes the original through. That makes
- * it the tool for per-viewer redaction ("hide the author's address from everyone
- * but the author"), and also the most expensive action here by a wide margin: a
- * stack per recipient per message.
+ * individual delivery, which makes it the tool for per-viewer redaction ("hide
+ * the author's address from everyone but the author") and also the most
+ * expensive action here by a wide margin: a stack per recipient per message. It
+ * needs `delivery: { perRecipient: true }` on the channel to run at all.
+ *
+ * ITS RETURN VALUES DO NOT READ LIKE A FILTER, and this is the easiest thing in
+ * the family to write backwards. Only an explicit NULL drops the message for
+ * that recipient. An OBJECT replaces that recipient's payload. Everything else
+ * — including `false`, `0` and `""` — delivers it UNCHANGED. So a yes/no
+ * redaction check that returns `false` sends the very message it was written to
+ * suppress; return null instead.
  *
  * Kept as its own trigger rather than folded into `onRoomJoin` because the two
  * fire at unrelated moments and want unrelated stacks.
