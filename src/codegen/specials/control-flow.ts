@@ -173,13 +173,27 @@ function loopDecoder(path: string, storedField: string, defField: string): Speci
   return (a) => {
     const context = (a.stored.context ?? {}) as Record<string, unknown>;
     const as = context.as;
-    // An ABSENT iterand stays a decline. Its schema looks exactly like the
-    // empty-context family — a nested `{value, tag?=…, filters[]}` with a
-    // declared default, run through the same optional pass — but a live engine
-    // says the analogy fails: `foreach` raises "missing list argument" and `for`
-    // faults on `Undefined array key "cnt"`, neither of which the filled form
-    // does. See the note by `filledContext`.
-    const value = toValue(context[storedField]);
+    // An ABSENT iterand is REPAIRED to the empty one it lost, and reported.
+    //
+    // This is not a default the engine supplies — a live engine says the
+    // opposite, raising "For Each Loop: missing list argument" / faulting on
+    // `Undefined array key "cnt"`. The key went missing on the way out and the
+    // stored statement throws. The repair gives it the benign reading of the
+    // empty value (`[]`, `0`), which is a no-op rather than a fault, so it
+    // EVALUATES DIFFERENTLY and every site says so.
+    const stored = context[storedField];
+    const repaired = stored === undefined ? (filledContext(a.stored) ?? {})[storedField] : undefined;
+    const value = toValue(stored) ?? toValue(repaired);
+    if (value && repaired !== undefined) {
+      a.ctx.problem(
+        "modernized",
+        `${path} has no ${storedField} — the stored statement is missing its ` +
+          `${defField} and THROWS at runtime ("missing ${storedField} argument"). ` +
+          `Recovered as the empty ${defField} it lost, which EVALUATES DIFFERENTLY: ` +
+          `the loop now runs zero times instead of failing. Confirm nothing depended ` +
+          `on that error`,
+      );
+    }
     if (typeof as !== "string") return declineHere(`${path}: context.as is not a string`);
     if (!value) return declineHere(`${path}: context.${storedField} is not a tagged value`);
     const body = a.decodeStack(context.run);

@@ -815,27 +815,35 @@ const EMPTY_CONTEXT_FILL: ReadonlyMap<string, { tag: string; named: boolean }> =
 ]);
 
 /**
- * A loop's ABSENT iterand is deliberately NOT filled, and this note is here so
- * the next reader does not re-derive it.
+ * A loop whose iterand is ABSENT, and the empty iterand it is REPAIRED to.
  *
- * The schemas look like they say otherwise: `ForEachLoop`/`ForLoop` declare
- * `list`/`cnt` as nested `{value, tag?=…, filters[]}` objects with a default tag
- * (`var` and `const:int`), run them through the same `XS::optional` pass, and 9
- * real statements store the key absent — the exact signature that made
- * {@link EMPTY_CONTEXT_FILL} correct one level up.
+ * This is not a default the engine supplies — that was checked, and it does not.
+ * `ForEachLoop`/`ForLoop` declare `list`/`cnt` as nested `{value, tag?=…,
+ * filters[]}` objects with default tags and run them through the same
+ * `XS::optional` pass that makes {@link EMPTY_CONTEXT_FILL} correct one level
+ * up, but `XS::optional` defaults a nested object to the literal string `"{}"`
+ * rather than materializing its members, and the statement classes read the key
+ * directly. A live engine (`scripts/probe-empty-context.ts`) confirmed it:
+ * `foreach` raises "For Each Loop: missing list argument" and `for` faults on
+ * `Undefined array key "cnt"`.
  *
- * It is not correct here, and only a live engine said so
- * (`scripts/probe-empty-context.ts`). Against the filled form, an absent iterand
- * behaves DIFFERENTLY: `foreach` raises "For Each Loop: missing list argument"
- * where the filled form raises "Missing var entry: ", and `for` faults outright
- * on `Undefined array key "cnt"`. The optional pass defaults a nested object to
- * the literal string `"{}"` rather than materializing its members, and the
- * statement classes read the key directly.
+ * So the stored form is BROKEN — the key went missing on the way out, an empty
+ * value that did not survive serialization — and 9 real statements carry it.
+ * The repair gives each the benign reading of the empty value it lost: an empty
+ * list, and a zero count. Both are no-ops, which is the closest a working loop
+ * gets to one that cannot run.
  *
- * So those 9 stay `raw()`, which preserves their bytes exactly. **An analogy
- * from a rule that IS evidenced is still an analogy** — the same shape one level
- * down defaulted the opposite way.
+ * **This EVALUATES DIFFERENTLY and is reported as `modernized` at every site**,
+ * exactly like a blank `const:obj` becoming `c.obj()`: the stored form throws at
+ * runtime and the repaired form iterates nothing. That report is the whole
+ * licence for it — silently turning a fault into a no-op would hide a real
+ * defect in the source workspace.
  */
+const LOOP_EMPTY_ITERAND: ReadonlyMap<string, { member: string; value: string; tag: string }> =
+  new Map([
+    ["mvp:foreach", { member: "list", value: "[]", tag: "const:array" }],
+    ["mvp:for", { member: "cnt", value: "0", tag: "const:int" }],
+  ]);
 
 /** A blank value at `tag` — what the engine's optional-schema pass materializes. */
 function blankValue(tag: string): Record<string, unknown> {
@@ -846,10 +854,13 @@ function blankValue(tag: string): Record<string, unknown> {
  * The `context` the engine's optional-schema pass would produce for `stored`,
  * or null when this statement has no such fill.
  *
- * Scoped to statements whose whole context IS the value
- * ({@link EMPTY_CONTEXT_FILL}), stored `{}`. It deliberately does not extend to
- * a context MEMBER the engine appears to default the same way — see the note
- * above on the loops, where a live engine showed the analogy fails.
+ * Two cases, and they are NOT the same kind of thing:
+ *
+ *  - {@link EMPTY_CONTEXT_FILL} — the whole context IS the value and the engine
+ *    genuinely supplies the members. Byte-changing but behaviour-preserving.
+ *  - {@link LOOP_EMPTY_ITERAND} — the iterand went missing and the engine does
+ *    NOT supply it. This is a REPAIR that evaluates differently, and every site
+ *    is reported as `modernized` by the loop decoder.
  *
  * The decoder reads this to recover the value, and the comparison reads it so
  * the recovered statement's explicit re-encode still matches the sparse stored
@@ -873,6 +884,13 @@ export function filledContext(stored: unknown): Record<string, unknown> | null {
       : blankValue(whole.tag);
   }
 
+  const loop = LOOP_EMPTY_ITERAND.get(name);
+  if (loop) {
+    if (context === null || typeof context !== "object" || Array.isArray(context)) return null;
+    const block = context as Record<string, unknown>;
+    if (block[loop.member] !== undefined) return null;
+    return { ...block, [loop.member]: { value: loop.value, tag: loop.tag, filters: [] } };
+  }
   return null;
 }
 

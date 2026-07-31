@@ -294,6 +294,50 @@ describe("try/catch and loops", () => {
     expect(source).toContain("finally");
   });
 
+  // A loop whose iterand went missing on the way out. NOT an engine default —
+  // a live engine raises "For Each Loop: missing list argument" and faults on
+  // `Undefined array key "cnt"` — so the stored statement THROWS. It is repaired
+  // to the empty iterand it lost, which is a no-op instead of a fault, and every
+  // site is reported because that changes what the loop does.
+  describe("a loop with no iterand", () => {
+    function storedLoop(name: string, member: string): StackItemXdo {
+      const context: Record<string, unknown> = { as: "row", run: [] };
+      // `member` is deliberately NOT set — that is the shape under test.
+      void member;
+      return { name, context, input: [], disabled: false } as unknown as StackItemXdo;
+    }
+
+    for (const [name, member, expected] of [
+      ["mvp:foreach", "list", "c.array([])"],
+      ["mvp:for", "cnt", "c.int(0)"],
+    ] as const) {
+      it(`repairs ${name} to the empty ${member} and reports it`, () => {
+        const ctx = new DecodeContext();
+        const stored = storedLoop(name, member);
+        const source = printExpr(decodeStatement(ctx, EMPTY_REFS, stored, {}));
+
+        expect(source).not.toContain("raw(");
+        expect(source).toContain(expected);
+        expect(normalize(encodeStatement(evaluate(source)))).toEqual(normalize(stored));
+
+        // Flagged, never silent: turning a runtime fault into a no-op is a
+        // behaviour change and has to be visible.
+        const modernized = ctx.report.entries.filter((e) => e.category === "modernized");
+        expect(modernized).toHaveLength(1);
+        expect(modernized[0]!.detail).toContain("EVALUATES DIFFERENTLY");
+      });
+    }
+
+    it("reports nothing when the iterand IS stored", () => {
+      const ctx = new DecodeContext();
+      const stored = encodeStatement(
+        s.foreach({ as: "row", list: ref("rows"), body: [] }),
+      ) as StackItemXdo;
+      printExpr(decodeStatement(ctx, EMPTY_REFS, stored, {}));
+      expect(ctx.report.entries.filter((e) => e.category === "modernized")).toEqual([]);
+    });
+  });
+
   it("round-trips each loop form with its nested body intact", () => {
     expect(roundTrip(s.for({ as: "i", count: c.int(3), body: [s.set_var("x", ref("i"))] }))).toContain(
       "s.for(",
