@@ -66,7 +66,12 @@ import { measureCommittedLlms } from "../../scripts/measure-llms.js";
 // query filter, because one folds left to right and the other inherits the
 // database's precedence. Naming it without that is worse than not naming it, and
 // the alternative (`and(or(a,b),c)`) only reads as advice once you know why.
-const CEILING_TOKENS = 28_550;
+// Raised again from 28.55k for `output` on the row WRITES. It is 23 tokens and
+// it closes a real trap: `output` already appeared on `db.get`, so an agent that
+// meets it on `db.add` has every reason to read it as "insert only these
+// columns" — which would silently drop the rest of the row. The line exists to
+// say it narrows the RESPONSE, and to name the three statements that take it.
+const CEILING_TOKENS = 28_600;
 
 describe("llms.txt token budget", () => {
   it("stays under the bloat-tripwire ceiling", () => {

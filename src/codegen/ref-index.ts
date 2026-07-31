@@ -63,23 +63,6 @@ function discriminate(payloadKey: string, object: Record<string, unknown>): stri
 export class RefIndex {
   readonly #byGuid = new Map<string, IndexedObject>();
 
-  /**
-   * Whether the bundle this index was built from is a WHOLE-workspace export.
-   *
-   * It decides what a blank reference can mean. A scoped export blanks a
-   * reference whose target sits outside the selection rather than failing, so in
-   * that bundle "blank" is genuinely two things — a lost binding, or one that
-   * merely was not exported — and the report has to name both. A full export has
-   * no outside: every object the workspace holds is present, so a blank
-   * reference is unbound IN THE WORKSPACE and saying "re-pull with it in scope"
-   * is advice that cannot help.
-   *
-   * Read from the payload's own `partial` flag, which the engine sets on export
-   * and reads back on import. Defaults to the cautious reading (both causes) when
-   * the flag is absent or not a boolean — an unknown provenance is not evidence
-   * of a full export.
-   */
-  wholeWorkspace = false;
 
   /**
    * Walk every payload array once, keying each object by its stored guid.
@@ -89,7 +72,6 @@ export class RefIndex {
    */
   static fromPayload(payload: Record<string, unknown>, ctx: DecodeContext): RefIndex {
     const index = new RefIndex();
-    index.wholeWorkspace = payload["partial"] === false;
     for (const payloadKey of KINDS_BY_PAYLOAD_KEY.keys()) {
       const section = payload[payloadKey];
       if (!Array.isArray(section)) continue;

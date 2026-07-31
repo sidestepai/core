@@ -161,7 +161,6 @@ export function calcSignatureJson(exportObj: Record<string, unknown>): string {
 
 export interface BuildBundleArgs {
   type?: BundleType;
-  partial?: boolean;
   workspace?: Record<string, unknown>;
   /** Encoded objects keyed by their payload key (e.g. function, dbo, query). */
   sections: Partial<Record<PayloadArrayKey, unknown[]>>;
@@ -249,7 +248,11 @@ export function buildBundle(args: BuildBundleArgs): Bundle {
   // (Verified against a live engine round-trip — the offline shape check can't see this.)
   const workspace: Record<string, unknown> = { ...(args.workspace ?? {}) };
   const wsEnv = workspace.env;
-  const payload: BundlePayload = { partial: args.partial ?? false, workspace };
+  // Always a WHOLE-workspace bundle. The engine's format carries the flag and
+  // its import path reads it, but this SDK's flow is all-or-nothing in both
+  // directions — pull the workspace, deploy the workspace — so there is no
+  // scoped export to build and no option to ask for one.
+  const payload: BundlePayload = { partial: false, workspace };
   for (const key of PAYLOAD_ARRAY_KEYS) {
     payload[key] = args.sections[key] ?? [];
   }

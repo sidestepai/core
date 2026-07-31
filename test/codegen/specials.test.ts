@@ -933,10 +933,12 @@ describe("db family — an unbound table", () => {
 
     const unresolved = ctx.report.entries.filter((e) => e.category === "unresolved-ref");
     expect(unresolved).toHaveLength(1);
-    // The message has to name BOTH causes — the decoder cannot tell them apart, and
-    // guessing one would send the reader down the wrong path.
-    expect(unresolved[0]!.detail).toMatch(/deleted or unbound/);
-    expect(unresolved[0]!.detail).toMatch(/export's scope/);
+    // One cause, named without a hedge. This flow pulls whole workspaces, so a
+    // blank reference cannot be a live target that merely sat outside a scoped
+    // export — the line used to offer that reading and send the reader to
+    // re-pull, which is advice about a situation this SDK cannot produce.
+    expect(unresolved[0]!.detail).toMatch(/deleted, or the binding was never made/);
+    expect(unresolved[0]!.detail).not.toMatch(/scope/);
   });
 
   it("reports nothing for a table that resolves", () => {

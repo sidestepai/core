@@ -311,40 +311,18 @@ describe("unbound addon attachment", () => {
     expect(bound.entries.some((e) => e.detail.includes("blank addon reference"))).toBe(false);
   });
 
-  it("does not offer a re-pull when the bundle is a WHOLE-workspace export", () => {
-    // A blank reference has two causes and the bytes cannot separate them — but
-    // the bundle can. A full export has no outside, so "it sits outside this
-    // export's scope, re-pull with it in scope" is advice that cannot help, and
-    // every workspace in the survey corpus is a full export.
-    const bundle = queryWithAttachment("");
-    expect(bundle.payload.partial).toBe(false);
+  it("names the one cause a blank reference can have, with no hedge", () => {
+    // This flow pulls whole workspaces, so a blank reference cannot be a live
+    // target that merely sat outside a scoped export. The line used to offer
+    // that reading and tell the reader to re-pull with the addon in scope —
+    // advice about a situation this SDK cannot produce.
     const detail =
-      decodeBundle(bundle).report.entries.find((e) => e.category === "unresolved-ref")?.detail ?? "";
-    expect(detail).toContain("whole-workspace export");
+      decodeBundle(queryWithAttachment("")).report.entries.find(
+        (e) => e.category === "unresolved-ref",
+      )?.detail ?? "";
     expect(detail).toContain("deleted, or the binding was never made");
     expect(detail).not.toContain("re-pull");
-  });
-
-  it("keeps both readings when the bundle IS scoped", () => {
-    // The paired negative, and the reason the flag is read rather than assumed:
-    // in a scoped export the second cause is real, and calling the reference
-    // deleted would be a false accusation about a binding that still exists.
-    const bundle = queryWithAttachment("");
-    bundle.payload.partial = true;
-    const detail =
-      decodeBundle(bundle).report.entries.find((e) => e.category === "unresolved-ref")?.detail ?? "";
-    expect(detail).toContain("outside this export's scope");
-    expect(detail).toContain("re-pull");
-    expect(detail).not.toContain("whole-workspace export");
-  });
-
-  it("takes the cautious reading when the bundle does not say", () => {
-    // An unknown provenance is not evidence of a full export.
-    const bundle = queryWithAttachment("");
-    delete (bundle.payload as { partial?: unknown }).partial;
-    const detail =
-      decodeBundle(bundle).report.entries.find((e) => e.category === "unresolved-ref")?.detail ?? "";
-    expect(detail).toContain("outside this export's scope");
+    expect(detail).not.toContain("scope");
   });
 
   it("still resolves an attachment that names a real addon", () => {

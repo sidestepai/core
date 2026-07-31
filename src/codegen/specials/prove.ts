@@ -114,23 +114,18 @@ export function getPath(root: unknown, path: string): unknown {
 }
 
 /**
- * The report line for a blank reference (`table`/`addon`/`fn`/…), worded from
- * what the bundle can actually prove.
+ * The report line for a blank reference (`table`/`addon`/`fn`/…).
  *
- * A blank reference has two possible causes and the bytes cannot tell them
- * apart: the target was deleted or never bound, or it was a real target the
- * export-side remap blanked because it sat outside a scoped export. But the
- * BUNDLE can tell them apart — a whole-workspace export has no outside, so the
- * second cause is impossible there and the line says so plainly rather than
- * hedging and suggesting a re-pull that cannot help. All 177 workspaces in the
- * survey corpus are whole-workspace exports, so the hedge was the wrong wording
- * every time it was shown.
+ * A blank reference means the target was deleted, or the binding was never made.
+ * There is no second reading: this flow pulls and deploys a WHOLE workspace, so
+ * there is no scoped export whose remap could have blanked a reference that
+ * still exists upstream. The line used to hedge between the two and tell the
+ * reader to "re-pull with it in scope", which was unactionable advice about a
+ * situation this SDK cannot produce.
  */
-export function blankRefDetail(a: SpecialArgs, what: string, noun: string): string {
-  const recovered = `${what}, recovered as \`${noun}: null\`; `;
-  return a.refs.wholeWorkspace
-    ? `${recovered}this is a whole-workspace export, so the ${noun} is not merely out of ` +
-      `scope — it was deleted, or the binding was never made. Fix it upstream or bind a ${noun}`
-    : `${recovered}the ${noun} was deleted or unbound, OR it sits outside this export's scope ` +
-      `and was blanked on the way out — re-pull with the ${noun} in scope to tell the two apart`;
+export function blankRefDetail(what: string, noun: string): string {
+  return (
+    `${what}, recovered as \`${noun}: null\` — the ${noun} was deleted, or the binding was ` +
+    "never made. Fix it upstream, or bind one"
+  );
 }

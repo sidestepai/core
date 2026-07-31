@@ -119,11 +119,10 @@ function callDecoder(shape: CallShape): SpecialDecoder {
 
     if (unbound) {
       // Reported, not emitted quietly: presenting a lost binding as a
-      // deliberate `null` would hide it. What the line SAYS depends on whether
-      // the bundle is a whole-workspace export — see {@link blankRefDetail}.
+      // deliberate `null` would hide it. See {@link blankRefDetail}.
       a.ctx.problem(
         "unresolved-ref",
-        blankRefDetail(a, `${shape.path} has a blank ${shape.arg} reference`, shape.arg),
+        blankRefDetail(`${shape.path} has a blank ${shape.arg} reference`, shape.arg),
       );
     }
     const target = unbound

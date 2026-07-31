@@ -104,28 +104,19 @@ function tableArg(a: SpecialArgs, guid: string): TableArg {
  * same contract an addon's `table` has carried all along. Reading it as "nothing
  * to recover" degraded 83 db statements to `raw()` across the sweep.
  *
- * **A blank reference has two possible causes, and only one is benign**, which is
- * why this reports rather than emitting quietly:
- *
- *  - the target was deleted, or was never bound — a defect in the workspace, and
- *    exactly what `table: null` is for;
- *  - the export-side reference remap could not resolve the target because it sat
- *    outside the export's scope, and blanked it rather than failing the export. The
- *    reference still EXISTS upstream. Emitting `table: null` silently would present
- *    a real lost binding as a deliberate one — a wrong default making authored data
- *    invisible, which is worse than no rule.
- *
- * **The bundle says which.** A whole-workspace export has no outside, so the
- * second cause is impossible and the line says so plainly instead of hedging and
- * suggesting a re-pull that cannot help. Only a scoped export gets the
- * two-readings message. Same contract the realtime kinds already hold blank
- * bindings to (`test/codegen/realtime-blank-refs`), applied consistently here.
+ * **It reports rather than emitting quietly**, because a blank binding is a
+ * defect in the workspace and `table: null` is the faithful rendering of one —
+ * emitting it silently would let a lost binding pass as a deliberate choice.
+ * There is one reading and no hedge: this flow pulls whole workspaces, so a
+ * blank reference cannot be a live target that merely sat outside the export
+ * (see {@link blankRefDetail}). Same contract the realtime kinds already hold
+ * blank bindings to (`test/codegen/realtime-blank-refs`), applied consistently.
  *
  * The alias is left to {@link aliasEntry}, which reads `dbo.as` by presence: a
  * deleted table's alias frequently outlives it (`{as: "user", id: ""}`).
  */
 function unboundTableArg(a: SpecialArgs, what: string): TableArg {
-  a.ctx.problem("unresolved-ref", blankRefDetail(a, `${what} has a blank table reference`, "table"));
+  a.ctx.problem("unresolved-ref", blankRefDetail(`${what} has a blank table reference`, "table"));
   return { expr: lit(null), runtime: null };
 }
 
@@ -289,7 +280,7 @@ function decodeAddonSpec(
   if (unbound) {
     a.ctx.problem(
       "unresolved-ref",
-      blankRefDetail(a, `addon attachment "${alias}" has a blank addon reference`, "addon"),
+      blankRefDetail(`addon attachment "${alias}" has a blank addon reference`, "addon"),
     );
   }
   const entries: Array<[string, Expr]> = [
