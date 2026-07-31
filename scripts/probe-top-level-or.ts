@@ -148,7 +148,8 @@ function groupedBundle(): Record<string, unknown> {
 function resign(bundle: Record<string, unknown>): Record<string, unknown> {
   // The bundle is signed over its own contents, so a rewritten payload has to be
   // re-signed or the import rejects it before the engine ever sees the shape.
-  const { sig: _drop, ...unsigned } = bundle;
+  const unsigned = { ...bundle };
+  delete unsigned.sig;
   return { ...unsigned, sig: calcSignatureJson(unsigned) };
 }
 

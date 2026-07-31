@@ -713,6 +713,19 @@ export function clearLocalDboRefs<T>(value: T, cleared?: Set<string>): T {
  * spellings side by side: 101 `set_var` carry the blank const explicitly against
  * 18 that store nothing at all.
  *
+ * Then settled on a live engine (`scripts/probe-empty-setvar.ts`), because a
+ * source trace is not a behaviour. Deploying the two spellings into two fresh
+ * tenants and calling both: each binds `""` — identical responses, so they are
+ * one statement and reading the empty form back as `c.text("")` is sound.
+ *
+ * The same probe also showed the engine PERSISTS whichever spelling it is handed
+ * rather than canonicalizing — the empty form came back empty. So a pulled
+ * workspace that stored `{}` re-exports as the EXPLICIT blank const: the bytes
+ * change, deliberately. That is the same forward-canonicalization the empty
+ * `customize` rule below makes, and for the same reason — the explicit form is
+ * what this SDK can author and what the engine writes today, and the live probe
+ * is what licenses changing bytes at all. Without it this would be a guess.
+ *
  * `update_var` is deliberately NOT included even though it shares the context
  * shape. Its context carries a sibling `name` naming the variable to reassign,
  * so an empty one has lost the name too and genuinely cannot be re-authored —
