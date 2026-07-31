@@ -9,7 +9,13 @@ import { returnValue, die, debugLog, foreachBreak, foreachContinue, foreachRemov
 import { forLoop, foreachLoop, whileLoop, group } from "../../src/statements/special/loops.js";
 import { setVar } from "../../src/statements/set-var.js";
 import { expr, cmp, and, or, conditional } from "../../src/statements/conditional.js";
-import { arrayMap, arrayUnion, getRawInput, expectToThrow } from "../../src/statements/special/misc.js";
+import {
+  arrayMap,
+  arrayUnion,
+  getRawInput,
+  expectToThrow,
+  realtimePublish,
+} from "../../src/statements/special/misc.js";
 import { aiAgentRun, cloudJob, cloudJobAwait, cloudJobStatus } from "../../src/statements/special/ai-cloud.js";
 import {
   dbBulkAdd,
@@ -30,6 +36,9 @@ const capUsers = table({ name: "cap_users", schema: { name: f.text({}) } });
 const capPosts = table({ name: "posts", schema: { published: f.bool(), score: f.decimal() } });
 const capRows = () =>
   withFilters(c.text('[{"name":"a"},{"name":"b"}]'), [filter("json_decode")]);
+
+/** The realtime.publish rows' payload — an object literal, stored as a `const:expr2`. */
+const capPublishData = () => obj({ a: 1 });
 
 /** Query target reused by the api_call row — api.call resolves it to context.id. */
 const capApiTarget = query({
@@ -486,6 +495,35 @@ const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
           auth: { token: c.text("mytoken"), ignoreExpiration: true },
           as: "resp",
         }),
+      ),
+  },
+  // realtime.publish, live-captured. Two rows because the interesting behaviour is
+  // what the engine does NOT store: the minimal authoring persists three context
+  // keys and no `auth` block at all, even though the engine RENDERS the script back
+  // with `auth_table = ""`. Emitting that default would write a key the engine never
+  // held. The full row pins the other asymmetry — `realtime_server` is the server's
+  // NAME, while `auth.dbo_id` is a table GUID.
+  {
+    fixture: "realtime_publish",
+    build: () =>
+      encodeStatement(
+        realtimePublish({
+          server: "chat",
+          channel: c.text("lobby"),
+          message: c.text("post"),
+          data: capPublishData(),
+          // The capture's auth table, by its captured guid — the engine mints guids,
+          // so the corpus cannot derive this one from the name.
+          authTable: { name: "user", guid: "0F9xUJPoB0b1TRv1zCT1cges1Ak" },
+          authId: c.int(7),
+        }),
+      ),
+  },
+  {
+    fixture: "realtime_publish-min",
+    build: () =>
+      encodeStatement(
+        realtimePublish({ server: "chat", channel: c.text("lobby"), data: capPublishData() }),
       ),
   },
   { fixture: "return-null", build: () => encodeStatement(returnValue(c.null())) },

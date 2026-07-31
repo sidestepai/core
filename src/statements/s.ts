@@ -61,6 +61,7 @@ import {
   getRawInput,
   postProcess,
   realtimeEvent,
+  realtimePublish,
   createAuthToken,
   createGuid,
   expectToThrow,
@@ -115,6 +116,9 @@ export const s = {
   action: { call: actionCall, package: { call: actionPackageCall } },
   workflow_test: { call: workflowTestCall },
   api: { ...generated.api, call: apiCall, realtime_event: realtimeEvent, request: apiRequest, microservice },
+  // `realtime.publish` is the CURRENT-layer send statement (`api.realtime_event` is the
+  // superseded one); `get_session` beside it is generated.
+  realtime: { ...generated.realtime, publish: realtimePublish },
   stream: { ...generated.stream, from_request: streamFromRequest },
   webflow: { ...generated.webflow, request: webflowRequest },
   task: { call: taskCall },

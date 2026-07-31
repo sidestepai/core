@@ -1521,6 +1521,67 @@ describe("miscellaneous specials", () => {
     );
   });
 
+  it("round-trips a realtime publish, minimal and full", () => {
+    // Minimal: the three required keys and nothing else — the optionals must NOT
+    // be materialized on the way back, or the regenerated source writes bytes the
+    // engine never held.
+    const minimal = roundTrip(
+      s.realtime.publish({ server: "chat", channel: c.text("rooms/42"), data: ref("payload") }),
+    );
+    expect(minimal).toContain("s.realtime.publish(");
+    expect(minimal).not.toContain("message");
+    expect(minimal).not.toContain("authId");
+
+    const full = dbRoundTrip(
+      s.realtime.publish({
+        server: "chat",
+        channel: c.text("rooms/42"),
+        data: ref("payload"),
+        message: c.text("post"),
+        authTable: USERS,
+        authId: auth("id"),
+      }),
+    );
+    expect(full).toContain('message: c.text("post")');
+  });
+
+  it("regenerates a realtime publish server as a plain name, not a reference lookup", () => {
+    // The engine resolves the server BY NAME here (unlike a channel's own server
+    // reference, which is a guid), so the decoded source must not route it through
+    // the reference index.
+    const src = roundTrip(
+      s.realtime.publish({ server: "chat", channel: c.text("lobby"), data: ref("payload") }),
+    );
+    expect(src).toContain('server: "chat"');
+  });
+
+  it("round-trips a realtime publish whose server is computed rather than literal", () => {
+    const src = roundTrip(
+      s.realtime.publish({ server: inp("server_name"), channel: c.text("lobby"), data: ref("payload") }),
+    );
+    expect(src).toContain('inp("server_name")');
+  });
+
+  it("round-trips a realtime publish carrying only half an auth block", () => {
+    const idOnly = roundTrip(
+      s.realtime.publish({
+        server: "chat",
+        channel: c.text("lobby"),
+        data: ref("payload"),
+        authId: auth("id"),
+      }),
+    );
+    expect(idOnly).not.toContain("authTable");
+    dbRoundTrip(
+      s.realtime.publish({
+        server: "chat",
+        channel: c.text("lobby"),
+        data: ref("payload"),
+        authTable: USERS,
+      }),
+    );
+  });
+
   it("round-trips auth-token minting, eliding the encoder's `{}` and 24h defaults", () => {
     expect(
       dbRoundTrip(s.security.create_auth_token({ table: USERS, id: ref("user.id"), as: "token" })),

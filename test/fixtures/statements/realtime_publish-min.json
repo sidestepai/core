@@ -1,0 +1,34 @@
+{
+  "as": "",
+  "name": "mvp:realtime_publish",
+  "_xsid": "f:f1e9f5cc-e0c6-4fae-abfd-1cfc37459712",
+  "addon": [],
+  "input": [],
+  "mocks": {},
+  "output": {
+    "items": [],
+    "filters": [],
+    "customize": false
+  },
+  "context": {
+    "data": {
+      "tag": "const:expr2",
+      "value": "{ a: 1 }",
+      "filters": []
+    },
+    "channel": {
+      "tag": "const",
+      "value": "lobby",
+      "filters": []
+    },
+    "realtime_server": {
+      "tag": "const",
+      "value": "chat",
+      "filters": []
+    }
+  },
+  "runtime": null,
+  "disabled": false,
+  "description": "",
+  "settings_registry": null
+}

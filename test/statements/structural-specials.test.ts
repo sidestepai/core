@@ -11,7 +11,7 @@ import { s } from "../../src/statements/s.js";
 import { generated } from "../../src/statements/generated/factories.generated.js";
 import { encodeStatement } from "../../src/statements/statement.js";
 import { deriveGuid } from "../../src/refs/guid.js";
-import { c, col, auth, inp } from "../../src/values/value.js";
+import { c, col, auth, inp, filter, withFilters } from "../../src/values/value.js";
 import { expr } from "../../src/statements/conditional.js";
 import { and } from "../../src/statements/special/db-search.js";
 
@@ -163,6 +163,98 @@ describe("structural array + misc specials", () => {
     const auth = (enc.context as { auth: { dbo_id: string; row_id: unknown } }).auth;
     expect(auth.dbo_id).toBe(deriveGuid("dbo", T.name));
     expect(auth.row_id).toBeDefined();
+  });
+
+  // `realtime.publish` — the CURRENT-layer send statement. Its `server` crosses no
+  // reference boundary (the engine resolves it by NAME, not guid) while `authTable`
+  // does, and every optional key must stay absent when unset.
+  it("realtime.publish emits the server NAME, not its guid", () => {
+    const enc = encodeStatement(
+      s.realtime.publish({ server: { name: "chat" }, channel: c.text("rooms/42"), data: c.obj({}) }),
+    );
+    expect(enc.name).toBe("mvp:realtime_publish");
+    const ctx = enc.context as { realtime_server: { value: string; tag: string } };
+    expect(ctx.realtime_server).toEqual({ value: "chat", tag: "const", filters: [] });
+    expect(ctx.realtime_server.value).not.toBe(deriveGuid("realtime_server", "chat"));
+  });
+
+  it("realtime.publish accepts a bare server name and a computed one identically", () => {
+    const fromName = encodeStatement(
+      s.realtime.publish({ server: "chat", channel: c.text("lobby"), data: c.obj({}) }),
+    ).context as Record<string, unknown>;
+    const fromHandle = encodeStatement(
+      s.realtime.publish({ server: { name: "chat" }, channel: c.text("lobby"), data: c.obj({}) }),
+    ).context as Record<string, unknown>;
+    expect(fromName).toEqual(fromHandle);
+
+    const computed = encodeStatement(
+      s.realtime.publish({ server: inp("server_name"), channel: c.text("lobby"), data: c.obj({}) }),
+    ).context as { realtime_server: { value: string; tag: string } };
+    expect(computed.realtime_server.tag).toBe("input");
+    expect(computed.realtime_server.value).toBe("server_name");
+  });
+
+  it("realtime.publish omits message and auth entirely when unset", () => {
+    const enc = encodeStatement(
+      s.realtime.publish({ server: "chat", channel: c.text("lobby"), data: c.obj({ a: 1 }) }),
+    );
+    expect(Object.keys(enc.context as object).sort()).toEqual(["channel", "data", "realtime_server"]);
+  });
+
+  it("realtime.publish resolves authTable to a table guid and keeps row_id separate", () => {
+    const enc = encodeStatement(
+      s.realtime.publish({
+        server: "chat",
+        channel: c.text("lobby"),
+        data: c.obj({}),
+        message: c.text("post"),
+        authTable: T,
+        authId: c.int(7),
+      }),
+    );
+    const ctx = enc.context as { message: { value: string }; auth: { dbo_id: string; row_id: { value: string } } };
+    expect(ctx.message.value).toBe("post");
+    expect(ctx.auth.dbo_id).toBe(deriveGuid("dbo", T.name));
+    expect(ctx.auth.row_id.value).toBe("7");
+  });
+
+  it("realtime.publish writes an auth block with only the half that was supplied", () => {
+    const idOnly = encodeStatement(
+      s.realtime.publish({ server: "chat", channel: c.text("lobby"), data: c.obj({}), authId: c.int(7) }),
+    ).context as { auth: Record<string, unknown> };
+    expect(Object.keys(idOnly.auth)).toEqual(["row_id"]);
+
+    const tableOnly = encodeStatement(
+      s.realtime.publish({ server: "chat", channel: c.text("lobby"), data: c.obj({}), authTable: T }),
+    ).context as { auth: Record<string, unknown> };
+    expect(Object.keys(tableOnly.auth)).toEqual(["dbo_id"]);
+  });
+
+  it("realtime.publish preserves a filter chain on data", () => {
+    const enc = encodeStatement(
+      s.realtime.publish({
+        server: "chat",
+        channel: c.text("lobby"),
+        data: withFilters(c.text('{"a":1}'), [filter("json_decode")]),
+      }),
+    );
+    expect((enc.context as { data: { filters: unknown[] } }).data.filters).toHaveLength(1);
+  });
+
+  // The engine is FAIL-SOFT: a bad publish logs server-side and returns, so the author
+  // never sees it. These two references are the only loud failure available to the SDK.
+  it("realtime.publish throws when the server is missing or blank", () => {
+    expect(() => s.realtime.publish({ server: "", channel: c.text("lobby"), data: c.obj({}) })).toThrow(/server/);
+    expect(() =>
+      s.realtime.publish({ server: undefined as never, channel: c.text("lobby"), data: c.obj({}) }),
+    ).toThrow(/server/);
+  });
+
+  it("realtime.publish throws when the channel is missing or blank", () => {
+    expect(() => s.realtime.publish({ server: "chat", channel: c.text(""), data: c.obj({}) })).toThrow(/channel/);
+    expect(() => s.realtime.publish({ server: "chat", channel: undefined as never, data: c.obj({}) })).toThrow(
+      /channel/,
+    );
   });
 
   it("create_auth_token puts the table guid in the dbtable input entry", () => {
