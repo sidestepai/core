@@ -105,7 +105,8 @@ import { measureCommittedLlms } from "../../scripts/measure-llms.js";
 // `window.XANO_HOST` are `https://<host>/tenant/<name>` — the HTTP shape — so the
 // obvious `getUrl(window.XANO_HOST)` used to emit a URL that was wrong twice over
 // (no tenant applied, and the leftover segments swallowed into the connection
-// hash) and failed as an opaque 1006. The behavior is now "translate, not
+// hash) — live, that URL never upgrades at all and the handshake is answered
+// with a plain 404. The behavior is now "translate, not
 // concatenate", and the doc has to carry all three parts or it is a new trap of
 // its own: the lift, the throw on a conflicting `{ tenant }`, and the one case
 // that still needs an explicit tenant (a tenant on its own domain, where the

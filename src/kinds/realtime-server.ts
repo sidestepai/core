@@ -174,8 +174,9 @@ function assertTenant(tenant: string): string {
  * differently: glued to the canonical inside one segment. Left alone, that base
  * URL yields `wss://<host>/tenant/<name>/ws/<canonical>`, which is wrong twice —
  * no tenant is applied, AND the leftover segments are read as part of the
- * connection hash, so the canonical does not resolve either. It fails as an
- * opaque 1006 with nothing on the wire to explain it, so we translate instead.
+ * connection hash, so the canonical does not resolve either. Verified live: that
+ * URL never upgrades at all, the handshake is answered with a plain 404. So we
+ * translate instead.
  */
 function liftTenantFromBase(
   socketBase: string,

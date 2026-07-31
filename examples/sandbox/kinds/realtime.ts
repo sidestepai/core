@@ -126,7 +126,8 @@ export const onChatConnect = realtimeServerTrigger({
  * do it in the URL — but not in the same shape. The socket glues it on with a
  * colon inside ONE segment (`/ws/<tenant>:<canonical>`, `{ tenant }` above),
  * while HTTP gives it a segment of its own
- * (`/tenant/<tenant>/api:<canonical>/…`). No request header either way. So
+ * (`/tenant/<tenant>/api:<canonical>/…`). No request header is required either
+ * way. So
  * `getUrl` TRANSLATES a tenant base URL rather than concatenating it: pass the
  * `window.XANO_HOST` deploy injects (`https://<host>/tenant/<name>`) and the
  * tenant is lifted into the socket form with no `{ tenant }` needed; a
