@@ -185,38 +185,38 @@ const createAuthToken: SpecialDecoder = (a) => {
   // took the whole statement to `raw()`. Same "no target" spelling as elsewhere.
   const unbound = table.value === "";
 
-  // `dbtable` has a THIRD stored spelling: older workspaces write the table's
-  // NAME here rather than its guid (7 of 191 across the sweep, against 179 guid
-  // and 5 blank). Routing a name through guid resolution reported "guid user is
-  // not present in this bundle" — an ERROR, about a guid that was never a guid.
-  // The name rides through verbatim on the `{name, guid}` escape hatch and
-  // re-encodes byte-identically, so nothing is lost; what it costs is the link
-  // to the table's symbol, which is a readability loss and reported as one.
-  // Resolving it to the symbol would be worse than useless: re-encoding a table
-  // handle writes the table's real guid, changing the stored bytes.
+  // A `dbtable` this bundle does not resolve as a guid.
   //
-  // Keyed on whether the value RESOLVES AS A GUID, and on nothing else.
-  // **SideStep resolves references by guid only and never maps a name to an
-  // object.** An earlier version keyed this on "a table of that name exists",
-  // which was a name lookup in all but direction, and it also left the case
-  // where that table is ABSENT falling through to guid resolution — reporting
-  // `guid user is not present in this bundle`, the very error this comment
-  // claims to have fixed, 6 more times.
+  // Keyed on RESOLUTION and on nothing else. **SideStep resolves references by
+  // guid only and never maps a name back to an object.** An earlier version
+  // keyed this on "a table of that name exists", which is a name lookup in all
+  // but direction; it also left the case where that table is ABSENT falling
+  // through to guid resolution, reporting a missing guid 6 more times.
   //
-  // So both cases are one case, reported once. The corpus: 179 resolve as
-  // guids, 0 are guid-shaped but absent, 13 are names (7 whose table is in the
-  // bundle, 6 whose table is not — a distinction this deliberately does not
-  // draw), 5 are blank.
+  // And there is nothing else it COULD key on. A workspace guid is an arbitrary
+  // unique key that anyone can change — it has no pattern, so the value cannot
+  // be classified by shape. Two readings therefore stay open and only the
+  // workspace owner can tell them apart:
   //
-  // A WARNING rather than an unresolved-reference error, because the output is
-  // not wrong: the engine keys this field by name on the workspaces that store
-  // it that way, so the statement works, and the bytes re-encode exactly. What
-  // is lost is only the link to the table's symbol.
-  const nameSpelled = !unbound && a.refs.lookup(table.value) === undefined;
-  if (nameSpelled) {
+  //  - older workspaces store this field by NAME, and the engine keys it by
+  //    name on those, so the statement works and nothing is wrong;
+  //  - or it is a guid whose table was deleted, re-keyed, or sat outside the
+  //    export's scope — a real broken reference.
+  //
+  // Reported as `unresolved-ref` because that is literally and only what is
+  // known: the reference did not resolve. Same contract {@link unboundTableArg}
+  // holds a blank table to — name both readings, leave the judgement to whoever
+  // reads it — rather than picking one and quietly downgrading the other. The
+  // bytes are faithful either way: the value rides through verbatim on the
+  // `{name, guid}` escape hatch and re-encodes identically. What is lost is the
+  // link to the table's symbol, and resolving it would be worse than useless —
+  // re-encoding a table handle writes that table's real guid, changing the
+  // stored bytes.
+  const unresolvable = !unbound && a.refs.lookup(table.value) === undefined;
+  if (unresolvable) {
     a.ctx.problem(
-      "value-fallback",
-      `security.create_auth_token references table "${table.value}" by a value that is not a guid in this bundle — older workspaces store this field by NAME, and SideStep resolves references by guid only. Carried verbatim, so the bytes are preserved but it is not linked to the table's symbol`,
+      "unresolved-ref",
+      `security.create_auth_token references table "${table.value}", which this bundle does not resolve as a guid — SideStep resolves references by guid only. Older workspaces store this field by NAME, which the engine still honours, so this may be working as stored; it may equally be a table that was deleted or re-keyed. Carried verbatim, so the bytes are preserved, but it is not linked to the table's symbol and a re-deploy will not re-link it`,
     );
   }
   const entries: Array<[string, Expr]> = [
@@ -224,7 +224,7 @@ const createAuthToken: SpecialDecoder = (a) => {
       "table",
       unbound
         ? lit(null)
-        : nameSpelled
+        : unresolvable
           ? obj([
               ["name", lit("")],
               ["guid", lit(table.value)],

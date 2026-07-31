@@ -67,15 +67,20 @@ interface CallShape {
    * ref index reports a missing guid for a reference that was never
    * workspace-local.
    *
-   * Only `mvp:action` sets this. Its `run_version.id` is a marketplace
-   * action-package VERSION id, and three things say so independently: the
-   * encoder already carries a `@TODO` admitting it resolves via the "function"
-   * migrate type and that actions are a distinct namespace; action packages are
-   * an unsupported payload section, so an installed action is never in the tree
-   * to resolve against; and in the survey corpus all 3 stored ids are absent
-   * from their bundle while ONE OF THEM APPEARS IN TWO DIFFERENT WORKSPACES —
-   * a workspace-local guid cannot do that. They are also UUIDs, where every
-   * workspace guid in the corpus is a 27-character base64url token.
+   * Only `mvp:action` sets this. Its `run_version.id` identifies a GLOBALLY
+   * INSTALLED marketplace action package, so the id is the same everywhere and
+   * is not a workspace object anyone could have renamed or re-keyed. Three
+   * things say so independently: the encoder already carries a `@TODO` admitting
+   * it resolves via the "function" migrate type and that actions are a distinct
+   * namespace; action packages are an unsupported payload section, so an
+   * installed action is never in the tree to resolve against; and in the survey
+   * corpus all 3 stored ids are absent from their bundle while ONE OF THEM
+   * APPEARS IN TWO DIFFERENT WORKSPACES, which a workspace-local id cannot do.
+   *
+   * Note none of that rests on the id's SHAPE. A workspace guid is an arbitrary
+   * unique key that anyone can change — it carries no pattern to test against,
+   * so "this looks like a UUID rather than a workspace guid" is not evidence and
+   * must not become one.
    *
    * The emitted expression is unchanged: `resolveReference`'s miss branch
    * already returns this exact `{name:"", guid}` form, so this drops the false

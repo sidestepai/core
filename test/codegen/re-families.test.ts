@@ -126,14 +126,14 @@ describe("create_auth stores its named entries in either order", () => {
   }
 
   /**
-   * `dbtable`'s THIRD stored spelling: the table's NAME, which older workspaces
-   * write where newer ones write a guid.
+   * A `dbtable` the bundle does not resolve as a guid — which older workspaces
+   * produce by storing the table's NAME here.
    *
-   * **SideStep resolves references by guid only** — it never maps a name back to
-   * an object — so the two cases below are deliberately indistinguishable to it.
-   * Whether the named table is still in the bundle changes nothing: both carry
-   * the value verbatim and both report the same lost symbol link. The corpus is
-   * 179 guids, 13 names, 5 blanks.
+   * **SideStep resolves references by guid only** and never maps a name back to
+   * an object, so the two cases below are deliberately indistinguishable to it.
+   * Nor could it distinguish them another way: a workspace guid is an arbitrary
+   * unique key anyone can change, so there is no shape to test. Both carry the
+   * value verbatim and both report the same unresolved reference.
    */
   function storedNamed(dbtable: string): StackItemXdo {
     return {
@@ -165,10 +165,12 @@ describe("create_auth stores its named entries in either order", () => {
 
       expect(source).not.toContain("raw(");
       expect(normalize(encodeStatement(evaluateAuth(source)))).toEqual(normalize(stored));
-      // A warning, not an unresolved-reference error: the engine keys this field
-      // by name on the workspaces that store it that way, so the statement works
-      // and the bytes survive. Only the symbol link is lost.
-      expect(ctx.report.entries.map((e) => e.category)).toEqual(["value-fallback"]);
+      // Reported as what is literally known — the reference did not resolve —
+      // with both readings named and neither asserted.
+      expect(ctx.report.entries.map((e) => e.category)).toEqual(["unresolved-ref"]);
+      expect(ctx.report.entries[0]!.detail).toContain("by guid only");
+      // NOT the old `guid <x> is not present in this bundle`, which called a
+      // value a guid on no evidence.
       expect(ctx.report.entries[0]!.detail).not.toMatch(/^guid /);
     });
   }

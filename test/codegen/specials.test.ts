@@ -1464,15 +1464,16 @@ describe("miscellaneous specials", () => {
     ).toContain("expiration");
   });
 
-  it("carries an auth table stored by name rather than by guid, without calling it an unresolved guid", () => {
-    // `dbtable` has three stored spellings: the guid (179 of 197 across the
-    // sweep), blank (5), and — on older workspaces — the table's NAME (13).
-    // Routing a name through guid resolution reported `guid users is not
-    // present in this bundle`, an ERROR about a guid that was never one.
+  it("carries an auth table whose dbtable does not resolve as a guid", () => {
+    // `dbtable` has three stored spellings: a guid that resolves (179 of 197
+    // across the sweep), blank (5), and one that does not resolve (13) — which
+    // older workspaces produce by storing the table's NAME here.
     //
     // SideStep resolves by guid ONLY and does not map the name back to the
-    // table, so this reports the lost symbol link and carries the value — it
-    // does not matter whether a table of that name is in the bundle.
+    // table, so whether a table of that name is in the bundle changes nothing.
+    // The old message asserted the value WAS a guid and named it as missing;
+    // guids are arbitrary unique keys anyone can change, so there is no shape
+    // to justify that claim, and the report now states only what is known.
     const stored = encodeStatement(
       s.security.create_auth_token({ table: USERS, id: ref("user.id"), as: "token" }),
     ) as StackItemXdo;
@@ -1487,10 +1488,11 @@ describe("miscellaneous specials", () => {
     // table's symbol would write the table's real guid instead and break that.
     expect(source).toContain('guid: "users"');
     expect(source).not.toContain("s.raw");
-    const categories = ctx.report.entries.map((e) => e.category);
-    expect(categories).not.toContain("unresolved-ref");
-    expect(categories).toContain("value-fallback");
-    expect(ctx.report.entries[0]!.detail).toContain("resolves references by guid only");
+    expect(ctx.report.entries.map((e) => e.category)).toEqual(["unresolved-ref"]);
+    expect(ctx.report.entries[0]!.detail).toContain("by guid only");
+    // The load-bearing negative: not the old `guid users is not present in this
+    // bundle`, which called the value a guid on no evidence.
+    expect(ctx.report.entries[0]!.detail).not.toMatch(/^guid /);
   });
 
   it("round-trips the call-family tail that does not share the uniform call shape", () => {
