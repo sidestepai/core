@@ -111,7 +111,18 @@ import { measureCommittedLlms } from "../../scripts/measure-llms.js";
 // its own: the lift, the throw on a conflicting `{ tenant }`, and the one case
 // that still needs an explicit tenant (a tenant on its own domain, where the
 // websocket tier reads only the hash and there is nothing in the URL to lift).
-const CEILING_TOKENS = 29_450;
+// Raised again from 29.45k for the conversation transcript's CONSEQUENCE. The
+// frame names were already listed, which turned out to be worse than useless:
+// an agent that knows `conversation_start` exists still builds a messages table
+// and a "fetch recent messages" endpoint to hydrate a joining client, because
+// nothing said the replay is PUSHED at join and is already that hydration. The
+// entry has to carry what the frame list cannot imply — that the backfill
+// arrives as ordinary `message` frames a client already renders, that the
+// broadcast payload IS the stored transcript row (so anything the handler
+// omits, like the author's name, is gone on replay), and that the ring is
+// capped by `limit`/`ttl`, which is the real and much narrower reason to
+// persist to a table.
+const CEILING_TOKENS = 29_600;
 
 describe("llms.txt token budget", () => {
   it("stays under the bloat-tripwire ceiling", () => {

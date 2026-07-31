@@ -723,6 +723,18 @@ Server frames arrive as `action: join` (the ack, carrying bound `params`), `mess
 (`payload.message`, plus `payload.code`/`retry_after` when rate limited). An `error` is a
 per-frame refusal, not a disconnect.
 
+**The transcript hydrates the client — don't build a hydration endpoint.** On a
+`conversation: { enabled: true }` channel the replay is *pushed* at join, unasked:
+`conversation_start` (carrying `payload.count`), then the last `limit` messages as ordinary
+`action: "message"` frames — original `type` and `payload`, plus `conversation: true` and
+the original `ts` — then `conversation_end`. A client that renders `message` frames is
+already hydrated; there is no `GET /messages` to write and no table to read before painting
+the first view. Two things follow. What a handler broadcasts *is* the transcript row, so
+broadcast everything a past message needs to render (author name, id, `created_at`) —
+nothing else comes back. And the transcript is a capped ring (`limit`, `ttl`), not storage:
+write messages to a table when you want durability, search, moderation, or paging *older*
+than the window — not to backfill a joiner.
+
 Presence frames (a `presence: true` channel only) carry the roster: `presence_full` holds
 `payload.members`, an array of the whole roster including the receiving client, and
 `presence_join`/`presence_leave` hold a single `payload.member`. A member is

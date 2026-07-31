@@ -65,8 +65,12 @@ export const roomChannel = realtimeChannel({
   description: "One channel per room",
   input: { room_id: input.int() },
   publish: { who: "authenticated" },
-  // The client-visible TRANSCRIPT: a rejoining client is sent the last 50
-  // messages. Distinct from `history`, which is execution history for debugging.
+  // The client-visible TRANSCRIPT: at join the server PUSHES the last 50
+  // messages back, unasked — `conversation_start`, then ordinary `message`
+  // frames flagged `conversation: true`, then `conversation_end`. That IS the
+  // frontend's hydration; do not write a "fetch recent messages" endpoint for
+  // it. Log to a table only for durability/search beyond this window.
+  // Distinct from `history`, which is execution history for debugging.
   conversation: { enabled: true, limit: 50 },
 });
 
