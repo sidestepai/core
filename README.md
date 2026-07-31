@@ -617,14 +617,29 @@ are what make the binding unambiguous. A channel's `input` types its **path** pa
 (`rooms/{room_id}`); a message's `input` types the message **payload**. A server is off
 until `enabled: true`. Lifecycle events are triggers: `realtimeServerTrigger` (client
 connect/disconnect) and `realtimeChannelTrigger` (join/leave/deliver). Those actions do
-not share a posture, and the posture decides what your stack should return: `connect` and
-`join` **gate** (the return admits or denies, fail-closed), `disconnect` and `leave` are
-**observational** (the return is ignored), and `deliver` gates **per recipient** — it runs
-once for each client a message is about to reach, and its return rewrites that recipient's
-copy of the payload, drops the message for that recipient, or passes the original through.
-That makes `deliver` the per-viewer redaction tool ("hide the author's address from
-everyone but the author") and also the most expensive action of the five: a stack per
-recipient per message.
+not share a posture, and the posture decides what your stack should return:
+
+- **`connect` and `join` gate**, fail-closed. `connect` really does refuse the socket — an
+  error frame, then a close with code 4401, before the connection is ever ready — and `join`
+  runs before the client becomes a member, so a denial means it never sees a fan-out. Return
+  `{ allowed: true }` (an optional `reason` reaches the client) or any truthy value to
+  admit. **An empty or falsy return denies**, so a stack that just falls through refuses.
+- **`disconnect` and `leave` are observational** — the return is ignored and a throw is
+  swallowed, because the connection is already gone and cleanup has to complete regardless.
+- **`deliver` gates per recipient.** It runs once for each client a message is about to
+  reach, which makes it the per-viewer redaction tool ("hide the author's address from
+  everyone but the author") and also the most expensive action of the five: a stack per
+  recipient per message. It needs `delivery: { perRecipient: true }` on the channel to run
+  at all.
+
+  **Its return values don't read like a filter, and this is the easiest thing to get
+  backwards in the whole family.** Only an explicit **null** drops the message for that
+  recipient. An **object** replaces that recipient's payload. *Everything else* — including
+  `false`, `0`, and `""` — delivers the message unchanged, as does a crash. So a yes/no
+  redaction check that returns `false` sends the very message it was written to suppress;
+  return null instead. Two more details: the delivered payload arrives nested, so read
+  `inp("payload").<field>`, and `t.client` is the **sender** while
+  `s.realtime.get_session` describes the **recipient** this run is for.
 
 ```ts
 const chat = realtimeServer({ name: "chat", enabled: true });
@@ -703,9 +718,11 @@ with no `/ws`.)
 
 Auth is a bearer token passed as the websocket **subprotocol** (`new WebSocket(url,
 token)`); no token means an anonymous client, admitted only where
-`anonymousClients: true`. Frames are JSON — `{ action: "join" | "leave" | "broadcast" |
-"ack", channel, type, payload }`, where `type` is the `realtimeMessage` name — and you
-must `join` before you may `broadcast`:
+`anonymousClients: true` — and anonymous access is gated twice, once by the server at
+connect and again by the channel at join, so setting it on the channel alone is not enough.
+Frames are JSON — `{ action, channel, type, payload, options? }`, where `action` is
+`join` | `leave` | `broadcast` | `ack` | `ping` | `presence` and `type` is the
+`realtimeMessage` name — and you must `join` before you may `broadcast`:
 
 ```ts
 const ws = new WebSocket(chat.getUrl(BASE), TOKEN);
@@ -714,26 +731,65 @@ ws.onopen = () => setTimeout(() => {          // the server finishes its handsha
   ws.send(JSON.stringify({ action: "join", channel }));
   ws.send(JSON.stringify({ action: "broadcast", channel, type: "send", payload: { body: "hi" } }));
 }, 500);
+setInterval(() => ws.send(JSON.stringify({ action: "ping" })), 60_000);  // see below
 ```
 
-Server frames arrive as `action: join` (the ack, carrying bound `params`), `message`,
-`replay`, `presence_full`/`presence_join`/`presence_leave`,
+**An idle socket is reaped after about ten minutes, so a listen-only client has to say
+something.** That is the common shape — a notification feed, a dashboard, a presence
+sidebar: it joins, then never publishes again, and gets disconnected for it. `{ action:
+"ping" }` (answered `pong`) exists for exactly this, and any frame resets the clock. A
+chatty client never notices; a passive one silently drops off and reconnects forever.
+
+Server frames arrive as `action: join` (the ack — `{ joined: true, params }`, plus
+`cursor`/`resumed` on an at-least-once channel), `message`, `replay`, `broadcast`,
+`presence_full`/`presence_join`/`presence_leave`,
 `conversation_start`/`conversation_end` (replayed transcript frames are flagged
-`conversation: true`, so history is distinguishable from live traffic), and `error`
-(`payload.message`, plus `payload.code`/`retry_after` when rate limited). An `error` is a
-per-frame refusal, not a disconnect.
+`conversation: true`, so history is distinguishable from live traffic), `pong`, `ack`, and
+`error`. Two of those are easy to misread:
+
+- **`broadcast` comes back as a receipt**, not just a verb you send. Its
+  `payload.delivered_local` counts recipients on the *answering node only* — it is not a
+  delivery confirmation for the channel. It also carries `dropped: true` when the handler
+  declined to emit, and `id` on an at-least-once channel.
+- **`replay` is not the transcript.** The `conversation_*` frames are the shared "what was
+  said before I arrived"; `replay` is the per-client "what I missed while disconnected",
+  resumed from that client's own cursor. Both can be on at once, and they are configured by
+  different options.
+
+An `error` carries `payload.message` — plus `code`, `limit` and `retry_after` when rate
+limited, which is the only error that carries a `code`, so don't switch on it. An `error` is
+a per-frame refusal rather than a disconnect, with two exceptions: a failed handshake and a
+refused `connect` trigger each send one and *then* close the socket with code 4401.
+
+`options` on a frame carries `{ socketId?, client_id?, channel? }`. `socketId` addresses
+another client directly and requires `publish.direct` on the channel (off by default, and
+checked *before* `publish.who`). `client_id` is the at-least-once cursor handle described
+below — unrelated to the `client_id` on a realtime session.
 
 **The transcript hydrates the client — don't build a hydration endpoint.** On a
-`conversation: { enabled: true }` channel the replay is *pushed* at join, unasked:
-`conversation_start` (carrying `payload.count`), then the last `limit` messages as ordinary
-`action: "message"` frames — original `type` and `payload`, plus `conversation: true` and
-the original `ts` — then `conversation_end`. A client that renders `message` frames is
-already hydrated; there is no `GET /messages` to write and no table to read before painting
-the first view. Two things follow. What a handler broadcasts *is* the transcript row, so
-broadcast everything a past message needs to render (author name, id, `created_at`) —
-nothing else comes back. And the transcript is a capped ring (`limit`, `ttl`), not storage:
-write messages to a table when you want durability, search, moderation, or paging *older*
-than the window — not to backfill a joiner.
+`conversation` channel the replay is *pushed* at join, unasked: `conversation_start`
+(carrying `payload.count`), then the last `limit` messages as ordinary `action: "message"`
+frames — original `type` and `payload`, plus `conversation: true` and the original `ts` —
+then `conversation_end`. A client that renders `message` frames is already hydrated; there
+is no `GET /messages` to write and no table to read before painting the first view.
+
+**But `enabled: true` on its own does nothing at all.** `limit` defaults to `0`, and `0`
+means *retain none* rather than *retain everything* — so `conversation: { enabled: true }`
+records nothing, replays nothing, and reports no error. Always pass a `limit`. Three more
+consequences worth knowing before you rely on it:
+
+- **What a handler broadcasts *is* the transcript row.** It stores the post-handler payload
+  keyed by message type, so broadcast everything a past message needs to render (author
+  name, id, `created_at`) — nothing else comes back. And only `deliverTo: "channel"` and
+  `"others"` are recorded: a `"sender"` response is invisible to every future joiner by
+  construction.
+- **`ttl` expires the whole transcript at once, and only when the channel goes quiet.** It is
+  an idle timer on the transcript as a unit, refreshed by every write — not a per-message
+  age cap. An active channel's transcript never ages out; a silent one loses all of it
+  together. `ttl: 0` means no expiry.
+- **The transcript is a capped ring, not storage.** Write messages to a table when you want
+  durability, search, moderation, or paging *older* than the window — not to backfill a
+  joiner.
 
 Presence frames (a `presence: true` channel only) carry the roster: `presence_full` holds
 `payload.members`, an array of the whole roster including the receiving client, and
@@ -746,13 +802,66 @@ deltas; the count is members, not connections, since the roster is refcounted pe
 `presence_full` → (everyone else gets `presence_join`) → conversation replay, and a joined
 client can re-request the snapshot with `{ action: "presence", channel }`.
 
+**`delivery: { guarantee: "at_least_once" }` is a contract with the client, not a switch on
+the channel.** Setting it changes the transport — a briefly disconnected client can replay
+what it missed instead of losing it — but only if the client holds up its end:
+
+```ts
+// the client must identify itself durably at join, then acknowledge what it receives
+ws.send(JSON.stringify({ action: "join", channel, options: { client_id: DEVICE_ID } }));
+// …for each `message`/`replay` frame carrying an `id`:
+ws.send(JSON.stringify({ action: "ack", channel, id }));
+```
+
+An **authenticated** client is keyed by its identity and needs no `client_id`. An
+**anonymous** one has nothing stable to key on, so without `options.client_id` it gets no
+cursor, its `ack` frames are ignored, and it quietly falls back to at-most-once — the
+guarantee you configured is simply absent, with nothing on the wire to say so. Send the
+`client_id` once, in the join frame; later `ack`s don't need to repeat it. The server
+confirms each ack with `{ action: "ack", channel, payload: { cursor } }`, the join ack
+reports `cursor` and `resumed`, and the gap arrives as `replay` frames, oldest first.
+
+How far back that gap can reach is set by **`conversation`**, even on a channel with no
+transcript enabled: `conversation.ttl` if present (here a genuine per-message age cut, and
+it wins over `limit`), else `conversation.limit`, else a default of 1000 messages. It is the
+one place the two options reach outside the transcript, and the one place `ttl` means
+something different than it does above.
+
 Inside a handler, both input surfaces read with `inp()`: `inp("body")` for the message
 payload, `inp("room_id")` for the channel's `{room_id}` path param — bound once at join and
 read from the connection thereafter, so a sender cannot post into a room it never joined.
-`s.realtime.get_session({ as })` binds the connection itself (the joined channel, its
-params, and the caller's identity/extras) for the "who is this sender" question on an
-anonymous-client channel; it is only meaningful in a realtime message or channel-trigger
-stack.
+
+**What the handler returns decides what is delivered, and the failure directions are not
+symmetric.** A returned value is fanned out to `deliverTo` and stored as the transcript row.
+Returning **null** delivers nothing — that is the supported way for a handler to veto its
+own message, and the sender is told it was dropped. A payload rejected by the declared
+`input` also delivers nothing, with the validation detail going only to the sender. But a
+handler that **crashes** fails *open*: the sender's original, unvalidated payload is
+broadcast to the channel unchanged, so that one workspace bug cannot black-hole a channel.
+A handler doing redaction or authorization should therefore not be the only thing standing
+between client input and subscribers.
+
+`s.realtime.get_session({ as })` binds the connection itself for the "who is this sender"
+question on an anonymous-client channel. It works in a realtime message stack and in
+channel *and* server triggers, and returns a flat object: `authenticated`, `client_id` (the
+authed row id as text, `""` when anonymous), `dbo_id`, `socket_id` (the transport id),
+`channel`, `params` (bound path params, `{}` when none), `extras`, and `opened_at`. Note
+that three different things are called a client id and they are unrelated:
+`session.client_id` is the app-facing identity, `session.socket_id` is the transport, and
+`options.client_id` on a frame is the at-least-once cursor handle above.
+
+Channel path matching is stricter than it looks, which is what `getChannel()`'s throws are
+protecting you from: segment counts must match exactly (so `rooms/{room_id}` does not match
+`rooms/42/edit`, which is what lets `org/{org_id}/room/{room_id}` be its own channel),
+literal segments are case-sensitive, and an empty segment is rejected rather than collapsed,
+so a stray leading or doubled `/` matches nothing at all. A channel that is merely
+*inactive* reports the same "no settings for channel name" as one that never existed — by
+design, so deactivating doesn't leak that a channel is there.
+
+`rateLimit: { messagesPerMinute }` is checked before the handler runs, so a throttled frame
+costs no stack execution, and `0` means unlimited. Treat it as a cost guardrail rather than
+a security control: an anonymous client is bucketed per connection, so reconnecting resets
+its budget, and the limiter fails *open* if its backing store is unavailable.
 
 Everything above is the *pull* direction — a client sends a frame, a handler answers. For
 the *push* direction, `s.realtime.publish({ server, channel, data, message?, authTable?,
