@@ -51,7 +51,15 @@ import { measureCommittedLlms } from "../../scripts/measure-llms.js";
 // engine expands one dblink into one input per column of the linked table, so an
 // agent that reads it by the entry's own name gets nothing and has no way to
 // discover why. The 718 of them in the sweep are all `merge: true`.
-const CEILING_TOKENS = 28_250;
+// Raised again from 28.25k for the RETIRED statement versions in the Legacy
+// index. Four crypto families are versioned by suffix and only the highest
+// number is offered; the earlier ones still run, so a pulled workspace holds
+// them, but each version was a BREAKING change to the one before. They have no
+// `s.` surface at all now, which means the only thing standing between an agent
+// and "fixing" a `raw({name:"mvp:crypto_jwe_encode"})` it does not recognize is
+// this list. Note the catalog also SHRANK here (two authorable surfaces removed),
+// so the net rise is smaller than the section itself.
+const CEILING_TOKENS = 28_400;
 
 describe("llms.txt token budget", () => {
   it("stays under the bloat-tripwire ceiling", () => {

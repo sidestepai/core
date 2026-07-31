@@ -8,8 +8,8 @@
       "total": 30
     },
     "statements": {
-      "implemented": 217,
-      "total": 217
+      "implemented": 215,
+      "total": 215
     },
     "filters": {
       "typed": 129,
@@ -3712,51 +3712,6 @@
       ]
     },
     {
-      "surface": "security.jwe_decode_legacy",
-      "storedName": "mvp:crypto_jwe_decode",
-      "sPath": "security.jwe_decode_legacy",
-      "registered": true,
-      "declarative": true,
-      "output": false,
-      "fields": [
-        {
-          "name": "as",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "token",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "key",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "audience",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "key_algorithm",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "content_algorithm",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "timeDrift",
-          "type": "value",
-          "optional": true
-        }
-      ]
-    },
-    {
       "surface": "security.jwe_decode",
       "storedName": "mvp:crypto_jwe_decode2",
       "sPath": "security.jwe_decode",
@@ -3796,51 +3751,6 @@
         },
         {
           "name": "timeDrift",
-          "type": "value",
-          "optional": true
-        }
-      ]
-    },
-    {
-      "surface": "security.jwe_encode_legacy",
-      "storedName": "mvp:crypto_jwe_encode",
-      "sPath": "security.jwe_encode_legacy",
-      "registered": true,
-      "declarative": true,
-      "output": false,
-      "fields": [
-        {
-          "name": "as",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "payload",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "audience",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "key",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "key_algorithm",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "content_algorithm",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "ttl",
           "type": "value",
           "optional": true
         }

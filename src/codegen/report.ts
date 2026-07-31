@@ -12,6 +12,13 @@
 export type ReportCategory =
   /** A statement fell through to `raw()` instead of a typed call. */
   | "raw-fallback"
+  /**
+   * A RETIRED version of a versioned statement family, carried verbatim on
+   * purpose. Informational — nothing failed: the platform keeps these running
+   * for existing stacks but no longer offers them, so this SDK models only the
+   * latest of each family (see `SUPERSEDED_STATEMENTS`).
+   */
+  | "superseded"
   /** A value was emitted as an annotated literal instead of a `c.*`/`ref` call. */
   | "value-fallback"
   /** A guid referenced by an object is not present in the bundle. */
@@ -81,6 +88,7 @@ const CATEGORY_LABELS: ReadonlyArray<readonly [ReportCategory, string, ReportSev
   ["raw-fallback", "Statements emitted as raw() passthroughs", "warning"],
   ["unsupported-section", "Unsupported payload sections", "warning"],
   ["value-fallback", "Values emitted as annotated literals", "warning"],
+  ["superseded", "Retired statement versions, carried verbatim", "notice"],
   ["modernized", "Updated to the current form (evaluates differently)", "warning"],
   ["path-param-bound", "Unbound {param} segments given an input", "warning"],
   ["expected-omission", "Deliberately not carried into the tree", "notice"],

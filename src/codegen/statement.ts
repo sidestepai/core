@@ -14,6 +14,8 @@
 import type { StackItemXdo } from "../types/xdo.js";
 import type { Statement } from "../statements/statement.js";
 import { raw } from "../statements/special/raw.js";
+import { STATEMENT_SURFACES } from "../statements/surfaces.js";
+import { SUPERSEDED_STATEMENTS, supersededBy } from "../statements/superseded.js";
 import { CODEGEN_MODULE, type DecodeContext } from "./context.js";
 import { arr, call, lit, type Expr } from "./print.js";
 import type { RefIndex, ResolveOptions } from "./ref-index.js";
@@ -39,6 +41,27 @@ function dispatch(
   stored: StackItemXdo,
   resolve: ResolveOptions,
 ): Expr {
+  // A RETIRED version of a versioned family. Not attempted, because there is
+  // nothing to attempt: this SDK deliberately models only the latest of each
+  // family, so the earlier spellings have no authoring surface to decode to.
+  // `raw()` carries them byte-exact and the report names the replacement, which
+  // is the useful thing to tell whoever pulled the workspace.
+  if (SUPERSEDED_STATEMENTS.has(stored.name)) {
+    const replacement = supersededBy(stored.name, (n) =>
+      STATEMENT_SURFACES.find(([, name]) => name === n)?.[0],
+    );
+    ctx.problem(
+      "superseded",
+      replacement === null
+        ? `${stored.name} is a retired statement with no replacement; carried verbatim via raw()`
+        : `${stored.name} is a superseded version — the platform offers \`${replacement}\` now, ` +
+          "and the two are not interchangeable (each version was a breaking change). " +
+          "Carried verbatim via raw(), so it keeps running exactly as stored",
+    );
+    ctx.use(CODEGEN_MODULE, "raw");
+    return call("raw", lit(stored));
+  }
+
   const special = SPECIAL_DECODERS.get(stored.name);
   if (special) {
     const decoded = ctx.speculate(() =>

@@ -15,6 +15,7 @@
 import "../kinds/all.js";
 import "../statements/s.js";
 import { GENERATED_SPECS } from "../statements/generated/specs.generated.js";
+import { SUPERSEDED_STATEMENTS } from "../statements/superseded.js";
 import type { StatementSpec } from "../statements/schema-dsl/interpret.js";
 import {
   STATEMENT_SURFACES,
@@ -1479,7 +1480,7 @@ export function renderLlmsTxt(m: Manifest): string {
   const legacyValues = m.values.constructors.filter((v) => v.legacy);
   const legacyStatements = m.statements.filter((s) => s.legacy);
   const legacyFactories = m.objectKinds.flatMap((k) => (k.subKinds ?? []).filter((sub) => sub.legacy));
-  if (legacyValues.length + legacyStatements.length + legacyFactories.length > 0) {
+  if (legacyValues.length + legacyStatements.length + legacyFactories.length + SUPERSEDED_STATEMENTS.size > 0) {
     lines.push(
       "## Legacy",
       "",
@@ -1496,6 +1497,25 @@ export function renderLlmsTxt(m: Manifest): string {
     for (const f of legacyFactories) lines.push(`- \`${f.authorFactory}()\` — ${f.description}`);
     for (const s of legacyStatements) {
       lines.push(`- \`s.${s.sPath}\` — ${LEGACY_SURFACES[s.surface]}`);
+    }
+    // Retired VERSIONS of versioned families. These have no `s.` surface at all —
+    // only the latest of each family is authorable — so a pulled workspace holding
+    // one shows it as `raw({ name: "<stored>", … })`. Named here for the same
+    // reason as everything else in this index: an agent that has never heard of
+    // one will try to "fix" what it does not recognize, and the fix would be
+    // wrong, because each version was a breaking change to the one before it.
+    const retired = [...SUPERSEDED_STATEMENTS.entries()];
+    if (retired.length > 0) {
+      lines.push("");
+      lines.push(
+        "Retired statement VERSIONS — no `s.` surface exists. Pulled code shows them as",
+        "`raw({ name: \"…\" })` and they keep running as stored, so leave them; author the",
+        "replacement only for NEW code. Never swap one for the other — each version broke the last.",
+        "",
+      );
+      for (const [stored, successor] of retired) {
+        lines.push(successor ? `- \`${stored}\` → \`${successor}\`` : `- \`${stored}\` — retired, no replacement`);
+      }
     }
     lines.push("");
   }

@@ -154,9 +154,14 @@ export const STATEMENT_SURFACES: ReadonlyArray<readonly [string, string]> = [
   ["security.create_uuid", "mvp:uuid4"],
   ["security.decrypt", "mvp:crypto_decrypt"],
   ["security.encrypt", "mvp:crypto_encrypt"],
-  ["security.jwe_decode_legacy", "mvp:crypto_jwe_decode"],
+  // Only the LATEST of each versioned crypto family is authorable. The earlier
+  // spellings still run and still appear in pulled workspaces, but each version
+  // was a breaking change to the one before it, so offering them would invite
+  // authoring against a retired contract. They are listed in
+  // {@link SUPERSEDED_STATEMENTS} and carried through `raw()` instead — which
+  // also keeps them out of the agent-grounding manifest, since that is built
+  // from this catalog.
   ["security.jwe_decode", "mvp:crypto_jwe_decode2"],
-  ["security.jwe_encode_legacy", "mvp:crypto_jwe_encode"],
   ["security.jwe_encode", "mvp:crypto_jwe_encode3"],
   ["security.jws_decode", "mvp:crypto_jws_decode2"],
   ["security.jws_encode", "mvp:crypto_jws_encode2"],
