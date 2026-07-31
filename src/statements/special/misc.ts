@@ -182,8 +182,14 @@ export function realtimeEvent(a: RealtimeEventArgs): Statement {
 // --- auth token (declarative) ----------------------------------------------
 
 export interface CreateAuthTokenArgs<As extends string = string> {
-  /** The auth table the token authenticates against. */
-  table: ObjectRef;
+  /**
+   * The auth table the token authenticates against.
+   *
+   * `null` is the UNBOUND table the engine stores as a blank guid — deleted, or
+   * never bound. It exists so `codegen` can reproduce such a statement instead
+   * of throwing, the same "no target" spelling `db.query`'s `table` carries.
+   */
+  table: ObjectRef | null;
   /** Token id (the authenticated row id). */
   id: Value;
   /** Extra claims embedded in the token. Defaults to `{}` (no extra claims). */
@@ -214,10 +220,39 @@ export function createAuthToken<const As extends string = "">(
     // Xano's editor writes this shape, so this is what a pulled workspace has.
     input: [
       { name: "id", ...vf(a.id) },
-      { name: "dbtable", value: resolveRef("dbo", a.table), tag: "const", filters: [] },
+      {
+        name: "dbtable",
+        value: a.table === null ? "" : resolveRef("dbo", a.table),
+        tag: "const",
+        filters: [],
+      },
       ...(a.extras === undefined ? [] : [{ name: "extras", ...vf(a.extras) }]),
       ...(a.expiration === undefined ? [] : [{ name: "expiration", ...vf(a.expiration) }]),
     ],
+  } as unknown as Statement & AsShapeBrand<As, string>;
+}
+
+// --- security.create_guid ---------------------------------------------------
+
+/**
+ * `security.create_guid` — generate a GUID (`mvp:guid`).
+ *
+ * The engine's statement declares no context, input, or output schema at all
+ * (`Generate GUID`): it takes nothing and binds the generated value, so `as` is
+ * the only thing to author. Sibling of `security.create_uuid` (`mvp:uuid4`),
+ * which is a different generator and a different stored statement — the SDK
+ * models both rather than folding one into the other.
+ *
+ * Branded `AsShapeBrand<As, string>` so a `ref("<as>")` traces to `string`.
+ */
+export function createGuid<const As extends string = "">(
+  a: { as?: As } = {},
+): Statement & AsShapeBrand<As, string> {
+  return {
+    name: "mvp:guid",
+    context: {},
+    as: a.as ?? "",
+    input: [],
   } as unknown as Statement & AsShapeBrand<As, string>;
 }
 
@@ -238,6 +273,7 @@ export function expectToThrow(a: ExpectToThrowArgs): Statement {
 }
 
 registerStatement("mvp:array_map", arrayMap);
+registerStatement("mvp:guid", createGuid);
 registerStatement("mvp:array_union", arrayUnion);
 registerStatement("mvp:comment", comment);
 registerStatement("mvp:placeholder", placeholder);

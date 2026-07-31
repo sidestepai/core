@@ -22,6 +22,32 @@ describe("task kind", () => {
     );
   });
 
+  it("lets a REMEMBERED end date sit behind a disabled gate", () => {
+    // `endsOn` drove both stored members — `ends.on` AND `ends.enabled` — so a
+    // schedule whose end date is switched off but still remembered had no
+    // authored form. Four real tasks store exactly that, and every one of them
+    // re-exported with its end date replaced by its START date, because the
+    // encoder filled the gap with `startsOn`. Same shape as the paging gate:
+    // one derivation driving two members that real data lets disagree.
+    const remembered = encodeSchedule({
+      startsOn: "2022-05-27 22:31:04+0000",
+      endsOn: "2022-05-27 22:30:04+0000",
+      endsEnabled: false,
+      freq: 86400,
+      repeatEnabled: false,
+    });
+    expect(remembered.repeat.ends).toEqual({ enabled: false, on: "2022-05-27 22:30:04+0000" });
+  });
+
+  it("still derives the gate from `endsOn` when it is not stated", () => {
+    // The paired negative — an additive override must change nothing unset.
+    expect(encodeSchedule({ startsOn: "A", endsOn: "B" }).repeat.ends).toEqual({
+      enabled: true,
+      on: "B",
+    });
+    expect(encodeSchedule({ startsOn: "A" }).repeat.ends).toEqual({ enabled: false, on: "A" });
+  });
+
   it("encodes the task envelope", () => {
     const t = encodeTask({ name: "nightly", active: true, stack: [setVar("x1", c.int(1))] });
     expect(t.active).toBe(true);

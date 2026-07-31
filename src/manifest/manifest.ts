@@ -15,6 +15,7 @@
 import "../kinds/all.js";
 import "../statements/s.js";
 import { GENERATED_SPECS } from "../statements/generated/specs.generated.js";
+import { SUPERSEDED_STATEMENTS } from "../statements/superseded.js";
 import type { StatementSpec } from "../statements/schema-dsl/interpret.js";
 import {
   STATEMENT_SURFACES,
@@ -179,6 +180,8 @@ export interface ManifestFieldType {
   stored: string;
   /** Valid bind-method names for this type (empty = none; `{name,arg}` escape hatch only). */
   methods: string[];
+  /** Present and true when the type exists under `input.` only, with no `f.` column form. */
+  inputOnly?: boolean;
 }
 
 /** One CLI flag, with the effect it has. */
@@ -429,6 +432,7 @@ const VALUE_CONSTRUCTORS: ReadonlyArray<ManifestValue> = [
   { name: "inp", signature: "(name: string) => Value", description: 'Reference a function input → tag "input".' },
   { name: "col", signature: "(name: string) => Value", description: 'Reference a table column → tag "col".' },
   { name: "auth", signature: "(path?: string) => Value", description: 'Reference the authenticated identity (auth("id") → $auth.id) → tag "auth".' },
+  { name: "caught", signature: '(path?: "code" | "message" | "name" | "result") => Value', description: 'Read the caught error inside an s.try_catch CATCH arm → tag "trycatch". Valid ONLY there — it reads empty in the try/finally arms and outside the statement. Those four fields are all the engine binds (result is the attached payload); bare caught() is the whole error record.' },
   { name: "env", signature: "(name: string) => Value", description: 'Read a WORKSPACE environment variable (set via workspaceConfig({ env }) or the dashboard) → `$env.NAME`. Compiles to tag "setting" with the plain name. env("remote_ip") reads a user var named remote_ip, not the caller IP — use sys.remoteIp() for that.' },
   { name: "setting", signature: "(name: string) => Value", description: 'Reference a workspace setting → tag "setting". Built-in system vars are $-prefixed settings, e.g. setting("$remote_ip"); prefer the typed sys.* accessors.' },
   { name: "sys.*", signature: "() => Value", description: 'Built-in system / request-context variables → tag "setting" ($-prefixed). Accessors: remoteIp, requestMethod, requestUri, requestQueryString, httpHeaders, requestAuthToken, apiBaseUrl, datasource, branch, tenant, release, platform, isDebugger. In XanoScript these are $env.$remote_ip etc.; sys.remoteIp() is the public-endpoint rate-limit key (auth("id") is null there).' },
@@ -443,7 +447,12 @@ const VALUE_CONSTRUCTORS: ReadonlyArray<ManifestValue> = [
  * `tableRef`). Methods are joined in from the generated per-type sets so the
  * manifest can never disagree with what the constructors accept.
  */
-const FIELD_DESCRIPTORS: ReadonlyArray<{ name: string; stored: string; methodKey?: string }> = [
+const FIELD_DESCRIPTORS: ReadonlyArray<{
+  name: string;
+  stored: string;
+  methodKey?: string;
+  inputOnly?: boolean;
+}> = [
   { name: "text", stored: "text" },
   { name: "int", stored: "int" },
   { name: "decimal", stored: "decimal" },
@@ -458,6 +467,10 @@ const FIELD_DESCRIPTORS: ReadonlyArray<{ name: string; stored: string; methodKey
   { name: "video", stored: "blob_video" },
   { name: "audio", stored: "blob_audio" },
   { name: "attachment", stored: "blob" },
+  // Input-only: a raw upload is the request's bytes, not something a table holds.
+  { name: "file", stored: "file", inputOnly: true },
+  // Input-only: a column linking a whole table is a foreign key (tableRef).
+  { name: "dbLink", stored: "<tableGuid>_mvpschema", inputOnly: true },
   { name: "geo.point", stored: "geo_point" },
   { name: "geo.multipoint", stored: "geo_multipoint" },
   { name: "geo.linestring", stored: "geo_linestring" },
@@ -472,10 +485,11 @@ const FIELD_DESCRIPTORS: ReadonlyArray<{ name: string; stored: string; methodKey
 
 /** The field-type catalog with each type's valid bind-methods joined in. */
 function buildFieldTypes(): ManifestFieldType[] {
-  return FIELD_DESCRIPTORS.map(({ name, stored, methodKey }) => ({
+  return FIELD_DESCRIPTORS.map(({ name, stored, methodKey, inputOnly }) => ({
     name,
     stored,
     methods: Object.keys(FIELD_METHODS[methodKey ?? name] ?? {}),
+    ...(inputOnly ? { inputOnly: true } : {}),
   }));
 }
 
@@ -1089,9 +1103,10 @@ export function renderLlmsTxt(m: Manifest): string {
     "- **MCP servers & agents are distinct root kinds** that both persist under the",
     "  `toolset` payload key (so a same-name pair collides). `mcpServer({...})` exposes",
     "  tools over MCP (auth is per-tool — no server-level gate); `agent({...})` carries a",
-    "  typed `llm` block. Their `tools` take a `tool()` handle (or name), resolved to the",
+    "  typed `llm` block — and so may an `mcpServer`, since the two are ONE stored",
+    "  object distinguished by `type`. Their `tools` take a `tool()` handle (or name), resolved to the",
     "  tool's guid like the call family; a raw numeric `id` is an escape hatch.",
-    "- **`task.schedule` is an array** of `{ startsOn, freq?, repeatEnabled?, endsOn? }`",
+    "- **`task.schedule` is an array** of `{ startsOn, freq?, repeatEnabled?, endsOn?, endsEnabled? }`",
     "  (`ScheduleDef[]`), not a single `{ type, value }`. `freq` is seconds; `startsOn`/",
     "  `endsOn` are **ISO-8601 string** timestamps (`\"2026-01-01T00:00:00Z\"`), not epoch",
     "  numbers (passing `0` is a type error).",
@@ -1164,12 +1179,12 @@ export function renderLlmsTxt(m: Manifest): string {
     "  - `cors?`: `{ mode?, allowOrigins?: string[], allowHeaders?: string[], allowCredentials?, maxAge?, allowMethods?: { get?, post?, put?, patch?, delete?, head? } }`.",
     "- `defineFunction`/`query`/`apiGroup` above cover the queries+tables core; the five below are the \"reach past that\" primitives (agents, tools, tasks, middleware, MCP servers). Same envelope conventions (`guid?`, `description?`, `docs?`, `tags?`, `history?`) unless noted.",
     "- `task({ name, guid?, description?, docs?, datasource?, active?, tags?, history?, schedule?, stack?, middleware? })` — a scheduled background job (function-like `stack`, no `input`/`response`).",
-    "  - `schedule?`: a `ScheduleDef[]` (NOT a single object) — `{ startsOn, freq?, repeatEnabled?, endsOn? }`. `startsOn`/`endsOn` are **ISO-8601 string** timestamps (`\"2026-01-01T00:00:00Z\"`), not epoch numbers; `freq` is the repeat interval **in seconds** (default `86400` = daily); `endsOn` present ⇒ the schedule has an end. Deploys but does NOT fire in the sandbox (see the sandbox NOTE above).",
+    "  - `schedule?`: a `ScheduleDef[]` (NOT a single object) — `{ startsOn, freq?, repeatEnabled?, endsOn?, endsEnabled? }`. `startsOn`/`endsOn` are **ISO-8601 string** timestamps (`\"2026-01-01T00:00:00Z\"`), not epoch numbers; `freq` is the repeat interval **in seconds** (default `86400` = daily); `endsOn` present ⇒ the schedule has an end. `endsEnabled?` defaults to that and is recovery-only — state it to reproduce a stored schedule that remembers an end date with the gate OFF. Deploys but does NOT fire in the sandbox (see the sandbox NOTE above).",
     "- `middleware({ name, guid?, description?, docs?, resultStrategy?, exceptionPolicy?, tags?, history?, input?, stack?, response? })` — a pre/post interceptor (function-like `stack`); attach it via a host's `middleware: { pre, post }`.",
     "  - `resultStrategy?`: `\"merge\" | \"replace\"` (default `merge`) — how the middleware `response` folds into the host's.",
     "  - `exceptionPolicy?`: `\"silent\" | \"rethrow\" | \"critical\"` (default `\"silent\"` — a throw is SWALLOWED, so a guard is NOT enforced). A rate-limit/auth guard wants `\"rethrow\"` (throw aborts the request, surfaces the status); `\"critical\"` also skips the `post` chain.",
     "- `tool({ name, guid?, description?, instructions?, docs?, enabled?, tags?, history?, input?, stack?, response?, middleware? })` — a function-like operation (`input`/`stack`/`response`) that a toolset (MCP server or agent) exposes. Register it, then reference it from a toolset's `tools`.",
-    "- `mcpServer({ name, guid?, description?, instructions?, docs?, enabled?, canonical?, spec?, tags?, history?, tools? })` — an MCP toolset (no LLM). Returns a handle with `getPath()`/`getUrl(baseUrl)` for the Streamable-HTTP endpoint. Deploys but does NOT fire in the sandbox.",
+    "- `mcpServer({ name, guid?, description?, instructions?, docs?, enabled?, canonical?, spec?, tags?, history?, tools?, llm?, output? })` — an MCP toolset. `llm?`/`output?` are the same blocks `agent()` takes and are usually absent: an MCP server and an agent are ONE stored object distinguished by `type`, so a server that carries LLM settings can say so. Returns a handle with `getPath()`/`getUrl(baseUrl)` for the Streamable-HTTP endpoint. Deploys but does NOT fire in the sandbox.",
     "  - `tools?`: a `ToolsetToolRef[]` — `{ tool: <a tool() handle or its name>, enabled?, auth? }` WRAPPERS, not bare handles. `auth` names an auth **table** (a `table({ auth: true })` handle or its name) — Xano's ONLY MCP auth surface (per-tool; there is no server-level gate).",
     "- `agent({ name, guid?, description?, docs?, enabled?, canonical?, tags?, history?, llm, tools?, output? })` — an LLM orchestrator. No top-level `instructions`/`prompt`/`spec` — the prompt lives under `llm`. Invoke from a stack with `s.ai.agent.run({ agent, args })`.",
     "  - `llm` (REQUIRED): typed provider settings, a discriminated union on `type` (`\"xano-free\" | \"anthropic\" | \"openai\" | \"google-genai\"`). Shared fields: `systemPrompt?`, `maxSteps?` (default `5`), and `prompt?` XOR `messages?`; plus provider fields (`apiKey?`, `model?`, `temperature?`, `reasoningEffort?`, …). String fields accept Twig placeholders — `{{ $args.x }}` for run inputs (the `args` of `s.ai.agent.run`), `{{ $env.NAME }}` for env vars.",
@@ -1229,6 +1244,14 @@ export function renderLlmsTxt(m: Manifest): string {
     "- A condition/`where` accepts a single `expr(...)`/`cmp(...)`, an `and()`/`or()` group, an array of",
     "  those (ANDed), or (for `where`) a raw `Value`. `s.conditional`/`s.while`/`s.switch`, `db.query`,",
     "  `precondition`, and the `array.*` predicates all take the same shape.",
+    "- ⚠ `mixed(a, { or: b }, { and: c })` reproduces a container whose terms do NOT all join the",
+    "  same way — the editor allows it, so pulled workspaces contain it. **Do not author it.** The",
+    "  stored form does not record the grouping, and the two places it can appear disagree: a",
+    "  branch (`s.conditional`/`s.while`/`precondition`) folds terms strictly left to right, so",
+    "  `a OR b AND c` is `(a OR b) AND c`, while a `db.query` filter applies the engine's",
+    "  AND-before-OR precedence and selects `a OR (b AND c)`. Write `and(or(a, b), c)` or",
+    "  `or(a, and(b, c))` — each says one reading in every context. Pulls report these as",
+    "  `ambiguous-condition`.",
     "- A **filtered** operand (`withFilters(...)`) works inline in any condition/`where` (conditional,",
     "  while, `db.query`/addon, …) — e.g. `cmp(withFilters(col(\"title\"), fl.trim()), \"=\", inp(\"q\"))`.",
     '- e.g. `db.query({ table: posts, where: expr(col("author"), "=", auth("id")), as: "rows" })`.',
@@ -1259,9 +1282,12 @@ export function renderLlmsTxt(m: Manifest): string {
     "e.g. an emoji) is mangled into invalid UTF-8 by the engine's default pipeline and is rejected",
     "at export rather than 500ing at deploy (Postgres `22021`); BMP defaults (accents, `€`, most",
     "CJK) are fine, or put the value on an `input.<type>({ default })`, applied at runtime bind. (issue #45)",
-    "`input.*` fully mirrors `f.*` — every type below is",
+    "`input.*` mirrors `f.*` — every column type below is",
     "a legal input (scalars, files `input.image/video/audio/attachment`, `input.geo.*`,",
     "`input.vector(size)`, `input.tableRef(table)`, `input.object(children)`), plus",
+    "`input.dbLink(table)` is the odd one: ONE entry that EXPANDS into one input per",
+    "COLUMN of the linked table, so read them by column name (`inp(\"email\")`), never by",
+    "the entry's own name. `hidden: [\"created_at\"]` drops columns from that expansion.",
     "`input.list(element)` for arrays — wrap any element constructor, e.g.",
     "`input.list(input.text())` or `input.list(input.object({ id: f.int() }))`. Prefer the",
     "typed forms over `input.json()` when the shape is known.",
@@ -1278,7 +1304,11 @@ export function renderLlmsTxt(m: Manifest): string {
   for (const ft of m.fieldTypes) {
     const stored = ft.stored !== ft.name.replace(/^geo\./, "") ? ` (stored \`${ft.stored}\`)` : "";
     const methods = ft.methods.length ? ` — methods: ${ft.methods.join(", ")}` : "";
-    lines.push(`- \`f.${ft.name}\`${stored}${methods}`);
+    // An input-only type has NO `f.` form; naming it `f.<name>` would document a
+    // constructor that does not exist.
+    const ns = ft.inputOnly ? "input" : "f";
+    const only = ft.inputOnly ? " — INPUT ONLY (no `f.` form)" : "";
+    lines.push(`- \`${ns}.${ft.name}\`${stored}${methods}${only}`);
   }
   lines.push("");
 
@@ -1330,6 +1360,10 @@ export function renderLlmsTxt(m: Manifest): string {
     "take one typed args object (field names match the engine) and their full field",
     "schema is listed per-namespace below. Specials (`[special]`) are hand-authored;",
     "their signatures are listed in **Specials — authored signatures** just below.",
+    "Wrap any `value` field in `ignored(...)` to store it but SKIP it at runtime —",
+    "  the engine records `<name>:ignore` and the parameter falls back to its default.",
+    "  Not the same as an empty value, and not the same as omitting the field (which",
+    "  stores no entry at all). Mostly seen on a pulled workspace.",
     "Fields marked `value` take a `Value` (`c.*`/`ref`/`inp`); `comparison` takes an",
     "`expr(...)`. A `→ as: <type>` suffix names what the statement's `as:` output var",
     "holds (curated, not exhaustive — absence means read the `[output]` flag and prose).",
@@ -1367,9 +1401,12 @@ export function renderLlmsTxt(m: Manifest): string {
     "- `s.db.get({ table, fieldName?, fieldValue, lock?, output?, as? })` — one row by field match; `output` restricts returned columns (and overrides column visibility — it can pull `internal` columns like a password hash).",
     "- `s.db.has({ table, fieldName?, fieldValue, as? })` — existence test.",
     "- `s.db.del({ table, fieldName?, fieldValue, as? })` — delete by field match.",
-    "- `s.db.add({ table, row?, data?, as? })` — insert; `row` is a partial keyed by column.",
-    "- `s.db.edit({ table, fieldName?, fieldValue, row?, data?, as? })` — update by field match.",
-    "- `s.db.patch({ table, fieldName?, fieldValue, data, as? })` — merge a partial (`data` is an object value).",
+    "- `s.db.add({ table, row?, data?, output?, as? })` — insert; `row` is a partial keyed by column.",
+    "- `s.db.edit({ table, fieldName?, fieldValue, row?, data?, output?, as? })` — update by field match.",
+    "- `s.db.patch({ table, fieldName?, fieldValue, data, output?, as? })` — merge a partial (`data` is an object value).",
+    "  On these three, `output` restricts the columns of the RETURNED row only — it does not change",
+    "  what is written. Not offered on `db.del`/`db.has` (their result is a scalar) or on",
+    "  `db.add_or_edit` (no output envelope).",
     "- `s.db.add_or_edit({ table, fieldName?, fieldValue, row?, data?, as? })` — upsert.",
     "- `s.db.query({ table, where?, additionalWhere?, bind?, sort?, paging?, external?, returnType?, distinct?, eval?, output?, lock?, addon?, as? })` — search; `bind: [{ table, as?, join?, where? }]` adds joins (`context.bind[]`, `join` default `\"inner\"`) — joined columns are addressable by dotted path in `where`/`sort`/`eval`; `as` defaults to the table name and two joins to the same table need distinct aliases; `distinct` (`\"auto\"` default | `\"yes\"` | `\"no\"`) rides `context.return.<list|stream>.distinct`. `eval: [{ name, as, filters? }]` adds computed columns (`context.eval[]`) — each `as` grafts onto the row as an `unknown` key in `InferResponse` (shadowing a column throws); `returnType` (`\"list\"` default | `\"single\"` | `\"count\"` | `\"exists\"` | `\"stream\"` | `\"aggregate\"`) drives `context.return.type` and the `InferResponse` shape — `count`→`number`, `exists`→`boolean`, `single`→`Row|null`, `stream`→`Row[]` (pageable, no envelope), `list`→`Row[]`/envelope, `aggregate`→rows keyed by the `aggregate.group`/`eval` aliases. `aggregate: { group?, eval?, sort?, paging? }` (with `returnType:\"aggregate\"`) builds `context.return.aggregate` — `group`/`eval` are `{ name, as, filters? }` (an aggregator like `sum`/`count` rides `filters`); write each `name` as a **bare** column (`\"status\"`) — it is alias-qualified to `\"<table>.status\"` on emit (the engine rejects a bare column in an aggregate: `Unsupported param format`), and an already-dotted `name` (a `bind`ed/joined column) passes through (byte-verified live #133); `where` is `expr(...)` / `expr[]` (ANDed) / raw `Value`. For the full operator set use `cmp(left, op, right, { ignoreEmpty? })` (`op`: `in`/`not in`/`like`/`ilike`/`between`/`contains`/`includes`/`overlaps`/`@>`/`~`/`search`/… plus the `expr` comparisons); compose nested boolean logic with `and(...)` / `or(...)` groups (also available on `addon()` `where`). A `where`/`cmp` operand may be a bare value (`col`/`inp`/`ref`/`auth`/`c.*`) OR a **filtered** value (`withFilters(...)`) inline — filtered operands pass through in every condition/`where` surface. Hoisting into a prior `s.set_var` is a readability/reuse option, not a requirement. `sort` is `[{ sortBy: <col>, dir?: \"asc\"|\"desc\"|\"rand\" }]`; `paging` is `{ page?, per_page?, offset?, totals?, metadata?, search?, sort? }`. `where`/`additionalWhere`/`sort`/`paging`/`output` are all applied by the engine — the filter rides `context.search`, sort/paging ride `context.return.list` (#41/#34/#36). ⚠ Supplying `paging` with a page/per_page/offset field and metadata on (the default) wraps the result in a paging envelope `{ items: Row[], curPage, nextPage, prevPage, offset, perPage, itemsReceived }` (+ `itemsTotal`/`pageTotal` when `totals:true`) instead of a bare `Row[]`; `InferResponse` reflects that. Pass `metadata:false` to keep the bare array (#58). **Input-bound paging (#66):** `paging.page`/`per_page`/`offset` also accept a `Value` (e.g. `inp(\"page\")`) — it rides `context.simpleExternal` while the static block stays the engine gate (`enabled:true`); `paging.search`/`sort` are `Value` dynamic overrides. A `search`/`sort`-only `paging` (no numeric field) does NOT paginate. `external: { value, permissions? }` is the classic whole-config blob (mutually exclusive with input-bound `paging` fields; forces the gate on). Read `nextPage` (`number|null`) as the typed has-next signal.",
     "- `s.db.truncate({ table, reset?, as? })` · `s.db.schema({ table, path, as? })`.",
@@ -1455,7 +1492,7 @@ export function renderLlmsTxt(m: Manifest): string {
   const legacyValues = m.values.constructors.filter((v) => v.legacy);
   const legacyStatements = m.statements.filter((s) => s.legacy);
   const legacyFactories = m.objectKinds.flatMap((k) => (k.subKinds ?? []).filter((sub) => sub.legacy));
-  if (legacyValues.length + legacyStatements.length + legacyFactories.length > 0) {
+  if (legacyValues.length + legacyStatements.length + legacyFactories.length + SUPERSEDED_STATEMENTS.size > 0) {
     lines.push(
       "## Legacy",
       "",
@@ -1472,6 +1509,25 @@ export function renderLlmsTxt(m: Manifest): string {
     for (const f of legacyFactories) lines.push(`- \`${f.authorFactory}()\` — ${f.description}`);
     for (const s of legacyStatements) {
       lines.push(`- \`s.${s.sPath}\` — ${LEGACY_SURFACES[s.surface]}`);
+    }
+    // Retired VERSIONS of versioned families. These have no `s.` surface at all —
+    // only the latest of each family is authorable — so a pulled workspace holding
+    // one shows it as `raw({ name: "<stored>", … })`. Named here for the same
+    // reason as everything else in this index: an agent that has never heard of
+    // one will try to "fix" what it does not recognize, and the fix would be
+    // wrong, because each version was a breaking change to the one before it.
+    const retired = [...SUPERSEDED_STATEMENTS.entries()];
+    if (retired.length > 0) {
+      lines.push("");
+      lines.push(
+        "Retired statement VERSIONS — no `s.` surface exists. Pulled code shows them as",
+        "`raw({ name: \"…\" })` and they keep running as stored, so leave them; author the",
+        "replacement only for NEW code. Never swap one for the other — each version broke the last.",
+        "",
+      );
+      for (const [stored, successor] of retired) {
+        lines.push(successor ? `- \`${stored}\` → \`${successor}\`` : `- \`${stored}\` — retired, no replacement`);
+      }
     }
     lines.push("");
   }

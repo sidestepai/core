@@ -11,7 +11,8 @@
 import type { TaggedValue } from "../../types/xdo.js";
 import { arr, lit, obj, type Expr } from "../print.js";
 import { decodeValue } from "../value.js";
-import { decodeCondition } from "../expression.js";
+import { decodeConditionOrEmpty } from "../expression.js";
+import { filledContext } from "../../validate/normalize.js";
 import { declineHere, getPath, prove, type SpecialArgs, type SpecialDecoder } from "./prove.js";
 
 /** Coerce a stored `{value, tag, filters}` block to a tagged value. */
@@ -34,7 +35,9 @@ function nested(a: SpecialArgs, path: string): { exprs: Expr[]; statements: unkn
 
 /** `var $as { value }` — 78% of a typical workspace's statements. */
 const setVar: SpecialDecoder = (a) => {
-  const value = toValue(a.stored.context);
+  // An empty context is the blank const the engine's optional-schema pass fills
+  // in, not an unreadable statement (see {@link filledContext}).
+  const value = toValue(a.stored.context) ?? toValue(filledContext(a.stored));
   const as = (a.stored as { as?: unknown }).as;
   if (!value) return declineHere("set_var: context is not a tagged value");
   if (typeof as !== "string" || as === "") return declineHere("set_var: as is blank");
@@ -60,7 +63,7 @@ const updateVar: SpecialDecoder = (a) => {
 /** One `elif` branch of a conditional. */
 function decodeElifBranch(a: SpecialArgs, branch: unknown): { expr: Expr; runtime: unknown } | null {
   const context = (branch as { context?: unknown }).context;
-  const when = decodeCondition(a.ctx, getPath(context, "expr"));
+  const when = decodeConditionOrEmpty(a.ctx, getPath(context, "expr"));
   if (!when) return declineHere("conditional: an elif branch's expr is not a decodable condition");
   const body = a.decodeStack(getPath(context, "if.run"));
   return {
@@ -74,7 +77,7 @@ function decodeElifBranch(a: SpecialArgs, branch: unknown): { expr: Expr; runtim
 
 /** `if (when) { then } [else if …] [else { … }]`. */
 const conditional: SpecialDecoder = (a) => {
-  const when = decodeCondition(a.ctx, getPath(a.stored.context, "expr"));
+  const when = decodeConditionOrEmpty(a.ctx, getPath(a.stored.context, "expr"));
   if (!when) return declineHere("conditional: context.expr is not a decodable condition");
 
   const then = nested(a, "if.run");
@@ -170,7 +173,27 @@ function loopDecoder(path: string, storedField: string, defField: string): Speci
   return (a) => {
     const context = (a.stored.context ?? {}) as Record<string, unknown>;
     const as = context.as;
-    const value = toValue(context[storedField]);
+    // An ABSENT iterand is REPAIRED to the empty one it lost, and reported.
+    //
+    // This is not a default the engine supplies — a live engine says the
+    // opposite, raising "For Each Loop: missing list argument" / faulting on
+    // `Undefined array key "cnt"`. The key went missing on the way out and the
+    // stored statement throws. The repair gives it the benign reading of the
+    // empty value (`[]`, `0`), which is a no-op rather than a fault, so it
+    // EVALUATES DIFFERENTLY and every site says so.
+    const stored = context[storedField];
+    const repaired = stored === undefined ? (filledContext(a.stored) ?? {})[storedField] : undefined;
+    const value = toValue(stored) ?? toValue(repaired);
+    if (value && repaired !== undefined) {
+      a.ctx.problem(
+        "modernized",
+        `${path} has no ${storedField} — the stored statement is missing its ` +
+          `${defField} and THROWS at runtime ("missing ${storedField} argument"). ` +
+          `Recovered as the empty ${defField} it lost, which EVALUATES DIFFERENTLY: ` +
+          `the loop now runs zero times instead of failing. Confirm nothing depended ` +
+          `on that error`,
+      );
+    }
     if (typeof as !== "string") return declineHere(`${path}: context.as is not a string`);
     if (!value) return declineHere(`${path}: context.${storedField} is not a tagged value`);
     const body = a.decodeStack(context.run);
@@ -192,7 +215,7 @@ function loopDecoder(path: string, storedField: string, defField: string): Speci
 
 /** `while (when) { body }`. */
 const whileLoop: SpecialDecoder = (a) => {
-  const when = decodeCondition(a.ctx, getPath(a.stored.context, "expr"));
+  const when = decodeConditionOrEmpty(a.ctx, getPath(a.stored.context, "expr"));
   if (!when) return declineHere("while: context.expr is not a decodable condition");
   const body = a.decodeStack(getPath(a.stored.context, "run"));
   return prove(

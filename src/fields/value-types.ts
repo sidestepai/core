@@ -27,6 +27,31 @@ export interface XanoFileRef {
   meta?: unknown;
 }
 
+/**
+ * Opaque runtime value of a raw file **upload** (`input.file()`).
+ *
+ * Distinct from {@link XanoFileRef}, and the distinction matters: this is the
+ * bytes as they arrive on the request (multipart, base64, or a fetched URI). It
+ * is not yet stored anywhere and cannot be written to a file column. Pass it to
+ * a `s.storage.create_*` statement (`create_image`, `create_attachment`, …) to
+ * store it and get back the {@link XanoFileRef} a column holds.
+ */
+export interface XanoFileUpload {
+  readonly __fileUpload?: never;
+}
+
+/**
+ * Marker value of a database-link input (`input.dbLink()`).
+ *
+ * Opaque on purpose: a dblink input does not bind a value of its own. The engine
+ * EXPANDS it into one input per column of the linked table, so a table with
+ * three columns turns one dblink entry into three request inputs. Read those by
+ * their own column names — `inp("email")`, not `inp("user__")`.
+ */
+export interface XanoDbLink {
+  readonly __dbLink?: never;
+}
+
 /** Opaque runtime value of a geo input/column (a GeoJSON-shaped object). */
 export interface XanoGeoJson {
   type: string;

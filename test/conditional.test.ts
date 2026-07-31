@@ -60,10 +60,20 @@ describe("conditional", () => {
     expect(() => expr(ref("a"), "~=", c.int(1))).toThrow(/Unsupported conditional operator/);
   });
 
-  it("JS-style operators (== === !==) normalize to the engine form", () => {
+  it("normalizes == to =, the one JS spelling that IS a synonym", () => {
+    // The engine's evaluator runs both through the same loose branch
+    // (`case '=': case '==':`), so this rewrite changes nothing.
     expect(expr(ref("a"), "==", c.int(1)).op).toBe("=");
-    expect(expr(ref("a"), "===", c.int(1)).op).toBe("=");
-    expect(expr(ref("a"), "!==", c.int(1)).op).toBe("!=");
+  });
+
+  it("keeps === and !== STRICT instead of downgrading them to = and !=", () => {
+    // They are not spellings of the loose pair. The engine evaluates them with
+    // PHP semantics — `$l === $r` vs `$l == $r` — so they differ exactly where
+    // type coercion does: `"1" == 1` holds, `"1" === 1` does not. Aliasing them
+    // onto `=`/`!=` silently downgraded every strict comparison an author wrote,
+    // and rewrote a pulled one into a DIFFERENT predicate.
+    expect(expr(ref("a"), "===", c.int(1)).op).toBe("===");
+    expect(expr(ref("a"), "!==", c.int(1)).op).toBe("!==");
   });
 
   it("a bare single expr() emits byte-identical output after the tree widening (regression)", () => {

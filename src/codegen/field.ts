@@ -24,7 +24,7 @@ import { input } from "../inputs/input.js";
 import { CODEGEN_MODULE, CORE_MODULE, type DecodeContext } from "./context.js";
 import { call, lit, obj, type Expr } from "./print.js";
 import { resolveReference, type RefIndex, type ResolveOptions } from "./ref-index.js";
-import { normalize } from "../validate/normalize.js";
+import { clearLocalDboRefs, normalize } from "../validate/normalize.js";
 import { decodeValue } from "./value.js";
 
 /** Which authoring catalog to emit against: table columns (`f`) or inputs (`input`). */
@@ -60,6 +60,13 @@ const CATALOG_BY_TYPE: Readonly<Record<string, string>> = {
 };
 
 /**
+ * Types that exist only as inputs, so they must not resolve against `f.*`.
+ * `file` is a raw upload — the request's bytes, not a stored resource — which is
+ * why no table column has the type and why `f` has no constructor for it.
+ */
+const INPUT_ONLY_BY_TYPE: Readonly<Record<string, string>> = { file: "file" };
+
+/**
  * Stored keys `encodeField` writes unconditionally, with the value it always
  * writes. No authoring option reaches any of these, so a stored field carrying a
  * different value cannot round-trip through *any* source form — not the catalog
@@ -81,6 +88,29 @@ const ENCODER_FIXED: ReadonlyArray<readonly [string, unknown]> = [
  */
 function sameField(a: unknown, b: unknown): boolean {
   return deepEqual(normalize(a), normalize(b));
+}
+
+/**
+ * The top-level keys on which a re-encoded field disagrees with the stored one.
+ *
+ * A `value-fallback` that only says a field "emitted as a descriptor literal"
+ * cannot be clustered — and two different causes reach that message, so a row
+ * cannot even be attributed to one of them. Naming the keys is what turns the
+ * category into something a sweep can group by. Compared under `normalize`, the
+ * same comparator {@link sameField} uses, so a key it strips never shows up.
+ */
+function differingKeys(encoded: unknown, stored: unknown): string[] {
+  const a = normalize(encoded) as Record<string, unknown> | null;
+  const b = normalize(stored) as Record<string, unknown> | null;
+  if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return [];
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  return [...keys].filter((key) => !deepEqual(a[key], b[key])).sort();
+}
+
+/** How a re-encode differed, as a message fragment naming the keys. */
+function describeDiff(encoded: unknown, stored: unknown): string {
+  const keys = differingKeys(encoded, stored);
+  return keys.length === 0 ? "differs structurally" : `differs at ${keys.join(", ")}`;
 }
 
 /** Structural equality over stored JSON. */
@@ -249,11 +279,53 @@ function storedChildren(stored: FieldXdo): FieldXdo[] {
 }
 
 /** The `@`-method table reference a `tableRef` column carries, if this is one. */
+/**
+ * The table a **database-link** input points at, or null when the field is not
+ * one.
+ *
+ * The stored type is the table's identity with `_mvpschema` appended — the id in
+ * the editor, the guid in an export, the same substitution `context.dbo.id`
+ * gets. The engine splits on that suffix and expands the link into one input per
+ * column of the named table.
+ */
+function dbLinkTableGuid(stored: FieldXdo): string | null {
+  const suffix = "_mvpschema";
+  if (typeof stored.type !== "string" || !stored.type.endsWith(suffix)) return null;
+  const guid = stored.type.slice(0, -suffix.length);
+  return guid === "" ? null : guid;
+}
+
 function tableRefGuid(stored: FieldXdo): string | null {
   if (stored.type !== "int" && stored.type !== "uuid") return null;
   const last = stored.methods?.[stored.methods.length - 1];
   const arg = last?.name === "@" ? last.arg?.[0] : undefined;
-  return typeof arg === "string" && arg.startsWith("dbo=") ? arg.slice("dbo=".length) : null;
+  if (typeof arg !== "string" || !arg.startsWith("dbo=")) return null;
+  const guid = arg.slice("dbo=".length);
+  // A bare `dbo=` is an FK annotation pointing at nothing — the editor writes it
+  // when a reference is cleared. It is not a reference, and treating it as one
+  // made `f.tableRef` throw on an empty target, which took the whole field down
+  // to a descriptor literal. Returning null routes it through the ordinary
+  // catalog path, where the `@` method rides along in `methods` verbatim.
+  return guid === "" ? null : guid;
+}
+
+/**
+ * Reset every LOCAL table reference inside a `customize` block to the unbound
+ * spelling, returning the rewritten field and the targets that were cleared.
+ *
+ * The rewrite itself lives in `normalize` so the decoder and the round-trip
+ * comparison apply exactly one rule; this wraps it with the reporting the change
+ * earns. A cleared reference is a real loss — a same-workspace redeploy would
+ * have resolved that id — so every target is named rather than quietly dropped,
+ * the same way a blanked table reference is.
+ */
+function unbindLocalCustomizeRefs(stored: FieldXdo): { field: FieldXdo; unbound: string[] } {
+  const customize = (stored as { customize?: unknown }).customize;
+  if (customize === null || typeof customize !== "object") return { field: stored, unbound: [] };
+  const cleared = new Set<string>();
+  const rewritten = clearLocalDboRefs(customize, cleared);
+  if (cleared.size === 0) return { field: stored, unbound: [] };
+  return { field: { ...stored, customize: rewritten } as FieldXdo, unbound: [...cleared].sort() };
 }
 
 /** Render recovered options as a source object literal, decoding nested children. */
@@ -297,7 +369,19 @@ export function decodeField(
       "value-fallback",
       `field "${stored.name}" stores ${missing.join(", ")} in a shape no authoring surface can produce; emitted verbatim via rawField()`,
     );
-    return { idiomatic: false, expr: call("rawField", lit(stored)) };
+    // The one thing NOT carried verbatim: a table reference inside `customize`
+    // that names its target by local row id. Reported separately because it is a
+    // change to the pulled tree, not a passthrough.
+    const { field, unbound } = unbindLocalCustomizeRefs(stored);
+    if (unbound.length > 0) {
+      ctx.problem(
+        "unresolved-ref",
+        `field "${stored.name}" references ${unbound.join(", ")} inside \`customize\` by LOCAL row id rather than by guid — ` +
+          `an internal id is not portable identity, so it is recovered as unbound (\`dbo=\`). ` +
+          `A re-deploy will not re-link it, including back into the workspace it came from`,
+      );
+    }
+    return { idiomatic: false, expr: call("rawField", lit(field)) };
   }
 
   /**
@@ -317,16 +401,24 @@ export function decodeField(
     return { idiomatic: false, expr: call("rawField", lit(stored)) };
   };
 
-  if (options === null || !sameField(encodeField(stored.name, stored.type, options, context), stored)) {
-    // The descriptor literal is still a legal `FieldDescriptor`, so the schema
-    // keeps compiling; it just reads as data rather than as a catalog call.
+  // The descriptor literal is still a legal `FieldDescriptor`, so the schema
+  // keeps compiling; it just reads as data rather than as a catalog call.
+  const literalBecause = (why: string): DecodedField => {
     if (missing.length === 0) {
       ctx.problem(
         "value-fallback",
-        `field "${stored.name}" (${stored.type}) emitted as a descriptor literal`,
+        `field "${stored.name}" (${stored.type}) emitted as a descriptor literal: ${why}`,
       );
     }
     return descriptorLiteral();
+  };
+
+  if (options === null) {
+    return literalBecause("its options could not be recovered from the stored shape");
+  }
+  const reEncoded = encodeField(stored.name, stored.type, options, context);
+  if (!sameField(reEncoded, stored)) {
+    return literalBecause(`re-encoding the recovered options ${describeDiff(reEncoded, stored)}`);
   }
 
   const ns = ctx.use(CORE_MODULE, surface);
@@ -338,19 +430,45 @@ export function decodeField(
    * (`f.password` sets `access:"internal"`), so recovered options that re-encode
    * correctly through `encodeField` can still be wrong through the catalog.
    */
+  /**
+   * Why the last candidate was rejected, kept so the fallback can say what the
+   * catalog could not reproduce instead of only that it failed. A constructor
+   * that throws leaves no encoding to diff, so it records that instead.
+   */
+  let lastRejection = "no catalog form was attempted";
   const proven = (expr: Expr, build: () => FieldDescriptor): DecodedField | null => {
     let built: FieldDescriptor;
     try {
       built = build();
-    } catch {
+    } catch (err) {
+      lastRejection = `the catalog constructor threw (${err instanceof Error ? err.message : String(err)})`;
       return null;
     }
     const encoded = encodeField(stored.name, built.type, built.options, context);
-    return sameField(encoded, stored) ? { idiomatic: true, expr } : null;
+    if (sameField(encoded, stored)) return { idiomatic: true, expr };
+    lastRejection = `the catalog call ${describeDiff(encoded, stored)}`;
+    return null;
   };
 
   /** The catalog the emitted call resolves against at evaluation time. */
   const catalog = (surface === "input" ? input : f) as unknown as Record<string, unknown>;
+
+  const dbLinkGuid = dbLinkTableGuid(stored);
+  if (dbLinkGuid !== null && surface === "input") {
+    // `merge` is what makes the engine expand the link, so `input.dbLink` forces
+    // it — emitting it back would be redundant, and it is not authorable here.
+    const rest = { ...opts };
+    delete rest.merge;
+    const restExpr = optionsExpr(rest);
+    const args: Expr[] = [
+      resolveReference(ctx, refs, dbLinkGuid, { ...resolve, unresolved: "object-ref" }),
+    ];
+    if (restExpr.kind === "object" && restExpr.entries.length > 0) args.push(restExpr);
+    const decoded = proven(call(`${ns}.dbLink`, ...args), () =>
+      input.dbLink({ name: "", guid: dbLinkGuid }, rest as never),
+    );
+    if (decoded) return decoded;
+  }
 
   const refGuid = tableRefGuid(stored);
   if (refGuid !== null) {
@@ -414,7 +532,9 @@ export function decodeField(
     );
     if (decoded) return decoded;
   } else {
-    const accessor = CATALOG_BY_TYPE[stored.type];
+    const accessor =
+      CATALOG_BY_TYPE[stored.type] ??
+      (surface === "input" ? INPUT_ONLY_BY_TYPE[stored.type] : undefined);
     if (accessor !== undefined) {
       const [head, leaf] = accessor.split(".");
       const factory = (
@@ -471,7 +591,7 @@ export function decodeField(
   // constructors entirely, so it still round-trips.
   ctx.problem(
     "value-fallback",
-    `field "${stored.name}" (${stored.type}) emitted as a descriptor literal`,
+    `field "${stored.name}" (${stored.type}) emitted as a descriptor literal: ${lastRejection}`,
   );
   return descriptorLiteral();
 }
@@ -536,9 +656,27 @@ export function decodeResponse(
   }
 
   const single = stored.length === 1 && stored[0]!.name === "";
-  return single
-    ? decodeValue(ctx, asValue(stored[0]!))
-    : obj(stored.map((item) => [item.name, ctx.at(`response.${item.name}`, () => decodeValue(ctx, asValue(item)))]));
+  if (single) return decodeValue(ctx, asValue(stored[0]!));
+
+  // Everything else is emitted as a RECORD, which is keyed by name — so it can
+  // only carry items whose names are non-empty and distinct. Two items sharing a
+  // name collapse into one, and a blank name is a name items share: one real
+  // query stores four items, three of them unnamed, and came back as two with
+  // the survivors' tags and values shuffled onto each other.
+  const names = stored.map((item) => item.name);
+  const keyed = names.every((name) => name !== "") && new Set(names).size === names.length;
+  if (!keyed) {
+    ctx.use(CODEGEN_MODULE, "rawResponse");
+    ctx.problem(
+      "raw-fallback",
+      `the response has ${stored.length} items whose names do not key it (blank or repeated), which the record form cannot carry; emitted verbatim via rawResponse()`,
+    );
+    return call("rawResponse", lit(stored));
+  }
+
+  return obj(
+    stored.map((item) => [item.name, ctx.at(`response.${item.name}`, () => decodeValue(ctx, asValue(item)))]),
+  );
 }
 
 /** Re-exported so kind decoders share one structural comparison. */

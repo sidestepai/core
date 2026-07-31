@@ -97,6 +97,18 @@ describe("symbol naming", () => {
     expect(symbols).toEqual(["my_fn", "my_fn_2", "my_fn_3"]);
   });
 
+  it("separates same-kind names that differ only by case", () => {
+    // Two distinct TypeScript identifiers, but each non-shared one also names a
+    // file — and macOS and Windows fold `Flag.ts` onto `flag.ts`. Writing the
+    // second would replace the first on disk while `index.ts` still imported
+    // both, so the lost object's binding resolved to `undefined` and encoding
+    // it crashed. A real workspace hit exactly this with `SocialFeed/Flag/{id}`
+    // alongside `SocialFeed/flag/{id}`.
+    const project = build({ functions: [fn("my fn", guid(1)), fn("My FN", guid(2))] });
+    const paths = project.files.map((f) => f.path.toLowerCase());
+    expect(new Set(paths).size, `case-insensitive path collision: ${paths.join(", ")}`).toBe(paths.length);
+  });
+
   it("assembles the same bundle to byte-identical files twice", () => {
     const defs = () => ({ tables: [table("users", guid(1))], functions: [fn("a", guid(2), [guid(1)])] });
     expect(build(defs()).files).toEqual(build(defs()).files);

@@ -1,0 +1,51 @@
+{
+  "as": "user",
+  "name": "mvp:dbo_get",
+  "_xsid": "f:19e36347-80bb-4f39-bba2-5e7be3440ddd",
+  "addon": [],
+  "input": [
+    {
+      "tag": "auth",
+      "name": "id",
+      "value": "id",
+      "expand": false,
+      "ignore": false,
+      "filters": [],
+      "children": []
+    }
+  ],
+  "output": {
+    "items": [
+      {
+        "name": "id",
+        "children": []
+      },
+      {
+        "name": "created_at",
+        "children": []
+      },
+      {
+        "name": "name",
+        "children": []
+      },
+      {
+        "name": "email",
+        "children": []
+      },
+      {
+        "name": "role",
+        "children": []
+      }
+    ],
+    "filters": [],
+    "customize": true
+  },
+  "context": {
+    "dbo": {
+      "id": "7777000000000000000000000000ffff"
+    }
+  },
+  "disabled": false,
+  "description": "",
+  "settings_registry": null
+}

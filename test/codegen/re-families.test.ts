@@ -125,6 +125,68 @@ describe("create_auth stores its named entries in either order", () => {
     });
   }
 
+  /**
+   * A `dbtable` the bundle does not resolve as a guid — which older workspaces
+   * produce by storing the table's NAME here.
+   *
+   * **SideStep resolves references by guid only** and never maps a name back to
+   * an object, so the two cases below are deliberately indistinguishable to it.
+   * Nor could it distinguish them another way: a workspace guid is an arbitrary
+   * unique key anyone can change, so there is no shape to test. Both carry the
+   * value verbatim and both report the same unresolved reference.
+   */
+  function storedNamed(dbtable: string): StackItemXdo {
+    return {
+      as: "tok",
+      name: "mvp:create_auth",
+      addon: [],
+      input: [entry("id", "1", "const:int"), entry("dbtable", dbtable, "const")],
+      output: { items: [], filters: [], customize: false },
+      context: {},
+      disabled: false,
+      description: "",
+      settings_registry: null,
+    } as unknown as StackItemXdo;
+  }
+
+  for (const [label, dbtable] of [
+    ["whose table is in the bundle", USERS.name],
+    ["whose table is NOT in the bundle", "user"],
+  ] as const) {
+    it(`carries a name-spelled dbtable ${label}, reported the same way`, () => {
+      // Regression on both halves. Keying the check on "a table of that name
+      // exists" was a name lookup in all but direction, AND it let the absent
+      // case fall through to guid resolution, which reported
+      // `guid user is not present in this bundle` — an error about a guid that
+      // was never a guid, 6 times in the survey corpus.
+      const ctx = new DecodeContext();
+      const stored = storedNamed(dbtable);
+      const source = printExpr(decodeStatement(ctx, REFS, stored));
+
+      expect(source).not.toContain("raw(");
+      expect(normalize(encodeStatement(evaluateAuth(source)))).toEqual(normalize(stored));
+      // Reported as what is literally known — the reference did not resolve —
+      // with both readings named and neither asserted.
+      expect(ctx.report.entries.map((e) => e.category)).toEqual(["unresolved-ref"]);
+      expect(ctx.report.entries[0]!.detail).toContain("by guid only");
+      // NOT the old `guid <x> is not present in this bundle`, which called a
+      // value a guid on no evidence.
+      expect(ctx.report.entries[0]!.detail).not.toMatch(/^guid /);
+    });
+  }
+
+  it("resolves a GUID-spelled dbtable to the table's symbol, and reports nothing", () => {
+    // The paired positive: dropping the name lookup must not cost the guid path
+    // its resolution, which is the only mapping SideStep does.
+    const ctx = new DecodeContext();
+    const stored = storedNamed(USERS.guid);
+    const source = printExpr(decodeStatement(ctx, REFS, stored));
+
+    expect(source).not.toContain("raw(");
+    expect(normalize(encodeStatement(evaluateAuth(source)))).toEqual(normalize(stored));
+    expect(ctx.report.entries).toEqual([]);
+  });
+
   it("still compares the entry VALUES — sorting is not a licence to ignore them", () => {
     // The paired negative the invariant requires: reordering compares equal, but
     // a changed value must not.

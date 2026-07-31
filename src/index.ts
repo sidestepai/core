@@ -74,7 +74,8 @@ export type {
   VectorMethod,
   TableRefMethod,
 } from "./fields/generated/field-methods.generated.js";
-export { c, ref, inp, col, auth, env, setting, sys, out, filter, withFilters } from "./values/value.js";
+export { c, ref, inp, col, auth, caught, env, setting, sys, out, filter, withFilters } from "./values/value.js";
+export type { CaughtField } from "./values/value.js";
 export type { Value, RefValue, FilteredValue } from "./values/value.js";
 export { obj } from "./values/obj.js";
 export type { ObjInput, ObjMember } from "./values/obj.js";
@@ -82,7 +83,7 @@ export { fl, FILTER_NAMES } from "./values/generated/filters.generated.js";
 export { setVar, updateVar } from "./statements/set-var.js";
 export { conditional, expr } from "./statements/conditional.js";
 export type { Comparison } from "./statements/conditional.js";
-export { cmp, and, or } from "./statements/special/db-search.js";
+export { cmp, and, or, mixed } from "./statements/special/db-search.js";
 export type {
   SearchOp,
   SearchComparison,
@@ -470,3 +471,4 @@ export {
 
 // Types
 export type * from "./types/xdo.js";
+export { ignored } from "./values/ignored.js";

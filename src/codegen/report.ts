@@ -12,6 +12,13 @@
 export type ReportCategory =
   /** A statement fell through to `raw()` instead of a typed call. */
   | "raw-fallback"
+  /**
+   * A RETIRED version of a versioned statement family, carried verbatim on
+   * purpose. Informational — nothing failed: the platform keeps these running
+   * for existing stacks but no longer offers them, so this SDK models only the
+   * latest of each family (see `SUPERSEDED_STATEMENTS`).
+   */
+  | "superseded"
   /** A value was emitted as an annotated literal instead of a `c.*`/`ref` call. */
   | "value-fallback"
   /** A guid referenced by an object is not present in the bundle. */
@@ -41,6 +48,16 @@ export type ReportCategory =
    * "read this line and confirm you want it", not "this output is broken".
    */
   | "modernized"
+  /**
+   * A condition whose terms do not all join the same way (`a AND b OR c`). The
+   * decode is EXACT — `mixed(...)` reproduces the stored joins term by term —
+   * but the stored form does not record which grouping was meant, and the two
+   * places such a condition can appear read it differently (a branch folds left
+   * to right; a database query applies AND-before-OR precedence). Warning
+   * severity: nothing is broken and nothing was lost, but the condition is worth
+   * rewriting as nested `and(...)`/`or(...)` so it says what it means.
+   */
+  | "ambiguous-condition"
   /**
    * A `{param}` segment in an object's path had no input bound to it upstream,
    * and the generated def declares one so the tree builds.
@@ -81,7 +98,9 @@ const CATEGORY_LABELS: ReadonlyArray<readonly [ReportCategory, string, ReportSev
   ["raw-fallback", "Statements emitted as raw() passthroughs", "warning"],
   ["unsupported-section", "Unsupported payload sections", "warning"],
   ["value-fallback", "Values emitted as annotated literals", "warning"],
+  ["superseded", "Retired statement versions, carried verbatim", "notice"],
   ["modernized", "Updated to the current form (evaluates differently)", "warning"],
+  ["ambiguous-condition", "Conditions that mix AND and OR at one level", "warning"],
   ["path-param-bound", "Unbound {param} segments given an input", "warning"],
   ["expected-omission", "Deliberately not carried into the tree", "notice"],
   ["empty-source", "Objects that were already empty in the source", "notice"],

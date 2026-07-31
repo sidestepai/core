@@ -16,7 +16,7 @@ import { and, cmp, expr, or } from "../../src/statements/expression.js";
 import { encodeStatement } from "../../src/statements/statement.js";
 import type { Statement } from "../../src/statements/statement.js";
 import type { StackItemXdo } from "../../src/types/xdo.js";
-import { normalize } from "../../src/validate/normalize.js";
+import { filledContext, normalize } from "../../src/validate/normalize.js";
 import { c, col, auth, env, inp, out, ref, setting, withFilters } from "../../src/values/value.js";
 import { fl } from "../../src/values/generated/filters.generated.js";
 import { rawValue } from "../../src/values/raw-value.js";
@@ -283,5 +283,83 @@ describe("dispatch", () => {
     const modules = ctx.imports.toStatements().map((i) => i.module);
     expect(modules).toEqual(["@sidestep/core/codegen"]);
     expect(ctx.report.entries.every((e) => e.category === "raw-fallback")).toBe(true);
+  });
+});
+
+/**
+ * An EMPTY `context` on a statement whose context IS its tagged value.
+ *
+ * The engine's optional-schema pass fills every absent member, so `{}` is one
+ * stored spelling of a blank value at that statement's declared default tag —
+ * 22 statements in the survey corpus stored it, one each, and all 22 fell back
+ * to `raw()` on the same required-field guard. Live-verified across every
+ * distinct tag by `scripts/probe-empty-context.ts`: `const`, `const:int`,
+ * `const:decimal`, `const:array` and `input` each behave identically to the
+ * filled form.
+ */
+describe("an empty context is the members the engine fills in", () => {
+  /** The stored shape a workspace holds for one of these. */
+  function storedEmpty(name: string): StackItemXdo {
+    return {
+      name,
+      addon: [],
+      input: [],
+      output: { items: [], filters: [], customize: false },
+      context: {},
+      disabled: false,
+      description: "",
+      settings_registry: null,
+    } as unknown as StackItemXdo;
+  }
+
+  // One per distinct default tag, which is what the live probe covered.
+  for (const name of [
+    "mvp:text_append", // const
+    "mvp:math_sub", // const:decimal
+    "mvp:math_mod", // const:int
+    "mvp:array_merge", // const:array
+    "mvp:setheader", // input
+    "mvp:die", // input, unnamed
+    "mvp:sleep", // const:int, unnamed
+  ]) {
+    it(`decodes ${name} instead of falling back to raw()`, () => {
+      const stored = storedEmpty(name);
+      const source = printExpr(decodeStatement(new DecodeContext(), REFS, stored));
+      expect(source).not.toContain("raw(");
+      expect(normalize(encodeStatement(evaluate(source)))).toEqual(normalize(stored));
+    });
+  }
+
+  it("keeps the fill in step with each spec's actual rules", () => {
+    // The self-guard. `array_pop`/`array_shift` USE no value — their specs route
+    // no spread field — so filling one invents members the encoder can never
+    // produce, and the comparison then demands them forever. That shipped once
+    // and this is what catches it next time.
+    let covered = 0;
+    for (const spec of GENERATED_SPECS) {
+      const stored = storedEmpty(spec.name);
+      const fill = filledContext(stored) as Record<string, unknown> | null;
+      if (!fill) continue; // not in the table — nothing to keep in step
+      covered++;
+
+      const hasSpread = spec.rules.some((r) => r.route.kind === "context-spread");
+      expect(hasSpread, `${spec.name} is filled but routes no spread value`).toBe(true);
+
+      // `name` belongs in the fill exactly when the spec routes one, or the
+      // comparison demands a member the encoder never writes.
+      const routesName = spec.rules.some(
+        (r) => r.field === "name" && r.route.kind === "context-plain",
+      );
+      expect("name" in fill, `${spec.name} fill/spec disagree on \`name\``).toBe(routesName);
+
+      // And it must actually round-trip through the real factory.
+      const source = printExpr(decodeStatement(new DecodeContext(), REFS, stored));
+      expect(source, `${spec.name} fill fell back`).not.toContain("raw(");
+      expect(
+        normalize(encodeStatement(evaluate(source))),
+        `${spec.name} fill does not round-trip`,
+      ).toEqual(normalize(stored));
+    }
+    expect(covered, "the fill table covers no spec — it silently stopped matching").toBeGreaterThan(20);
   });
 });

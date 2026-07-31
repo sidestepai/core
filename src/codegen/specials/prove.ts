@@ -80,7 +80,14 @@ export function prove(
     encoded = encodeStatement(applied.statement);
   } catch (error) {
     recordProveAbort("special", stored.name, `factory threw: ${String(error)}`);
-    return null;
+    // The authoring surface rejected the recovered arguments. That message is
+    // written for a human and names the exact conflict, so it beats "could not
+    // reproduce" by a wide margin — carried through to the fallback report.
+    return ctx.declined(
+      `the recovered arguments were rejected by the authoring surface — ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
   }
   if (!deepEqual(normalize(encoded), normalize(stored))) {
     recordProveDecline("special", stored.name, normalize(encoded), normalize(stored));
@@ -104,4 +111,21 @@ export function getPath(root: unknown, path: string): unknown {
         node === null || node === undefined ? undefined : (node as Record<string, unknown>)[key],
       root,
     );
+}
+
+/**
+ * The report line for a blank reference (`table`/`addon`/`fn`/…).
+ *
+ * A blank reference means the target was deleted, or the binding was never made.
+ * There is no second reading: this flow pulls and deploys a WHOLE workspace, so
+ * there is no scoped export whose remap could have blanked a reference that
+ * still exists upstream. The line used to hedge between the two and tell the
+ * reader to "re-pull with it in scope", which was unactionable advice about a
+ * situation this SDK cannot produce.
+ */
+export function blankRefDetail(what: string, noun: string): string {
+  return (
+    `${what}, recovered as \`${noun}: null\` — the ${noun} was deleted, or the binding was ` +
+    "never made. Fix it upstream, or bind one"
+  );
 }

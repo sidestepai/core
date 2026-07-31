@@ -63,6 +63,7 @@ function discriminate(payloadKey: string, object: Record<string, unknown>): stri
 export class RefIndex {
   readonly #byGuid = new Map<string, IndexedObject>();
 
+
   /**
    * Walk every payload array once, keying each object by its stored guid.
    *

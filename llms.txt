@@ -1,4 +1,4 @@
-# sidestep v4.1.15
+# sidestep v4.1.13
 
 > TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.
 
@@ -362,9 +362,10 @@ Non-obvious authoring rules:
 - **MCP servers & agents are distinct root kinds** that both persist under the
   `toolset` payload key (so a same-name pair collides). `mcpServer({...})` exposes
   tools over MCP (auth is per-tool — no server-level gate); `agent({...})` carries a
-  typed `llm` block. Their `tools` take a `tool()` handle (or name), resolved to the
+  typed `llm` block — and so may an `mcpServer`, since the two are ONE stored
+  object distinguished by `type`. Their `tools` take a `tool()` handle (or name), resolved to the
   tool's guid like the call family; a raw numeric `id` is an escape hatch.
-- **`task.schedule` is an array** of `{ startsOn, freq?, repeatEnabled?, endsOn? }`
+- **`task.schedule` is an array** of `{ startsOn, freq?, repeatEnabled?, endsOn?, endsEnabled? }`
   (`ScheduleDef[]`), not a single `{ type, value }`. `freq` is seconds; `startsOn`/
   `endsOn` are **ISO-8601 string** timestamps (`"2026-01-01T00:00:00Z"`), not epoch
   numbers (passing `0` is a type error).
@@ -436,12 +437,12 @@ omit it and it derives from `name` (set it to survive a rename).
   - `cors?`: `{ mode?, allowOrigins?: string[], allowHeaders?: string[], allowCredentials?, maxAge?, allowMethods?: { get?, post?, put?, patch?, delete?, head? } }`.
 - `defineFunction`/`query`/`apiGroup` above cover the queries+tables core; the five below are the "reach past that" primitives (agents, tools, tasks, middleware, MCP servers). Same envelope conventions (`guid?`, `description?`, `docs?`, `tags?`, `history?`) unless noted.
 - `task({ name, guid?, description?, docs?, datasource?, active?, tags?, history?, schedule?, stack?, middleware? })` — a scheduled background job (function-like `stack`, no `input`/`response`).
-  - `schedule?`: a `ScheduleDef[]` (NOT a single object) — `{ startsOn, freq?, repeatEnabled?, endsOn? }`. `startsOn`/`endsOn` are **ISO-8601 string** timestamps (`"2026-01-01T00:00:00Z"`), not epoch numbers; `freq` is the repeat interval **in seconds** (default `86400` = daily); `endsOn` present ⇒ the schedule has an end. Deploys but does NOT fire in the sandbox (see the sandbox NOTE above).
+  - `schedule?`: a `ScheduleDef[]` (NOT a single object) — `{ startsOn, freq?, repeatEnabled?, endsOn?, endsEnabled? }`. `startsOn`/`endsOn` are **ISO-8601 string** timestamps (`"2026-01-01T00:00:00Z"`), not epoch numbers; `freq` is the repeat interval **in seconds** (default `86400` = daily); `endsOn` present ⇒ the schedule has an end. `endsEnabled?` defaults to that and is recovery-only — state it to reproduce a stored schedule that remembers an end date with the gate OFF. Deploys but does NOT fire in the sandbox (see the sandbox NOTE above).
 - `middleware({ name, guid?, description?, docs?, resultStrategy?, exceptionPolicy?, tags?, history?, input?, stack?, response? })` — a pre/post interceptor (function-like `stack`); attach it via a host's `middleware: { pre, post }`.
   - `resultStrategy?`: `"merge" | "replace"` (default `merge`) — how the middleware `response` folds into the host's.
   - `exceptionPolicy?`: `"silent" | "rethrow" | "critical"` (default `"silent"` — a throw is SWALLOWED, so a guard is NOT enforced). A rate-limit/auth guard wants `"rethrow"` (throw aborts the request, surfaces the status); `"critical"` also skips the `post` chain.
 - `tool({ name, guid?, description?, instructions?, docs?, enabled?, tags?, history?, input?, stack?, response?, middleware? })` — a function-like operation (`input`/`stack`/`response`) that a toolset (MCP server or agent) exposes. Register it, then reference it from a toolset's `tools`.
-- `mcpServer({ name, guid?, description?, instructions?, docs?, enabled?, canonical?, spec?, tags?, history?, tools? })` — an MCP toolset (no LLM). Returns a handle with `getPath()`/`getUrl(baseUrl)` for the Streamable-HTTP endpoint. Deploys but does NOT fire in the sandbox.
+- `mcpServer({ name, guid?, description?, instructions?, docs?, enabled?, canonical?, spec?, tags?, history?, tools?, llm?, output? })` — an MCP toolset. `llm?`/`output?` are the same blocks `agent()` takes and are usually absent: an MCP server and an agent are ONE stored object distinguished by `type`, so a server that carries LLM settings can say so. Returns a handle with `getPath()`/`getUrl(baseUrl)` for the Streamable-HTTP endpoint. Deploys but does NOT fire in the sandbox.
   - `tools?`: a `ToolsetToolRef[]` — `{ tool: <a tool() handle or its name>, enabled?, auth? }` WRAPPERS, not bare handles. `auth` names an auth **table** (a `table({ auth: true })` handle or its name) — Xano's ONLY MCP auth surface (per-tool; there is no server-level gate).
 - `agent({ name, guid?, description?, docs?, enabled?, canonical?, tags?, history?, llm, tools?, output? })` — an LLM orchestrator. No top-level `instructions`/`prompt`/`spec` — the prompt lives under `llm`. Invoke from a stack with `s.ai.agent.run({ agent, args })`.
   - `llm` (REQUIRED): typed provider settings, a discriminated union on `type` (`"xano-free" | "anthropic" | "openai" | "google-genai"`). Shared fields: `systemPrompt?`, `maxSteps?` (default `5`), and `prompt?` XOR `messages?`; plus provider fields (`apiKey?`, `model?`, `temperature?`, `reasoningEffort?`, …). String fields accept Twig placeholders — `{{ $args.x }}` for run inputs (the `args` of `s.ai.agent.run`), `{{ $env.NAME }}` for env vars.
@@ -501,6 +502,14 @@ surface — `s.conditional`/`s.while` `when` (incl. each `elif` branch), and
 - A condition/`where` accepts a single `expr(...)`/`cmp(...)`, an `and()`/`or()` group, an array of
   those (ANDed), or (for `where`) a raw `Value`. `s.conditional`/`s.while`/`s.switch`, `db.query`,
   `precondition`, and the `array.*` predicates all take the same shape.
+- ⚠ `mixed(a, { or: b }, { and: c })` reproduces a container whose terms do NOT all join the
+  same way — the editor allows it, so pulled workspaces contain it. **Do not author it.** The
+  stored form does not record the grouping, and the two places it can appear disagree: a
+  branch (`s.conditional`/`s.while`/`precondition`) folds terms strictly left to right, so
+  `a OR b AND c` is `(a OR b) AND c`, while a `db.query` filter applies the engine's
+  AND-before-OR precedence and selects `a OR (b AND c)`. Write `and(or(a, b), c)` or
+  `or(a, and(b, c))` — each says one reading in every context. Pulls report these as
+  `ambiguous-condition`.
 - A **filtered** operand (`withFilters(...)`) works inline in any condition/`where` (conditional,
   while, `db.query`/addon, …) — e.g. `cmp(withFilters(col("title"), fl.trim()), "=", inp("q"))`.
 - e.g. `db.query({ table: posts, where: expr(col("author"), "=", auth("id")), as: "rows" })`.
@@ -521,6 +530,7 @@ surface — `s.conditional`/`s.while` `when` (incl. each `elif` branch), and
 - `inp(name: string) => Value` — Reference a function input → tag "input".
 - `col(name: string) => Value` — Reference a table column → tag "col".
 - `auth(path?: string) => Value` — Reference the authenticated identity (auth("id") → $auth.id) → tag "auth".
+- `caught(path?: "code" | "message" | "name" | "result") => Value` — Read the caught error inside an s.try_catch CATCH arm → tag "trycatch". Valid ONLY there — it reads empty in the try/finally arms and outside the statement. Those four fields are all the engine binds (result is the attached payload); bare caught() is the whole error record.
 - `env(name: string) => Value` — Read a WORKSPACE environment variable (set via workspaceConfig({ env }) or the dashboard) → `$env.NAME`. Compiles to tag "setting" with the plain name. env("remote_ip") reads a user var named remote_ip, not the caller IP — use sys.remoteIp() for that.
 - `setting(name: string) => Value` — Reference a workspace setting → tag "setting". Built-in system vars are $-prefixed settings, e.g. setting("$remote_ip"); prefer the typed sys.* accessors.
 - `sys.*() => Value` — Built-in system / request-context variables → tag "setting" ($-prefixed). Accessors: remoteIp, requestMethod, requestUri, requestQueryString, httpHeaders, requestAuthToken, apiBaseUrl, datasource, branch, tenant, release, platform, isDebugger. In XanoScript these are $env.$remote_ip etc.; sys.remoteIp() is the public-endpoint rate-limit key (auth("id") is null there).
@@ -547,9 +557,12 @@ A **column `default` must stay within the BMP** — a 4-byte character (codepoin
 e.g. an emoji) is mangled into invalid UTF-8 by the engine's default pipeline and is rejected
 at export rather than 500ing at deploy (Postgres `22021`); BMP defaults (accents, `€`, most
 CJK) are fine, or put the value on an `input.<type>({ default })`, applied at runtime bind. (issue #45)
-`input.*` fully mirrors `f.*` — every type below is
+`input.*` mirrors `f.*` — every column type below is
 a legal input (scalars, files `input.image/video/audio/attachment`, `input.geo.*`,
 `input.vector(size)`, `input.tableRef(table)`, `input.object(children)`), plus
+`input.dbLink(table)` is the odd one: ONE entry that EXPANDS into one input per
+COLUMN of the linked table, so read them by column name (`inp("email")`), never by
+the entry's own name. `hidden: ["created_at"]` drops columns from that expansion.
 `input.list(element)` for arrays — wrap any element constructor, e.g.
 `input.list(input.text())` or `input.list(input.object({ id: f.int() }))`. Prefer the
 typed forms over `input.json()` when the shape is known.
@@ -576,6 +589,8 @@ so `inp("name")` reads already-normalized; don't reroll `var $x = inp("name")|tr
 - `f.video` (stored `blob_video`)
 - `f.audio` (stored `blob_audio`)
 - `f.attachment` (stored `blob`)
+- `input.file` — INPUT ONLY (no `f.` form)
+- `input.dbLink` (stored `<tableGuid>_mvpschema`) — INPUT ONLY (no `f.` form)
 - `f.geo.point` (stored `geo_point`)
 - `f.geo.multipoint` (stored `geo_multipoint`)
 - `f.geo.linestring` (stored `geo_linestring`)
@@ -752,6 +767,10 @@ Reachable through the `s` namespace: `s.<path>({...})`. Declarative statements
 take one typed args object (field names match the engine) and their full field
 schema is listed per-namespace below. Specials (`[special]`) are hand-authored;
 their signatures are listed in **Specials — authored signatures** just below.
+Wrap any `value` field in `ignored(...)` to store it but SKIP it at runtime —
+  the engine records `<name>:ignore` and the parameter falls back to its default.
+  Not the same as an empty value, and not the same as omitting the field (which
+  stores no entry at all). Mostly seen on a pulled workspace.
 Fields marked `value` take a `Value` (`c.*`/`ref`/`inp`); `comparison` takes an
 `expr(...)`. A `→ as: <type>` suffix names what the statement's `as:` output var
 holds (curated, not exhaustive — absence means read the `[output]` flag and prose).
@@ -782,9 +801,12 @@ primary key `id`):
 - `s.db.get({ table, fieldName?, fieldValue, lock?, output?, as? })` — one row by field match; `output` restricts returned columns (and overrides column visibility — it can pull `internal` columns like a password hash).
 - `s.db.has({ table, fieldName?, fieldValue, as? })` — existence test.
 - `s.db.del({ table, fieldName?, fieldValue, as? })` — delete by field match.
-- `s.db.add({ table, row?, data?, as? })` — insert; `row` is a partial keyed by column.
-- `s.db.edit({ table, fieldName?, fieldValue, row?, data?, as? })` — update by field match.
-- `s.db.patch({ table, fieldName?, fieldValue, data, as? })` — merge a partial (`data` is an object value).
+- `s.db.add({ table, row?, data?, output?, as? })` — insert; `row` is a partial keyed by column.
+- `s.db.edit({ table, fieldName?, fieldValue, row?, data?, output?, as? })` — update by field match.
+- `s.db.patch({ table, fieldName?, fieldValue, data, output?, as? })` — merge a partial (`data` is an object value).
+  On these three, `output` restricts the columns of the RETURNED row only — it does not change
+  what is written. Not offered on `db.del`/`db.has` (their result is a scalar) or on
+  `db.add_or_edit` (no output envelope).
 - `s.db.add_or_edit({ table, fieldName?, fieldValue, row?, data?, as? })` — upsert.
 - `s.db.query({ table, where?, additionalWhere?, bind?, sort?, paging?, external?, returnType?, distinct?, eval?, output?, lock?, addon?, as? })` — search; `bind: [{ table, as?, join?, where? }]` adds joins (`context.bind[]`, `join` default `"inner"`) — joined columns are addressable by dotted path in `where`/`sort`/`eval`; `as` defaults to the table name and two joins to the same table need distinct aliases; `distinct` (`"auto"` default | `"yes"` | `"no"`) rides `context.return.<list|stream>.distinct`. `eval: [{ name, as, filters? }]` adds computed columns (`context.eval[]`) — each `as` grafts onto the row as an `unknown` key in `InferResponse` (shadowing a column throws); `returnType` (`"list"` default | `"single"` | `"count"` | `"exists"` | `"stream"` | `"aggregate"`) drives `context.return.type` and the `InferResponse` shape — `count`→`number`, `exists`→`boolean`, `single`→`Row|null`, `stream`→`Row[]` (pageable, no envelope), `list`→`Row[]`/envelope, `aggregate`→rows keyed by the `aggregate.group`/`eval` aliases. `aggregate: { group?, eval?, sort?, paging? }` (with `returnType:"aggregate"`) builds `context.return.aggregate` — `group`/`eval` are `{ name, as, filters? }` (an aggregator like `sum`/`count` rides `filters`); write each `name` as a **bare** column (`"status"`) — it is alias-qualified to `"<table>.status"` on emit (the engine rejects a bare column in an aggregate: `Unsupported param format`), and an already-dotted `name` (a `bind`ed/joined column) passes through (byte-verified live #133); `where` is `expr(...)` / `expr[]` (ANDed) / raw `Value`. For the full operator set use `cmp(left, op, right, { ignoreEmpty? })` (`op`: `in`/`not in`/`like`/`ilike`/`between`/`contains`/`includes`/`overlaps`/`@>`/`~`/`search`/… plus the `expr` comparisons); compose nested boolean logic with `and(...)` / `or(...)` groups (also available on `addon()` `where`). A `where`/`cmp` operand may be a bare value (`col`/`inp`/`ref`/`auth`/`c.*`) OR a **filtered** value (`withFilters(...)`) inline — filtered operands pass through in every condition/`where` surface. Hoisting into a prior `s.set_var` is a readability/reuse option, not a requirement. `sort` is `[{ sortBy: <col>, dir?: "asc"|"desc"|"rand" }]`; `paging` is `{ page?, per_page?, offset?, totals?, metadata?, search?, sort? }`. `where`/`additionalWhere`/`sort`/`paging`/`output` are all applied by the engine — the filter rides `context.search`, sort/paging ride `context.return.list` (#41/#34/#36). ⚠ Supplying `paging` with a page/per_page/offset field and metadata on (the default) wraps the result in a paging envelope `{ items: Row[], curPage, nextPage, prevPage, offset, perPage, itemsReceived }` (+ `itemsTotal`/`pageTotal` when `totals:true`) instead of a bare `Row[]`; `InferResponse` reflects that. Pass `metadata:false` to keep the bare array (#58). **Input-bound paging (#66):** `paging.page`/`per_page`/`offset` also accept a `Value` (e.g. `inp("page")`) — it rides `context.simpleExternal` while the static block stays the engine gate (`enabled:true`); `paging.search`/`sort` are `Value` dynamic overrides. A `search`/`sort`-only `paging` (no numeric field) does NOT paginate. `external: { value, permissions? }` is the classic whole-config blob (mutually exclusive with input-bound `paging` fields; forces the gate on). Read `nextPage` (`number|null`) as the typed has-next signal.
 - `s.db.truncate({ table, reset?, as? })` · `s.db.schema({ table, path, as? })`.
@@ -939,6 +961,7 @@ Auth & calls:
 - `s.db.external.oracle.direct_query` [special]
 - `s.db.external.postgres.direct_query` [special]
 - `s.db.external.snowflake.direct_query` [special]
+- `s.db.get_by_id` [special]
 - `s.db.get` [special] → as: InferRow<T> | null (binds null on a miss, never throws)
 - `s.db.has` [special] → as: boolean
 - `s.db.patch` [special] → as: InferRow<T> (the full post-mutation row; throws NotFound on a miss)
@@ -1028,15 +1051,14 @@ Auth & calls:
 - `s.security.check_password({ as?: string; text_password?: value; hash_password?: value })` [output] → as: boolean (true when the plaintext matches the stored hash. ⚠ input.password double-hashes — pass input.text() plaintext (#109))
 - `s.security.create_auth_token` [special]
 - `s.security.create_curve_key({ as?: string; curve?: value; format?: value })`
+- `s.security.create_guid` [special]
 - `s.security.create_password({ as?: string; character_count?: value; require_lowercase?: value; require_uppercase?: value; require_digit?: value; require_symbol?: value; symbol_whitelist?: value })`
 - `s.security.create_rsa_key({ as?: string; bits?: value; format?: value })`
 - `s.security.create_secret_key({ as?: string; bits?: value; format?: value })`
 - `s.security.create_uuid({ as?: string })`
 - `s.security.decrypt({ as?: string; data?: value; algorithm?: value; key?: value; iv?: value })`
 - `s.security.encrypt({ as?: string; data?: value; algorithm?: value; key?: value; iv?: value })`
-- `s.security.jwe_decode_legacy({ as?: string; token?: value; key?: value; audience?: value; key_algorithm?: value; content_algorithm?: value; timeDrift?: value })`
 - `s.security.jwe_decode({ as?: string; token?: value; key?: value; check_claims?: value; key_algorithm?: value; content_algorithm?: value; timeDrift?: value })`
-- `s.security.jwe_encode_legacy({ as?: string; payload?: value; audience?: value; key?: value; key_algorithm?: value; content_algorithm?: value; ttl?: value })`
 - `s.security.jwe_encode({ as?: string; headers?: value; claims?: value; key?: value; key_algorithm?: value; content_algorithm?: value; ttl?: value })`
 - `s.security.jws_decode({ as?: string; token?: value; key?: value; check_claims?: value; signature_algorithm?: value; timeDrift?: value })`
 - `s.security.jws_encode({ as?: string; headers?: value; claims?: value; key?: value; signature_algorithm?: value; ttl?: value })`
@@ -1134,3 +1156,14 @@ two things are the same object; check which list it came from.
 - `c.expressionLegacy` — the older `const:expr` expression form, emitted by codegen for workspaces that still hold one — author `c.expression` instead.
 - `realtimeTrigger()` — the SUPERSEDED realtime trigger, against the workspace-global realtime layer — a different object from the current `channel`, despite the similar name. For a join hook use `realtimeChannelTrigger({ actions: { join: true } })`; for message handling use a `realtimeMessage()` handler, which is the current equivalent of its `message` action (a message is an authored unit now, not a trigger action).
 - `s.api.realtime_event` — publishes to the SUPERSEDED workspace-global realtime layer, NOT to a `realtimeChannel()`. There is no current-layer send statement yet, so this is not a stand-in for one: to move a payload out over the current layer, return it from a `realtimeMessage()` handler (its `deliverTo` decides who receives it).
+
+Retired statement VERSIONS — no `s.` surface exists. Pulled code shows them as
+`raw({ name: "…" })` and they keep running as stored, so leave them; author the
+replacement only for NEW code. Never swap one for the other — each version broke the last.
+
+- `mvp:crypto_jwe_decode` → `mvp:crypto_jwe_decode2`
+- `mvp:crypto_jwe_encode` → `mvp:crypto_jwe_encode3`
+- `mvp:crypto_jwe_encode2` → `mvp:crypto_jwe_encode3`
+- `mvp:crypto_jws_decode` → `mvp:crypto_jws_decode2`
+- `mvp:crypto_jws_encode` → `mvp:crypto_jws_encode2`
+- `mvp:connect_ncscale_send_log` — retired, no replacement

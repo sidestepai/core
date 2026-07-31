@@ -11,7 +11,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { s } from "../../src/statements/s.js";
-import { and, cmp, expr, or } from "../../src/statements/expression.js";
+import { and, cmp, expr, mixed, or } from "../../src/statements/expression.js";
 import { encodeStatement } from "../../src/statements/statement.js";
 import type { Statement } from "../../src/statements/statement.js";
 import type { StackItemXdo } from "../../src/types/xdo.js";
@@ -29,7 +29,7 @@ const EMPTY_REFS = RefIndex.fromPayload({}, new DecodeContext());
 
 const SURFACE = {
   s, c, ref, inp, col, auth, env, setting, out,
-  withFilters, fl, rawValue, raw, expr, cmp, and, or,
+  withFilters, fl, rawValue, raw, expr, cmp, and, or, mixed,
 };
 
 /**
@@ -87,6 +87,38 @@ describe("variables", () => {
 
   it("round-trips update_var, which names its target in context", () => {
     expect(roundTrip(s.update_var("total", c.int(1)))).toBe('s.update_var("total", c.int(1))');
+  });
+
+  // A `set_var` whose context is EMPTY. Not a shape the SDK writes — these bytes
+  // are copied from a real stored statement — but the engine's optional-schema
+  // pass fills `tag` with `const`, `filters` with `[]`, and `value` with the text
+  // type's `""`, so it is the blank const spelled a second way. 18 statements in
+  // the survey corpus store it against 101 that store the members explicitly.
+  const STORED_EMPTY_SET_VAR = {
+    as: "x2",
+    name: "mvp:set_var",
+    addon: [],
+    input: [],
+    output: { items: [], filters: [], customize: false },
+    context: {},
+    disabled: false,
+    description: "",
+    settings_registry: null,
+  } as unknown as StackItemXdo;
+
+  it("reads an empty set_var context as the blank const rather than falling back to raw()", () => {
+    const ctx = new DecodeContext();
+    const source = printExpr(decodeStatement(ctx, EMPTY_REFS, STORED_EMPTY_SET_VAR, {}));
+    expect(source).toBe('s.set_var("x2", c.text(""))');
+    // The recovered statement must compare equal to the bytes it came from —
+    // the empty and explicit spellings are one statement under the comparator.
+    expect(normalize(encodeStatement(evaluate(source)))).toEqual(normalize(STORED_EMPTY_SET_VAR));
+  });
+
+  it("still declines an empty update_var context, which has lost its target name", () => {
+    const ctx = new DecodeContext();
+    const stored = { ...STORED_EMPTY_SET_VAR, name: "mvp:update_var" } as unknown as StackItemXdo;
+    expect(printExpr(decodeStatement(ctx, EMPTY_REFS, stored, {}))).toContain("raw(");
   });
 });
 
@@ -161,10 +193,11 @@ describe("expression algebra", () => {
       expect(source).not.toContain("raw(");
     });
 
-    it("declines a MIXED container, which has no authored form", () => {
-      // `a AND b OR c` cannot be spelled: `or(...)` would re-encode every sibling
-      // as ORed. Emitting it anyway would change what the statement matches, so
-      // it stays raw() — exact, if unreadable.
+    it("recovers a MIXED container as mixed(...), and says it is ambiguous", () => {
+      // `a AND b OR c` is a state the editor allows — every row after the first
+      // carries its own join — so it has to round-trip. `and(...)`/`or(...)`
+      // would re-encode every sibling the same way and change what the statement
+      // matches; `mixed(...)` carries each join term by term.
       const stored = structuredClone(
         encodeStatement(
           s.conditional({
@@ -181,9 +214,17 @@ describe("expression algebra", () => {
         .expression;
       nodes[2]!.or = true; // a AND b OR c
 
-      const source = printExpr(decodeStatement(new DecodeContext(), EMPTY_REFS, stored));
-      expect(source).toContain("raw(");
+      const ctx = new DecodeContext();
+      const source = printExpr(decodeStatement(ctx, EMPTY_REFS, stored));
+      expect(source).toContain("mixed(");
+      expect(source).not.toContain("raw(");
+      // Byte-exact, which is the only reason emitting it at all is safe.
       expect(normalize(encodeStatement(evaluate(source)))).toEqual(normalize(stored));
+      // …and REPORTED, because the stored form does not say which grouping was
+      // meant and the two contexts it can appear in read it differently.
+      const entry = ctx.report.entries.find((e) => e.category === "ambiguous-condition");
+      expect(entry?.detail).toContain("mixes AND and OR");
+      expect(entry?.detail).toContain("left to right");
     });
 
     it("declines an `or` flag on the FIRST sibling, which joins to nothing", () => {
@@ -260,6 +301,50 @@ describe("try/catch and loops", () => {
     expect(source).toContain("try");
     expect(source).toContain("catch");
     expect(source).toContain("finally");
+  });
+
+  // A loop whose iterand went missing on the way out. NOT an engine default —
+  // a live engine raises "For Each Loop: missing list argument" and faults on
+  // `Undefined array key "cnt"` — so the stored statement THROWS. It is repaired
+  // to the empty iterand it lost, which is a no-op instead of a fault, and every
+  // site is reported because that changes what the loop does.
+  describe("a loop with no iterand", () => {
+    function storedLoop(name: string, member: string): StackItemXdo {
+      const context: Record<string, unknown> = { as: "row", run: [] };
+      // `member` is deliberately NOT set — that is the shape under test.
+      void member;
+      return { name, context, input: [], disabled: false } as unknown as StackItemXdo;
+    }
+
+    for (const [name, member, expected] of [
+      ["mvp:foreach", "list", "c.array([])"],
+      ["mvp:for", "cnt", "c.int(0)"],
+    ] as const) {
+      it(`repairs ${name} to the empty ${member} and reports it`, () => {
+        const ctx = new DecodeContext();
+        const stored = storedLoop(name, member);
+        const source = printExpr(decodeStatement(ctx, EMPTY_REFS, stored, {}));
+
+        expect(source).not.toContain("raw(");
+        expect(source).toContain(expected);
+        expect(normalize(encodeStatement(evaluate(source)))).toEqual(normalize(stored));
+
+        // Flagged, never silent: turning a runtime fault into a no-op is a
+        // behaviour change and has to be visible.
+        const modernized = ctx.report.entries.filter((e) => e.category === "modernized");
+        expect(modernized).toHaveLength(1);
+        expect(modernized[0]!.detail).toContain("EVALUATES DIFFERENTLY");
+      });
+    }
+
+    it("reports nothing when the iterand IS stored", () => {
+      const ctx = new DecodeContext();
+      const stored = encodeStatement(
+        s.foreach({ as: "row", list: ref("rows"), body: [] }),
+      ) as StackItemXdo;
+      printExpr(decodeStatement(ctx, EMPTY_REFS, stored, {}));
+      expect(ctx.report.entries.filter((e) => e.category === "modernized")).toEqual([]);
+    });
   });
 
   it("round-trips each loop form with its nested body intact", () => {
@@ -436,6 +521,35 @@ describe("call family", () => {
     // Degrades to {name, guid} rather than a bare string, which ObjectRef would
     // read as a NAME and re-derive into a different guid.
     expect(source).toContain("ffffffffffffffffffffffffffffffff");
+  });
+
+  // `mvp:action` targets a MARKETPLACE action-package version, not a workspace
+  // object, so its id is never in the bundle's object graph and reporting it as
+  // a missing guid is a false error. All 3 in the survey corpus were absent, and
+  // one of them appeared in two different workspaces — which a workspace-local
+  // guid cannot do.
+  it("does not report an action.call target as an unresolved workspace reference", () => {
+    const ctx = new DecodeContext();
+    const stored = encodeStatement(
+      s.action.call({ action: { name: "", guid: "20c63dfc-dfcf-420e-8435-8212d1a8305d" } }),
+    ) as StackItemXdo;
+    const source = printExpr(decodeStatement(ctx, EMPTY_REFS, stored, {}));
+
+    expect(source).toContain("20c63dfc-dfcf-420e-8435-8212d1a8305d");
+    expect(ctx.report.entries.filter((e) => e.category === "unresolved-ref")).toEqual([]);
+    // The bytes are unchanged by the fix — only the report is.
+    expect(normalize(encodeStatement(evaluate(source)))).toEqual(normalize(stored));
+  });
+
+  it("still reports a FUNCTION call whose target is genuinely missing", () => {
+    // The paired negative: skipping resolution is scoped to the external
+    // surface, so an ordinary workspace call must keep reporting.
+    const ctx = new DecodeContext();
+    const stored = encodeStatement(
+      s.function.run({ fn: { name: "gone", guid: "ffffffffffffffffffffffffffffffff" } }),
+    ) as StackItemXdo;
+    printExpr(decodeStatement(ctx, EMPTY_REFS, stored, {}));
+    expect(ctx.report.entries.some((e) => e.category === "unresolved-ref")).toBe(true);
   });
 });
 
@@ -819,10 +933,12 @@ describe("db family — an unbound table", () => {
 
     const unresolved = ctx.report.entries.filter((e) => e.category === "unresolved-ref");
     expect(unresolved).toHaveLength(1);
-    // The message has to name BOTH causes — the decoder cannot tell them apart, and
-    // guessing one would send the reader down the wrong path.
-    expect(unresolved[0]!.detail).toMatch(/deleted or unbound/);
-    expect(unresolved[0]!.detail).toMatch(/export's scope/);
+    // One cause, named without a hedge. This flow pulls whole workspaces, so a
+    // blank reference cannot be a live target that merely sat outside a scoped
+    // export — the line used to offer that reading and send the reader to
+    // re-pull, which is advice about a situation this SDK cannot produce.
+    expect(unresolved[0]!.detail).toMatch(/deleted, or the binding was never made/);
+    expect(unresolved[0]!.detail).not.toMatch(/scope/);
   });
 
   it("reports nothing for a table that resolves", () => {
@@ -875,6 +991,106 @@ describe("db.query", () => {
   it("round-trips a bare list query with none of the engine's paging defaults restated", () => {
     const source = dbRoundTrip(s.db.query({ table: POSTS, as: "rows" }));
     expect(source).toBe('s.db.query({\n  table: posts,\n  as: "rows",\n})');
+  });
+
+  // The engine writes `search: {expression: []}` on a join that filters on
+  // nothing, exactly as it does on the query's own search. The top-level read
+  // has always treated that as unauthored; the join's did not, and sent the
+  // empty tree into the condition inverse — which cannot build one — so five
+  // joined queries in the survey corpus fell back for filtering on nothing.
+  it("reads an EMPTY bind[] join search as unauthored rather than a filter it cannot parse", () => {
+    const stored = encodeStatement(
+      s.db.query({ table: POSTS, bind: [{ table: USERS }], as: "rows" }),
+    ) as StackItemXdo;
+    const bind = (stored.context as { bind: Array<Record<string, unknown>> }).bind;
+    bind[0]!.search = { expression: [] };
+
+    const source = printExpr(decodeStatement(new DecodeContext(), DB_REFS, stored, {}));
+    expect(source).not.toContain("raw(");
+    expect(source).not.toContain("where");
+    expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+  });
+
+  // Every expression node carries BOTH a `group` and a `statement`, and `type`
+  // selects which is live — the engine's two walkers each switch on it and never
+  // read the other. The empty `group` on a statement node was already dropped;
+  // the blank `statement` on a GROUP node is the missing half.
+  describe("the scaffolding on an expression node's dead branch", () => {
+    const BLANK_STATEMENT = {
+      op: "=",
+      left: { tag: "const", filters: [], operand: "" },
+      right: { tag: "const", filters: [], operand: "", ignore_empty: false },
+    };
+
+    /** `a AND (b OR c)` — the shape that carries a group node at the root. */
+    function grouped(): StackItemXdo {
+      return encodeStatement(
+        s.db.query({
+          table: POSTS,
+          where: and(
+            expr(col("published"), "=", c.bool(true)),
+            or(expr(col("score"), ">", c.int(10)), expr(col("score"), "<", c.int(99))),
+          ),
+          as: "rows",
+        }),
+      ) as StackItemXdo;
+    }
+
+    /** The root group node the engine would hang its dead `statement` off. */
+    function groupNode(stored: StackItemXdo): Record<string, unknown> {
+      const expression = (
+        stored.context as { search: { expression: Array<Record<string, unknown>> } }
+      ).search.expression;
+      const node = expression.find((e) => e.type === "group");
+      expect(node, "the fixture must contain a group node").toBeDefined();
+      return node!;
+    }
+
+    it("ignores the BLANK placeholder statement the engine writes there", () => {
+      const stored = grouped();
+      groupNode(stored).statement = BLANK_STATEMENT;
+
+      const source = printExpr(decodeStatement(new DecodeContext(), DB_REFS, stored, {}));
+      expect(source).not.toContain("raw(");
+      expect(source).toContain("or(");
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+    });
+
+    it("drops a REAL leftover comparison too, and reports the discard", () => {
+      // Where a non-blank one comes from: the editor copies the live condition
+      // INTO the new group when you wrap it and does not clear the original, so
+      // this is a frozen snapshot the UI never renders and no consumer reads.
+      // Dropped rather than carried — but reported, because discarding stored
+      // bytes should never be silent.
+      const ctx = new DecodeContext();
+      const stored = grouped();
+      groupNode(stored).statement = {
+        op: "!=",
+        left: { tag: "var", filters: [], operand: "$this.predicted_in" },
+        right: { tag: "const:null", filters: [], operand: "null", ignore_empty: false },
+      };
+
+      const source = printExpr(decodeStatement(ctx, DB_REFS, stored, {}));
+      expect(source).not.toContain("raw(");
+      expect(source).toContain("or(");
+      // The leftover is gone from the tree, not smuggled into the condition.
+      expect(source).not.toContain("predicted_in");
+      expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+
+      const omissions = ctx.report.entries.filter((e) => e.category === "expected-omission");
+      expect(omissions).toHaveLength(1);
+      expect(omissions[0]!.detail).toContain("unused `statement` branch");
+    });
+
+    it("reports nothing when the dead branch is the blank placeholder", () => {
+      // Pure scaffolding — every group node the SDK itself writes has one, so
+      // reporting it would be noise on every single grouped condition.
+      const ctx = new DecodeContext();
+      const stored = grouped();
+      groupNode(stored).statement = BLANK_STATEMENT;
+      printExpr(decodeStatement(ctx, DB_REFS, stored, {}));
+      expect(ctx.report.entries.filter((e) => e.category === "expected-omission")).toEqual([]);
+    });
   });
 
   it("preserves a nested where-tree's structure and join mode", () => {
@@ -1320,6 +1536,37 @@ describe("miscellaneous specials", () => {
         }),
       ),
     ).toContain("expiration");
+  });
+
+  it("carries an auth table whose dbtable does not resolve as a guid", () => {
+    // `dbtable` has three stored spellings: a guid that resolves (179 of 197
+    // across the sweep), blank (5), and one that does not resolve (13) — which
+    // older workspaces produce by storing the table's NAME here.
+    //
+    // SideStep resolves by guid ONLY and does not map the name back to the
+    // table, so whether a table of that name is in the bundle changes nothing.
+    // The old message asserted the value WAS a guid and named it as missing;
+    // guids are arbitrary unique keys anyone can change, so there is no shape
+    // to justify that claim, and the report now states only what is known.
+    const stored = encodeStatement(
+      s.security.create_auth_token({ table: USERS, id: ref("user.id"), as: "token" }),
+    ) as StackItemXdo;
+    const entry = (stored.input as Array<{ name: string; value: string }>).find(
+      (e) => e.name === "dbtable",
+    )!;
+    entry.value = "users";
+
+    const ctx = new DecodeContext();
+    const source = printExpr(decodeStatement(ctx, DB_REFS, stored));
+    // Carried verbatim, so it re-encodes to the same bytes. Resolving it to the
+    // table's symbol would write the table's real guid instead and break that.
+    expect(source).toContain('guid: "users"');
+    expect(source).not.toContain("s.raw");
+    expect(ctx.report.entries.map((e) => e.category)).toEqual(["unresolved-ref"]);
+    expect(ctx.report.entries[0]!.detail).toContain("by guid only");
+    // The load-bearing negative: not the old `guid users is not present in this
+    // bundle`, which called the value a guid on no evidence.
+    expect(ctx.report.entries[0]!.detail).not.toMatch(/^guid /);
   });
 
   it("round-trips the call-family tail that does not share the uniform call shape", () => {

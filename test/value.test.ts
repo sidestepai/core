@@ -1,5 +1,5 @@
 import { describe, it, expect, expectTypeOf } from "vitest";
-import { c, ref, inp, auth, env, setting, sys, out, filter, withFilters } from "../src/values/value.js";
+import { c, ref, inp, auth, caught, env, setting, sys, out, filter, withFilters } from "../src/values/value.js";
 import type { Value, RefValue } from "../src/values/value.js";
 
 describe("c.* constant constructors", () => {
@@ -165,6 +165,13 @@ describe("references", () => {
 
   it("inp produces an input tag", () => {
     expect(inp("name")).toEqual({ value: "name", tag: "input", filters: [] });
+  });
+
+  it("caught reads the try_catch error scope (`$trycatch.*`)", () => {
+    // `s.try_catch` was modelled but its caught error was unreachable: the tag
+    // had no constructor, so a catch arm could only be written via rawValue.
+    expect(caught("message")).toEqual({ value: "message", tag: "trycatch", filters: [] });
+    expect(caught()).toEqual({ value: "", tag: "trycatch", filters: [] });
   });
 
   it("out produces an output tag (parent-row reference for addon inputs)", () => {

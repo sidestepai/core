@@ -9,7 +9,7 @@
 import { describe, it, expect } from "vitest";
 import { TAGS } from "../../src/types/xdo.js";
 import type { TaggedValue } from "../../src/types/xdo.js";
-import { c, col, auth, env, filter, inp, out, ref, setting, withFilters } from "../../src/values/value.js";
+import { c, col, auth, caught, env, filter, inp, out, ref, setting, withFilters } from "../../src/values/value.js";
 import { fl } from "../../src/values/generated/filters.generated.js";
 import { rawValue } from "../../src/values/raw-value.js";
 import { DecodeContext } from "../../src/codegen/context.js";
@@ -31,6 +31,7 @@ function evaluate(source: string): TaggedValue {
     "inp",
     "col",
     "auth",
+    "caught",
     "env",
     "setting",
     "out",
@@ -39,7 +40,7 @@ function evaluate(source: string): TaggedValue {
     "rawValue",
     `return (${source});`,
   );
-  return fn(c, ref, inp, col, auth, env, setting, out, withFilters, fl, rawValue) as TaggedValue;
+  return fn(c, ref, inp, col, auth, caught, env, setting, out, withFilters, fl, rawValue) as TaggedValue;
 }
 
 /**

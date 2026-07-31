@@ -27,7 +27,8 @@ import type { FieldRule, StatementSpec } from "../statements/schema-dsl/interpre
 import { STATEMENT_SURFACES, sPathOf } from "../statements/surfaces.js";
 import { s } from "../statements/s.js";
 import { encodeStatement, type Statement } from "../statements/statement.js";
-import { normalize } from "../validate/normalize.js";
+import { filledContext, normalize } from "../validate/normalize.js";
+import { ignored as ignoredValue } from "../values/ignored.js";
 import { CORE_MODULE, type DecodeContext } from "./context.js";
 import { call, lit, obj, spread, type Expr } from "./print.js";
 import { deepEqual } from "./field.js";
@@ -37,7 +38,7 @@ import { decodeCondition } from "./expression.js";
 import { decodeValue } from "./value.js";
 
 /** Specs by stored name. */
-const SPECS_BY_NAME: ReadonlyMap<string, StatementSpec> = new Map(
+export const SPECS_BY_NAME: ReadonlyMap<string, StatementSpec> = new Map(
   GENERATED_SPECS.map((spec) => [spec.name, spec]),
 );
 
@@ -136,7 +137,13 @@ function recoverRule(
       // The spread writes `{value, tag, filters}` onto `context` itself, so the
       // sibling `context-plain` keys sit alongside it — read the three by name
       // rather than assuming the spread owns the object.
-      const value = toTaggedValue(context);
+      //
+      // An EMPTY context is the members the engine's optional-schema pass fills
+      // in, at this statement's declared default tag — one stored spelling of
+      // the blank value, not an unreadable statement. 22 statements in the
+      // survey corpus stored it, one each, and every one of them fell back to
+      // `raw()` on the same required-field guard (see {@link filledContext}).
+      const value = toTaggedValue(context) ?? toTaggedValue(filledContext(stored));
       if (!value) return null;
       return { field: rule.field, runtime: value, expr: decodeValue(ctx, value), isDefault: false };
     }
@@ -160,6 +167,18 @@ function recoverRule(
       );
       const value = toTaggedValue(entry);
       if (!value) return null;
+      // A stored `ignore: true` entry is skipped by the engine but keeps its
+      // value. Wrapping it re-encodes the flag; without this the binding came
+      // back as an ordinary one and the statement degraded to `raw()`.
+      if ((entry as { ignore?: unknown })?.ignore === true) {
+        ctx.use(CORE_MODULE, "ignored");
+        return {
+          field: rule.field,
+          runtime: ignoredValue(value),
+          expr: call("ignored", decodeValue(ctx, value)),
+          isDefault: false,
+        };
+      }
       return { field: rule.field, runtime: value, expr: decodeValue(ctx, value), isDefault: false };
     }
     case "context-compare": {

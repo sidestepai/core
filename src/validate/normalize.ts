@@ -33,12 +33,48 @@ const STRIP_KEYS = new Set([
   "market_item",
   // engine-stored source artifact (the raw XanoScript text), not authored data
   "xanoscript",
+  // A query's saved request/response SAMPLE. Authored, but nothing in this SDK
+  // models it, so it cannot survive a pull — the decoder reports a populated one
+  // as an omission rather than letting it read as a failed round trip.
+  //
+  // Stripped rather than emptied because its contents are USER DATA: an example
+  // payload with a key named `output` or `input` was being rewritten by the
+  // engine-envelope rules meant for statement envelopes, which normalized one
+  // real 700-byte sample down to `{}`.
+  "example",
   // storage-mode flag the golden table corpus predates (those fixtures were
   // captured before `use_xdo` was serialized). The SDK always emits it; it
   // doesn't change the authored schema, so drop it from both sides — same as
   // the already-stripped `index`, whose gin entry `use_xdo` only gates.
   "use_xdo",
 ]);
+
+/**
+ * A query's saved TEST definitions — `[{id, name, input, token, expect, …}]`.
+ *
+ * Nothing in this SDK models them, so a populated list cannot survive a pull;
+ * the decoder reports one as an omission and this drops it from the comparison,
+ * so exactly one of "left behind" and "does not re-export" fires. Same treatment
+ * as `example`, and stripped rather than emptied for the same reason: an
+ * `expect` carries whole recorded response payloads, which are user data.
+ *
+ * Keyed on SHAPE, never on the name alone. `test` is one of the most generic
+ * key names there is — the corpus holds table columns named `test`/`test2` and
+ * const values `"test"` — so this fires only for a non-empty array whose every
+ * entry carries the `expect` list a test definition is built around.
+ */
+function isSavedTestList(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every(
+      (entry) =>
+        entry !== null &&
+        typeof entry === "object" &&
+        Array.isArray((entry as { expect?: unknown }).expect),
+    )
+  );
+}
 
 /**
  * Recursively remove server/auto-generated keys from a parsed JSON value.
@@ -163,22 +199,214 @@ const MINIMAL_CONTEXT_RETURN = { type: "list" };
  */
 const PAGING_INT_KEYS = new Set(["page", "per_page", "offset"]);
 
+/**
+ * Statements whose `input[]` entries the engine reads BY NAME, so their stored
+ * order carries nothing.
+ *
+ * Each one is on this list for two reasons: the engine resolves that statement's
+ * arguments by NAME rather than by position, so a reordering cannot change what
+ * it does; and real workspaces store the same entries in more than one order —
+ * 3 `api_request`, and one each of the two document statements.
+ *
+ * This is an allowlist and must stay one. Order IS meaningful on other
+ * input-routed statements — a row write's columns, and a lookup whose `input[]`
+ * has to LEAD with `field_name`/`field_value` — so a blanket sort would quietly
+ * corrupt them.
+ */
+const NAME_KEYED_INPUT = new Set([
+  "mvp:create_auth",
+  "mvp:api_request",
+  "mvp:amazon_opensearch_document",
+  "mvp:elasticsearch_document",
+]);
+
 /** An expression group that nests nothing — what an omitted group means. */
 const EMPTY_SEARCH = { expression: [] };
+
+/**
+ * The inert `statement` the engine writes on an expression node whose `type` is
+ * `"group"`.
+ *
+ * Every node carries BOTH members — `group` and `statement` — and `type` selects
+ * which one is live. The engine dispatches on it in two independent walkers, and
+ * neither ever reads the off-branch member: the search evaluator's
+ * `case "group"` recurses into `$statement["group"]` alone, and the
+ * expression-to-config converter's `case "group"` reads only
+ * `$expr["group"]["expression"]`. The mirror of this is already handled — an
+ * empty `group` on a `type:"statement"` node is dropped as a default (see the
+ * `"group"` case in {@link isDefaultEnvelopeMember}) — and this is the missing
+ * half, worth 6 `db.query` statements that fell back for carrying scaffolding.
+ *
+ * **Every group node's `statement` is dropped, blank or not**, because nothing
+ * anywhere reads it. Five independent consumers were checked and all five
+ * dispatch on `type` first: the engine's search evaluator and its
+ * expression-to-config converter (every `["statement"]` read in the engine sits
+ * inside a `case "statement":`), the frontend's row renderer (`@switch
+ * (exp.type)`), and the frontend's own type-toggle handler, which reads the
+ * GROUP's first child when converting back — never the parent's copy.
+ *
+ * The frontend also explains where a non-blank one comes from. Toggling a row
+ * from statement to group copies the live comparison INTO the new group as its
+ * first child and simply does not clear the original:
+ *
+ *     payload['group'] = { expression: [{ type: 'statement',
+ *                                         statement: group.value.statement }] }
+ *
+ * So the leftover is a snapshot of the condition at the moment it was wrapped.
+ * In the survey corpus 1 of 11 still matches the group's first child exactly and
+ * 10 have drifted — the user kept editing the group while the frozen copy stayed
+ * behind. It is editor exhaust, not authored intent: the UI renders only the
+ * live branch, so whoever "wrote" it has no way to see it, edit it, or know it
+ * is there.
+ *
+ * That is what separates this from `example` and a saved `test` list, which are
+ * also unread but ARE user data and are therefore stripped rather than dropped.
+ * The rule is not "never discard bytes" — it is never discard something someone
+ * MEANT. A non-blank one is reported as an `expected-omission` so the discard is
+ * visible; a blank one is pure scaffolding and goes quietly.
+ */
+export function isBlankGroupStatement(v: unknown): boolean {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return false;
+  const node = v as { op?: unknown; left?: unknown; right?: unknown };
+  if (node.op !== "=") return false;
+  const blankSide = (side: unknown): boolean =>
+    side !== null &&
+    typeof side === "object" &&
+    (side as { tag?: unknown }).tag === "const" &&
+    (side as { operand?: unknown }).operand === "";
+  return blankSide(node.left) && blankSide(node.right);
+}
+/**
+ * The per-return-type sub-blocks of a `db.query`'s `context.return`, and the
+ * return types that have none.
+ */
+const RETURN_BLOCKS = ["single", "list", "stream", "aggregate"] as const;
+const RETURN_TYPES = new Set<string>([...RETURN_BLOCKS, "count", "exists"]);
+
+/**
+ * A `context.return` reduced to its LIVE branch, or `undefined` when it is not a
+ * return section or has no dead branch to shed.
+ *
+ * `return.type` selects one of four sub-blocks — `single`, `list`, `stream`,
+ * `aggregate` (`count` and `exists` select none) — and the query editor writes
+ * ALL of them on save, because the panel builds one form group over the whole
+ * declared section and emits `form.value` wholesale. So a `type:"single"` query
+ * still stores a fully-populated `list` block, paging and all, and a query that
+ * was ever a list keeps whatever sort it had after switching away.
+ *
+ * Nothing reads the off-branches. The converter that turns the stored section
+ * into the engine's query config is a chain of `if (returnType == "…")` arms,
+ * each reading `return.<that type>.*` and nothing else; Xano's own
+ * XanoScript↔stack translator likewise writes only the live block. The dead ones
+ * are invisible in the editor and inert at runtime — the same editor exhaust as
+ * an expression group's `statement` branch (see {@link isBlankGroupStatement}),
+ * and dropped for the same reason: the rule is never discard what someone MEANT,
+ * not never discard bytes.
+ *
+ * A dead branch that carries real configuration — a sort, a group-by, paging
+ * switched on — is reported as an `expected-omission` by the decoder so the
+ * discard is visible; the default-filled ones the editor writes on every save go
+ * quietly, since reporting those would fire on nearly every query pulled.
+ */
+export function liveReturnSection(value: unknown): Record<string, unknown> | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const section = value as Record<string, unknown>;
+  const type = section.type;
+  if (typeof type !== "string" || !RETURN_TYPES.has(type)) return undefined;
+  const dead = RETURN_BLOCKS.filter((b) => b !== type && b in section);
+  if (dead.length === 0) return undefined;
+  const live: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(section)) {
+    if (!(RETURN_BLOCKS as readonly string[]).includes(k) || k === type) live[k] = v;
+  }
+  return live;
+}
+
+/**
+ * The dead `context.return` branches that carry authored configuration — a
+ * non-empty `sort`/`group`/`eval`/`index`, or paging switched on. Used to report
+ * what {@link liveReturnSection} drops; a branch holding only the editor's
+ * defaults returns nothing.
+ */
+export function configuredDeadReturnBlocks(value: unknown): string[] {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return [];
+  const section = value as Record<string, unknown>;
+  const type = section.type;
+  if (typeof type !== "string" || !RETURN_TYPES.has(type)) return [];
+  return RETURN_BLOCKS.filter((b) => b !== type && isConfiguredReturnBlock(section[b]));
+}
+
+function isConfiguredReturnBlock(block: unknown): boolean {
+  if (block === null || typeof block !== "object" || Array.isArray(block)) return false;
+  const b = block as Record<string, unknown>;
+  for (const list of ["sort", "group", "eval", "index"]) {
+    if (Array.isArray(b[list]) && (b[list] as unknown[]).length > 0) return true;
+  }
+  const paging = b.paging;
+  return (
+    paging !== null && typeof paging === "object" && (paging as { enabled?: unknown }).enabled === true
+  );
+}
+
 /** The engine's default `context.external` (paged-external input) — SDK omits it. */
 const DEFAULT_CONTEXT_EXTERNAL = {
   tag: "input",
   value: "",
   permissions: { page: true, sort: true, search: true, per_page: false },
 };
-/** The engine's default `context.simpleExternal` (per-facet input) — SDK omits it. */
-const DEFAULT_CONTEXT_SIMPLE_EXTERNAL = {
-  page: { tag: "input", value: "" },
-  sort: { tag: "input", value: "" },
-  offset: { tag: "input", value: "" },
-  search: { tag: "input", value: "" },
-  per_page: { tag: "input", value: "" },
+/**
+ * A `context.simpleExternal` block whose every facet binds NOTHING — the empty
+ * scaffold the editor writes on a query that binds no paging facet.
+ *
+ * Keyed on the VALUE rather than on one frozen shape, because the scaffold has
+ * more than one stored spelling: 61 across the sweep write each facet as
+ * `{tag:"input", value:""}` and 3 as `{tag:"const", value:""}`. Both bind the
+ * same nothing — an input named `""` does not exist, and an empty const parses
+ * to nothing through the `int|min(1)` the engine declares.
+ *
+ * Reading the scaffold as authored was expensive out of proportion to its size:
+ * five blank facets came back as five bound paging Values, and because the SDK
+ * (correctly) refuses to author `external` alongside input-bound paging, the
+ * recovered call did not merely mismatch — it THREW, taking the whole db.query
+ * down to `raw()`. A blank facet is not a bind.
+ *
+ * The 4 genuinely populated blocks in the corpus keep every facet: a non-empty
+ * value anywhere means the block was authored.
+ */
+function bindsNoPagingFacet(value: unknown): boolean {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const facets = Object.values(value as Record<string, unknown>);
+  if (facets.length === 0) return false;
+  return facets.every(
+    (facet) =>
+      facet !== null &&
+      typeof facet === "object" &&
+      !Array.isArray(facet) &&
+      (facet as { value?: unknown }).value === "" &&
+      ((facet as { filters?: unknown[] }).filters ?? []).length === 0,
+  );
+}
+
+/**
+ * The engine's default API-group CORS block — every facet off, no origins.
+ *
+ * Frozen here rather than imported from the encoder because this module sits
+ * under the authoring layer, not above it. `test/validate/normalize.test.ts`
+ * pins the literal against what the encoder emits by default, so the two cannot
+ * drift apart silently.
+ */
+const DEFAULT_CORS = {
+  mode: "default",
+  allowOrigins: [],
+  allowHeaders: [],
+  allowCredentials: false,
+  maxAge: 0,
+  allowMethods: { delete: false, get: false, head: false, patch: false, post: false, put: false },
 };
+/** The engine's default API-group `documentation` block — docs open, no token. */
+const DEFAULT_DOCUMENTATION = { require_token: false, token: "" };
+/** An attachment block that attaches nothing and customizes no phase. */
+const DEFAULT_MIDDLEWARE = { pre: [], post: [], pre_customize: false, post_customize: false };
 
 /**
  * Envelope members whose value, when it equals the listed default, is a
@@ -195,8 +423,18 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     // empty-associative-collection artifact again. Both mean "no mocks".
     case "mocks":
       return isEmptyObject(v) || isEmptyArray(v);
+    // An UNSET runtime binding, in both stored spellings: the `null` the engine
+    // writes on one generation and the blank-member object it writes on another
+    // (`{id: "", mode: ""}` on 6 real `mvp:function` statements). A binding that
+    // names anything is preserved and still compares.
     case "runtime":
-      return v === null;
+      return (
+        v === null ||
+        (typeof v === "object" &&
+          v !== null &&
+          !Array.isArray(v) &&
+          Object.values(v as Record<string, unknown>).every((member) => member === ""))
+      );
     case "settings_registry":
       return v === null || isEmptyArray(v);
     case "addon":
@@ -207,6 +445,91 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     case "description":
     case "sql_name":
       return v === "";
+    // The object-level members below are the same generational gap one level up
+    // — an object saved by an older engine generation omits them, while both the
+    // current engine and the SDK always write them at a fixed default. They were
+    // 1,716 of the 1,744 round-trip mismatches in a 187-workspace sweep, and
+    // each default is evidenced twice: the engine reads the absent key as this
+    // value, and real workspaces store present-at-default and absent side by
+    // side on one instance.
+    case "docs":
+    case "datasource":
+    case "view_alias":
+      return v === "";
+    // An MCP tool entry's optional metadata, and the agent provider-config
+    // members whose unset spelling is the empty string. Both store the empty
+    // form and the absent form side by side across the corpus.
+    case "tool_meta":
+    case "resource_uri":
+    case "alias":
+    case "baseURL":
+    case "safetySettings":
+    case "dynamicRetrievalConfig":
+    case "apiKey":
+      return v === "";
+    // `headers` is an empty STRING on an unset agent config and a string[] on an
+    // api_request statement — dropping only the string spelling leaves an empty
+    // header list comparing as the authored value it is.
+    case "headers":
+      return v === "";
+    // A tool entry's kind. Absent means `tool`; a `resource` or `prompt` entry
+    // says so and still compares. Value-distinct from the other `type`
+    // discriminators (an expression node, a column type), none of which is `tool`.
+    case "type":
+      return v === "tool";
+    // Four stored spellings of "no thinking budget" across 16 real configs: the
+    // empty string, absent, and the block with its budget as either `0` or `""`.
+    case "thinkingConfig":
+      return (
+        v === "" ||
+        (typeof v === "object" &&
+          v !== null &&
+          !Array.isArray(v) &&
+          (v as Record<string, unknown>)["includeThoughts"] === false &&
+          ((v as Record<string, unknown>)["thinkingBudget"] === 0 ||
+            (v as Record<string, unknown>)["thinkingBudget"] === ""))
+      );
+    // A query with no declared response type. Type- and value-distinct from the
+    // raw-SQL `response_type`, whose values are `list`/`single`/`count` and
+    // whose own default (`list`) is spelled differently.
+    case "response_type":
+      return v === "standard";
+    // Empty list members. `tag` is the load-bearing one: it is also the
+    // discriminator every tagged value carries, so the rule is restricted to the
+    // ARRAY spelling — a `tag: "const:str"` is a string and never matches.
+    case "tag":
+    case "views":
+    case "result":
+      return isEmptyArray(v);
+    // Two API-group gates with opposite defaults, each the value the engine
+    // falls back to when the key is absent: a group serves unless disabled,
+    // documentation is off unless turned on.
+    case "api_group_enabled":
+      return v === true;
+    case "swagger":
+      return v === false;
+    case "documentation":
+      return deepEqual(normalize(v), normalize(DEFAULT_DOCUMENTATION));
+    // A CORS block is applied ONLY when its `mode` is `"custom"` — the engine
+    // reads an absent mode as `""`, which is not custom — so a block that does
+    // not say `custom` configures nothing.
+    //
+    // Two spellings therefore mean the same default. The current one says
+    // `mode: "default"`; an older one predates `mode` entirely and carries
+    // `enabled: false`, a key that request path never reads.
+    case "cors": {
+      if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
+      const block = { ...(v as Record<string, unknown>) };
+      if (block["enabled"] === false) delete block["enabled"];
+      block["mode"] ??= "default";
+      return deepEqual(normalize(block), normalize(DEFAULT_CORS));
+    }
+    // Both stored spellings of "no middleware": the engine hands an empty
+    // associative map back as a JSON array, the same artifact already absorbed
+    // for `mocks`, `customize` and an empty `context`. A phase explicitly
+    // customized to run nothing still compares — that is not inheriting.
+    case "middleware":
+      return isEmptyArray(v) || deepEqual(normalize(v), normalize(DEFAULT_MIDDLEWARE));
     // Two unrelated `offset`s, both at a default. An addon's is the response path
     // its rows are spliced into, `""` when spliced at the root. A list context's
     // paging offset is declared to default to 0. Neither carries information at
@@ -226,6 +549,12 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
       return v === false;
     case "distinct":
       return v === "auto";
+    // `s.setheader`'s duplicate-handling mode. The engine declares it
+    // `duplicates?=replace` and reads it as `($data["duplicates"] ?? "replace")`,
+    // so an absent key IS "replace"; 3 real statements omit it against 8 that
+    // store it present-at-default. The key appears on no other statement.
+    case "duplicates":
+      return v === "replace";
     // A return sub-block whose every member sat at a default. These are checked
     // against their NORMALIZED form because the member rules above are what empty
     // them — without this the block survives as `{}` and the whole return envelope
@@ -233,8 +562,27 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     //
     // `list` also names a foreach's iterated value; a tagged value never
     // normalizes to empty, so that one is untouched.
-    case "paging":
-      return isEmptyObject(normalize(v));
+    //
+    // `enabled:false` is the one member no rule above empties, deliberately — it
+    // is meaningful on a history block, so it cannot be dropped by name. It IS
+    // droppable here, where the key says the block is paging: 7 real db.query
+    // statements omit `paging` outright against 149 that store it present at
+    // `enabled:false`, and the two spellings mean the same thing.
+    //
+    // Evidenced twice before being trusted. Every engine consumer reads the flag
+    // as `["paging"]["enabled"] ?? false`, so an absent block IS a disabled one,
+    // and the serializer returns before writing anything when it is off — a
+    // disabled block emits no source at all. The siblings are provably inert
+    // meanwhile: every read of `page`/`per_page`/`offset`/`metadata` sits behind
+    // that same gate.
+    //
+    // Still narrow: this fires only once every OTHER member has normalized away.
+    // A disabled block that customizes something (`{enabled:false, per_page:50}`)
+    // keeps both and compares as itself.
+    case "paging": {
+      const normalized = normalize(v);
+      return isEmptyObject(normalized) || deepEqual(normalized, { enabled: false });
+    }
     // The same four blocks, plus the residue the member rules above cannot reach.
     //
     // The engine writes ALL FOUR result-shape blocks on every query; the SDK writes
@@ -311,8 +659,6 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     // is preserved. Same two-spellings-of-empty shape as `settings_registry`.
     case "input":
       return v === null || isEmptyArray(v);
-    case "example":
-      return isEmptyObject(v);
     case "shared_workspace":
       return v !== null && typeof v === "object" && (v as { is_shared?: unknown }).is_shared === false;
     // A trigger's `obj_id`: a table trigger's is the referenced table's GUID
@@ -328,7 +674,15 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     // defaults, not authored). The SDK omits it on a toolset; drop the inheriting
     // form on both sides. A customized (`inherit:false`) history is preserved.
     case "history":
-      return v !== null && typeof v === "object" && (v as { inherit?: unknown }).inherit === true;
+      // An ARRAY is not a settings block — it is the engine's own record of past
+      // runs, which the generated tree deliberately does not carry. Dropping it
+      // from both sides is what stops that deliberate omission ALSO reading as a
+      // failed round trip; the two mean opposite things and an object must not
+      // report both.
+      return (
+        Array.isArray(v) ||
+        (v !== null && typeof v === "object" && (v as { inherit?: unknown }).inherit === true)
+      );
     // An MCP-server toolset persists `agent_settings:null` (only agents carry a
     // real settings block); the SDK omits it. Drop the null form.
     case "agent_settings":
@@ -344,8 +698,9 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     // A default `auth:false` (public / no auth table): the engine persists it on a
     // tool where the SDK omits it. Drop the `false` form; `auth:true` and an
     // auth-table id are preserved and still compared.
+    // `false` and `""` are both "no auth table"; a guid names one and compares.
     case "auth":
-      return v === false;
+      return v === false || v === "";
     // Default db-query `context` members the engine fills when an addon (or any
     // db context) customizes nothing; the SDK omits them. Empty-collection /
     // false members drop directly; the three structured members below match
@@ -361,6 +716,18 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     // default must pass through the same reduction to compare equal.
     case "lock":
       return deepEqual(normalize(v), normalize({ tag: "const:bool", value: "" }));
+    // A condition container that holds nothing, in either stored spelling: the
+    // `{expression: []}` the SDK writes and the empty associative-map form `[]`
+    // the engine hands back — the same artifact already absorbed for `mocks`,
+    // `customize` and an empty `context`. Both mean "no condition configured".
+    // A populated container is untouched and still compares node for node.
+    case "expr":
+      return (
+        isEmptyArray(v) ||
+        (v !== null &&
+          typeof v === "object" &&
+          isEmptyArray((v as { expression?: unknown }).expression))
+      );
     case "search":
       return deepEqual(normalize(v), normalize({ expression: [] }));
     // Two spellings of an all-defaults return block. The engine's declared shape
@@ -392,7 +759,7 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     case "external":
       return deepEqual(normalize(v), normalize(DEFAULT_CONTEXT_EXTERNAL));
     case "simpleExternal":
-      return deepEqual(normalize(v), normalize(DEFAULT_CONTEXT_SIMPLE_EXTERNAL));
+      return bindsNoPagingFacet(v);
     default:
       return false;
   }
@@ -415,6 +782,224 @@ export function isEmptyOutput(v: unknown): boolean {
   const o = v as { items?: unknown; customize?: unknown };
   const noItems = o.items === undefined || (Array.isArray(o.items) && o.items.length === 0);
   return noItems && o.customize !== true;
+}
+
+/** An `@` target naming a table by local row id (`dbo=14`) rather than by guid. */
+const LOCAL_DBO_REF = /^dbo=\d+$/;
+
+/**
+ * Rewrite every LOCAL table reference in a `customize` subtree to the unbound
+ * spelling, and report which targets were cleared.
+ *
+ * A per-column override inside `customize` can carry an `@` table reference, and
+ * an old engine version did not remap those to portable guids on export the way
+ * it does everywhere else. What is left is a row id in the SOURCE workspace,
+ * naming whatever happens to hold that id anywhere else — not identity, the same
+ * conclusion {@link isBoundNumericId} reaches for a numeric reference generally.
+ *
+ * The decoder clears them so a pulled tree carries no confidently-wrong
+ * reference, and the comparison applies the same rewrite so that deliberate
+ * change does not ALSO read as a failed round trip. One implementation, used
+ * from both sides, because two copies of this rule would drift.
+ */
+export function clearLocalDboRefs<T>(value: T, cleared?: Set<string>): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => clearLocalDboRefs(item, cleared)) as unknown as T;
+  }
+  if (value === null || typeof value !== "object") return value;
+  const next = Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, member]) => [
+      key,
+      clearLocalDboRefs(member, cleared),
+    ]),
+  ) as { name?: unknown; arg?: unknown };
+  if (next.name === "@" && Array.isArray(next.arg)) {
+    const target = next.arg[0];
+    if (typeof target === "string" && LOCAL_DBO_REF.test(target)) {
+      cleared?.add(target);
+      return { ...next, arg: ["dbo=", ...next.arg.slice(1)] } as unknown as T;
+    }
+  }
+  return next as unknown as T;
+}
+
+/**
+ * Statements whose `context` **IS** their tagged value, and the `tag` each one's
+ * engine schema declares as that value's default.
+ *
+ * For all of these the engine declares every context member
+ * optional-with-a-default and fills the absent ones: `filters` is a list and so
+ * defaults to `[]`, `value` is declared `text` whose type default is `""`, and
+ * `tag` defaults to the value below. An empty `context` therefore resolves to a
+ * blank value of that tag — the same statement as one storing those members
+ * explicitly. It is a second stored spelling, not a shape no authoring surface
+ * can produce.
+ *
+ * **The tag is per-statement and MUST be read, never assumed.** Most default to
+ * `const`, but the `UpdateVarBase` family overrides it per subclass — arithmetic
+ * to `const:decimal`, the bitwise ops and `math_mod` to `const:int`,
+ * `array_merge` to `const:array` — and `die` and `setheader` default to **input**,
+ * a blank input reference rather than a constant. Assuming `const` across the
+ * family would have mis-decoded five of them; this is the same trap invariant 2
+ * names, where `swagger` and `api_group_enabled` are structurally identical and
+ * default opposite ways.
+ *
+ * `named` marks the statements whose context also carries the target variable's
+ * `name` (the `UpdateVarBase` family routes it there, declared `text` and so
+ * also defaulting to `""`). `set_var` is not one of them — its name rides the
+ * envelope `as` — and `die`/`sleep`/`setheader` have no name at all. The fill has
+ * to match what the encoder writes for the recovered record, and the encoder
+ * writes `name: ""` for exactly the `named` ones.
+ *
+ * Evidenced twice, as a default must be. The engine's optional-schema pass
+ * supplies each member when the key is absent, AND real workspaces store both
+ * spellings side by side — per statement, not just in aggregate: 101 `set_var`
+ * carry a blank const explicitly against 18 that store nothing, and every
+ * statement below has exactly one empty instance alongside its populated ones.
+ *
+ * Then settled on a live engine (`scripts/probe-empty-setvar.ts`), because a
+ * source trace is not a behaviour: the two spellings deployed into two fresh
+ * tenants bind the same value. That probe also showed the engine PERSISTS
+ * whichever spelling it is handed rather than canonicalizing, so a pulled
+ * workspace that stored `{}` re-exports as the EXPLICIT form — the bytes change,
+ * deliberately, and the live probe is what licenses changing them at all.
+ */
+const EMPTY_CONTEXT_FILL: ReadonlyMap<string, { tag: string; named: boolean }> = new Map([
+  // Its name rides the envelope `as`, so the context is the value alone.
+  ["mvp:set_var", { tag: "const", named: false }],
+  // Standalone classes, each declaring its own default tag.
+  ["mvp:sleep", { tag: "const:int", named: false }],
+  ["mvp:die", { tag: "input", named: false }],
+  ["mvp:setheader", { tag: "input", named: false }],
+  // The `UpdateVarBase` family: `{name, value, tag, filters}`, `tag` overridden
+  // per subclass by `getDefaultTag()`.
+  //
+  // `array_pop` and `array_shift` are deliberately ABSENT. The engine's base
+  // class declares a context value for them too, but neither USES one — popping
+  // or shifting takes no operand — so their specs route no spread field and the
+  // encoder writes only `name`. Filling a value they cannot author would invent
+  // members the comparison then demands and the encoder never produces, which is
+  // exactly what it did before they were removed. `test/codegen/specials`
+  // asserts this table against the spec catalog so the two cannot drift.
+  ["mvp:update_var", { tag: "const", named: true }],
+  ["mvp:array_merge", { tag: "const:array", named: true }],
+  ["mvp:array_push", { tag: "const", named: true }],
+  ["mvp:array_unshift", { tag: "const", named: true }],
+  ["mvp:bitwise_and", { tag: "const:int", named: true }],
+  ["mvp:bitwise_or", { tag: "const:int", named: true }],
+  ["mvp:bitwise_xor", { tag: "const:int", named: true }],
+  ["mvp:math_add", { tag: "const:decimal", named: true }],
+  ["mvp:math_sub", { tag: "const:decimal", named: true }],
+  ["mvp:math_mul", { tag: "const:decimal", named: true }],
+  ["mvp:math_div", { tag: "const:decimal", named: true }],
+  ["mvp:math_mod", { tag: "const:int", named: true }],
+  ["mvp:text_append", { tag: "const", named: true }],
+  ["mvp:text_prepend", { tag: "const", named: true }],
+  ["mvp:text_trim", { tag: "const", named: true }],
+  ["mvp:text_ltrim", { tag: "const", named: true }],
+  ["mvp:text_rtrim", { tag: "const", named: true }],
+  ["mvp:text_starts_with", { tag: "const", named: true }],
+  ["mvp:text_istarts_with", { tag: "const", named: true }],
+  ["mvp:text_ends_with", { tag: "const", named: true }],
+  ["mvp:text_iends_with", { tag: "const", named: true }],
+  ["mvp:text_contains", { tag: "const", named: true }],
+  ["mvp:text_icontains", { tag: "const", named: true }],
+]);
+
+/**
+ * A loop whose iterand is ABSENT, and the empty iterand it is REPAIRED to.
+ *
+ * **What the engine's optional-schema pass does and does not fill**, since this
+ * keeps coming up and the answer is not uniform. `XS::optional` walks a context
+ * schema and, for each absent member:
+ *
+ *  - SCALAR (`value: text`, `response_type?=list`) → filled with the type's
+ *    default. This is why {@link EMPTY_CONTEXT_FILL} works.
+ *  - LIST (`arg[]`, `filters[]`) → filled with `[]`.
+ *  - NESTED OBJECT (`list:`, `cnt:`, `connection_string_flex:`) → defaulted to
+ *    the literal STRING `"{}"`, which materializes nothing. The statement class
+ *    then reads the key directly and faults.
+ *
+ * So "the schema declares a default" is not enough — the member's SHAPE decides.
+ * Two clusters were mis-read on that: the loops below, and the raw-SQL family,
+ * whose empty contexts look fillable until you notice `connection_string_flex`
+ * is a nested object with nothing to recover.
+ *
+ * This is not a default the engine supplies — that was checked, and it does not.
+ * `ForEachLoop`/`ForLoop` declare `list`/`cnt` as nested `{value, tag?=…,
+ * filters[]}` objects with default tags and run them through the same
+ * `XS::optional` pass that makes {@link EMPTY_CONTEXT_FILL} correct one level
+ * up, but `XS::optional` defaults a nested object to the literal string `"{}"`
+ * rather than materializing its members, and the statement classes read the key
+ * directly. A live engine (`scripts/probe-empty-context.ts`) confirmed it:
+ * `foreach` raises "For Each Loop: missing list argument" and `for` faults on
+ * `Undefined array key "cnt"`.
+ *
+ * So the stored form is BROKEN — the key went missing on the way out, an empty
+ * value that did not survive serialization — and 9 real statements carry it.
+ * The repair gives each the benign reading of the empty value it lost: an empty
+ * list, and a zero count. Both are no-ops, which is the closest a working loop
+ * gets to one that cannot run.
+ *
+ * **This EVALUATES DIFFERENTLY and is reported as `modernized` at every site**,
+ * exactly like a blank `const:obj` becoming `c.obj()`: the stored form throws at
+ * runtime and the repaired form iterates nothing. That report is the whole
+ * licence for it — silently turning a fault into a no-op would hide a real
+ * defect in the source workspace.
+ */
+const LOOP_EMPTY_ITERAND: ReadonlyMap<string, { member: string; value: string; tag: string }> =
+  new Map([
+    ["mvp:foreach", { member: "list", value: "[]", tag: "const:array" }],
+    ["mvp:for", { member: "cnt", value: "0", tag: "const:int" }],
+  ]);
+
+/** A blank value at `tag` — what the engine's optional-schema pass materializes. */
+function blankValue(tag: string): Record<string, unknown> {
+  return { value: "", tag, filters: [] };
+}
+
+/**
+ * The `context` the engine's optional-schema pass would produce for `stored`,
+ * or null when this statement has no such fill.
+ *
+ * Two cases, and they are NOT the same kind of thing:
+ *
+ *  - {@link EMPTY_CONTEXT_FILL} — the whole context IS the value and the engine
+ *    genuinely supplies the members. Byte-changing but behaviour-preserving.
+ *  - {@link LOOP_EMPTY_ITERAND} — the iterand went missing and the engine does
+ *    NOT supply it. This is a REPAIR that evaluates differently, and every site
+ *    is reported as `modernized` by the loop decoder.
+ *
+ * The decoder reads this to recover the value, and the comparison reads it so
+ * the recovered statement's explicit re-encode still matches the sparse stored
+ * spelling. One implementation, used from both sides, because two copies of this
+ * rule would drift and the drift would be invisible.
+ */
+export function filledContext(stored: unknown): Record<string, unknown> | null {
+  if (stored === null || typeof stored !== "object") return null;
+  const { name, context } = stored as { name?: unknown; context?: unknown };
+  if (typeof name !== "string") return null;
+
+  const whole = EMPTY_CONTEXT_FILL.get(name);
+  if (whole) {
+    // Both empty spellings: `{}` from the SDK, `[]` from the engine's serializer.
+    const empty =
+      (Array.isArray(context) && context.length === 0) ||
+      (context !== null && typeof context === "object" && Object.keys(context).length === 0);
+    if (!empty) return null;
+    return whole.named
+      ? { name: "", ...blankValue(whole.tag) }
+      : blankValue(whole.tag);
+  }
+
+  const loop = LOOP_EMPTY_ITERAND.get(name);
+  if (loop) {
+    if (context === null || typeof context !== "object" || Array.isArray(context)) return null;
+    const block = context as Record<string, unknown>;
+    if (block[loop.member] !== undefined) return null;
+    return { ...block, [loop.member]: { value: loop.value, tag: loop.tag, filters: [] } };
+  }
+  return null;
 }
 
 export function normalize<T>(value: T): T {
@@ -451,10 +1036,35 @@ export function normalize<T>(value: T): T {
     // position carries nothing — but that is a fact about this statement, not a
     // licence to sort `input[]` anywhere else, where order IS meaningful (a row
     // write's columns, a lookup's leading field_name/field_value).
-    const sortsInput = (value as { name?: unknown }).name === "mvp:create_auth";
+    const sortsInput = NAME_KEYED_INPUT.has((value as { name?: unknown }).name as string);
+    // A sparse context — empty, or missing a loop's iterand — is one spelling of
+    // the members the engine's optional-schema pass supplies. Substitute them so
+    // that spelling compares equal to the explicit one (see {@link filledContext}).
+    const contextFill = filledContext(value);
+    // An expression node whose live branch is the nested group: its `statement`
+    // member is scaffolding the engine never reads (see
+    // {@link isBlankGroupStatement}).
+    const isGroupNode = (value as { type?: unknown }).type === "group";
+    // A middleware attachment block, identified by its own flags rather than by
+    // the generic names `pre`/`post`. A phase list is read ONLY when its
+    // `_customize` flag is set — the engine's resolver returns it on that branch
+    // and otherwise falls through to the parent tier without looking at the list
+    // — so a list sitting behind an off flag is an editor leftover the engine
+    // never runs, and compares equal to the empty list the SDK writes.
+    const isMiddlewareBlock =
+      "pre_customize" in (value as object) || "post_customize" in (value as object);
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
       if (STRIP_KEYS.has(k)) continue;
       if (isTable && k === "as") continue;
+      if (k === "test" && isSavedTestList(v)) continue;
+      if (isGroupNode && k === "statement") continue;
+      if (
+        isMiddlewareBlock &&
+        (k === "pre" || k === "post") &&
+        (value as Record<string, unknown>)[`${k}_customize`] !== true
+      ) {
+        continue;
+      }
       // Full-envelope members at their empty default: a representational
       // artifact between the parser and persisted generations — drop on both
       // sides (see {@link isDefaultEnvelopeMember}).
@@ -480,6 +1090,14 @@ export function normalize<T>(value: T): T {
         out[k] = {};
         continue;
       }
+      // A populated customize: clear any LOCAL table reference inside it before
+      // comparing, matching the decoder's own rewrite (see
+      // {@link clearLocalDboRefs}). Scoped to this subtree — a numeric reference
+      // at FIELD level is a different, already-settled case that stays verbatim.
+      if (k === "customize") {
+        out[k] = normalize(clearLocalDboRefs(v));
+        continue;
+      }
       // An empty `context` arrives as `[]` from the engine and `{}` from the SDK:
       // an empty associative collection serializes as a JSON array, so the two
       // are the same "no context" state with no authoring distinction.
@@ -497,6 +1115,19 @@ export function normalize<T>(value: T): T {
             ),
           )
           .map((entry) => normalize(entry));
+        continue;
+      }
+      // A `context.return` keeps only the branch its `type` selects; the editor
+      // writes all four and the engine reads one (see {@link liveReturnSection}).
+      if (k === "return") {
+        const live = liveReturnSection(v);
+        if (live) {
+          out[k] = normalize(live);
+          continue;
+        }
+      }
+      if (k === "context" && contextFill) {
+        out[k] = normalize(contextFill);
         continue;
       }
       if (k === "context" && isEmptyArray(v)) {

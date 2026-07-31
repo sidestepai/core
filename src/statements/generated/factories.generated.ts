@@ -290,12 +290,8 @@ export const generated = {
 (a: { as?: string; data?: Value; algorithm?: Value; key?: Value; iv?: Value } = {}): Statement => fromSpec("mvp:crypto_encrypt", a),
     jwe_decode: /** `mvp:crypto_jwe_decode2` — fields: as, token, key, check_claims, key_algorithm, content_algorithm, timeDrift */
 (a: { as?: string; token?: Value; key?: Value; check_claims?: Value; key_algorithm?: Value; content_algorithm?: Value; timeDrift?: Value } = {}): Statement => fromSpec("mvp:crypto_jwe_decode2", a),
-    jwe_decode_legacy: /** `mvp:crypto_jwe_decode` — fields: as, token, key, audience, key_algorithm, content_algorithm, timeDrift */
-(a: { as?: string; token?: Value; key?: Value; audience?: Value; key_algorithm?: Value; content_algorithm?: Value; timeDrift?: Value } = {}): Statement => fromSpec("mvp:crypto_jwe_decode", a),
     jwe_encode: /** `mvp:crypto_jwe_encode3` — fields: as, headers, claims, key, key_algorithm, content_algorithm, ttl */
 (a: { as?: string; headers?: Value; claims?: Value; key?: Value; key_algorithm?: Value; content_algorithm?: Value; ttl?: Value } = {}): Statement => fromSpec("mvp:crypto_jwe_encode3", a),
-    jwe_encode_legacy: /** `mvp:crypto_jwe_encode` — fields: as, payload, audience, key, key_algorithm, content_algorithm, ttl */
-(a: { as?: string; payload?: Value; audience?: Value; key?: Value; key_algorithm?: Value; content_algorithm?: Value; ttl?: Value } = {}): Statement => fromSpec("mvp:crypto_jwe_encode", a),
     jws_decode: /** `mvp:crypto_jws_decode2` — fields: as, token, key, check_claims, signature_algorithm, timeDrift */
 (a: { as?: string; token?: Value; key?: Value; check_claims?: Value; signature_algorithm?: Value; timeDrift?: Value } = {}): Statement => fromSpec("mvp:crypto_jws_decode2", a),
     jws_encode: /** `mvp:crypto_jws_encode2` — fields: as, headers, claims, key, signature_algorithm, ttl */

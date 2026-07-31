@@ -20,6 +20,7 @@ import {
   dbDirectQuery,
 } from "../../src/statements/special/db.js";
 import { encodeStatement } from "../../src/statements/statement.js";
+import type { Statement } from "../../src/statements/statement.js";
 import { deriveGuid } from "../../src/refs/guid.js";
 import { Xano } from "../../src/workspace/xano.js";
 import { defineFunction } from "../../src/function/define.js";
@@ -414,6 +415,26 @@ describe("tableAlias — opt-in, and unique across the workspace", () => {
       dbAddOrEdit({ table: T, fieldValue: c.text("x"), data: [], tableAlias: "u" }),
     ) as { context: { dbo: Record<string, unknown> } };
     expect(built.context.dbo.as).toBe("u");
+  });
+
+  it("honours tableAlias on every db op that declares it", () => {
+    // `db.edit` declared and documented the option but never forwarded it, so it
+    // was silently dropped — and a stored dbo_editby carrying `context.dbo.as`
+    // could not round-trip and fell to `raw()`. Table-driven so the next op to
+    // declare the option without wiring it fails here.
+    const ops: Array<[string, Statement]> = [
+      ["db.get", dbGet({ table: T, fieldValue: c.text("x"), tableAlias: "u" })],
+      ["db.del", dbDel({ table: T, fieldValue: c.text("x"), tableAlias: "u" })],
+      ["db.has", dbHas({ table: T, fieldValue: c.text("x"), tableAlias: "u" })],
+      ["db.patch", dbPatch({ table: T, fieldValue: c.text("x"), data: c.obj({}), tableAlias: "u" })],
+      ["db.add", dbAdd({ table: T, data: [], tableAlias: "u" })],
+      ["db.edit", dbEdit({ table: T, fieldValue: c.text("x"), data: [], tableAlias: "u" })],
+      ["db.add_or_edit", dbAddOrEdit({ table: T, fieldValue: c.text("x"), data: [], tableAlias: "u" })],
+    ];
+    for (const [label, statement] of ops) {
+      const built = encodeStatement(statement) as { context: { dbo: Record<string, unknown> } };
+      expect(built.context.dbo.as, label).toBe("u");
+    }
   });
 
   it("emits an empty-string alias when asked, rather than treating it as unset", () => {

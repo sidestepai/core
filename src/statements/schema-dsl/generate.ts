@@ -19,6 +19,8 @@
 import type { YamlMap, YamlNode } from "./parse.js";
 import type { FieldRule, FieldType, Route, StatementSpec } from "./interpret.js";
 
+import { SUPERSEDED_STATEMENTS } from "../superseded.js";
+
 /** A successful generation, or a skip with the reason it was deferred. */
 export type GenResult = { spec: StatementSpec } | { skip: string };
 
@@ -134,6 +136,20 @@ export function schemaToSpec(doc: YamlMap): GenResult {
     return { skip: `scalar transform "${transform}"` };
   }
   if (!alias) return { skip: "no alias" };
+  // A RETIRED version of a versioned family. The engine still declares a schema
+  // for it — existing stacks run it — but each version was a breaking change to
+  // the one before, so only the latest is worth an authoring surface. Skipping
+  // here is what keeps it out of the spec catalog, the `s.` factory tree, and
+  // therefore the agent-grounding manifest; codegen decodes it through `raw()`
+  // instead. See `SUPERSEDED_STATEMENTS`.
+  if (SUPERSEDED_STATEMENTS.has(alias)) {
+    const successor = SUPERSEDED_STATEMENTS.get(alias);
+    return {
+      skip: successor
+        ? `superseded by ${successor} — only the latest of a versioned family is authorable`
+        : "retired statement with no replacement",
+    };
+  }
 
   const tmap = transform as YamlMap;
   const argDecls = collectDecls(doc.args);

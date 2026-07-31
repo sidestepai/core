@@ -32,9 +32,6 @@ import { decodeFieldMap, decodeResponse, deepEqual } from "../field.js";
 import { decodeStack } from "../statement.js";
 import { decodeCondition } from "../expression.js";
 import { isDefaultEnvelopeMember, isEmptyOutput } from "../../validate/normalize.js";
-// The encoder's own container-default table — imported, not mirrored. A decoder
-// copy that drifted would elide a customized tier as though it were the default.
-import { CONTAINER_DEFAULT_ENABLED } from "../../kinds/history.js";
 import type { ContainerPrefix } from "../../kinds/history.js";
 import { parsePathParams } from "../../kinds/path-params.js";
 
@@ -112,14 +109,17 @@ const HISTORY_DEFAULT_OFF = new Set(["function", "middleware", "trigger", "messa
  * the kind's inherit default. Returns `undefined` for a stored block no scalar
  * produces (e.g. disabled with a custom limit), so the caller can report it.
  */
-function historyScalar(objType: string, block: unknown): boolean | number | "all" | null | undefined {
+function historyScalar(block: unknown): boolean | number | "all" | null | undefined {
   const value = block as { inherit?: boolean; enabled?: boolean; limit?: number } | undefined;
   if (value === undefined) return null;
-  const isDefault =
-    value.inherit === true &&
-    value.enabled === !HISTORY_DEFAULT_OFF.has(objType) &&
-    value.limit === 100;
-  if (isDefault) return null;
+  // An INHERITING block takes its setting from the parent tier, which makes its
+  // own `enabled`/`limit` inert — so there is nothing to spell, whatever they
+  // hold. `normalize` already drops any inheriting block for that same reason,
+  // so requiring them at the tier default here reported 27 real objects as
+  // unauthorable that the byte comparison had already ruled equal. The stored
+  // members drift two ways in the wild: an older save omits `limit` entirely,
+  // and a block toggled back to inherit keeps whatever it last held.
+  if (value.inherit === true) return null;
   if (value.inherit !== false) return undefined;
   if (value.enabled === false) return value.limit === 100 ? false : undefined;
   if (value.limit === -1) return "all";
@@ -127,9 +127,60 @@ function historyScalar(objType: string, block: unknown): boolean | number | "all
   return typeof value.limit === "number" && value.limit >= 0 ? value.limit : undefined;
 }
 
+/**
+ * A query's saved request/response sample. Nothing in this SDK models it, so a
+ * populated one cannot survive a pull — say so out loud rather than dropping it
+ * silently. Two real queries carry one.
+ */
+function reportExample(a: KindDecodeArgs): null {
+  const example = a.stored.example;
+  const populated =
+    typeof example === "object" && example !== null && Object.keys(example).length > 0;
+  if (populated) {
+    a.ctx.problem(
+      "expected-omission",
+      "the saved request/response `example` is not modelled and is left behind (unmodeled)",
+    );
+  }
+  return null;
+}
+
+/**
+ * A query's saved TEST definitions (`{id, name, input, token, expect, …}`).
+ * Nothing in this SDK models them, so a populated list cannot survive a pull.
+ *
+ * Same treatment as {@link reportExample}, and for the same reason: reported as
+ * a deliberate omission AND dropped from the round-trip comparison, so exactly
+ * one of "left behind" and "does not re-export" fires rather than both. Their
+ * contents are user data too — an `expect` carries whole recorded response
+ * payloads — so `normalize` strips them rather than emptying them.
+ */
+function reportTests(a: KindDecodeArgs): null {
+  const tests = a.stored["test"];
+  if (Array.isArray(tests) && tests.length > 0) {
+    a.ctx.problem(
+      "expected-omission",
+      `${tests.length} saved query test${tests.length === 1 ? "" : "s"} (\`test\`) are not modelled and are left behind (unmodeled)`,
+    );
+  }
+  return null;
+}
+
 /** `history:` for an object-tier kind. */
-function history(args: KindDecodeArgs, objType: string): DefEntry | null {
-  const scalar = historyScalar(objType, args.stored.history);
+function history(args: KindDecodeArgs): DefEntry | null {
+  // An ARRAY here is not a settings block at all — it is the engine's own record
+  // of past runs (`on`, `duration`, `debugger`), which no authoring surface
+  // produces and none should. Declining to copy run telemetry into a committed
+  // source tree is correct, so it is reported as a deliberate omission rather
+  // than as a block the scalar surface failed to spell.
+  if (Array.isArray(args.stored.history)) {
+    args.ctx.problem(
+      "expected-omission",
+      "history holds engine-recorded run telemetry, which is not authored data (server-managed)",
+    );
+    return null;
+  }
+  const scalar = historyScalar(args.stored.history);
   if (scalar === null) return null;
   if (scalar === undefined) {
     args.ctx.problem(
@@ -148,16 +199,12 @@ function history(args: KindDecodeArgs, objType: string): DefEntry | null {
 function containerHistory(args: KindDecodeArgs, prefix: ContainerPrefix): DefEntry | null {
   const block = args.stored.history as Record<string, unknown> | undefined;
   if (block === undefined) return null;
-  const enabledDefault = CONTAINER_DEFAULT_ENABLED[prefix];
   const normalized = {
     inherit: block.inherit,
     enabled: block[`${prefix}_enabled`],
     limit: block[`${prefix}_limit`],
   };
-  if (deepEqual(normalized, { inherit: true, enabled: enabledDefault, limit: 100 })) return null;
-  // `historyScalar` keys the inherit default off the object type, so pass one
-  // whose default matches this tier's.
-  const scalar = historyScalar(enabledDefault ? "query" : "message", normalized);
+  const scalar = historyScalar(normalized);
   if (scalar === null) return null;
   if (scalar === undefined) {
     args.ctx.problem(
@@ -466,7 +513,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
         plain(a.stored, "description", ""),
         plain(a.stored, "docs", ""),
         plain((a.stored.workspace ?? {}) as StoredObject, "id", 0, "workspace"),
-        history(a, "function"),
+        history(a),
         middleware(a),
         tags(a.stored),
         inputs(a),
@@ -495,10 +542,12 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
         plain(a.stored, "cache", DEFAULT_CACHE),
         middleware(a),
         tags(a.stored),
-        history(a, "query"),
+        history(a),
         pathAwareInputs(a),
         response(a),
         stack(a),
+        reportExample(a),
+        reportTests(a),
       ]),
   },
   {
@@ -596,7 +645,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
         plain(a.stored, "disabled", false),
         middleware(a),
         tags(a.stored),
-        history(a, "message"),
+        history(a),
         inputs(a),
         response(a),
         stack(a),
@@ -615,7 +664,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
         plain(a.stored, "active", true),
         plain(a.stored, "description", ""),
         triggerObjId(a),
-        history(a, "trigger"),
+        history(a),
         ["meta", lit(a.stored.meta)],
         tags(a.stored),
         // `input` is implied by trigger type and re-injected by the encoder, so
@@ -642,7 +691,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
         plain(a.stored, "active", false),
         middleware(a),
         tags(a.stored),
-        history(a, "task"),
+        history(a),
         schedule(a),
         stack(a),
       ]),
@@ -661,7 +710,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
         plain(a.stored, "docs", ""),
         plain(a.stored, "result_type", "merge", "resultStrategy"),
         plain(a.stored, "exception", "silent", "exceptionPolicy"),
-        history(a, "middleware"),
+        history(a),
         tags(a.stored),
         inputs(a),
         response(a),
@@ -693,7 +742,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
         plain(a.stored, "enabled", true),
         middleware(a),
         tags(a.stored),
-        history(a, "tool"),
+        history(a),
         plain((a.stored.toolset ?? {}) as StoredObject, "id", 0, "toolsetId"),
         inputs(a),
         response(a),
@@ -707,7 +756,13 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
     register: "registerMcpServers",
     defType: "McpServerDef",
     factory: "mcpServer",
-    decode: (a) => toolsetBaseEntries(a),
+    // An MCP server and an agent are one stored row, so an MCP server can carry
+    // the same settings block — read it when it holds anything, and stay silent
+    // when it does not, so the common MCP server emits exactly what it always did.
+    decode: (a) => [
+      ...toolsetBaseEntries(a),
+      ...(hasAgentSettings(a) ? agentSettingsEntries(a) : []),
+    ],
   },
   {
     name: "agent",
@@ -944,7 +999,22 @@ function schedule(a: KindDecodeArgs): DefEntry | null {
             // `freq` is never elided: `repeatEnabled` derives from `freq != null`,
             // so dropping it at its default would silently flip `repeat.enabled`.
             repeat.freq !== undefined ? (["freq", lit(repeat.freq)] as DefEntry) : null,
-            repeat.ends?.enabled ? (["endsOn", lit(repeat.ends.on)] as DefEntry) : null,
+            // Carried whenever it is not the encoder's own filler. An unset end
+            // date stores as `on: <starts_on>` with the gate off, which the
+            // derivation reproduces exactly — but a REMEMBERED date behind a
+            // disabled gate is real stored state, and dropping it did not leave
+            // the date missing, it left it silently replaced by `starts_on`.
+            repeat.ends !== undefined &&
+            (repeat.ends.enabled === true || repeat.ends.on !== s.starts_on)
+              ? (["endsOn", lit(repeat.ends.on)] as DefEntry)
+              : null,
+            // Stated only when the stored gate disagrees with `endsOn != null`,
+            // exactly as `repeatEnabled` is below.
+            repeat.ends !== undefined &&
+            repeat.ends.enabled !== true &&
+            repeat.ends.on !== s.starts_on
+              ? (["endsEnabled", lit(false)] as DefEntry)
+              : null,
             // Stated only when the stored flag disagrees with that derivation.
             repeat.enabled !== (repeat.freq !== undefined)
               ? (["repeatEnabled", lit(repeat.enabled ?? false)] as DefEntry)
@@ -985,7 +1055,7 @@ function workspaceHistory(a: KindDecodeArgs): DefEntry | null {
     if (enabled === !HISTORY_DEFAULT_OFF.has(type) && limit === 100) continue;
     // No `inherit` at this tier — it is the terminal fallback — so the scalar
     // inverse is fed a synthetic `inherit: false`.
-    const scalar = historyScalar(type, { inherit: false, enabled, limit });
+    const scalar = historyScalar({ inherit: false, enabled, limit });
     if (scalar === undefined) {
       a.ctx.problem(
         "verify-mismatch",
@@ -1272,11 +1342,39 @@ const PROVIDER_CONFIG_KEYS: ReadonlyArray<readonly [string, string, unknown]> = 
   ["dynamicRetrievalConfig", "dynamicRetrieval", ""],
 ];
 
+/**
+ * The stored provider-config keys each provider's TYPED surface declares.
+ *
+ * Mirrors `buildProviderConfig` one provider at a time, and is pinned against it
+ * by a drift test. The providers are not interchangeable: `xano-free` is a
+ * wrapper that declares no `model`/`apiKey` of its own, even though the stored
+ * config can carry both. Reading one onto the typed field emitted a generated
+ * tree that does not type-check — the failure the flat key table could not see,
+ * because it did not know which provider it was reading for.
+ */
+export const PROVIDER_TYPED_KEYS: Readonly<Record<string, ReadonlySet<string>>> = {
+  anthropic: new Set(["apiKey", "model", "temperature", "sendReasoning", "thinking", "baseURL", "headers"]),
+  openai: new Set([
+    "apiKey", "model", "temperature", "reasoningEffort", "baseURL", "headers",
+    "organization", "project", "compatibility",
+  ]),
+  "google-genai": new Set([
+    "apiKey", "model", "temperature", "useSearchGrounding", "thinkingConfig", "baseURL",
+    "headers", "safetySettings", "dynamicRetrievalConfig",
+  ]),
+  "xano-free": new Set([
+    "temperature", "useSearchGrounding", "thinkingConfig", "baseURL", "headers",
+    "safetySettings", "dynamicRetrievalConfig",
+  ]),
+};
+
 /** Flatten a stored provider config into `llm` authoring entries. */
-function providerConfigEntries(config: Record<string, unknown>): DefEntry[] {
+function providerConfigEntries(provider: string, config: Record<string, unknown>): DefEntry[] {
   const entries: DefEntry[] = [];
+  const typed = PROVIDER_TYPED_KEYS[provider];
   for (const [storedKey, defKey, fallback] of PROVIDER_CONFIG_KEYS) {
     if (!Object.hasOwn(config, storedKey)) continue;
+    if (typed !== undefined && !typed.has(storedKey)) continue;
     const value = config[storedKey];
     if (deepEqual(value, fallback)) continue;
     entries.push([defKey, lit(value)]);
@@ -1297,10 +1395,24 @@ function providerConfigEntries(config: Record<string, unknown>): DefEntry[] {
   if (thinkingConfig?.thinkingBudget !== undefined && thinkingConfig.thinkingBudget !== 0) {
     entries.push(["thinkingBudget", lit(thinkingConfig.thinkingBudget)]);
   }
+
+  // Anything this provider's typed surface cannot spell rides `extraConfig`, the
+  // forward-compat hatch `buildProviderConfig` already merges last — so it
+  // re-encodes verbatim. Skipping these dropped real stored settings silently.
+  if (typed !== undefined) {
+    const extra = Object.entries(config).filter(([key]) => !typed.has(key));
+    if (extra.length > 0) entries.push(["extraConfig", obj(extra.map(([k, v]) => [k, lit(v)]))]);
+  }
   return entries;
 }
 
-/** An agent's `agent_settings` → the `llm` and `output` authoring blocks. */
+/** Does this toolset store a settings block with anything in it? */
+function hasAgentSettings(a: KindDecodeArgs): boolean {
+  const settings = a.stored.agent_settings;
+  return typeof settings === "object" && settings !== null && Object.keys(settings).length > 0;
+}
+
+/** A toolset's `agent_settings` → the `llm` and `output` authoring blocks. */
 function agentSettingsEntries(a: KindDecodeArgs): DefEntry[] {
   const settings = (a.stored.agent_settings ?? {}) as Record<string, unknown>;
   const type = String(settings.type ?? "");
@@ -1318,7 +1430,7 @@ function agentSettingsEntries(a: KindDecodeArgs): DefEntry[] {
       : settings.prompt
         ? (["prompt", lit(settings.prompt)] as DefEntry)
         : null,
-    ...providerConfigEntries(providerConfig),
+    ...providerConfigEntries(type, providerConfig),
   ]);
 
   const entries: DefEntry[] = [["llm", obj(llm)]];

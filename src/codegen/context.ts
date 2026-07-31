@@ -153,6 +153,35 @@ export class DecodeContext {
     }
   }
 
+  /**
+   * Why the decoder that just declined could not spell this statement.
+   *
+   * A decline is not a report entry: another arm may still prove, and a report
+   * describing an attempt that was thrown away is simply false. But when EVERY
+   * arm declines, "its decoder could not reproduce the stored statement" is all
+   * a reader gets, and the decoder usually knew exactly why. This is the channel
+   * for the ones that do: the note is written by a decliner, read only at the
+   * `raw()` fallback, and cleared the moment anything decodes — so it can never
+   * outlive the statement it describes.
+   *
+   * Reserved for declines with a KNOWN, stable cause. A decoder that declined
+   * because something surprised it should stay silent rather than guess.
+   */
+  #declineNote: string | undefined;
+
+  /** Record why this decode declined; last writer wins. See {@link takeDeclineNote}. */
+  declined(why: string): null {
+    this.#declineNote = why;
+    return null;
+  }
+
+  /** Read and clear the pending decline note. */
+  takeDeclineNote(): string | undefined {
+    const note = this.#declineNote;
+    this.#declineNote = undefined;
+    return note;
+  }
+
   /** Record a problem at the current object/path scope. */
   problem(category: ReportCategory, detail: string): void {
     this.report.add({

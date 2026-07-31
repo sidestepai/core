@@ -18,7 +18,7 @@
  */
 import type { FilterXdo, TaggedValue } from "../types/xdo.js";
 import { TAGS } from "../types/xdo.js";
-import { auth, c, col, env, inp, out, ref, setting, withFilters } from "../values/value.js";
+import { auth, c, caught, col, env, inp, out, ref, setting, withFilters } from "../values/value.js";
 import type { Value } from "../values/value.js";
 import { FILTER_NAMES, fl } from "../values/generated/filters.generated.js";
 import { obj as objValue } from "../values/obj.js";
@@ -185,6 +185,8 @@ function decodeBase(v: TaggedValue, regexPiped: boolean): Candidate | null {
       return propose(call("auth", lit(v.value)), auth(v.value), "auth");
     case "col":
       return propose(call("col", lit(v.value)), col(v.value), "col");
+    case "trycatch":
+      return propose(call("caught", lit(v.value)), caught(v.value as never), "caught");
     case "output":
       return propose(call("out", lit(v.value)), out(v.value), "out");
     case "setting": {
@@ -224,8 +226,7 @@ function decodeBase(v: TaggedValue, regexPiped: boolean): Candidate | null {
       return propose(call("c.expression", lit(v.value)), attempt(() => c.expression(v.value)), "c");
     }
     default:
-      // `env`, `response`, `trycatch`, `toolset` — engine-side tags with no
-      // authoring constructor.
+      // `response`, `toolset` — engine-side tags with no authoring constructor.
       return null;
   }
 }

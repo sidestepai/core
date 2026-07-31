@@ -10,6 +10,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { normalize } from "../../src/validate/normalize.js";
+import { encodeApiGroup } from "../../src/kinds/api-group.js";
 
 function loadTable(name: string): Record<string, unknown> {
   const url = new URL(`../fixtures/tables/${name}`, import.meta.url);
@@ -70,6 +71,14 @@ describe("validate normalizer — per-kind default/serialization rules", () => {
     expect(normalize({ obj_id: 0 })).toEqual({});
     const guid = "157d4a98d979cf04b9ccdb98dfc15229";
     expect(normalize({ obj_id: guid })).toEqual({ obj_id: guid });
+  });
+
+  it("drops engine-recorded run history, which is telemetry rather than settings", () => {
+    // A task that has run carries `history` as an ARRAY of past runs. The
+    // generated tree deliberately does not carry it, so the comparison must not
+    // report that omission as a failed round trip too.
+    expect(normalize({ history: [{ on: "2022-01-14 23:16:11+0000", duration: 0.16 }] })).toEqual({});
+    expect(normalize({ history: [] })).toEqual({});
   });
 
   it("drops an inheriting history block but keeps a customized one", () => {
@@ -325,6 +334,52 @@ describe("validate normalizer — per-statement context defaults", () => {
     });
   });
 
+  it("drops a CUSTOMIZED sibling block too — only the branch `type` names is live", () => {
+    // The stronger half of the rule. A default sibling collapsing is not enough:
+    // the editor's return panel is one form group over the whole section and
+    // emits all four blocks on save, so a query that was a paged list before its
+    // type was switched to `single` keeps that list block forever — sort, paging
+    // and all. Nothing reads it: the converter that builds the engine's query
+    // config is a chain of `if (returnType == "…")` arms, each touching only its
+    // own branch, and Xano's own XanoScript translator writes only the live one.
+    const switched = {
+      return: {
+        type: "single",
+        single: { sort: [] },
+        list: {
+          sort: [{ sortBy: "post.created_at", orderBy: "desc" }],
+          paging: { page: 1, enabled: true, per_page: 10, metadata: true, totals: false, offset: 0 },
+          distinct: "auto",
+        },
+      },
+    };
+    expect(normalize(switched)).toEqual({ return: { type: "single" } });
+    // …and it compares equal to the same query with no leftover at all, which is
+    // the point: the SDK writes the second and the editor stores the first.
+    expect(normalize(switched)).toEqual(normalize({ return: { type: "single" } }));
+  });
+
+  it("keeps the LIVE block when a sibling is dropped, and drops nothing on a lone branch", () => {
+    // The paired negative — the rule must not be able to eat the branch that runs.
+    const live = {
+      return: {
+        type: "aggregate",
+        aggregate: { group: [{ name: "posts.author_id", as: "author" }] },
+        list: { sort: [{ sortBy: "posts.id", orderBy: "desc" }] },
+      },
+    };
+    expect(normalize(live)).toEqual({
+      return: { type: "aggregate", aggregate: { group: [{ name: "posts.author_id", as: "author" }] } },
+    });
+    // A section carrying only its live branch is left exactly alone.
+    const lone = { return: { type: "list", list: { sort: [{ sortBy: "a.id", orderBy: "asc" }] } } };
+    expect(normalize(lone)).toEqual(lone);
+    // And `return` is not a licence to strip these names anywhere else — a `list`
+    // beside a `type` elsewhere in the envelope is untouched.
+    const loose = { type: "single", list: { sort: [{ sortBy: "a.id", orderBy: "asc" }] } };
+    expect(normalize(loose)).toEqual(loose);
+  });
+
   it("preserves a result-shape block that is actually customized", () => {
     // The load-bearing negatives: the rule compares against each block's own frozen
     // default, so anything authored inside one still compares unequal.
@@ -367,10 +422,18 @@ describe("validate normalizer — per-statement context defaults", () => {
     expect(normalize(nested)).not.toEqual(normalize({ group: { expression: [] } }));
   });
 
-  it("does not touch an aggregate's empty group array", () => {
+  it("does not touch an empty group array", () => {
     // `group` is also a sort/grouping LIST under an aggregate return. Only the
     // nested-search object form is a condition default.
-    expect(normalize({ aggregate: { group: [] } })).toEqual({ aggregate: { group: [] } });
+    //
+    // Asserted bare rather than under `aggregate`: once a disabled all-default
+    // paging block collapses, `{group: []}` IS the whole normalized default
+    // aggregate block, so wrapping it tested block collapse rather than this.
+    expect(normalize({ group: [] })).toEqual({ group: [] });
+    // Still a real grouping list when it holds anything.
+    expect(normalize({ aggregate: { group: [{ name: "x" }] } })).toEqual({
+      aggregate: { group: [{ name: "x" }] },
+    });
   });
 
   it("drops a default-false or-flag and keeps a real one", () => {
@@ -420,6 +483,102 @@ describe("validate normalizer — return-block paging defaults", () => {
 
   it("accepts the numeric-string spelling of each default", () => {
     expect(normalize({ paging: { page: "1", offset: "0", per_page: "25" } })).toEqual({});
+  });
+
+  it("reads an absent paging block and a switched-off one as the same thing", () => {
+    // The SDK writes `paging:{enabled:false}` whenever nothing was authored; 7
+    // real db.query statements omit the key entirely against 149 storing it
+    // present-at-default. Every engine consumer reads the flag as
+    // `["paging"]["enabled"] ?? false`, and the serializer emits nothing for a
+    // disabled block — so absent IS disabled.
+    expect(normalize({ paging: { enabled: false } })).toEqual({});
+    expect(normalize({ paging: { enabled: false } })).toEqual(normalize({}));
+    expect(
+      normalize({ paging: { page: 1, offset: 0, totals: false, enabled: false, metadata: true, per_page: 25 } }),
+    ).toEqual({});
+  });
+
+  it("clears a LOCAL table reference inside customize, on both sides of the comparison", () => {
+    // The decoder rewrites these to unbound; normalize applies the SAME rewrite
+    // so that deliberate change does not also read as a failed round trip.
+    const withLocal = { customize: { c: { methods: [{ name: "@", arg: ["dbo=14"] }] } } };
+    const unbound = { customize: { c: { methods: [{ name: "@", arg: ["dbo="] }] } } };
+    expect(normalize(withLocal)).toEqual(normalize(unbound));
+  });
+
+  it("keeps a guid-form reference inside customize, and every reference outside one", () => {
+    const guid = "1111000000000000000000000000aaaa";
+    expect(
+      normalize({ customize: { c: { methods: [{ name: "@", arg: [`dbo=${guid}`] }] } } }),
+    ).toEqual({ customize: { c: { methods: [{ name: "@", arg: [`dbo=${guid}`] }] } } });
+    // A numeric reference at FIELD level is a different, already-settled case:
+    // it stays verbatim and decodes to raw() rather than being rewritten here.
+    expect(normalize({ methods: [{ name: "@", arg: ["dbo=14"] }] })).toEqual({
+      methods: [{ name: "@", arg: ["dbo=14"] }],
+    });
+  });
+
+  it("drops setheader's duplicate mode at the value the engine reads from an absent key", () => {
+    // Declared `duplicates?=replace` and read as `($data["duplicates"] ?? "replace")`;
+    // 3 real statements omit it against 8 storing it present-at-default.
+    expect(normalize({ duplicates: "replace" })).toEqual({});
+    expect(normalize({ duplicates: "append" })).toEqual({ duplicates: "append" });
+  });
+
+  it("reads an unbound simpleExternal scaffold through BOTH stored spellings", () => {
+    // The editor writes all five facets on a query that binds none of them, and
+    // spells the blank two ways — 61 as `input`, 3 as `const`. Both bind the
+    // same nothing. Read as authored they became five bound paging Values, and
+    // since the SDK refuses to author `external` alongside input-bound paging,
+    // the recovered call THREW and took the whole db.query to raw().
+    const blank = (tag: string) =>
+      Object.fromEntries(
+        ["page", "sort", "offset", "search", "per_page"].map((k) => [k, { tag, value: "", filters: [] }]),
+      );
+    expect(normalize({ simpleExternal: blank("input") })).toEqual({});
+    expect(normalize({ simpleExternal: blank("const") })).toEqual({});
+  });
+
+  it("keeps a simpleExternal that binds any facet at all", () => {
+    // Asserted on the normalized form — an empty `filters` list drops here for
+    // unrelated reasons. What matters is that the block SURVIVES.
+    expect(
+      normalize({
+        simpleExternal: {
+          page: { tag: "input", value: "page", filters: [] },
+          per_page: { tag: "input", value: "per_page", filters: [] },
+        },
+      }),
+    ).toEqual({
+      simpleExternal: { page: { tag: "input", value: "page" }, per_page: { tag: "input", value: "per_page" } },
+    });
+    // One real facet among blanks is still authored.
+    expect(
+      normalize({
+        simpleExternal: {
+          page: { tag: "const", value: "", filters: [] },
+          offset: { tag: "const:int", value: "12", filters: [] },
+        },
+      }),
+    ).toEqual({
+      simpleExternal: { page: { tag: "const", value: "" }, offset: { tag: "const:int", value: "12" } },
+    });
+  });
+
+  it("keeps a switched-off paging block that still customizes something", () => {
+    // The narrowness that makes the rule safe: it fires only once every OTHER
+    // member has normalized away. A disabled block holding a real `per_page` is
+    // not the same as no block at all.
+    expect(normalize({ paging: { enabled: false, per_page: 50 } })).toEqual({
+      paging: { enabled: false, per_page: 50 },
+    });
+    expect(normalize({ paging: { enabled: true } })).toEqual({ paging: { enabled: true } });
+  });
+
+  it("still treats enabled:false as meaningful outside a paging block", () => {
+    // `enabled` cannot be dropped by name — it gates a history block, where
+    // false is the authored value, not an absence.
+    expect(normalize({ history: { enabled: false } })).toEqual({ history: { enabled: false } });
   });
 
   it("preserves every customized paging member", () => {
@@ -502,5 +661,365 @@ describe("validate normalizer — comparison operand serialization", () => {
     expect(normalize({ left: { tag: "var", operand: "api_1.response.status", filters: [] } })).toEqual(
       { left: { tag: "var", operand: "api_1.response.status" } },
     );
+  });
+});
+
+/**
+ * Object-level default envelope members — the kind-level twin of the statement
+ * rules above, and the largest single cause of round-trip mismatches in a real
+ * sweep (1,716 of 1,744 rows, once mismatches started naming their keys).
+ *
+ * Same generational gap, one level up: an object saved by an older engine
+ * generation omits these keys entirely, while both the current engine and the
+ * SDK always write them at a fixed default. Every default below is evidenced
+ * twice — the engine reads the absent key as this value, and real workspaces
+ * store the key present-at-this-value and absent side by side on the same
+ * instance.
+ *
+ * Every rule is paired with a negative: it drops at the default and PRESERVES
+ * anything authored, so no rule can quietly equalize two different objects.
+ */
+describe("validate normalizer — object-level default envelope members", () => {
+  it("drops a query's default response_type, which the engine reads from an absent key", () => {
+    expect(normalize({ name: "q", response_type: "standard" })).toEqual({ name: "q" });
+  });
+
+  it("keeps a response_type that selects a different behavior", () => {
+    expect(normalize({ name: "q", response_type: "stream" })).toEqual({
+      name: "q",
+      response_type: "stream",
+    });
+  });
+
+  it("drops the empty documentation strings an object carries at rest", () => {
+    expect(normalize({ docs: "", view_alias: "", datasource: "" })).toEqual({});
+    expect(normalize({ docs: "written", datasource: "warm" })).toEqual({
+      docs: "written",
+      datasource: "warm",
+    });
+  });
+
+  it("drops the empty list members, and only when they are empty", () => {
+    expect(normalize({ tag: [], views: [], result: [] })).toEqual({});
+    expect(normalize({ tag: [{ tag: "billing" }] })).toEqual({ tag: [{ tag: "billing" }] });
+    expect(normalize({ result: [{ name: "x" }] })).toEqual({ result: [{ name: "x" }] });
+  });
+
+  it("never touches the `tag` that DISCRIMINATES a tagged value", () => {
+    // The load-bearing negative for the empty-list rule: `tag` is the most
+    // common key in a workspace because every tagged value carries one. There
+    // it is a STRING, so the rule is type-distinct — but a rule on that name
+    // has to prove it, not assert it.
+    expect(normalize({ tag: "const:str", value: "hi" })).toEqual({ tag: "const:str", value: "hi" });
+    expect(normalize({ tag: "input", value: "user_id" })).toEqual({ tag: "input", value: "user_id" });
+  });
+
+  it("drops the two group gates at the value the engine reads from an absent key", () => {
+    // Opposite defaults, and each is what the engine falls back to: a group is
+    // enabled unless it says otherwise, and docs are off unless turned on.
+    expect(normalize({ api_group_enabled: true, swagger: false })).toEqual({});
+    expect(normalize({ api_group_enabled: false, swagger: true })).toEqual({
+      api_group_enabled: false,
+      swagger: true,
+    });
+  });
+
+  it("drops a default documentation block, and keeps one holding a token", () => {
+    expect(normalize({ documentation: { require_token: false, token: "" } })).toEqual({});
+    const authored = { documentation: { require_token: true, token: "C6UYpWv" } };
+    expect(normalize(authored)).toEqual(authored);
+  });
+
+  it("drops a default CORS block, and keeps a configured one", () => {
+    const empty = {
+      mode: "default",
+      allowOrigins: [],
+      allowHeaders: [],
+      allowCredentials: false,
+      maxAge: 0,
+      allowMethods: { delete: false, get: false, head: false, patch: false, post: false, put: false },
+    };
+    expect(normalize({ cors: empty })).toEqual({});
+    const configured = { cors: { ...empty, mode: "custom", maxAge: 3600, allowOrigins: ["x.test"] } };
+    expect(normalize(configured)).toEqual(configured);
+  });
+
+  it("reads the LEGACY cors spelling as the same default block", () => {
+    // Two real API groups store a block that predates `mode` and spells "off" as
+    // `enabled: false`. The engine applies a CORS block only when its `mode` is
+    // `"custom"` — reading an absent mode as `""` — so a block with no mode is
+    // inert, exactly like `mode: "default"`. `enabled` is not a key that handler
+    // reads at all.
+    const legacy = {
+      cors: {
+        maxAge: 0,
+        enabled: false,
+        allowHeaders: [],
+        allowMethods: { delete: false, get: false, head: false, patch: false, post: false, put: false },
+        allowOrigins: [],
+        allowCredentials: false,
+      },
+    };
+    expect(normalize(legacy)).toEqual({});
+  });
+
+  it("does not let the legacy spelling swallow a CUSTOM cors block", () => {
+    const custom = {
+      cors: {
+        mode: "custom",
+        enabled: false,
+        maxAge: 3600,
+        allowHeaders: [],
+        allowMethods: { delete: false, get: true, head: false, patch: false, post: true, put: false },
+        allowOrigins: ["www.google.com"],
+        allowCredentials: true,
+      },
+    };
+    expect(normalize(custom)).toEqual(custom);
+  });
+
+  it("reads an empty middleware block through BOTH of its stored spellings", () => {
+    // The empty-associative-collection artifact again (`mocks`, `customize`, an
+    // empty `context`): the engine hands an empty map back as a JSON array,
+    // while the SDK writes the members out. 173 real API groups store `[]` and
+    // 85 store the object — same "no middleware" either way.
+    expect(normalize({ middleware: [] })).toEqual({});
+    expect(
+      normalize({ middleware: { pre: [], post: [], pre_customize: false, post_customize: false } }),
+    ).toEqual({});
+  });
+
+  it("drops a phase list the customize flag switches OFF, on both sides", () => {
+    // The engine's resolver reads a phase list ONLY when its `_customize` flag
+    // is set; otherwise it falls through to the parent tier without looking at
+    // the list at all. So an editor leftover in `pre` behind `pre_customize:
+    // false` is inert, and the SDK's empty `pre` is the same state — two real
+    // API groups differed by exactly this.
+    const leftover = {
+      middleware: { pre: [{ name: "mvp:middleware" }], post: [], pre_customize: false, post_customize: true },
+    };
+    const empty = { middleware: { pre: [], post: [], pre_customize: false, post_customize: true } };
+    expect(normalize(leftover)).toEqual(normalize(empty));
+  });
+
+  it("keeps a phase list the customize flag switches ON", () => {
+    // The paired negative, and the one that matters: a CUSTOMIZED phase is what
+    // the engine actually runs, so its entries must still compare.
+    const one = { middleware: { pre: [{ name: "mvp:middleware" }], post: [], pre_customize: true, post_customize: false } };
+    const none = { middleware: { pre: [], post: [], pre_customize: true, post_customize: false } };
+    expect(normalize(one)).not.toEqual(normalize(none));
+  });
+
+  it("does not treat a lookalike object as a middleware block", () => {
+    // `pre`/`post` are generic names; the rule only applies where a
+    // `_customize` flag says this is a middleware block.
+    const other = { pre: ["a"], post: ["b"] };
+    expect(normalize(other)).toEqual(other);
+  });
+
+  it("keeps a middleware block that attaches or customizes anything", () => {
+    // The customized phase survives with its entries; the inert one drops.
+    const attached = { middleware: { pre: [{ name: "mvp:middleware" }], post: [], pre_customize: true, post_customize: false } };
+    expect(normalize(attached)).toEqual({
+      middleware: { pre: [{ name: "mvp:middleware" }], pre_customize: true, post_customize: false },
+    });
+    // A phase explicitly customized to run NOTHING is not the same as
+    // inheriting — the engine reads that empty list and runs nothing, where an
+    // inheriting phase would run the parent tier's chain. So `pre: clear()`
+    // stays distinguishable from an absent phase.
+    const cleared = { middleware: { pre: [], post: [], pre_customize: true, post_customize: false } };
+    expect(normalize(cleared)).toEqual({
+      middleware: { pre: [], pre_customize: true, post_customize: false },
+    });
+    expect(normalize(cleared)).not.toEqual(normalize(attached));
+  });
+});
+
+/**
+ * The frozen defaults in the normalizer are literals, because that module sits
+ * UNDER the authoring layer and cannot import an encoder. This is what stops
+ * the two drifting apart: an encoder default that changes without the matching
+ * literal would silently start reporting every API group as a mismatch again.
+ */
+describe("validate normalizer — the frozen object defaults match the encoder", () => {
+  it("collapses an all-default API group to nothing but its identity", () => {
+    const encoded = encodeApiGroup({ name: "public" }) as unknown as Record<string, unknown>;
+    // Everything the encoder writes unconditionally is a default; only the
+    // name and the history block (its own rules) survive.
+    const normalized = normalize(encoded) as Record<string, unknown>;
+    for (const key of ["swagger", "api_group_enabled", "docs", "documentation", "middleware", "tag", "cors"]) {
+      expect(normalized[key], `${key} is written at its default and must drop`).toBeUndefined();
+    }
+    expect(normalized["name"]).toBe("public");
+  });
+
+  it("still reports an API group that configures any of them", () => {
+    const plain = normalize(encodeApiGroup({ name: "public" }));
+    for (const def of [
+      { name: "public", swagger: true },
+      { name: "public", apiGroupEnabled: false },
+      { name: "public", docs: "how to use" },
+      { name: "public", documentation: { require_token: true, token: "t" } },
+      { name: "public", tags: ["billing"] },
+      { name: "public", cors: { mode: "custom" as const, maxAge: 3600 } },
+    ]) {
+      expect(normalize(encodeApiGroup(def)), `${JSON.stringify(def)} must not collapse`).not.toEqual(plain);
+    }
+  });
+});
+
+/**
+ * The empty spellings a stored object uses for "nothing here", one key at a
+ * time. Same generational gap as the block above, and the same discipline: each
+ * key is evidenced in the 177-workspace corpus storing the empty form and the
+ * ABSENT form side by side on one instance, and each rule is paired with a
+ * negative that keeps an authored value comparing.
+ */
+describe("validate normalizer — per-key empty spellings", () => {
+  it("drops an MCP tool entry's default type and its empty metadata", () => {
+    // 8 real tool entries store `type:"tool"` with empty metadata and 1 omits
+    // all three. A tool that exposes a RESOURCE says so, and still compares.
+    expect(normalize({ type: "tool", tool_meta: "", resource_uri: "" })).toEqual({});
+    expect(normalize({ type: "resource", resource_uri: "file://x" })).toEqual({
+      type: "resource",
+      resource_uri: "file://x",
+    });
+  });
+
+  it("leaves the `type` discriminators that are not a tool kind", () => {
+    // The paired negative for a generic name: `type` also discriminates
+    // expression nodes and column types, and none of those spell "tool".
+    expect(normalize({ type: "group" })).toEqual({ type: "group" });
+    expect(normalize({ type: "text" })).toEqual({ type: "text" });
+  });
+
+  it("drops the empty agent provider-config members", () => {
+    expect(
+      normalize({ baseURL: "", headers: "", safetySettings: "", dynamicRetrievalConfig: "", apiKey: "" }),
+    ).toEqual({});
+    const set = { baseURL: "https://x.test", apiKey: "{{ $env.gemini }}" };
+    expect(normalize(set)).toEqual(set);
+  });
+
+  it("never mistakes an api_request header LIST for the empty spelling", () => {
+    // `headers` is a string[] on an api_request statement; only the empty-STRING
+    // spelling an agent config uses is dropped.
+    expect(normalize({ headers: [] })).toEqual({ headers: [] });
+    expect(normalize({ headers: ["A: 1"] })).toEqual({ headers: ["A: 1"] });
+  });
+
+  it("reads every stored spelling of an unset thinking config as unset", () => {
+    // Four spellings across 16 real configs — `""`, absent, and the block with
+    // its budget as either `0` or `""`. The SDK writes the last one.
+    for (const v of ["", { includeThoughts: false, thinkingBudget: 0 }, { includeThoughts: false, thinkingBudget: "" }]) {
+      expect(normalize({ thinkingConfig: v }), JSON.stringify(v)).toEqual({});
+    }
+    const budgeted = { thinkingConfig: { includeThoughts: true, thinkingBudget: 1024 } };
+    expect(normalize(budgeted)).toEqual(budgeted);
+  });
+
+  it("reads an empty auth string as the same no-auth that `false` means", () => {
+    expect(normalize({ auth: "" })).toEqual({});
+    const table = { auth: "6QkKbIDe6DVBwUj4gv4HKSdRT1A" };
+    expect(normalize(table)).toEqual(table);
+  });
+
+  it("drops an empty view alias but keeps a named one", () => {
+    expect(normalize({ alias: "" })).toEqual({});
+    expect(normalize({ alias: "superseanview" })).toEqual({ alias: "superseanview" });
+  });
+
+  it("strips a query `example` whole, because its contents are USER data", () => {
+    // Not emptied — stripped. An example payload is a saved request/response
+    // SAMPLE, so a key inside it named `output` or `input` means whatever the
+    // user meant, not what a statement envelope means. Normalizing into it
+    // rewrote one real 700-byte sample down to `{}` by applying the
+    // statement-output rule to the user's own `output` key.
+    expect(normalize({ example: { output: { float: 3.14 }, input: { abc: 123 } } })).toEqual({});
+    expect(normalize({ example: {} })).toEqual({});
+  });
+
+  it("strips a query's saved `test` list, which nothing models", () => {
+    // Reported as an omission by the decoder, so it must NOT also read as a
+    // failed round trip — an omission and a mismatch mean opposite things.
+    const tests = [
+      { id: "0373fad8", name: "test", input: [], token: "", expect: [{ type: "to_equal", vars: [] }] },
+    ];
+    expect(normalize({ test: tests })).toEqual({});
+  });
+
+  it("keys the `test` strip on shape, never on that very generic name", () => {
+    // Real workspaces hold table columns named `test`/`test2` and const values
+    // "test". Stripping every key called `test` would delete user data.
+    expect(normalize({ test: "a string" })).toEqual({ test: "a string" });
+    expect(normalize({ test: { name: "not a list" } })).toEqual({ test: { name: "not a list" } });
+    // An array, but not of test definitions — no `expect` on the entries.
+    expect(normalize({ test: [{ name: "col" }] })).toEqual({ test: [{ name: "col" }] });
+    // A column literally named `test` survives untouched.
+    expect(normalize({ name: "test", type: "text" })).toEqual({ name: "test", type: "text" });
+  });
+});
+
+describe("validate normalizer — an unset async runtime binding", () => {
+  it("reads both stored spellings of 'no runtime' as unset", () => {
+    // `null` on one engine generation, blank members on another — 6 real
+    // `mvp:function` statements store `{id: "", mode: ""}`.
+    expect(normalize({ runtime: null })).toEqual({});
+    expect(normalize({ runtime: { id: "", mode: "" } })).toEqual({});
+  });
+
+  it("keeps a runtime binding that names something", () => {
+    // `id` is a stripped server column everywhere, including inside `runtime`,
+    // so what survives is the part the comparison actually judges.
+    expect(normalize({ runtime: { id: "worker-1", mode: "async" } })).toEqual({
+      runtime: { mode: "async" },
+    });
+    // A partially-set binding is still authored data.
+    expect(normalize({ runtime: { id: "", mode: "async" } })).toEqual({
+      runtime: { mode: "async" },
+    });
+  });
+});
+
+/**
+ * Statements whose `input[]` the engine reads BY NAME, so stored order is inert.
+ *
+ * Real workspaces store the same entries in more than one order — 3
+ * `api_request` hoist `verify_host`/`verify_peer` to the front, and one each of
+ * the two document statements permute theirs. Every statement on the list was
+ * checked against the engine handler, which indexes its arguments by name
+ * by NAME rather than by position, so a reordering cannot change what it does.
+ */
+describe("validate normalizer — name-keyed input ordering", () => {
+  const entry = (name: string) => ({ name, tag: "const", value: name, filters: [] });
+
+  it("compares a permuted api_request input as equal", () => {
+    const a = { name: "mvp:api_request", input: [entry("url"), entry("method"), entry("verify_peer")] };
+    const b = { name: "mvp:api_request", input: [entry("verify_peer"), entry("url"), entry("method")] };
+    expect(normalize(a)).toEqual(normalize(b));
+  });
+
+  it("applies to both document statements too", () => {
+    for (const name of ["mvp:amazon_opensearch_document", "mvp:elasticsearch_document"]) {
+      const a = { name, input: [entry("base_url"), entry("method"), entry("index")] };
+      const b = { name, input: [entry("method"), entry("index"), entry("base_url")] };
+      expect(normalize(a), name).toEqual(normalize(b));
+    }
+  });
+
+  it("still compares the VALUES, not just the names", () => {
+    // Equalizing the ORDER must not equalize the content.
+    const a = { name: "mvp:api_request", input: [entry("url"), { ...entry("method"), value: "GET" }] };
+    const b = { name: "mvp:api_request", input: [entry("url"), { ...entry("method"), value: "POST" }] };
+    expect(normalize(a)).not.toEqual(normalize(b));
+  });
+
+  it("does NOT reorder a statement whose input order is meaningful", () => {
+    // The load-bearing negative. A lookup's `input[]` has to lead with
+    // `field_name`/`field_value`, and a row write's columns are positional —
+    // sorting either would silently change what the statement does.
+    const lead = { name: "mvp:dbo_getby", input: [entry("field_name"), entry("field_value"), entry("z")] };
+    const moved = { name: "mvp:dbo_getby", input: [entry("z"), entry("field_name"), entry("field_value")] };
+    expect(normalize(lead)).not.toEqual(normalize(moved));
   });
 });

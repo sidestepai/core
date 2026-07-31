@@ -22,6 +22,7 @@ import { c, ref, withFilters } from "../../src/values/value.js";
 import { fl } from "../../src/values/generated/filters.generated.js";
 import { rawValue } from "../../src/values/raw-value.js";
 import { rawResponse } from "../../src/responses/raw-response.js";
+import type { ResultItemXdo } from "../../src/types/xdo.js";
 import { rawField } from "../../src/fields/raw-field.js";
 import { DecodeContext } from "../../src/codegen/context.js";
 import { printExpr } from "../../src/codegen/print.js";
@@ -161,6 +162,23 @@ describe("decodeField — catalog coverage", () => {
     );
   });
 
+  it("decodes an FK annotation whose target was cleared as an ordinary column", () => {
+    // The editor writes a bare `dbo=` when a reference is cleared. It is not a
+    // reference, and reading it as one made `f.tableRef` throw on an empty
+    // target and take the whole field down to a descriptor literal — 50 columns
+    // across the sweep. The `@` method rides along in `methods` instead.
+    const stored = encodeField("author_id", "int", { methods: [{ name: "@", arg: ["dbo="] }] }, COLUMN_CONTEXT);
+    const ctx = new DecodeContext();
+    const decoded = decodeField(ctx, refsFor(), stored, "f");
+    expect(decoded.idiomatic).toBe(true);
+    const source = printExpr(decoded.expr);
+    expect(source).toContain("f.int(");
+    expect(source).not.toContain("tableRef");
+    const back = evaluate(source);
+    expect(encodeField("author_id", back.type, back.options, COLUMN_CONTEXT)).toEqual(stored);
+    expect(ctx.report.entries).toHaveLength(0);
+  });
+
   it("falls back to a descriptor literal for a type outside the catalog", () => {
     const stored = encodeField("weird", "some_future_type", { required: true }, COLUMN_CONTEXT);
     const ctx = new DecodeContext();
@@ -266,8 +284,110 @@ describe("decodeField — inputs", () => {
     ["object", input.object({ id: f.int() })],
     ["list", input.list(input.text())],
     ["required", input.text({ required: true, description: "who" })],
+    ["file", input.file()],
   ] as Array<[string, FieldDescriptor]>)("round-trips input.%s identically", (name, descriptor) => {
     identity(name, descriptor, "input");
+  });
+
+  it("decodes a raw file upload to input.file()", () => {
+    // A stored `file` is the request's bytes, not a stored file resource. It had
+    // no catalog form at all, so every upload input in the sweep came back as a
+    // descriptor literal.
+    expect(identity("avatar", input.file(), "input")).toBe("input.file()");
+  });
+
+  it("decodes a database link to input.dbLink, resolving the table to its symbol", () => {
+    // 718 fields across the sweep, every one of them `merge: true` — the flag
+    // that makes the engine EXPAND the link into one input per column. The type
+    // is the table's identity with `_mvpschema` appended, so it is a reference
+    // and must resolve to the table's symbol rather than a raw guid.
+    const guid = "9f3c81a04be27d6510aa4c8831ef25b7";
+    const refs = refsFor({ dbo: [{ name: "users", guid }] });
+    const stored = encodeField(
+      "users__",
+      `${guid}_mvpschema`,
+      { merge: true, hidden: ["created_at"] },
+      INPUT_CONTEXT,
+    );
+    const ctx = new DecodeContext();
+    const decoded = decodeField(ctx, refs, stored, "input", { symbolFor: (t) => t.name });
+    expect(decoded.idiomatic).toBe(true);
+    const source = printExpr(decoded.expr);
+    expect(source).toContain("input.dbLink(users");
+    expect(source).toContain("created_at");
+    // `merge` is forced by the constructor, so echoing it back would be noise.
+    expect(source).not.toContain("merge");
+    expect(source).not.toContain(guid);
+    expect(ctx.report.entries).toHaveLength(0);
+  });
+
+  it("round-trips a database link byte-for-byte", () => {
+    const guid = "9f3c81a04be27d6510aa4c8831ef25b7";
+    const refs = refsFor({ dbo: [{ name: "users", guid }] });
+    identity("users__", input.dbLink({ name: "users", guid }, { hidden: ["created_at"] }), "input", refs);
+  });
+
+  it("clears a customize table reference stored as a LOCAL row id, and says so", () => {
+    // An old engine version did not remap `@` targets inside `customize` to
+    // portable guids the way it does everywhere else, so a legacy workspace can
+    // hold `dbo=14`. An internal row id is not identity, so it is recovered as
+    // unbound rather than carried somewhere it would name a different table.
+    const guid = "9f3c81a04be27d6510aa4c8831ef25b7";
+    const stored = {
+      ...encodeField("users__", `${guid}_mvpschema`, { merge: true }, INPUT_CONTEXT),
+      customize: {
+        owner_id: { hidden: false, default: "", required: false, customize: [], methods: [{ name: "@", arg: ["dbo=14"] }] },
+      },
+    };
+    const ctx = new DecodeContext();
+    const decoded = decodeField(ctx, refsFor(), stored as never, "input");
+    const source = printExpr(decoded.expr);
+    expect(source).toContain("rawField(");
+    // Reset to the unbound spelling, not carried.
+    expect(source).toContain('"dbo="');
+    expect(source).not.toContain("dbo=14");
+    // Warned about by name — a cleared reference is a real loss, not a passthrough.
+    const detail = ctx.report.entries.map((e) => String(e.detail)).join(" | ");
+    expect(detail).toContain("dbo=14");
+    expect(detail).toContain("LOCAL row id");
+    expect(ctx.report.entries.some((e) => e.category === "unresolved-ref")).toBe(true);
+  });
+
+  it("leaves a guid-form customize reference alone", () => {
+    // Only the LOCAL spelling is unportable. A real guid is identity and stays.
+    const guid = "9f3c81a04be27d6510aa4c8831ef25b7";
+    const target = "1111000000000000000000000000aaaa";
+    const stored = {
+      ...encodeField("users__", `${guid}_mvpschema`, { merge: true }, INPUT_CONTEXT),
+      customize: {
+        owner_id: { hidden: false, default: "", required: false, customize: [], methods: [{ name: "@", arg: [`dbo=${target}`] }] },
+      },
+    };
+    const ctx = new DecodeContext();
+    const decoded = decodeField(ctx, refsFor(), stored as never, "input");
+    expect(printExpr(decoded.expr)).toContain(target);
+    expect(ctx.report.entries.some((e) => e.category === "unresolved-ref")).toBe(false);
+  });
+
+  it("keeps the database link off the column surface", () => {
+    // `excludedTypesForDatabase` rules dblink out as a column: a column linking a
+    // whole table is a foreign key, which is f.tableRef.
+    const guid = "9f3c81a04be27d6510aa4c8831ef25b7";
+    const stored = encodeField("users__", `${guid}_mvpschema`, { merge: true }, COLUMN_CONTEXT);
+    const ctx = new DecodeContext();
+    const decoded = decodeField(ctx, refsFor({ dbo: [{ name: "users", guid }] }), stored, "f");
+    expect(printExpr(decoded.expr)).not.toContain("dbLink");
+  });
+
+  it("keeps the upload type off the column surface", () => {
+    // There is no `f.file`: a table holds a stored resource, never an upload.
+    // Resolving `file` against `f` would emit source that does not evaluate.
+    expect((f as Record<string, unknown>)["file"]).toBeUndefined();
+    const stored = encodeField("avatar", "file", {}, COLUMN_CONTEXT);
+    const ctx = new DecodeContext();
+    const decoded = decodeField(ctx, refsFor(), stored, "f");
+    expect(decoded.idiomatic).toBe(false);
+    expect(printExpr(decoded.expr)).not.toContain("f.file");
   });
 
   it("emits against the input catalog, not the field catalog", () => {
@@ -427,6 +547,42 @@ describe("decodeResponse", () => {
     expect(source).toContain("rawResponse(");
     expect(ctx.report.entries[0]!.category).toBe("raw-fallback");
     expect(encodeResponse(evaluateValue(source))).toEqual(stored);
+  });
+
+  it("carries a result[] with more than one UNNAMED item through rawResponse()", () => {
+    // The record form is keyed by name, so two items sharing a name collapse
+    // into one — and a blank name is the name three of these share. One real
+    // query stores four items, three of them unnamed: it came back as TWO,
+    // silently, with the survivors' tags and values shuffled.
+    const stored = [
+      { name: "", tag: "var", value: "hello_1", filters: [], _xsid: "", disabled: false },
+      { name: "", tag: "input", value: "ab", filters: [], _xsid: "", disabled: false },
+      { name: "func_1", tag: "var", value: "func_1", filters: [], _xsid: "", disabled: false },
+    ] as const satisfies readonly ResultItemXdo[];
+    const ctx = new DecodeContext();
+    const source = printExpr(decodeResponse(ctx, stored)!);
+    expect(source).toContain("rawResponse(");
+    expect(ctx.report.entries[0]!.category).toBe("raw-fallback");
+    expect(encodeResponse(evaluateValue(source))).toEqual(stored);
+  });
+
+  it("carries a result[] with a REPEATED name through rawResponse()", () => {
+    const stored = [
+      { name: "id", tag: "var", value: "a", filters: [], _xsid: "", disabled: false },
+      { name: "id", tag: "var", value: "b", filters: [], _xsid: "", disabled: false },
+    ] as const satisfies readonly ResultItemXdo[];
+    const ctx = new DecodeContext();
+    const source = printExpr(decodeResponse(ctx, stored)!);
+    expect(source).toContain("rawResponse(");
+    expect(encodeResponse(evaluateValue(source))).toEqual(stored);
+  });
+
+  it("still uses the readable record form when every name is distinct", () => {
+    // The paired negative — the raw path must not swallow the common case.
+    const stored = encodeResponse({ id: ref("user.id"), total: ref("n") });
+    const ctx = new DecodeContext();
+    expect(printExpr(decodeResponse(ctx, stored)!)).not.toContain("rawResponse(");
+    expect(ctx.report.entries).toEqual([]);
   });
 
   it("does NOT fall back for a non-empty _xsid, which is engine-generated", () => {

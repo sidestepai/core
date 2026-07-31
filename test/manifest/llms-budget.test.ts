@@ -40,7 +40,46 @@ import { measureCommittedLlms } from "../../scripts/measure-llms.js";
 // `presence_join.member`, and the member entry). All three were named-but-unshaped
 // surfaces an author had to guess at and defend against — the exact thing this doc
 // exists to prevent.)
-const CEILING_TOKENS = 28_100;
+// Raised again from 28.1k for three surfaces a pulled workspace proved are real
+// and nothing modelled: `input.file` (a raw upload, and the ONLY type with no
+// `f.` column form — an agent that assumes the catalogs mirror will write
+// `f.file` and get nothing), plus `db.get_by_id` and `security.create_guid`,
+// which are distinct stored statements from their near-neighbours `db.get` and
+// `security.create_uuid` and cannot be inferred from them.
+// Raised again from 28.15k for `input.dbLink`. It earns prose rather than a
+// catalog row because it is the one input whose ENTRY IS NOT THE INPUT: the
+// engine expands one dblink into one input per column of the linked table, so an
+// agent that reads it by the entry's own name gets nothing and has no way to
+// discover why. The 718 of them in the sweep are all `merge: true`.
+// Raised again from 28.25k for the RETIRED statement versions in the Legacy
+// index. Four crypto families are versioned by suffix and only the highest
+// number is offered; the earlier ones still run, so a pulled workspace holds
+// them, but each version was a BREAKING change to the one before. They have no
+// `s.` surface at all now, which means the only thing standing between an agent
+// and "fixing" a `raw({name:"mvp:crypto_jwe_encode"})` it does not recognize is
+// this list. Note the catalog also SHRANK here (two authorable surfaces removed),
+// so the net rise is smaller than the section itself.
+// Raised again from 28.4k for `mixed(...)`. It is the rare case where the doc
+// exists to talk an agent OUT of a surface: the container is authorable only so a
+// pulled workspace round-trips, and the paragraph has to carry the reason —
+// `a OR b AND c` means `(a OR b) AND c` in a branch and `a OR (b AND c)` in a
+// query filter, because one folds left to right and the other inherits the
+// database's precedence. Naming it without that is worse than not naming it, and
+// the alternative (`and(or(a,b),c)`) only reads as advice once you know why.
+// Raised again from 28.55k for `output` on the row WRITES. It is 23 tokens and
+// it closes a real trap: `output` already appeared on `db.get`, so an agent that
+// meets it on `db.add` has every reason to read it as "insert only these
+// columns" — which would silently drop the rest of the row. The line exists to
+// say it narrows the RESPONSE, and to name the three statements that take it.
+// Raised again from 28.6k for `caught(...)`, the catch arm's error scope. It is
+// the only way to read the thing a catch arm caught, and it is unguessable in
+// both directions: nothing in `s.try_catch({ try, catch })` hints that the error
+// is bound at all, so an agent writes a catch arm that cannot say what failed —
+// or reaches for `ref("error")`, which resolves to nothing and fails silently.
+// The scope rule has to ride along (it reads empty outside the catch arm), since
+// a value that is legal everywhere and correct in one place is the kind of thing
+// that gets copied into the try arm and quietly returns "".
+const CEILING_TOKENS = 28_700;
 
 describe("llms.txt token budget", () => {
   it("stays under the bloat-tripwire ceiling", () => {

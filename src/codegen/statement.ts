@@ -14,10 +14,12 @@
 import type { StackItemXdo } from "../types/xdo.js";
 import type { Statement } from "../statements/statement.js";
 import { raw } from "../statements/special/raw.js";
+import { STATEMENT_SURFACES } from "../statements/surfaces.js";
+import { SUPERSEDED_STATEMENTS, supersededBy } from "../statements/superseded.js";
 import { CODEGEN_MODULE, type DecodeContext } from "./context.js";
 import { arr, call, lit, type Expr } from "./print.js";
 import type { RefIndex, ResolveOptions } from "./ref-index.js";
-import { decodeFromSpec } from "./spec-inverse.js";
+import { decodeFromSpec, SPECS_BY_NAME } from "./spec-inverse.js";
 import { SPECIAL_DECODERS } from "./specials/index.js";
 import { withDeclineContext } from "./prove-diff.js";
 
@@ -39,6 +41,27 @@ function dispatch(
   stored: StackItemXdo,
   resolve: ResolveOptions,
 ): Expr {
+  // A RETIRED version of a versioned family. Not attempted, because there is
+  // nothing to attempt: this SDK deliberately models only the latest of each
+  // family, so the earlier spellings have no authoring surface to decode to.
+  // `raw()` carries them byte-exact and the report names the replacement, which
+  // is the useful thing to tell whoever pulled the workspace.
+  if (SUPERSEDED_STATEMENTS.has(stored.name)) {
+    const replacement = supersededBy(stored.name, (n) =>
+      STATEMENT_SURFACES.find(([, name]) => name === n)?.[0],
+    );
+    ctx.problem(
+      "superseded",
+      replacement === null
+        ? `${stored.name} is a retired statement with no replacement; carried verbatim via raw()`
+        : `${stored.name} is a superseded version — the platform offers \`${replacement}\` now, ` +
+          "and the two are not interchangeable (each version was a breaking change). " +
+          "Carried verbatim via raw(), so it keeps running exactly as stored",
+    );
+    ctx.use(CODEGEN_MODULE, "raw");
+    return call("raw", lit(stored));
+  }
+
   const special = SPECIAL_DECODERS.get(stored.name);
   if (special) {
     const decoded = ctx.speculate(() =>
@@ -50,14 +73,40 @@ function dispatch(
         decodeStack: (run) => decodeNested(ctx, refs, run, resolve),
       }),
     );
-    if (decoded) return decoded;
+    if (decoded) {
+      ctx.takeDeclineNote();
+      return decoded;
+    }
   }
 
   const fromSpec = ctx.speculate(() => decodeFromSpec(ctx, stored));
-  if (fromSpec) return fromSpec;
+  if (fromSpec) {
+    ctx.takeDeclineNote();
+    return fromSpec;
+  }
 
+  // "has no decoder" was reported for EVERY fallback, including the ones where a
+  // decoder exists and simply declined — 81 of 181 sweep rows said it of
+  // `mvp:dbo_view`, `mvp:conditional` and `mvp:set_var`, all of which have had
+  // decoders for a long time. Read literally it sends a maintainer to write code
+  // that is already there, and it hides the split that matters: a statement
+  // nothing models is a COVERAGE gap, while one whose decoder declined is a
+  // FIDELITY gap in a decoder that exists.
   const name = (stored as { name?: unknown }).name;
-  ctx.problem("raw-fallback", `${typeof name === "string" ? name : "(unnamed)"} has no decoder`);
+  const label = typeof name === "string" ? name : "(unnamed)";
+  const modelled =
+    typeof name === "string" && (SPECIAL_DECODERS.has(name) || SPECS_BY_NAME.has(name));
+  // A decoder that knew exactly why it could not spell this says so here, rather
+  // than leaving "could not reproduce" as the only clue (see `declined`).
+  const why = ctx.takeDeclineNote();
+  ctx.problem(
+    "raw-fallback",
+    modelled
+      ? `${label} is modelled, but its decoder could not reproduce the stored statement` +
+        (why ? `: ${why}. Emitted` : "; emitted") +
+        " verbatim via raw()"
+      : `${label} has no decoder; emitted verbatim via raw()`,
+  );
   ctx.use(CODEGEN_MODULE, "raw");
   return call("raw", lit(stored));
 }

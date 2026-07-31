@@ -181,15 +181,60 @@ const createAuthToken: SpecialDecoder = (a) => {
   if (table.tag !== "const" || table.filters.length > 0)
     return declineHere("security.create_auth_token: dbtable is not a bare guid constant");
 
+  // A blank guid is an unbound table — resolving it threw inside the factory and
+  // took the whole statement to `raw()`. Same "no target" spelling as elsewhere.
+  const unbound = table.value === "";
+
+  // A `dbtable` this bundle does not resolve as a guid.
+  //
+  // Keyed on RESOLUTION and on nothing else. **SideStep resolves references by
+  // guid only and never maps a name back to an object.** An earlier version
+  // keyed this on "a table of that name exists", which is a name lookup in all
+  // but direction; it also left the case where that table is ABSENT falling
+  // through to guid resolution, reporting a missing guid 6 more times.
+  //
+  // And there is nothing else it COULD key on. A workspace guid is an arbitrary
+  // unique key that anyone can change — it has no pattern, so the value cannot
+  // be classified by shape. Two readings therefore stay open and only the
+  // workspace owner can tell them apart:
+  //
+  //  - older workspaces store this field by NAME, and the engine keys it by
+  //    name on those, so the statement works and nothing is wrong;
+  //  - or it is a guid whose table was deleted, re-keyed, or sat outside the
+  //    export's scope — a real broken reference.
+  //
+  // Reported as `unresolved-ref` because that is literally and only what is
+  // known: the reference did not resolve. Same contract {@link unboundTableArg}
+  // holds a blank table to — name both readings, leave the judgement to whoever
+  // reads it — rather than picking one and quietly downgrading the other. The
+  // bytes are faithful either way: the value rides through verbatim on the
+  // `{name, guid}` escape hatch and re-encodes identically. What is lost is the
+  // link to the table's symbol, and resolving it would be worse than useless —
+  // re-encoding a table handle writes that table's real guid, changing the
+  // stored bytes.
+  const unresolvable = !unbound && a.refs.lookup(table.value) === undefined;
+  if (unresolvable) {
+    a.ctx.problem(
+      "unresolved-ref",
+      `security.create_auth_token references table "${table.value}", which this bundle does not resolve as a guid — SideStep resolves references by guid only. Older workspaces store this field by NAME, which the engine still honours, so this may be working as stored; it may equally be a table that was deleted or re-keyed. Carried verbatim, so the bytes are preserved, but it is not linked to the table's symbol and a re-deploy will not re-link it`,
+    );
+  }
   const entries: Array<[string, Expr]> = [
     [
       "table",
-      resolveReference(a.ctx, a.refs, table.value, { ...a.resolve, unresolved: "object-ref" }),
+      unbound
+        ? lit(null)
+        : unresolvable
+          ? obj([
+              ["name", lit("")],
+              ["guid", lit(table.value)],
+            ])
+          : resolveReference(a.ctx, a.refs, table.value, { ...a.resolve, unresolved: "object-ref" }),
     ],
     ["id", decodeValue(a.ctx, id)],
   ];
   const runtime: Record<string, unknown> = {
-    table: { name: "", guid: table.value },
+    table: unbound ? null : { name: "", guid: table.value },
     id,
   };
   // Presence, not value: an explicitly-authored `{}`/86400 is stored and must
@@ -275,6 +320,18 @@ const workflowTestCall: SpecialDecoder = (a) => {
   return prove(a.ctx, a.stored, "workflow_test.call", [runtime], [obj(entries)]);
 };
 
+/**
+ * `security.create_guid` — the engine declares no context, input, or output
+ * schema for it, so `as` is the only thing to recover. Anything else present is
+ * a shape this does not model, and declining lets it ride `raw()` intact.
+ */
+const createGuid: SpecialDecoder = (a) => {
+  const entries: Array<[string, Expr]> = [];
+  const runtime: Record<string, unknown> = {};
+  withAs(a, entries, runtime);
+  return prove(a.ctx, a.stored, "security.create_guid", [runtime], [obj(entries)]);
+};
+
 /** Miscellaneous decoders by stored name. */
 export const MISC_DECODERS: ReadonlyMap<string, SpecialDecoder> = new Map<string, SpecialDecoder>([
   ["mvp:get_input", getRawInput],
@@ -301,6 +358,7 @@ export const MISC_DECODERS: ReadonlyMap<string, SpecialDecoder> = new Map<string
   ],
   ["mvp:realtime_event", realtimeEvent],
   ["mvp:create_auth", createAuthToken],
+  ["mvp:guid", createGuid],
   ["mvp:action_package", actionPackageCall],
   ["mvp:workspace_run_workflow_test", workflowTestCall],
 ]);

@@ -21,13 +21,20 @@
  * that elision is verified rather than assumed.
  */
 import type { StackItemXdo, TaggedValue } from "../../types/xdo.js";
-import { isDefaultEnvelopeMember } from "../../validate/normalize.js";
+import { configuredDeadReturnBlocks, isDefaultEnvelopeMember } from "../../validate/normalize.js";
 import { outputPaths } from "../../statements/special/output-select.js";
 import { arr, lit, obj, type Expr } from "../print.js";
 import { isBoundNumericId, isReferenceId, isUnboundId, resolveReference } from "../ref-index.js";
 import { decodeValue } from "../value.js";
 import { decodeCondition } from "../expression.js";
-import { declineHere, getPath, prove, type SpecialArgs, type SpecialDecoder } from "./prove.js";
+import {
+  blankRefDetail,
+  declineHere,
+  getPath,
+  prove,
+  type SpecialArgs,
+  type SpecialDecoder,
+} from "./prove.js";
 
 /** Coerce a stored `{value, tag, filters}` block to a tagged value. */
 function toValue(raw: unknown): TaggedValue | null {
@@ -97,34 +104,22 @@ function tableArg(a: SpecialArgs, guid: string): TableArg {
  * same contract an addon's `table` has carried all along. Reading it as "nothing
  * to recover" degraded 83 db statements to `raw()` across the sweep.
  *
- * **But a blank reference has two indistinguishable causes, and only one of them
- * is benign**, which is why this reports rather than emitting quietly:
- *
- *  - the target was deleted, or was never bound — a defect in the workspace, and
- *    exactly what `table: null` is for;
- *  - the export-side reference remap could not resolve the target because it sat
- *    outside the export's scope, and blanked it rather than failing the export. The
- *    reference still EXISTS upstream. Emitting `table: null` silently would present
- *    a real lost binding as a deliberate one — a wrong default making authored data
- *    invisible, which is worse than no rule.
- *
- * A narrower export is the ordinary way to hit the second case, so the report line
- * names both and leaves the judgement to whoever reads it. Same contract the
- * realtime kinds already hold blank bindings to (`test/codegen/realtime-blank-refs`),
- * applied consistently here.
+ * **It reports rather than emitting quietly**, because a blank binding is a
+ * defect in the workspace and `table: null` is the faithful rendering of one —
+ * emitting it silently would let a lost binding pass as a deliberate choice.
+ * There is one reading and no hedge: this flow pulls whole workspaces, so a
+ * blank reference cannot be a live target that merely sat outside the export
+ * (see {@link blankRefDetail}). Same contract the realtime kinds already hold
+ * blank bindings to (`test/codegen/realtime-blank-refs`), applied consistently.
  *
  * The alias is left to {@link aliasEntry}, which reads `dbo.as` by presence: a
  * deleted table's alias frequently outlives it (`{as: "user", id: ""}`).
  */
 function unboundTableArg(a: SpecialArgs, what: string): TableArg {
-  a.ctx.problem(
-    "unresolved-ref",
-    `${what} has a blank table reference, recovered as \`table: null\`; the table was ` +
-      "deleted or unbound, OR it sits outside this export's scope and was blanked on the " +
-      "way out — re-pull with the table in scope to tell the two apart",
-  );
+  a.ctx.problem("unresolved-ref", blankRefDetail(`${what} has a blank table reference`, "table"));
   return { expr: lit(null), runtime: null };
 }
+
 
 /**
  * The `tableAlias:` argument for a stored `context.dbo.as`.
@@ -249,7 +244,16 @@ function decodeAddonSpec(
   const block = stored as Record<string, unknown>;
   const guid = block.id;
   const alias = block.as;
-  if (typeof guid !== "string" || typeof alias !== "string")
+  // A NUMERIC id is a bound row reference, not portable identity — the same
+  // settled case the call family declines by name, and the only shape in the
+  // survey corpus that reaches this guard (3 attachments; every other one
+  // carries a string id, blank or otherwise). It was reported as "has no id",
+  // which is false and sent the reader looking for a missing key.
+  if (typeof guid === "number" && isBoundNumericId(guid))
+    return declineHere(
+      `addon[]: attachment id ${JSON.stringify(guid)} is a numeric object reference, not portable identity`,
+    );
+  if ((typeof guid !== "string" && typeof guid !== "number") || typeof alias !== "string")
     return declineHere("addon[]: attachment has no id or no as");
 
   // The encoder splits the authored destination at its last dot into
@@ -258,13 +262,38 @@ function decodeAddonSpec(
   const offset = typeof block.offset === "string" ? block.offset : "";
   const destination = offset ? `${offset}.${alias}` : alias;
 
-  const target = a.refs.lookup(guid);
+  // An UNBOUND id is an attachment whose addon was deleted or never bound.
+  // Resolving it threw inside the factory, which degraded the whole enclosing
+  // query to `raw()`; `addon: null` is the same "no target" spelling `table:
+  // null` and `fn: null` already carry, and it keeps the query readable.
+  //
+  // Both stored spellings of "no target" count — the blank string and the
+  // numeric `0` a pre-guid attachment carries. A numeric id that is NOT the
+  // sentinel already declined above, so this reads no identity out of a number;
+  // it only recognizes the absence of one.
+  const unbound = isUnboundId(guid);
+  const target = unbound ? undefined : a.refs.lookup(guid as string);
+  // Reported for the same reason a blank `table` is: the two causes — deleted or
+  // never bound vs. blanked on the way out of a narrow export — are
+  // indistinguishable here, and emitting `addon: null` silently would present a
+  // real lost binding as a deliberate one.
+  if (unbound) {
+    a.ctx.problem(
+      "unresolved-ref",
+      blankRefDetail(`addon attachment "${alias}" has a blank addon reference`, "addon"),
+    );
+  }
   const entries: Array<[string, Expr]> = [
-    ["addon", resolveReference(a.ctx, a.refs, guid, { ...a.resolve, unresolved: "object-ref" })],
+    [
+      "addon",
+      unbound
+        ? lit(null)
+        : resolveReference(a.ctx, a.refs, guid as string, { ...a.resolve, unresolved: "object-ref" }),
+    ],
     ["as", lit(destination)],
   ];
   const runtime: Record<string, unknown> = {
-    addon: { name: target?.name ?? "", guid },
+    addon: unbound ? null : { name: target?.name ?? "", guid: guid as string },
     as: destination,
   };
 
@@ -621,6 +650,21 @@ function sqlEntries(
   a: SpecialArgs,
   context: Record<string, unknown>,
 ): { entries: Array<[string, Expr]>; runtime: Record<string, unknown> } | null {
+  // An UNCONFIGURED statement — the engine writes `context: {}` for one that was
+  // dropped into a stack and never filled in, and all 6 in the survey corpus are
+  // that, not a malformed `code`. Left as `raw()` deliberately: five of the six
+  // are external-engine variants whose `connection_string_flex` is a nested
+  // object, and the optional-schema pass does not materialize those (see the
+  // note by {@link filledContext}), so there is no connection string to recover
+  // and the factory could not be called at all. The message says which it is.
+  if (context.code === undefined && Object.keys(context).length === 0) {
+    declineHere("raw SQL: context is empty — the statement was never configured");
+    return a.ctx.declined(
+      "the statement stores an entirely empty context — it was added to the stack and never " +
+        "configured, so there is no SQL and no connection to recover. `raw()` is what an " +
+        "unconfigured stub looks like",
+    );
+  }
   if (typeof context.code !== "string") return declineHere("raw SQL: context.code is not a string");
   const entries: Array<[string, Expr]> = [["sql", lit(context.code)]];
   const runtime: Record<string, unknown> = { sql: context.code };
@@ -708,7 +752,7 @@ const dbBulkDelete: SpecialDecoder = (a) => {
   }
 
   if (!isUnauthored("search", context.search)) {
-    const where = decodeWhere(a, context.search);
+    const where = decodeWhere(a, context.search, "db.bulk.delete search");
     if (!where) return null;
     entries.push(["where", where.expr]);
     runtime.where = where.runtime;
@@ -743,12 +787,24 @@ const dbTransaction: SpecialDecoder = (a) => {
  *
  * Null is always fatal for a caller (a search filter cannot be dropped), so the
  * decline is recorded here rather than at each call site.
+ *
+ * `site` names WHICH where failed. A query has three of them — its own search,
+ * a `bind[]` join's, and an addon attachment's — and the bare message named
+ * none, so six declines in the survey corpus all read identically and could not
+ * be told apart without re-deriving the call site by hand.
  */
-function decodeWhere(a: SpecialArgs, stored: unknown): { expr: Expr; runtime: unknown } | null {
+function decodeWhere(
+  a: SpecialArgs,
+  stored: unknown,
+  site: string,
+): { expr: Expr; runtime: unknown } | null {
   const condition = decodeCondition(a.ctx, stored);
   if (condition) return { expr: condition.expr, runtime: condition.runtime };
   const value = toValue(stored);
-  if (!value) return declineHere("where: neither a decodable condition tree nor a tagged value");
+  if (!value)
+    return declineHere(
+      `where (${site}): neither a decodable condition tree nor a tagged value — stored ${JSON.stringify(stored).slice(0, 80)}`,
+    );
   return { expr: decodeValue(a.ctx, value), runtime: value };
 }
 
@@ -817,13 +873,23 @@ const dbQuery: SpecialDecoder = (a) => {
 
   const ret = (context.return ?? {}) as Record<string, unknown>;
   const returnType = typeof ret.type === "string" ? ret.type : "list";
+  // The editor writes every return branch and the engine reads only the one
+  // `type` selects, so the rest are dropped (see `liveReturnSection`). A dropped
+  // branch that still holds real configuration is worth saying out loud — it is
+  // what the query used to do before its return type was switched.
+  for (const dead of configuredDeadReturnBlocks(ret)) {
+    a.ctx.problem(
+      "expected-omission",
+      `db.query returns "${returnType}", so its stored "${dead}" return block — which carries a sort, grouping, or paging — is inert: the engine reads only the branch \`return.type\` names. Dropped.`,
+    );
+  }
   if (returnType !== "list") {
     entries.push(["returnType", lit(returnType)]);
     runtime.returnType = returnType;
   }
 
   if (!isUnauthored("search", context.search)) {
-    const where = decodeWhere(a, context.search);
+    const where = decodeWhere(a, context.search, "db.query search");
     if (!where) return null;
     entries.push(["where", where.expr]);
     runtime.where = where.runtime;
@@ -839,6 +905,13 @@ const dbQuery: SpecialDecoder = (a) => {
       const bindAlias = getPath(stored, "dbo.as");
       if (typeof bindGuid !== "string")
         return declineHere("db.query: a context.bind[] join has no dbo.id");
+      // A join to an UNBOUND table. The top-level `table` models this as `null`
+      // and `DbBind.table` does not, so the factory throws on the blank guid —
+      // and a factory throw takes the whole statement to `raw()` rather than
+      // just this join. Declined by name instead, so the dump says which join is
+      // unbound rather than reporting an unresolvable reference from nowhere.
+      if (isUnboundId(bindGuid))
+        return declineHere("db.query: a context.bind[] join has a blank table reference");
       const joined = tableArg(a, bindGuid);
       const cells: Array<[string, Expr]> = [["table", joined.expr]];
       const entry: Record<string, unknown> = { table: joined.runtime };
@@ -852,9 +925,14 @@ const dbQuery: SpecialDecoder = (a) => {
         cells.push(["join", lit(join)]);
         entry.join = join;
       }
+      // A join's own filter gets the same "empty means unauthored" treatment the
+      // query's top-level search has always had. Testing only `!== undefined`
+      // sent the engine's unconditional `{expression: []}` into the condition
+      // inverse, which cannot build an empty tree — so five joined queries in
+      // the survey corpus fell back to `raw()` for filtering on nothing.
       const search = (stored as { search?: unknown }).search;
-      if (search !== undefined) {
-        const where = decodeWhere(a, search);
+      if (!isUnauthored("search", search)) {
+        const where = decodeWhere(a, search, "db.query bind[] join");
         if (!where) return null;
         cells.push(["where", where.expr]);
         entry.where = where.runtime;
@@ -1097,6 +1175,12 @@ function decodeAggregate(
       cells.push(["metadata", lit(false)]);
       values.metadata = false;
     }
+    // The gate defaults to on (a `paging` block is how you ask for paging), so
+    // only a parked block — configured but switched back off — authors it.
+    if (paging.enabled === false) {
+      cells.push(["enabled", lit(false)]);
+      values.enabled = false;
+    }
     // An aggregate `paging` block exists only when it was authored, so the key
     // is emitted even when every field sits at its default.
     entries.push(["paging", obj(cells)]);
@@ -1117,6 +1201,17 @@ export const DB_DECODERS: ReadonlyMap<string, SpecialDecoder> = new Map<string, 
       takesAddon: true,
     }),
   ],
+  // The engine's dedicated get-by-primary-key statement, distinct from
+  // `dbo_getby` above: one `id` input instead of a field_name/field_value pair.
+  [
+    "mvp:dbo_get",
+    dboOp({
+      path: "db.get_by_id",
+      named: [{ entry: "id", arg: "id" }],
+      takesOutput: true,
+      takesAddon: true,
+    }),
+  ],
   ["mvp:dbo_delby", dboOp({ path: "db.del", lookup: true })],
   ["mvp:dbo_hasby", dboOp({ path: "db.has", lookup: true })],
   [
@@ -1125,13 +1220,17 @@ export const DB_DECODERS: ReadonlyMap<string, SpecialDecoder> = new Map<string, 
       path: "db.patch",
       lookup: true,
       named: [{ entry: "item", arg: "data" }],
+      takesOutput: true,
       takesAddon: true,
     }),
   ],
   ["mvp:dbo_truncate", dboOp({ path: "db.truncate", named: [{ entry: "reset", arg: "reset", bool: true, optional: true }] })],
   ["mvp:dbo_get_schema", dboOp({ path: "db.schema", named: [{ entry: "path", arg: "path" }] })],
-  ["mvp:dbo_add", dboOp({ path: "db.add", rowData: true, takesAddon: true })],
-  ["mvp:dbo_editby", dboOp({ path: "db.edit", lookup: true, rowData: true, takesAddon: true })],
+  ["mvp:dbo_add", dboOp({ path: "db.add", rowData: true, takesOutput: true, takesAddon: true })],
+  [
+    "mvp:dbo_editby",
+    dboOp({ path: "db.edit", lookup: true, rowData: true, takesOutput: true, takesAddon: true }),
+  ],
   ["mvp:dbo_addoreditby", dbAddOrEdit],
   [
     "mvp:dbo_bulkadd",

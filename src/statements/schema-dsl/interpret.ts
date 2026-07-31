@@ -29,6 +29,7 @@ import type { Statement } from "../statement.js";
 import { registerStatement } from "../statement.js";
 import type { Value } from "../../values/value.js";
 import { leanInput } from "../lean-input.js";
+import { isIgnored } from "../../values/ignored.js";
 import { encodeComparison } from "../conditional.js";
 import type { Condition } from "../conditional.js";
 
@@ -161,7 +162,11 @@ function setPath(obj: Record<string, unknown>, path: string, value: unknown): vo
 function inputEntry(name: string, v: Value, full: boolean): Record<string, unknown> {
   const entry: Record<string, unknown> = { ...leanInput(name, v) };
   if (full) {
-    entry.ignore = false;
+    // An `ignored()` binding keeps its value and is skipped at runtime — the
+    // engine records `"<name>:ignore"` and never binds it. The flag rides a
+    // non-enumerable marker on the value, so it lands here rather than in the
+    // serialized value itself.
+    entry.ignore = isIgnored(v);
     entry.expand = false;
     entry.children = [];
   }

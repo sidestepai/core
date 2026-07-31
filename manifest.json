@@ -1,6 +1,6 @@
 {
   "name": "sidestep",
-  "version": "4.1.15",
+  "version": "4.1.13",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
@@ -93,6 +93,11 @@
         "name": "auth",
         "signature": "(path?: string) => Value",
         "description": "Reference the authenticated identity (auth(\"id\") → $auth.id) → tag \"auth\"."
+      },
+      {
+        "name": "caught",
+        "signature": "(path?: \"code\" | \"message\" | \"name\" | \"result\") => Value",
+        "description": "Read the caught error inside an s.try_catch CATCH arm → tag \"trycatch\". Valid ONLY there — it reads empty in the try/finally arms and outside the statement. Those four fields are all the engine binds (result is the attached payload); bare caught() is the whole error record."
       },
       {
         "name": "env",
@@ -412,6 +417,18 @@
       "name": "attachment",
       "stored": "blob",
       "methods": []
+    },
+    {
+      "name": "file",
+      "stored": "file",
+      "methods": [],
+      "inputOnly": true
+    },
+    {
+      "name": "dbLink",
+      "stored": "<tableGuid>_mvpschema",
+      "methods": [],
+      "inputOnly": true
     },
     {
       "name": "geo.point",
@@ -2600,6 +2617,13 @@
       "declarative": false
     },
     {
+      "surface": "db.get_by_id",
+      "storedName": "mvp:dbo_get",
+      "sPath": "db.get_by_id",
+      "registered": true,
+      "declarative": false
+    },
+    {
       "surface": "db.get",
       "storedName": "mvp:dbo_getby",
       "sPath": "db.get",
@@ -3506,6 +3530,13 @@
       ]
     },
     {
+      "surface": "security.create_guid",
+      "storedName": "mvp:guid",
+      "sPath": "security.create_guid",
+      "registered": true,
+      "declarative": false
+    },
+    {
       "surface": "security.create_password",
       "storedName": "mvp:generate_pass",
       "sPath": "security.create_password",
@@ -3686,51 +3717,6 @@
       ]
     },
     {
-      "surface": "security.jwe_decode_legacy",
-      "storedName": "mvp:crypto_jwe_decode",
-      "sPath": "security.jwe_decode_legacy",
-      "registered": true,
-      "declarative": true,
-      "output": false,
-      "fields": [
-        {
-          "name": "as",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "token",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "key",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "audience",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "key_algorithm",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "content_algorithm",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "timeDrift",
-          "type": "value",
-          "optional": true
-        }
-      ]
-    },
-    {
       "surface": "security.jwe_decode",
       "storedName": "mvp:crypto_jwe_decode2",
       "sPath": "security.jwe_decode",
@@ -3770,51 +3756,6 @@
         },
         {
           "name": "timeDrift",
-          "type": "value",
-          "optional": true
-        }
-      ]
-    },
-    {
-      "surface": "security.jwe_encode_legacy",
-      "storedName": "mvp:crypto_jwe_encode",
-      "sPath": "security.jwe_encode_legacy",
-      "registered": true,
-      "declarative": true,
-      "output": false,
-      "fields": [
-        {
-          "name": "as",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "payload",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "audience",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "key",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "key_algorithm",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "content_algorithm",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "ttl",
           "type": "value",
           "optional": true
         }

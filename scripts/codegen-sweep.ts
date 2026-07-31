@@ -266,13 +266,15 @@ async function sweepWorkspace(
       workspaceId: ws.id,
       label: `workspace ${ws.id} export`,
     });
-    if (opts.keepBundles) {
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(join(dir, "bundle.json"), JSON.stringify(bundle), "utf8");
-    }
-
     const project = decodeBundle(bundle);
     const entry = writeProject(project, dir);
+
+    // AFTER the tree is written, never before: `writeProject` clears the
+    // directory first, so a bundle written ahead of it was deleted every time
+    // and the flag silently produced nothing.
+    if (opts.keepBundles) {
+      writeFileSync(join(dir, "bundle.json"), JSON.stringify(bundle), "utf8");
+    }
 
     if (opts.verify) {
       try {

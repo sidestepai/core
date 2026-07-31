@@ -432,6 +432,30 @@ export function auth(path = ""): Value {
 }
 
 /**
+ * The four fields the engine binds in a `s.try_catch` catch arm. Read straight
+ * off the engine's own catch-variable map, which sets exactly these.
+ */
+export type CaughtField = "code" | "message" | "name" | "result";
+
+/**
+ * Read the caught error inside a {@link s.try_catch} **catch** arm
+ * (`{tag:"trycatch", value}` — XanoScript's `$trycatch.*`).
+ *
+ * Only valid inside the catch arm; the engine binds these for that scope alone
+ * and they read empty anywhere else. The four fields are all the engine sets:
+ * - `name` — the error name/type (for a thrown error statement, its message)
+ * - `message` — the human-readable message (`"Throw Error Statement"` for a throw)
+ * - `code` — the mapped HTTP-ish error code
+ * - `result` — the error payload, when one was attached
+ *
+ * e.g. `s.try_catch({ try: [...], catch: [s.debug_log(caught("message"))] })`.
+ * Bare `caught()` is the whole error record.
+ */
+export function caught(path: CaughtField | "" = ""): Value {
+  return val(path, "trycatch");
+}
+
+/**
  * Read a **workspace environment variable** — the ones set via `workspaceConfig({ env })`
  * or the workspace dashboard, e.g. `env("STRIPE_KEY")` → `$env.STRIPE_KEY`.
  *

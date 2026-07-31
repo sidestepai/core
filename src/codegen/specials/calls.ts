@@ -12,7 +12,14 @@ import type { TaggedValue } from "../../types/xdo.js";
 import { lit, obj, type Expr } from "../print.js";
 import { isBoundNumericId, isReferenceId, isUnboundId, resolveReference } from "../ref-index.js";
 import { decodeValue } from "../value.js";
-import { declineHere, getPath, prove, type SpecialArgs, type SpecialDecoder } from "./prove.js";
+import {
+  blankRefDetail,
+  declineHere,
+  getPath,
+  prove,
+  type SpecialArgs,
+  type SpecialDecoder,
+} from "./prove.js";
 
 /** Coerce a stored `{value, tag, filters}` block to a tagged value. */
 function toValue(raw: unknown): TaggedValue | null {
@@ -61,6 +68,32 @@ interface CallShape {
    * factory that does not take it would just abort inside `prove`.
    */
   readonly unbindable?: boolean;
+  /**
+   * The target id is NOT a workspace object reference — it names something that
+   * lives outside the bundle's object graph entirely, so routing it through the
+   * ref index reports a missing guid for a reference that was never
+   * workspace-local.
+   *
+   * Only `mvp:action` sets this. Its `run_version.id` identifies a GLOBALLY
+   * INSTALLED marketplace action package, so the id is the same everywhere and
+   * is not a workspace object anyone could have renamed or re-keyed. Three
+   * things say so independently: the encoder already carries a `@TODO` admitting
+   * it resolves via the "function" migrate type and that actions are a distinct
+   * namespace; action packages are an unsupported payload section, so an
+   * installed action is never in the tree to resolve against; and in the survey
+   * corpus all 3 stored ids are absent from their bundle while ONE OF THEM
+   * APPEARS IN TWO DIFFERENT WORKSPACES, which a workspace-local id cannot do.
+   *
+   * Note none of that rests on the id's SHAPE. A workspace guid is an arbitrary
+   * unique key that anyone can change — it carries no pattern to test against,
+   * so "this looks like a UUID rather than a workspace guid" is not evidence and
+   * must not become one.
+   *
+   * The emitted expression is unchanged: `resolveReference`'s miss branch
+   * already returns this exact `{name:"", guid}` form, so this drops the false
+   * error without touching a byte.
+   */
+  readonly external?: boolean;
   /** Extra entries derived from the stored context (headers, auth, …). */
   readonly extra?: (a: SpecialArgs) => {
     entries: Array<[string, Expr]>;
@@ -85,20 +118,21 @@ function callDecoder(shape: CallShape): SpecialDecoder {
     const guid = String(stored);
 
     if (unbound) {
-      // Reported, not emitted quietly: a blank reference is either a deleted or
-      // never-bound target, or a real one the export-side remap blanked because it
-      // sat outside the export's scope. Those are indistinguishable in the bytes, and
-      // presenting the second as a deliberate `null` would hide a lost binding.
+      // Reported, not emitted quietly: presenting a lost binding as a
+      // deliberate `null` would hide it. See {@link blankRefDetail}.
       a.ctx.problem(
         "unresolved-ref",
-        `${shape.path} has a blank ${shape.arg} reference, recovered as \`${shape.arg}: null\`; ` +
-          "the target was deleted or unbound, OR it sits outside this export's scope and was " +
-          "blanked on the way out — re-pull with the target in scope to tell the two apart",
+        blankRefDetail(`${shape.path} has a blank ${shape.arg} reference`, shape.arg),
       );
     }
     const target = unbound
       ? lit(null)
-      : resolveReference(a.ctx, a.refs, guid, { ...a.resolve, unresolved: "object-ref" });
+      : shape.external
+        ? obj([
+            ["name", lit("")],
+            ["guid", lit(guid)],
+          ])
+        : resolveReference(a.ctx, a.refs, guid, { ...a.resolve, unresolved: "object-ref" });
     // The runtime side references the target by guid directly: `resolveRef`
     // returns an explicit guid verbatim, so proving does not depend on whether a
     // symbol was available at this call site.
@@ -217,5 +251,8 @@ export const CALL_DECODERS: ReadonlyMap<string, SpecialDecoder> = new Map<string
     callDecoder({ path: "middleware.call", arg: "middleware", idPath: "id" }),
   ],
   ["mvp:workspace_run_addon", callDecoder({ path: "addon.call", arg: "addon", idPath: "id" })],
-  ["mvp:action", callDecoder({ path: "action.call", arg: "action", idPath: "run_version.id" })],
+  [
+    "mvp:action",
+    callDecoder({ path: "action.call", arg: "action", idPath: "run_version.id", external: true }),
+  ],
 ]);

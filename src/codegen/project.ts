@@ -277,22 +277,35 @@ function candidates(refs: RefIndex, payload: Record<string, unknown>): Candidate
  * `my fn`, `my-fn`, and `my_fn` all sanitize alike), so it falls to ordinals.
  * Both resolve in placement order, so the same bundle always produces the same
  * symbols.
+ *
+ * Two symbols that differ only by case count as a collision even though they are
+ * distinct TypeScript identifiers, because each non-shared symbol also names a
+ * file and macOS and Windows fold `Flag.ts` onto `flag.ts`. Left alone, the
+ * second object written replaces the first on disk while `index.ts` goes on
+ * importing both, so the lost binding resolves to `undefined` and encoding it
+ * crashes far from the cause. Reserved names stay case-SENSITIVE: they are
+ * imported identifiers rather than files, and a generated `Query` genuinely does
+ * not shadow the `query` factory.
  */
 function assignSymbols(list: readonly Candidate[]): string[] {
   const used = new Map<string, string>();
   for (const name of [...RESERVED_SYMBOLS, ...RESERVED_WORDS]) used.set(name, RESERVED_KIND);
+  const folded = new Map<string, string>();
   return list.map((candidate) => {
     const base = toSymbol(String(candidate.stored.name ?? ""));
     const kind = candidate.object.kind;
     let symbol = base;
-    const holder = used.get(symbol);
+    const holder = used.get(symbol) ?? folded.get(symbol.toLowerCase());
     if (holder !== undefined && holder !== kind) symbol = `${base}${kindWord(candidate)}`;
     // Ordinals build on the disambiguated symbol, so a reserved name held by two
     // same-kind objects stays readable (`newFunction`, `newFunction_2`) instead of
     // reverting to a bare `new_2`.
     const disambiguated = symbol;
-    for (let n = 2; used.has(symbol); n += 1) symbol = `${disambiguated}_${n}`;
+    for (let n = 2; used.has(symbol) || folded.has(symbol.toLowerCase()); n += 1) {
+      symbol = `${disambiguated}_${n}`;
+    }
     used.set(symbol, kind);
+    folded.set(symbol.toLowerCase(), kind);
     return symbol;
   });
 }

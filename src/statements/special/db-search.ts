@@ -16,14 +16,22 @@ import {
   type SearchNode,
   isValue,
   isGroup,
+  isMixed,
   isCmpNode,
   encodeExpression,
 } from "../expression.js";
 
 // Re-export the shared algebra so existing `db-search.js` importers (incl. the
 // public `index.ts` surface) keep resolving from here.
-export { cmp, and, or } from "../expression.js";
-export type { SearchOp, SearchComparison, SearchGroup, SearchNode } from "../expression.js";
+export { cmp, and, or, mixed } from "../expression.js";
+export type {
+  SearchOp,
+  SearchComparison,
+  SearchGroup,
+  SearchNode,
+  MixedGroup,
+  MixedTerm,
+} from "../expression.js";
 
 /** Sort direction for a {@link SortDirective} — the engine's `orderBy` values. */
 export type SortDir = "asc" | "desc" | "rand";
@@ -67,7 +75,7 @@ export function encodeSearch(where?: DbWhere, additionalWhere?: DbWhere): unknow
   for (const w of [where, additionalWhere]) {
     if (!w) continue;
     if (Array.isArray(w)) nodes.push(...w);
-    else if (isGroup(w) || isCmpNode(w)) nodes.push(w);
+    else if (isGroup(w) || isMixed(w) || isCmpNode(w)) nodes.push(w);
     else if (isValue(w)) raw = w;
     else {
       // Not comparison/group-shaped and not a tagged `Value` — a malformed `where`
