@@ -89,7 +89,16 @@ import { measureCommittedLlms } from "../../scripts/measure-llms.js";
 // no test the author writes will catch). The entry also has to say what it is NOT:
 // `deliverTo: "explicit"` still delivers to nobody, and an agent that reads the
 // two lines together would otherwise conclude the gap is closed.
-const CEILING_TOKENS = 28_950;
+// Raised again from 28.95k for tenant instances. A tenant client has TWO places
+// to name the tenant and they share no syntax — a `<tenant>:<canonical>` prefix
+// on the socket path, an `X-Tenant` header on HTTP — and the failure when you
+// set one and not the other is the worst kind: tokens are tenant-scoped, so
+// authenticating through the instance workspace mints a token the tenant's
+// realtime server rejects, and nothing on the wire says why. An agent cannot
+// infer the header from the path form (there is no URL form to generalize), nor
+// guess that a bare canonical on a tenant host silently resolves against a
+// different workspace's channels rather than erroring.
+const CEILING_TOKENS = 29_250;
 
 describe("llms.txt token budget", () => {
   it("stays under the bloat-tripwire ceiling", () => {

@@ -127,9 +127,20 @@ export interface RealtimeUrlOptions {
   /**
    * Address a TENANT's isolated database instead of the instance's own
    * workspace. Rides as a `<tenant>:<canonical>` prefix on the socket path; the
-   * websocket tier splits it and applies the tenant's database before resolving
-   * the canonical, so a bare canonical would resolve against the wrong
-   * workspace. Omit for a normal (non-tenant) instance.
+   * websocket tier splits on the FIRST `:`, applies the tenant's database, and
+   * only THEN resolves the canonical — so a bare canonical on a tenant host is
+   * looked up in the instance workspace instead, which either misses or serves a
+   * different workspace's channels. Omit for a normal (non-tenant) instance.
+   *
+   * Two things travel with it that are not part of this URL:
+   *  - **Tokens are tenant-scoped.** A realtime token carries the audience
+   *    `<tenant>:<license>` rather than the bare license, so one minted through
+   *    the instance workspace is rejected by a tenant's realtime server (and
+   *    vice versa). Mint and connect through the same tenant.
+   *  - **HTTP has no URL form.** The same context rides as an `X-Tenant:
+   *    <tenant>` request HEADER on `/api:<canonical>/…` calls. A tenant client
+   *    that authenticates over HTTP and then dials the socket must set both;
+   *    setting only the path prefix mints the token in the wrong database.
    */
   tenant?: string;
 }
@@ -206,8 +217,16 @@ export type RealtimeServerHandle = RealtimeServerDef & {
    *
    * A remote host must end up `wss://`: instances do not serve plain websockets
    * and browsers block a `ws://` socket from an https page — both surface as an
-   * opaque 1006 close with no reason. Pass `https://…` (or `wss://…`) for
-   * anything but a local dev server.
+   * opaque 1006 close with no reason. Pass the instance base URL (`https://…`,
+   * or `wss://…`); this is the only form `getUrl` builds.
+   *
+   * `/ws` is the INSTANCE INGRESS's routing segment, stripped before the
+   * websocket tier sees the path — the tier reads whatever remains, whole, as
+   * the connection hash. That matters in exactly one case: a direct dial at a
+   * local dev websocket port bypasses the ingress, so it wants the hash ALONE
+   * (`ws://127.0.0.1:<port>/<canonical>`) and `getUrl`'s `/ws/` segment would be
+   * read as part of the hash and fail to resolve. Build that dev URL by hand
+   * from {@link getCanonical}; every deployed host takes `getUrl`.
    */
   getUrl(baseUrl: string, opts?: RealtimeUrlOptions): string;
 };
