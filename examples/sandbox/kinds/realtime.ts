@@ -119,7 +119,15 @@ export const onChatConnect = realtimeServerTrigger({
  *
  * `getUrl` accepts the instance base URL you already have (`https://…`) and
  * normalizes the scheme to `wss://`; a remote host must be `wss` (a `ws://`
- * socket fails as an opaque 1006). Auth is a bearer token passed as the
+ * socket fails as an opaque 1006).
+ *
+ * ON A TENANT INSTANCE, both halves of the client must name the tenant: the
+ * socket carries it in the path (`{ tenant }` above), while HTTP has no URL form
+ * and takes an `X-Tenant: <tenant>` HEADER on `/api:<canonical>/…` calls. Tokens
+ * are tenant-scoped, so one minted through the instance workspace is rejected by
+ * the tenant's realtime server — authenticate and dial through the same tenant.
+ *
+ * Auth is a bearer token passed as the
  * websocket SUBPROTOCOL — `new WebSocket(url, token)` — with no token meaning an
  * anonymous client. Join before you broadcast:
  *

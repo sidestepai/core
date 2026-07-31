@@ -678,6 +678,15 @@ or from `xano.lock` once `sidestep export --lock` has minted it. `getChannel` al
 on a missing, unknown, or slash-bearing param, so a typo can't silently address a
 different channel.
 
+**On a tenant instance, both halves of the client must name the tenant.** The socket
+carries it in the path (`{ tenant }` above); HTTP has no URL form, so `/api:<canonical>/…`
+calls carry an `X-Tenant: <tenant>` **header** instead. They are not interchangeable, and
+tokens are tenant-scoped — a token minted through the instance workspace is rejected by a
+tenant's realtime server, so authenticate and dial through the same tenant. (The `/ws`
+segment belongs to the instance ingress and is stripped before the websocket tier reads the
+rest of the path as the connection hash — only a direct dial at a local dev websocket port,
+which bypasses the ingress, wants the bare canonical with no `/ws`.)
+
 Auth is a bearer token passed as the websocket **subprotocol** (`new WebSocket(url,
 token)`); no token means an anonymous client, admitted only where
 `anonymousClients: true`. Frames are JSON — `{ action: "join" | "leave" | "broadcast" |
