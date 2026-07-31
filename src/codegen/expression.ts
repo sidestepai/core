@@ -122,7 +122,48 @@ function decodeContainer(ctx: DecodeContext, nodes: readonly ExprNode[]): Decode
   return out;
 }
 
-/** Decode a `{type:"group"}` node into `and(...)` / `or(...)`. */
+/**
+ * Emit a `mixed(...)` container for siblings whose joins are not uniform.
+ *
+ * The joins come straight off each stored node, so nothing is inferred — which
+ * matters here more than usual, because the same flat shape reads differently in
+ * a branch (left fold) than in a query filter (the database's AND-before-OR
+ * precedence). `mixed` is the only spelling that neither picks a reading nor
+ * loses the bytes, and it is REPORTED so a pull surfaces every one.
+ */
+function emitMixed(
+  ctx: DecodeContext,
+  nodes: readonly ExprNode[],
+  decoded: readonly DecodedCondition[],
+): DecodedCondition {
+  ctx.use(CORE_MODULE, "mixed");
+  ctx.problem(
+    "ambiguous-condition",
+    "a condition mixes AND and OR at one level (`a AND b OR c`) — a state the editor allows, " +
+      "since every row after the first carries its own join. Recovered exactly as `mixed(...)`, " +
+      "but what it MEANS depends on where it sits: a branch folds the terms strictly left to " +
+      "right, while a database query applies the engine's AND-before-OR precedence, and the " +
+      "stored form records neither. Rewrite it as nested `and(...)`/`or(...)` to say which one " +
+      "you meant",
+  );
+  const terms = decoded.map((d, i) =>
+    i === 0
+      ? d.expr
+      : obj([[(nodes[i] as { or?: unknown }).or === true ? "or" : "and", d.expr]]),
+  );
+  return {
+    expr: call("mixed", ...terms),
+    runtime: {
+      mixed: decoded.map((d, i) =>
+        i === 0
+          ? d.runtime
+          : { [(nodes[i] as { or?: unknown }).or === true ? "or" : "and"]: d.runtime },
+      ),
+    },
+  };
+}
+
+/** Decode a `{type:"group"}` node into `and(...)` / `or(...)` / `mixed(...)`. */
 function decodeGroup(ctx: DecodeContext, node: ExprNode): DecodedCondition | null {
   const children = (node as { group?: { expression?: unknown } }).group?.expression;
   if (!Array.isArray(children)) return null;
@@ -151,6 +192,13 @@ function decodeGroup(ctx: DecodeContext, node: ExprNode): DecodedCondition | nul
   // one-child group cannot express the difference and either form re-encodes
   // identically, so it takes the AND form.
   const joinOr = (children[1] as { or?: unknown } | undefined)?.or === true;
+  // …but only if EVERY later sibling agrees. A group whose children do not all
+  // join the same way needs the explicit form; `and(...)`/`or(...)` would have
+  // re-encoded every one of them the same way.
+  const uniform = (children as Array<{ or?: unknown }>).every(
+    (child, i) => i === 0 || (child?.or === true) === joinOr,
+  );
+  if (!uniform) return emitMixed(ctx, children as ExprNode[], decoded);
   const helper = joinOr ? "or" : "and";
   ctx.use(CORE_MODULE, helper);
   return {
@@ -206,15 +254,7 @@ export function decodeCondition(ctx: DecodeContext, block: unknown): DecodedCond
     //
     // `and(...)` / `or(...)` join every sibling the same way, so emitting either
     // would silently change which rows match. `raw()` keeps it exact.
-    if (!ored.slice(1).every(Boolean))
-      return ctx.declined(
-        "the condition mixes AND and OR at one level (`a AND b OR c`) — a state the editor " +
-          "allows, since every row after the first carries its own join. There is no authored " +
-          "form: `and(...)` and `or(...)` each join every sibling the same way, and the " +
-          "grouping this implies is not even the same in both places such a condition can " +
-          "appear (a branch folds left to right; a query filter follows the database's " +
-          "AND-before-OR precedence). Carried exactly as stored instead",
-      );
+    if (!ored.slice(1).every(Boolean)) return emitMixed(ctx, nodes as ExprNode[], decoded);
     ctx.use(CORE_MODULE, "or");
     return {
       expr: call("or", ...decoded.map((d) => d.expr)),

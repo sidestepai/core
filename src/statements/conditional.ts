@@ -28,11 +28,14 @@ export {
   cmp,
   and,
   or,
+  mixed,
   encodeComparison,
   encodeSearchExpression,
   type Comparison,
   type ComparisonOp,
   type Condition,
+  type MixedGroup,
+  type MixedTerm,
 } from "./expression.js";
 
 export const CONDITIONAL = "mvp:conditional";

@@ -111,10 +111,11 @@ describe("a conditional with an empty condition", () => {
     });
   }
 
-  it("still declines a condition it cannot spell, rather than emptying it", () => {
-    // The load-bearing negative: a MIXED `a AND b OR c` container has no
-    // authored form, and must stay raw() — emptying it would silently drop a
-    // real condition and change which rows the branch takes.
+  it("never empties a condition it cannot spell uniformly", () => {
+    // The load-bearing negative for the empty-condition rule above: a MIXED
+    // `a AND b OR c` container must come back as the explicit `mixed(...)`,
+    // never as an empty `when` — emptying it would silently drop a real
+    // condition and change which rows the branch takes.
     const node = (or: boolean) => ({
       or,
       type: "statement",
@@ -130,12 +131,11 @@ describe("a conditional with an empty condition", () => {
         {} as never,
       ),
     );
-    expect(source).toContain("raw(");
-    // …and it SAYS why. "could not reproduce" sends a maintainer looking for a
-    // decoder bug; the real answer is that no authored form exists.
-    const detail = ctx.report.entries.find((e) => e.category === "raw-fallback")?.detail ?? "";
-    expect(detail).toContain("mixes AND and OR");
-    expect(detail).toContain("raw()");
+    expect(source).toContain("mixed(");
+    expect(source).not.toContain("when: []");
+    expect(
+      ctx.report.entries.some((e) => e.category === "ambiguous-condition"),
+    ).toBe(true);
   });
 
   it("explains a leading `or` flag, which joins to nothing", () => {

@@ -11,7 +11,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { s } from "../../src/statements/s.js";
-import { and, cmp, expr, or } from "../../src/statements/expression.js";
+import { and, cmp, expr, mixed, or } from "../../src/statements/expression.js";
 import { encodeStatement } from "../../src/statements/statement.js";
 import type { Statement } from "../../src/statements/statement.js";
 import type { StackItemXdo } from "../../src/types/xdo.js";
@@ -29,7 +29,7 @@ const EMPTY_REFS = RefIndex.fromPayload({}, new DecodeContext());
 
 const SURFACE = {
   s, c, ref, inp, col, auth, env, setting, out,
-  withFilters, fl, rawValue, raw, expr, cmp, and, or,
+  withFilters, fl, rawValue, raw, expr, cmp, and, or, mixed,
 };
 
 /**
@@ -193,10 +193,11 @@ describe("expression algebra", () => {
       expect(source).not.toContain("raw(");
     });
 
-    it("declines a MIXED container, which has no authored form", () => {
-      // `a AND b OR c` cannot be spelled: `or(...)` would re-encode every sibling
-      // as ORed. Emitting it anyway would change what the statement matches, so
-      // it stays raw() — exact, if unreadable.
+    it("recovers a MIXED container as mixed(...), and says it is ambiguous", () => {
+      // `a AND b OR c` is a state the editor allows — every row after the first
+      // carries its own join — so it has to round-trip. `and(...)`/`or(...)`
+      // would re-encode every sibling the same way and change what the statement
+      // matches; `mixed(...)` carries each join term by term.
       const stored = structuredClone(
         encodeStatement(
           s.conditional({
@@ -213,9 +214,17 @@ describe("expression algebra", () => {
         .expression;
       nodes[2]!.or = true; // a AND b OR c
 
-      const source = printExpr(decodeStatement(new DecodeContext(), EMPTY_REFS, stored));
-      expect(source).toContain("raw(");
+      const ctx = new DecodeContext();
+      const source = printExpr(decodeStatement(ctx, EMPTY_REFS, stored));
+      expect(source).toContain("mixed(");
+      expect(source).not.toContain("raw(");
+      // Byte-exact, which is the only reason emitting it at all is safe.
       expect(normalize(encodeStatement(evaluate(source)))).toEqual(normalize(stored));
+      // …and REPORTED, because the stored form does not say which grouping was
+      // meant and the two contexts it can appear in read it differently.
+      const entry = ctx.report.entries.find((e) => e.category === "ambiguous-condition");
+      expect(entry?.detail).toContain("mixes AND and OR");
+      expect(entry?.detail).toContain("left to right");
     });
 
     it("declines an `or` flag on the FIRST sibling, which joins to nothing", () => {

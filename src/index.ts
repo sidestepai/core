@@ -83,7 +83,7 @@ export { fl, FILTER_NAMES } from "./values/generated/filters.generated.js";
 export { setVar, updateVar } from "./statements/set-var.js";
 export { conditional, expr } from "./statements/conditional.js";
 export type { Comparison } from "./statements/conditional.js";
-export { cmp, and, or } from "./statements/special/db-search.js";
+export { cmp, and, or, mixed } from "./statements/special/db-search.js";
 export type {
   SearchOp,
   SearchComparison,

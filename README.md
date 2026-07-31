@@ -1138,6 +1138,18 @@ array (ANDed) and branch on the result, rather than pushing the check to the cli
   The same surface is available on `addon()` `where`. An array is ANDed, and a bare
   `or(...)` at the top level ORs the top-level clauses rather than nesting them —
   the shape the engine itself stores.
+
+  There is also `mixed(a, { or: b }, { and: c })`, for a container whose terms do
+  **not** all join the same way. Xano's editor allows that — every condition row
+  after the first carries its own AND/OR choice — so pulled workspaces contain it
+  and it has to round-trip. **Don't write new conditions with it.** The stored form
+  doesn't record the intended grouping, and the two places such a condition can
+  appear disagree about it: a branch (`s.conditional`/`s.while`/`precondition`)
+  folds the terms strictly left to right, so `a OR b AND c` means `(a OR b) AND c`,
+  while a `db.query` filter inherits the database's AND-before-OR precedence and
+  selects `a OR (b AND c)`. Write `and(or(a, b), c)` or `or(a, and(b, c))` — each
+  says exactly one of those, in every context. `sidestep pull` reports every mixed
+  container it recovers under `ambiguous-condition`.
 - **`returnType`** (`"list"` default | `"single"` | `"count"` | `"exists"` | `"stream"` |
   `"aggregate"`) drives `context.return.type` and the `InferResponse` shape — `count`→`number`,
   `exists`→`boolean`, `single`→`Row | null`, `stream`→`Row[]` (pageable, no envelope),

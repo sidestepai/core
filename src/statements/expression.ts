@@ -124,8 +124,39 @@ export interface SearchGroup {
   children: SearchNode[];
 }
 
-/** A node in the expression tree: a narrow `expr()`, a full `cmp()`, or an and/or group. */
-export type SearchNode = Comparison | SearchComparison | SearchGroup;
+/**
+ * One term after the first in a {@link mixed} container, with the join that
+ * attaches it to everything before it. Exactly one key.
+ */
+export type MixedTerm = { and: SearchNode; or?: never } | { or: SearchNode; and?: never };
+
+/**
+ * A container whose terms do NOT all join the same way (`a AND b OR c`).
+ *
+ * ⚠ **Prefer `and()` / `or()` with explicit nesting.** This form exists because
+ * the editor produces it — every condition row after the first carries its own
+ * AND/OR choice, with nothing tying it to its siblings — so real workspaces hold
+ * it and it has to be authorable to survive a round trip. It is not a good way
+ * to write a new condition, for one concrete reason:
+ *
+ * **The same terms do not mean the same thing everywhere they can appear.** A
+ * branch condition (`s.if`, `s.while`, a precondition) is folded strictly left
+ * to right with no precedence, so `a OR b AND c` is `(a OR b) AND c`. A database
+ * query's filter is handed to the engine as one flat chain, where AND binds
+ * tighter than OR, so the same three terms select `a OR (b AND c)`. Nothing in
+ * the stored form records which reading was intended.
+ *
+ * `and(or(a, b), c)` and `or(a, and(b, c))` each say one of those unambiguously,
+ * in any context, and are what you want unless you are reproducing a workspace
+ * exactly.
+ */
+export interface MixedGroup {
+  /** The first term, then each following term with its own join. */
+  readonly mixed: readonly [SearchNode, ...MixedTerm[]];
+}
+
+/** A node in the expression tree: a narrow `expr()`, a full `cmp()`, or a group. */
+export type SearchNode = Comparison | SearchComparison | SearchGroup | MixedGroup;
 
 /**
  * A boolean condition for a `when`/predicate surface (conditional, while,
@@ -165,6 +196,32 @@ export function or(...children: SearchNode[]): SearchGroup {
   return { or: true, children };
 }
 
+/**
+ * A container whose terms carry their own joins — `mixed(a, { or: b }, { and: c })`.
+ *
+ * ⚠ Reach for `and()` / `or()` first; see {@link MixedGroup} for why this one is
+ * ambiguous by construction. It is here so a workspace that already contains a
+ * mixed condition round-trips instead of degrading to `raw()`.
+ */
+export function mixed(first: SearchNode, ...rest: [MixedTerm, ...MixedTerm[]]): MixedGroup {
+  if (rest.length === 0) {
+    throw new Error(
+      "mixed(): needs at least two terms — a single term has no join to mix. Pass the node on " +
+        "its own, or use and()/or() for a uniform container.",
+    );
+  }
+  for (const term of rest) {
+    const keys = Object.keys(term).filter((k) => (term as Record<string, unknown>)[k] !== undefined);
+    if (keys.length !== 1 || (keys[0] !== "and" && keys[0] !== "or")) {
+      throw new Error(
+        "mixed(): every term after the first is exactly one of `{ and: node }` or `{ or: node }` " +
+          `— got ${JSON.stringify(keys)}.`,
+      );
+    }
+  }
+  return { mixed: [first, ...rest] };
+}
+
 // ---------------------------------------------------------------------------
 // Node guards.
 // ---------------------------------------------------------------------------
@@ -177,6 +234,23 @@ export function isValue(w: unknown): w is Value {
 /** An and/or group node. */
 export function isGroup(w: unknown): w is SearchGroup {
   return typeof w === "object" && w !== null && !Array.isArray(w) && "children" in w;
+}
+
+/** A {@link MixedGroup} — a container whose terms carry their own joins. */
+export function isMixed(w: unknown): w is MixedGroup {
+  return typeof w === "object" && w !== null && !Array.isArray(w) && "mixed" in w;
+}
+
+/** The terms of any container node, paired with the join each one carries. */
+function containerTerms(node: SearchGroup | MixedGroup): Array<{ or: boolean; node: SearchNode }> {
+  if (isMixed(node)) {
+    return node.mixed.map((term, i) =>
+      i === 0
+        ? { or: false, node: term as SearchNode }
+        : { or: "or" in (term as MixedTerm), node: ("or" in (term as MixedTerm) ? (term as { or: SearchNode }).or : (term as { and: SearchNode }).and) },
+    );
+  }
+  return node.children.map((child, i) => ({ or: node.or && i > 0, node: child }));
 }
 
 /** A comparison node (narrow `expr()` or full `cmp()`) — has `left` + `op`, not a tagged value. */
@@ -214,17 +288,21 @@ function toStatementNode(node: Comparison | SearchComparison, or: boolean): Expr
  * first sibling never ORs to a nonexistent predecessor.
  */
 export function encodeContainer(children: SearchNode[], joinOr: boolean): ExprNode[] {
-  return children.map((child, i): ExprNode => {
-    const or = joinOr && i > 0;
-    if (isGroup(child)) {
+  return encodeTerms(children.map((child, i) => ({ or: joinOr && i > 0, node: child })));
+}
+
+/** Encode already-joined terms — the one place a container's per-node `or` is written. */
+function encodeTerms(terms: ReadonlyArray<{ or: boolean; node: SearchNode }>): ExprNode[] {
+  return terms.map(({ or, node }): ExprNode => {
+    if (isGroup(node) || isMixed(node)) {
       const group: ExprGroup = {
         type: "group",
         or,
-        group: { expression: encodeContainer(child.children, child.or) },
+        group: { expression: encodeTerms(containerTerms(node)) },
       };
       return group;
     }
-    return toStatementNode(child, or);
+    return toStatementNode(node, or);
   });
 }
 
@@ -255,6 +333,13 @@ export function encodeExpression(input: Condition): { expression: ExprNode[] } {
   const only = nodes.length === 1 ? nodes[0] : undefined;
   if (only !== undefined && isGroup(only) && only.or) {
     return { expression: encodeContainer(only.children, true) };
+  }
+  // A root `mixed(...)` flattens for the same reason a root `or(...)` does, and
+  // with more force: the flat root IS the shape the editor writes, since each
+  // row's own AND/OR choice lands directly on the root sibling. Every mixed
+  // container in the survey corpus is a flat root.
+  if (only !== undefined && isMixed(only)) {
+    return { expression: encodeTerms(containerTerms(only)) };
   }
   return { expression: encodeContainer(nodes, false) };
 }

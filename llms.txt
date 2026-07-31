@@ -502,6 +502,14 @@ surface — `s.conditional`/`s.while` `when` (incl. each `elif` branch), and
 - A condition/`where` accepts a single `expr(...)`/`cmp(...)`, an `and()`/`or()` group, an array of
   those (ANDed), or (for `where`) a raw `Value`. `s.conditional`/`s.while`/`s.switch`, `db.query`,
   `precondition`, and the `array.*` predicates all take the same shape.
+- ⚠ `mixed(a, { or: b }, { and: c })` reproduces a container whose terms do NOT all join the
+  same way — the editor allows it, so pulled workspaces contain it. **Do not author it.** The
+  stored form does not record the grouping, and the two places it can appear disagree: a
+  branch (`s.conditional`/`s.while`/`precondition`) folds terms strictly left to right, so
+  `a OR b AND c` is `(a OR b) AND c`, while a `db.query` filter applies the engine's
+  AND-before-OR precedence and selects `a OR (b AND c)`. Write `and(or(a, b), c)` or
+  `or(a, and(b, c))` — each says one reading in every context. Pulls report these as
+  `ambiguous-condition`.
 - A **filtered** operand (`withFilters(...)`) works inline in any condition/`where` (conditional,
   while, `db.query`/addon, …) — e.g. `cmp(withFilters(col("title"), fl.trim()), "=", inp("q"))`.
 - e.g. `db.query({ table: posts, where: expr(col("author"), "=", auth("id")), as: "rows" })`.

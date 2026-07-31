@@ -59,7 +59,14 @@ import { measureCommittedLlms } from "../../scripts/measure-llms.js";
 // and "fixing" a `raw({name:"mvp:crypto_jwe_encode"})` it does not recognize is
 // this list. Note the catalog also SHRANK here (two authorable surfaces removed),
 // so the net rise is smaller than the section itself.
-const CEILING_TOKENS = 28_400;
+// Raised again from 28.4k for `mixed(...)`. It is the rare case where the doc
+// exists to talk an agent OUT of a surface: the container is authorable only so a
+// pulled workspace round-trips, and the paragraph has to carry the reason —
+// `a OR b AND c` means `(a OR b) AND c` in a branch and `a OR (b AND c)` in a
+// query filter, because one folds left to right and the other inherits the
+// database's precedence. Naming it without that is worse than not naming it, and
+// the alternative (`and(or(a,b),c)`) only reads as advice once you know why.
+const CEILING_TOKENS = 28_550;
 
 describe("llms.txt token budget", () => {
   it("stays under the bloat-tripwire ceiling", () => {

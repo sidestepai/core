@@ -49,6 +49,16 @@ export type ReportCategory =
    */
   | "modernized"
   /**
+   * A condition whose terms do not all join the same way (`a AND b OR c`). The
+   * decode is EXACT — `mixed(...)` reproduces the stored joins term by term —
+   * but the stored form does not record which grouping was meant, and the two
+   * places such a condition can appear read it differently (a branch folds left
+   * to right; a database query applies AND-before-OR precedence). Warning
+   * severity: nothing is broken and nothing was lost, but the condition is worth
+   * rewriting as nested `and(...)`/`or(...)` so it says what it means.
+   */
+  | "ambiguous-condition"
+  /**
    * A `{param}` segment in an object's path had no input bound to it upstream,
    * and the generated def declares one so the tree builds.
    *
@@ -90,6 +100,7 @@ const CATEGORY_LABELS: ReadonlyArray<readonly [ReportCategory, string, ReportSev
   ["value-fallback", "Values emitted as annotated literals", "warning"],
   ["superseded", "Retired statement versions, carried verbatim", "notice"],
   ["modernized", "Updated to the current form (evaluates differently)", "warning"],
+  ["ambiguous-condition", "Conditions that mix AND and OR at one level", "warning"],
   ["path-param-bound", "Unbound {param} segments given an input", "warning"],
   ["expected-omission", "Deliberately not carried into the tree", "notice"],
   ["empty-source", "Objects that were already empty in the source", "notice"],
