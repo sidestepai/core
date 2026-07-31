@@ -69,9 +69,9 @@ type RowShapeOf<T extends ObjectRef, Cols extends readonly string[]> = [
     : Pick<InferRow<T>, Extract<OutputRoot<Cols[number]>, keyof InferRow<T>>>;
 
 /**
- * The full-row shape a single-record write binds — `db.add` (inserted row),
- * `db.edit` (post-mutation row), `db.patch`/`db.add_or_edit` (upserted row).
- * Always the whole {@link InferRow} (these ops don't take a column selection), or
+ * The full-row shape a write binds when it carries no column selection —
+ * `db.add_or_edit` (upserted row, which has no `output` envelope at all in its
+ * leaner serialization) and the bulk ops. The whole {@link InferRow}, or
  * `unknown` for an unbranded bare-name table. Expressed via {@link RowShapeOf}
  * with an empty `Cols` so the `never`→`unknown` guard is shared with the reads.
  * (`db.del` is deliberately *not* here — it binds `null`; see {@link dbDel}.)
@@ -675,6 +675,7 @@ export function dbHas<T extends ObjectRef, const As extends string = "">(
 export interface DbPatchArgs<
   T extends ObjectRef = ObjectRef,
   As extends string = string,
+  Cols extends readonly OutputPath<ColsOf<T>>[] = readonly ColsOf<T>[],
   A extends readonly AddonSpec[] = readonly AddonSpec[],
 > {
   /**
@@ -689,6 +690,15 @@ export interface DbPatchArgs<
   fieldValue: Value;
   /** The partial row to merge (an object value). */
   data: Value;
+  /**
+   * Restrict the columns of the RETURNED row (XanoScript `output = [...]`) —
+   * the confirmation response only; it does not change what is written. Same
+   * customized envelope as {@link DbGetArgs.output}, and offered on exactly the
+   * write ops whose result is a row rather than a scalar: the editor hides the
+   * customize control when a statement's whole output is a single `bool`/`int`
+   * scalar (`db.del`, `db.has`), which is why those take no `output`.
+   */
+  output?: Cols;
   /** Attach addons to enrich the returned row (see {@link AddonSpec}). Each
    * addon's alias (the last segment of its `as`) is merged onto the row shape in
    * `InferResponse` — typed from the addon's graft shape when it's a typed
@@ -705,8 +715,9 @@ export interface DbPatchArgs<
 export function dbPatch<
   T extends ObjectRef,
   const As extends string = "",
+  const Cols extends readonly OutputPath<ColsOf<T>>[] = readonly [],
   const A extends readonly AddonSpec[] = readonly [],
->(args: DbPatchArgs<T, As, A>): DbResult<As, WithAddons<FullRowShapeOf<T>, A>> {
+>(args: DbPatchArgs<T, As, Cols, A>): DbResult<As, WithAddons<RowShapeOf<T, Cols>, A>> {
   return dboStatement(
     "mvp:dbo_patch",
     args.table,
@@ -716,9 +727,9 @@ export function dbPatch<
       entry("field_value", args.fieldValue),
       entry("item", args.data),
     ],
-    { addon: args.addon },
+    { output: args.output, addon: args.addon },
     args.tableAlias,
-  ) as DbResult<As, WithAddons<FullRowShapeOf<T>, A>>;
+  ) as DbResult<As, WithAddons<RowShapeOf<T, Cols>, A>>;
 }
 
 export interface DbTruncateArgs {
@@ -930,6 +941,7 @@ function nestedFields(cell: NestedCell): DbField[] {
 export interface DbAddArgs<
   T extends ObjectRef = ObjectRef,
   As extends string = string,
+  Cols extends readonly OutputPath<ColsOf<T>>[] = readonly ColsOf<T>[],
   A extends readonly AddonSpec[] = readonly AddonSpec[],
 > {
   /**
@@ -944,6 +956,15 @@ export interface DbAddArgs<
   data?: DbField[];
   /** A partial row keyed by column name; expanded against the table's declared columns. */
   row?: RowMap<ColsOf<T>>;
+  /**
+   * Restrict the columns of the RETURNED row (XanoScript `output = [...]`) —
+   * the confirmation response only; it does not change what is written. Same
+   * customized envelope as {@link DbGetArgs.output}, and offered on exactly the
+   * write ops whose result is a row rather than a scalar: the editor hides the
+   * customize control when a statement's whole output is a single `bool`/`int`
+   * scalar (`db.del`, `db.has`), which is why those take no `output`.
+   */
+  output?: Cols;
   /** Attach addons to enrich the returned row (see {@link AddonSpec}). Each
    * addon's alias (the last segment of its `as`) is merged onto the row shape in
    * `InferResponse` — typed from the addon's graft shape when it's a typed
@@ -960,22 +981,24 @@ export interface DbAddArgs<
 export function dbAdd<
   T extends ObjectRef,
   const As extends string = "",
+  const Cols extends readonly OutputPath<ColsOf<T>>[] = readonly [],
   const A extends readonly AddonSpec[] = readonly [],
->(args: DbAddArgs<T, As, A>): DbResult<As, WithAddons<FullRowShapeOf<T>, A>> {
+>(args: DbAddArgs<T, As, Cols, A>): DbResult<As, WithAddons<RowShapeOf<T, Cols>, A>> {
   const data = args.row !== undefined ? expandRow(requireBoundTable(args.table, "row"), args.row, "add") : (args.data ?? []);
   return dboStatement(
     "mvp:dbo_add",
     args.table,
     args.as,
     rowEntries(data),
-    { addon: args.addon },
+    { output: args.output, addon: args.addon },
     args.tableAlias,
-  ) as DbResult<As, WithAddons<FullRowShapeOf<T>, A>>;
+  ) as DbResult<As, WithAddons<RowShapeOf<T, Cols>, A>>;
 }
 
 export interface DbEditArgs<
   T extends ObjectRef = ObjectRef,
   As extends string = string,
+  Cols extends readonly OutputPath<ColsOf<T>>[] = readonly ColsOf<T>[],
   A extends readonly AddonSpec[] = readonly AddonSpec[],
 > {
   /**
@@ -998,6 +1021,15 @@ export interface DbEditArgs<
    * columns. Use `data` for byte-exact control over each entry's `ignore` flag.
    */
   row?: RowMap<ColsOf<T>>;
+  /**
+   * Restrict the columns of the RETURNED row (XanoScript `output = [...]`) —
+   * the confirmation response only; it does not change what is written. Same
+   * customized envelope as {@link DbGetArgs.output}, and offered on exactly the
+   * write ops whose result is a row rather than a scalar: the editor hides the
+   * customize control when a statement's whole output is a single `bool`/`int`
+   * scalar (`db.del`, `db.has`), which is why those take no `output`.
+   */
+  output?: Cols;
   /** Attach addons to enrich the returned row (see {@link AddonSpec}). Each
    * addon's alias (the last segment of its `as`) is merged onto the row shape in
    * `InferResponse` — typed from the addon's graft shape when it's a typed
@@ -1015,8 +1047,9 @@ export interface DbEditArgs<
 export function dbEdit<
   T extends ObjectRef,
   const As extends string = "",
+  const Cols extends readonly OutputPath<ColsOf<T>>[] = readonly [],
   const A extends readonly AddonSpec[] = readonly [],
->(args: DbEditArgs<T, As, A>): DbResult<As, WithAddons<FullRowShapeOf<T>, A>> {
+>(args: DbEditArgs<T, As, Cols, A>): DbResult<As, WithAddons<RowShapeOf<T, Cols>, A>> {
   const data = args.row !== undefined ? expandRow(requireBoundTable(args.table, "row"), args.row, "edit") : (args.data ?? []);
   return dboStatement(
     "mvp:dbo_editby",
@@ -1027,9 +1060,9 @@ export function dbEdit<
       entry("field_value", args.fieldValue),
       ...rowEntries(data),
     ],
-    { addon: args.addon },
+    { output: args.output, addon: args.addon },
     args.tableAlias,
-  ) as DbResult<As, WithAddons<FullRowShapeOf<T>, A>>;
+  ) as DbResult<As, WithAddons<RowShapeOf<T, Cols>, A>>;
 }
 
 /**
