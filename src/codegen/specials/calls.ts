@@ -12,7 +12,14 @@ import type { TaggedValue } from "../../types/xdo.js";
 import { lit, obj, type Expr } from "../print.js";
 import { isBoundNumericId, isReferenceId, isUnboundId, resolveReference } from "../ref-index.js";
 import { decodeValue } from "../value.js";
-import { declineHere, getPath, prove, type SpecialArgs, type SpecialDecoder } from "./prove.js";
+import {
+  blankRefDetail,
+  declineHere,
+  getPath,
+  prove,
+  type SpecialArgs,
+  type SpecialDecoder,
+} from "./prove.js";
 
 /** Coerce a stored `{value, tag, filters}` block to a tagged value. */
 function toValue(raw: unknown): TaggedValue | null {
@@ -111,15 +118,12 @@ function callDecoder(shape: CallShape): SpecialDecoder {
     const guid = String(stored);
 
     if (unbound) {
-      // Reported, not emitted quietly: a blank reference is either a deleted or
-      // never-bound target, or a real one the export-side remap blanked because it
-      // sat outside the export's scope. Those are indistinguishable in the bytes, and
-      // presenting the second as a deliberate `null` would hide a lost binding.
+      // Reported, not emitted quietly: presenting a lost binding as a
+      // deliberate `null` would hide it. What the line SAYS depends on whether
+      // the bundle is a whole-workspace export — see {@link blankRefDetail}.
       a.ctx.problem(
         "unresolved-ref",
-        `${shape.path} has a blank ${shape.arg} reference, recovered as \`${shape.arg}: null\`; ` +
-          "the target was deleted or unbound, OR it sits outside this export's scope and was " +
-          "blanked on the way out — re-pull with the target in scope to tell the two apart",
+        blankRefDetail(a, `${shape.path} has a blank ${shape.arg} reference`, shape.arg),
       );
     }
     const target = unbound

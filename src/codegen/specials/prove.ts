@@ -112,3 +112,25 @@ export function getPath(root: unknown, path: string): unknown {
       root,
     );
 }
+
+/**
+ * The report line for a blank reference (`table`/`addon`/`fn`/…), worded from
+ * what the bundle can actually prove.
+ *
+ * A blank reference has two possible causes and the bytes cannot tell them
+ * apart: the target was deleted or never bound, or it was a real target the
+ * export-side remap blanked because it sat outside a scoped export. But the
+ * BUNDLE can tell them apart — a whole-workspace export has no outside, so the
+ * second cause is impossible there and the line says so plainly rather than
+ * hedging and suggesting a re-pull that cannot help. All 177 workspaces in the
+ * survey corpus are whole-workspace exports, so the hedge was the wrong wording
+ * every time it was shown.
+ */
+export function blankRefDetail(a: SpecialArgs, what: string, noun: string): string {
+  const recovered = `${what}, recovered as \`${noun}: null\`; `;
+  return a.refs.wholeWorkspace
+    ? `${recovered}this is a whole-workspace export, so the ${noun} is not merely out of ` +
+      `scope — it was deleted, or the binding was never made. Fix it upstream or bind a ${noun}`
+    : `${recovered}the ${noun} was deleted or unbound, OR it sits outside this export's scope ` +
+      `and was blanked on the way out — re-pull with the ${noun} in scope to tell the two apart`;
+}

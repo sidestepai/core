@@ -27,7 +27,14 @@ import { arr, lit, obj, type Expr } from "../print.js";
 import { isBoundNumericId, isReferenceId, isUnboundId, resolveReference } from "../ref-index.js";
 import { decodeValue } from "../value.js";
 import { decodeCondition } from "../expression.js";
-import { declineHere, getPath, prove, type SpecialArgs, type SpecialDecoder } from "./prove.js";
+import {
+  blankRefDetail,
+  declineHere,
+  getPath,
+  prove,
+  type SpecialArgs,
+  type SpecialDecoder,
+} from "./prove.js";
 
 /** Coerce a stored `{value, tag, filters}` block to a tagged value. */
 function toValue(raw: unknown): TaggedValue | null {
@@ -97,8 +104,8 @@ function tableArg(a: SpecialArgs, guid: string): TableArg {
  * same contract an addon's `table` has carried all along. Reading it as "nothing
  * to recover" degraded 83 db statements to `raw()` across the sweep.
  *
- * **But a blank reference has two indistinguishable causes, and only one of them
- * is benign**, which is why this reports rather than emitting quietly:
+ * **A blank reference has two possible causes, and only one is benign**, which is
+ * why this reports rather than emitting quietly:
  *
  *  - the target was deleted, or was never bound — a defect in the workspace, and
  *    exactly what `table: null` is for;
@@ -108,23 +115,20 @@ function tableArg(a: SpecialArgs, guid: string): TableArg {
  *    a real lost binding as a deliberate one — a wrong default making authored data
  *    invisible, which is worse than no rule.
  *
- * A narrower export is the ordinary way to hit the second case, so the report line
- * names both and leaves the judgement to whoever reads it. Same contract the
- * realtime kinds already hold blank bindings to (`test/codegen/realtime-blank-refs`),
- * applied consistently here.
+ * **The bundle says which.** A whole-workspace export has no outside, so the
+ * second cause is impossible and the line says so plainly instead of hedging and
+ * suggesting a re-pull that cannot help. Only a scoped export gets the
+ * two-readings message. Same contract the realtime kinds already hold blank
+ * bindings to (`test/codegen/realtime-blank-refs`), applied consistently here.
  *
  * The alias is left to {@link aliasEntry}, which reads `dbo.as` by presence: a
  * deleted table's alias frequently outlives it (`{as: "user", id: ""}`).
  */
 function unboundTableArg(a: SpecialArgs, what: string): TableArg {
-  a.ctx.problem(
-    "unresolved-ref",
-    `${what} has a blank table reference, recovered as \`table: null\`; the table was ` +
-      "deleted or unbound, OR it sits outside this export's scope and was blanked on the " +
-      "way out — re-pull with the table in scope to tell the two apart",
-  );
+  a.ctx.problem("unresolved-ref", blankRefDetail(a, `${what} has a blank table reference`, "table"));
   return { expr: lit(null), runtime: null };
 }
+
 
 /**
  * The `tableAlias:` argument for a stored `context.dbo.as`.
@@ -285,9 +289,7 @@ function decodeAddonSpec(
   if (unbound) {
     a.ctx.problem(
       "unresolved-ref",
-      `addon attachment "${alias}" has a blank addon reference, recovered as \`addon: null\`; ` +
-        "the addon was deleted or unbound, OR it sits outside this export's scope and was " +
-        "blanked on the way out — re-pull with the addon in scope to tell the two apart",
+      blankRefDetail(a, `addon attachment "${alias}" has a blank addon reference`, "addon"),
     );
   }
   const entries: Array<[string, Expr]> = [
