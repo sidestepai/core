@@ -178,19 +178,42 @@ export function decodeCondition(ctx: DecodeContext, block: unknown): DecodedCond
   // container as an array would quietly change what it means.
   const nodes = expression as Array<{ or?: unknown }>;
   const ored = nodes.map((node, i) => i > 0 && node?.or === true);
+  // A leading `or` joins to nothing: the first term is evaluated on its own
+  // before any join is applied, so the flag has no effect wherever it is read.
+  // The editor cannot produce one either — the first row is offered no AND/OR
+  // choice at all. It is still declined rather than quietly normalized away,
+  // because "the flag is inert" is a claim about the value, and the SDK has one
+  // corpus occurrence to support it (see the two-sightings rule).
   if (nodes[0]?.or === true)
     return ctx.declined(
       "the condition's first sibling carries an `or` flag, which joins it to nothing — " +
         "there is no preceding term for it to OR with, and no authored form says it",
     );
   if (ored.some(Boolean)) {
-    // A mixed container (`a AND b OR c`) has no authored form — `or(...)` would
-    // re-encode every sibling as ORed. Decline instead of emitting the wrong join.
+    // A MIXED container (`a AND b OR c`). This is a first-class editor state,
+    // not a corruption: every row after the first has its own AND/OR choice with
+    // nothing tying it to its siblings, so a user reaches this in two clicks.
+    //
+    // It is declined because the SDK has no honest spelling for it, and the
+    // reason is worse than "we did not get to it yet": **the same stored shape
+    // does not mean the same thing in both places it can appear.** A branch
+    // condition is folded strictly left to right with no precedence, so
+    // `a OR b AND c` is `(a OR b) AND c`. A query's filter is handed to the
+    // database as one flat chain, where AND binds tighter than OR, so the same
+    // three terms mean `a OR (b AND c)`. Any surface for this has to make the
+    // grouping explicit rather than let a reader supply precedence — which is a
+    // language decision, not a decoding one.
+    //
+    // `and(...)` / `or(...)` join every sibling the same way, so emitting either
+    // would silently change which rows match. `raw()` keeps it exact.
     if (!ored.slice(1).every(Boolean))
       return ctx.declined(
-        "the condition mixes AND and OR at one level (`a AND b OR c`), which has no authored " +
-          "form — `and(...)` and `or(...)` each join every sibling the same way, so spelling " +
-          "it either way would change which rows match. Carried exactly as stored instead",
+        "the condition mixes AND and OR at one level (`a AND b OR c`) — a state the editor " +
+          "allows, since every row after the first carries its own join. There is no authored " +
+          "form: `and(...)` and `or(...)` each join every sibling the same way, and the " +
+          "grouping this implies is not even the same in both places such a condition can " +
+          "appear (a branch folds left to right; a query filter follows the database's " +
+          "AND-before-OR precedence). Carried exactly as stored instead",
       );
     ctx.use(CORE_MODULE, "or");
     return {
