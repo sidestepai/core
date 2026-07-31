@@ -1045,11 +1045,13 @@ describe("db.query", () => {
       expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
     });
 
-    it("still falls back when that branch holds a REAL comparison", () => {
-      // The paired negative, and the reason this is scoped to the blank form. 11
-      // group nodes in the corpus carry a live-looking comparison the engine
-      // ignores — dead, but authored by someone. Dropping it would normalize
-      // into user data, so those keep the exact bytes `raw()` gives them.
+    it("drops a REAL leftover comparison too, and reports the discard", () => {
+      // Where a non-blank one comes from: the editor copies the live condition
+      // INTO the new group when you wrap it and does not clear the original, so
+      // this is a frozen snapshot the UI never renders and no consumer reads.
+      // Dropped rather than carried — but reported, because discarding stored
+      // bytes should never be silent.
+      const ctx = new DecodeContext();
       const stored = grouped();
       groupNode(stored).statement = {
         op: "!=",
@@ -1057,9 +1059,26 @@ describe("db.query", () => {
         right: { tag: "const:null", filters: [], operand: "null", ignore_empty: false },
       };
 
-      const source = printExpr(decodeStatement(new DecodeContext(), DB_REFS, stored, {}));
-      expect(source).toContain("raw(");
+      const source = printExpr(decodeStatement(ctx, DB_REFS, stored, {}));
+      expect(source).not.toContain("raw(");
+      expect(source).toContain("or(");
+      // The leftover is gone from the tree, not smuggled into the condition.
+      expect(source).not.toContain("predicted_in");
       expect(normalize(encodeStatement(evaluate(source, DB_SYMBOLS)))).toEqual(normalize(stored));
+
+      const omissions = ctx.report.entries.filter((e) => e.category === "expected-omission");
+      expect(omissions).toHaveLength(1);
+      expect(omissions[0]!.detail).toContain("unused `statement` branch");
+    });
+
+    it("reports nothing when the dead branch is the blank placeholder", () => {
+      // Pure scaffolding — every group node the SDK itself writes has one, so
+      // reporting it would be noise on every single grouped condition.
+      const ctx = new DecodeContext();
+      const stored = grouped();
+      groupNode(stored).statement = BLANK_STATEMENT;
+      printExpr(decodeStatement(ctx, DB_REFS, stored, {}));
+      expect(ctx.report.entries.filter((e) => e.category === "expected-omission")).toEqual([]);
     });
   });
 

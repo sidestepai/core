@@ -237,15 +237,35 @@ const EMPTY_SEARCH = { expression: [] };
  * `"group"` case in {@link isDefaultEnvelopeMember}) — and this is the missing
  * half, worth 6 `db.query` statements that fell back for carrying scaffolding.
  *
- * **Scoped to the BLANK placeholder deliberately.** 11 group nodes in the survey
- * corpus carry a blank one and 11 carry a REAL comparison, dead but authored —
- * someone toggled a row from statement to group in the editor and the old
- * comparison stayed behind. The engine ignores both, but dropping the second
- * would discard something a user wrote, and a normalizer must never normalize
- * INTO user data. Those keep falling back to `raw()`, where the bytes survive
- * exactly — the same call the contradictory `external`/`simpleExternal` pair got.
+ * **Every group node's `statement` is dropped, blank or not**, because nothing
+ * anywhere reads it. Five independent consumers were checked and all five
+ * dispatch on `type` first: the engine's search evaluator and its
+ * expression-to-config converter (every `["statement"]` read in the engine sits
+ * inside a `case "statement":`), the frontend's row renderer (`@switch
+ * (exp.type)`), and the frontend's own type-toggle handler, which reads the
+ * GROUP's first child when converting back — never the parent's copy.
+ *
+ * The frontend also explains where a non-blank one comes from. Toggling a row
+ * from statement to group copies the live comparison INTO the new group as its
+ * first child and simply does not clear the original:
+ *
+ *     payload['group'] = { expression: [{ type: 'statement',
+ *                                         statement: group.value.statement }] }
+ *
+ * So the leftover is a snapshot of the condition at the moment it was wrapped.
+ * In the survey corpus 1 of 11 still matches the group's first child exactly and
+ * 10 have drifted — the user kept editing the group while the frozen copy stayed
+ * behind. It is editor exhaust, not authored intent: the UI renders only the
+ * live branch, so whoever "wrote" it has no way to see it, edit it, or know it
+ * is there.
+ *
+ * That is what separates this from `example` and a saved `test` list, which are
+ * also unread but ARE user data and are therefore stripped rather than dropped.
+ * The rule is not "never discard bytes" — it is never discard something someone
+ * MEANT. A non-blank one is reported as an `expected-omission` so the discard is
+ * visible; a blank one is pure scaffolding and goes quietly.
  */
-function isBlankGroupStatement(v: unknown): boolean {
+export function isBlankGroupStatement(v: unknown): boolean {
   if (v === null || typeof v !== "object" || Array.isArray(v)) return false;
   const node = v as { op?: unknown; left?: unknown; right?: unknown };
   if (node.op !== "=") return false;
@@ -965,7 +985,7 @@ export function normalize<T>(value: T): T {
       if (STRIP_KEYS.has(k)) continue;
       if (isTable && k === "as") continue;
       if (k === "test" && isSavedTestList(v)) continue;
-      if (isGroupNode && k === "statement" && isBlankGroupStatement(v)) continue;
+      if (isGroupNode && k === "statement") continue;
       if (
         isMiddlewareBlock &&
         (k === "pre" || k === "post") &&

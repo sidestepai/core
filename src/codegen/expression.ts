@@ -20,6 +20,7 @@ import type { TaggedValue } from "../types/xdo.js";
 import { CORE_MODULE, type DecodeContext } from "./context.js";
 import { arr, call, lit, obj, type Expr } from "./print.js";
 import { decodeValue } from "./value.js";
+import { isBlankGroupStatement } from "../validate/normalize.js";
 
 /** The narrow operators `expr()` accepts; anything else needs `cmp()`. */
 const NARROW_OPS = new Set(["=", "!=", ">", "<", ">=", "<="]);
@@ -125,6 +126,24 @@ function decodeContainer(ctx: DecodeContext, nodes: readonly ExprNode[]): Decode
 function decodeGroup(ctx: DecodeContext, node: ExprNode): DecodedCondition | null {
   const children = (node as { group?: { expression?: unknown } }).group?.expression;
   if (!Array.isArray(children)) return null;
+
+  // The node's own `statement` is the DEAD branch — `type` selects `group`, and
+  // nothing reads the other member (checked across the engine's two expression
+  // walkers, the frontend's renderer, and the frontend's own type-toggle). A
+  // non-blank one is a snapshot of the condition from the moment it was wrapped
+  // in this group, left behind by an editor that copies it in and does not clear
+  // the original. Dropped rather than carried, and reported when it held
+  // something, because discarding stored bytes should never be silent.
+  const dead = (node as { statement?: unknown }).statement;
+  if (dead !== undefined && !isBlankGroupStatement(dead)) {
+    ctx.problem(
+      "expected-omission",
+      "an expression group carries a leftover comparison on its unused `statement` branch — " +
+        "the editor copies the condition into the group when you wrap it and does not clear " +
+        "the original. Nothing reads it (the engine and the UI both switch on `type`), so it " +
+        "is not carried into the tree",
+    );
+  }
   const decoded = decodeContainer(ctx, children as ExprNode[]);
   if (!decoded) return null;
 
