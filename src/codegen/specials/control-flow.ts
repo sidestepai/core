@@ -37,7 +37,7 @@ function nested(a: SpecialArgs, path: string): { exprs: Expr[]; statements: unkn
 const setVar: SpecialDecoder = (a) => {
   // An empty context is the blank const the engine's optional-schema pass fills
   // in, not an unreadable statement (see {@link blankVarContext}).
-  const value = toValue(a.stored.context) ?? blankVarContext(a.stored);
+  const value = toValue(a.stored.context) ?? toValue(blankVarContext(a.stored));
   const as = (a.stored as { as?: unknown }).as;
   if (!value) return declineHere("set_var: context is not a tagged value");
   if (typeof as !== "string" || as === "") return declineHere("set_var: as is blank");

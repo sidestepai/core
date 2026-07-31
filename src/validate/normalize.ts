@@ -732,55 +732,110 @@ export function clearLocalDboRefs<T>(value: T, cleared?: Set<string>): T {
 }
 
 /**
- * The tagged value a `mvp:set_var` with an EMPTY `context` stands for, or null
- * when the statement is not that shape.
+ * Statements whose `context` **IS** their tagged value, and the `tag` each one's
+ * engine schema declares as that value's default.
  *
- * `set_var`'s context IS its tagged value, and the engine declares every member
- * of it optional-with-a-default: `tag` defaults to `const`, `filters` is a list
- * and so defaults to `[]`, and `value` is declared `text`, whose type default is
- * `""`. An empty context therefore resolves to the blank const — the same
- * statement as one that stores those three members explicitly. It is a second
- * stored spelling, not a shape no authoring surface can produce.
+ * For all of these the engine declares every context member
+ * optional-with-a-default and fills the absent ones: `filters` is a list and so
+ * defaults to `[]`, `value` is declared `text` whose type default is `""`, and
+ * `tag` defaults to the value below. An empty `context` therefore resolves to a
+ * blank value of that tag — the same statement as one storing those members
+ * explicitly. It is a second stored spelling, not a shape no authoring surface
+ * can produce.
+ *
+ * **The tag is per-statement and MUST be read, never assumed.** Most default to
+ * `const`, but the `UpdateVarBase` family overrides it per subclass — arithmetic
+ * to `const:decimal`, the bitwise ops and `math_mod` to `const:int`,
+ * `array_merge` to `const:array` — and `die` and `setheader` default to **input**,
+ * a blank input reference rather than a constant. Assuming `const` across the
+ * family would have mis-decoded five of them; this is the same trap invariant 2
+ * names, where `swagger` and `api_group_enabled` are structurally identical and
+ * default opposite ways.
+ *
+ * `named` marks the statements whose context also carries the target variable's
+ * `name` (the `UpdateVarBase` family routes it there, declared `text` and so
+ * also defaulting to `""`). `set_var` is not one of them — its name rides the
+ * envelope `as` — and `die`/`sleep`/`setheader` have no name at all. The fill has
+ * to match what the encoder writes for the recovered record, and the encoder
+ * writes `name: ""` for exactly the `named` ones.
  *
  * Evidenced twice, as a default must be. The engine's optional-schema pass
  * supplies each member when the key is absent, AND real workspaces store both
- * spellings side by side: 101 `set_var` carry the blank const explicitly against
- * 18 that store nothing at all.
+ * spellings side by side — per statement, not just in aggregate: 101 `set_var`
+ * carry a blank const explicitly against 18 that store nothing, and every
+ * statement below has exactly one empty instance alongside its populated ones.
  *
  * Then settled on a live engine (`scripts/probe-empty-setvar.ts`), because a
- * source trace is not a behaviour. Deploying the two spellings into two fresh
- * tenants and calling both: each binds `""` — identical responses, so they are
- * one statement and reading the empty form back as `c.text("")` is sound.
- *
- * The same probe also showed the engine PERSISTS whichever spelling it is handed
- * rather than canonicalizing — the empty form came back empty. So a pulled
- * workspace that stored `{}` re-exports as the EXPLICIT blank const: the bytes
- * change, deliberately. That is the same forward-canonicalization the empty
- * `customize` rule below makes, and for the same reason — the explicit form is
- * what this SDK can author and what the engine writes today, and the live probe
- * is what licenses changing bytes at all. Without it this would be a guess.
- *
- * `update_var` is deliberately NOT included even though it shares the context
- * shape. Its context carries a sibling `name` naming the variable to reassign,
- * so an empty one has lost the name too and genuinely cannot be re-authored —
- * the single such row in the corpus declines, correctly, on the missing name.
+ * source trace is not a behaviour: the two spellings deployed into two fresh
+ * tenants bind the same value. That probe also showed the engine PERSISTS
+ * whichever spelling it is handed rather than canonicalizing, so a pulled
+ * workspace that stored `{}` re-exports as the EXPLICIT form — the bytes change,
+ * deliberately, and the live probe is what licenses changing them at all.
+ */
+const EMPTY_CONTEXT_FILL: ReadonlyMap<string, { tag: string; named: boolean }> = new Map([
+  // Its name rides the envelope `as`, so the context is the value alone.
+  ["mvp:set_var", { tag: "const", named: false }],
+  // Standalone classes, each declaring its own default tag.
+  ["mvp:sleep", { tag: "const:int", named: false }],
+  ["mvp:die", { tag: "input", named: false }],
+  ["mvp:setheader", { tag: "input", named: false }],
+  // The `UpdateVarBase` family: `{name, value, tag, filters}`, `tag` overridden
+  // per subclass by `getDefaultTag()`.
+  //
+  // `array_pop` and `array_shift` are deliberately ABSENT. The engine's base
+  // class declares a context value for them too, but neither USES one — popping
+  // or shifting takes no operand — so their specs route no spread field and the
+  // encoder writes only `name`. Filling a value they cannot author would invent
+  // members the comparison then demands and the encoder never produces, which is
+  // exactly what it did before they were removed. `test/codegen/specials`
+  // asserts this table against the spec catalog so the two cannot drift.
+  ["mvp:update_var", { tag: "const", named: true }],
+  ["mvp:array_merge", { tag: "const:array", named: true }],
+  ["mvp:array_push", { tag: "const", named: true }],
+  ["mvp:array_unshift", { tag: "const", named: true }],
+  ["mvp:bitwise_and", { tag: "const:int", named: true }],
+  ["mvp:bitwise_or", { tag: "const:int", named: true }],
+  ["mvp:bitwise_xor", { tag: "const:int", named: true }],
+  ["mvp:math_add", { tag: "const:decimal", named: true }],
+  ["mvp:math_sub", { tag: "const:decimal", named: true }],
+  ["mvp:math_mul", { tag: "const:decimal", named: true }],
+  ["mvp:math_div", { tag: "const:decimal", named: true }],
+  ["mvp:math_mod", { tag: "const:int", named: true }],
+  ["mvp:text_append", { tag: "const", named: true }],
+  ["mvp:text_prepend", { tag: "const", named: true }],
+  ["mvp:text_trim", { tag: "const", named: true }],
+  ["mvp:text_ltrim", { tag: "const", named: true }],
+  ["mvp:text_rtrim", { tag: "const", named: true }],
+  ["mvp:text_starts_with", { tag: "const", named: true }],
+  ["mvp:text_istarts_with", { tag: "const", named: true }],
+  ["mvp:text_ends_with", { tag: "const", named: true }],
+  ["mvp:text_iends_with", { tag: "const", named: true }],
+  ["mvp:text_contains", { tag: "const", named: true }],
+  ["mvp:text_icontains", { tag: "const", named: true }],
+]);
+
+/**
+ * The context an EMPTY-context statement stands for, or null when the statement
+ * is not one (see {@link EMPTY_CONTEXT_FILL}).
  *
  * The decoder reads this to recover the value, and the comparison reads it so
  * the recovered statement's explicit re-encode still matches the empty stored
  * spelling. One implementation, used from both sides, because two copies of this
  * rule would drift and the drift would be invisible.
  */
-export function blankVarContext(
-  stored: unknown,
-): { value: string; tag: "const"; filters: never[] } | null {
+export function blankVarContext(stored: unknown): Record<string, unknown> | null {
   if (stored === null || typeof stored !== "object") return null;
   const { name, context } = stored as { name?: unknown; context?: unknown };
-  if (name !== "mvp:set_var") return null;
+  const fill = typeof name === "string" ? EMPTY_CONTEXT_FILL.get(name) : undefined;
+  if (!fill) return null;
   // Both empty spellings: `{}` from the SDK, `[]` from the engine's serializer.
   const empty =
     (Array.isArray(context) && context.length === 0) ||
     (context !== null && typeof context === "object" && Object.keys(context).length === 0);
-  return empty ? { value: "", tag: "const", filters: [] } : null;
+  if (!empty) return null;
+  return fill.named
+    ? { name: "", value: "", tag: fill.tag, filters: [] }
+    : { value: "", tag: fill.tag, filters: [] };
 }
 
 export function normalize<T>(value: T): T {
