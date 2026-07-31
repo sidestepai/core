@@ -132,15 +132,16 @@ export interface RealtimeUrlOptions {
    * looked up in the instance workspace instead, which either misses or serves a
    * different workspace's channels. Omit for a normal (non-tenant) instance.
    *
-   * Two things travel with it that are not part of this URL:
-   *  - **Tokens are tenant-scoped.** A realtime token carries the audience
-   *    `<tenant>:<license>` rather than the bare license, so one minted through
-   *    the instance workspace is rejected by a tenant's realtime server (and
-   *    vice versa). Mint and connect through the same tenant.
-   *  - **HTTP has no URL form.** The same context rides as an `X-Tenant:
-   *    <tenant>` request HEADER on `/api:<canonical>/…` calls. A tenant client
-   *    that authenticates over HTTP and then dials the socket must set both;
-   *    setting only the path prefix mints the token in the wrong database.
+   * This colon form is PECULIAR TO THE SOCKET: the tenant is glued to the
+   * canonical inside ONE path segment, whereas every other tenant-addressed URL
+   * gives it a segment of its own — the HTTP half of the same client is
+   * `https://<host>/tenant/<tenant>/api:<canonical>/…`. Neither is derivable
+   * from the other, and no request header is required for either. That both
+   * halves must name it matters because **tokens are tenant-scoped**: a realtime
+   * token carries the audience
+   * `<tenant>:<license>` rather than the bare license, so one minted through the
+   * instance workspace is rejected by a tenant's realtime server (and vice
+   * versa). Authenticate and dial through the same tenant.
    */
   tenant?: string;
 }
