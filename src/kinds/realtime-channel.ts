@@ -10,6 +10,15 @@
  * is matched — so `"rooms/lobby"` and `"rooms/{room_id}"` are two distinct
  * channels, not a conflict.
  *
+ * Matching is STRICT, and each rule is a join that fails rather than a path that
+ * gets fixed up: segment counts must be EQUAL, so `"rooms/{room_id}"` does not
+ * match `"rooms/42/edit"` (which is what lets `"org/{org_id}/room/{room_id}"`
+ * exist separately); literal segments are CASE-SENSITIVE; and an empty segment
+ * is rejected rather than collapsed, so a leading, trailing, or doubled `/`
+ * matches nothing. This is why `getChannel()` throws on an empty param or one
+ * containing `/` — the alternative is a join refused for a reason the error
+ * message never mentions.
+ *
  * The `input` map here types the channel PATH parameters. It is NOT the message
  * payload — that is `realtimeMessage({ input })`. Both reach the stack.
  *
@@ -66,40 +75,97 @@ export type ChannelPublishWho = "nobody" | "anyone" | "authenticated";
 export type ChannelDeliveryGuarantee = "at_most_once" | "at_least_once";
 
 export interface ChannelPublishDef {
-  /** Who may publish. Defaults to `"nobody"`. */
+  /** Who may publish. Defaults to `"nobody"` — nobody can publish until you set it. */
   who?: ChannelPublishWho;
-  /** Whether clients may address each other directly. Defaults to `false`. */
+  /**
+   * Whether a client may address ANOTHER CLIENT directly — a broadcast frame
+   * carrying `options.socketId`. Defaults to `false`, which refuses such a
+   * frame outright.
+   *
+   * This is a SECOND gate, checked BEFORE `who`: a direct frame must satisfy
+   * both. Leaving it off does not restrict ordinary channel publishing.
+   */
   direct?: boolean;
 }
 
 /**
- * The client-visible TRANSCRIPT — "I rejoined `rooms/42`, send me the last 50
- * messages". A joiner always receives the retained transcript when this is
- * enabled; there is deliberately no separate replay toggle.
+ * The client-visible TRANSCRIPT — "I just joined `rooms/42`, send me what was
+ * already said". PUSHED to every joiner automatically; there is deliberately no
+ * separate replay toggle and no fetch for the client to make.
  *
- * Distinct from `history`, which is EXECUTION history for the debugger.
+ * `limit` IS REQUIRED IN PRACTICE: `{ enabled: true }` alone records nothing and
+ * replays nothing, silently. See `limit`.
+ *
+ * Distinct from `history` (EXECUTION history, for the debugger) and from
+ * `delivery.guarantee`'s replay, which answers a different question — the
+ * transcript is the SHARED "what was said before I arrived", while at-least-once
+ * replay is the PER-CLIENT "what I missed while disconnected". Both may be on.
  */
 export interface ChannelConversationDef {
-  /** Retain and replay a transcript. Defaults to `false`. */
+  /**
+   * Retain and replay a transcript. Defaults to `false`. Not sufficient on its
+   * own — pair it with `limit`.
+   */
   enabled?: boolean;
-  /** Messages retained. `0` (the default) retains none. */
+  /**
+   * Messages retained, newest-capped. `0` (the default) retains NONE, which
+   * makes `enabled: true` a no-op — the transcript is never written and never
+   * replayed. Set it to the number of messages a joiner should see.
+   */
   limit?: number;
-  /** Seconds before a retained message expires. `0` (the default) means no expiry. */
+  /**
+   * Idle expiry for the WHOLE transcript, in seconds. `0` (the default) means no
+   * expiry.
+   *
+   * Not a per-message age cap: every write refreshes the clock, so an active
+   * channel's transcript never ages out, and when it does expire the entire
+   * transcript is dropped at once rather than decaying oldest-first.
+   *
+   * On an `at_least_once` channel this same value ALSO bounds the durable replay
+   * window — and there it does behave as a per-message age cut, taking priority
+   * over `limit`. See `ChannelDeliveryDef.guarantee`.
+   */
   ttl?: number;
 }
 
 export interface ChannelDeliveryDef {
-  /** Defaults to `"at_most_once"`. */
+  /**
+   * Defaults to `"at_most_once"`.
+   *
+   * `"at_least_once"` IS A CLIENT CONTRACT, not just a channel setting. The
+   * client must acknowledge what it receives (`{ action: "ack", channel, id }`),
+   * and an ANONYMOUS client must also send a durable `options.client_id` in its
+   * join frame — without one it has no cursor, its acks are ignored, and it
+   * silently degrades to at-most-once. An authenticated client is keyed by its
+   * identity and needs no `client_id`.
+   *
+   * The replay window is sized by `conversation.ttl`, else `conversation.limit`,
+   * else 1000 messages — even on a channel with no transcript enabled.
+   */
   guarantee?: ChannelDeliveryGuarantee;
   /**
-   * Run the before-deliver hook once PER RECIPIENT — a stack on the hot path,
-   * on every node that holds a recipient. Off by default; the cost is real.
+   * Run the channel's `deliver` trigger once PER RECIPIENT — a stack on the hot
+   * path, on every node that holds a recipient. Off by default; the cost is
+   * real, and it is per recipient per message.
+   *
+   * Independent of `guarantee`. A no-op unless the channel actually declares a
+   * `deliver` trigger — see `realtimeChannelTrigger({ actions: { deliver } })`,
+   * whose return value decides per recipient.
    */
   perRecipient?: boolean;
 }
 
 export interface ChannelRateLimitDef {
-  /** `0` (the default) means unlimited. */
+  /**
+   * `0` (the default) means unlimited. Counted per publishing client per
+   * channel, and checked BEFORE the handler runs, so a throttled frame costs no
+   * stack execution. The sender is refused with a `rate_limited` error carrying
+   * `limit` and `retry_after`.
+   *
+   * A cost guardrail, not a security control: an ANONYMOUS client is bucketed
+   * per connection, so reconnecting resets its budget, and the limiter fails
+   * OPEN if its backing store is unavailable.
+   */
   messagesPerMinute?: number;
 }
 
@@ -130,7 +196,13 @@ export interface RealtimeChannelDef<
    * declared type. Distinct from a message's `input`, which types the payload.
    */
   input?: I;
-  /** Admit clients with no auth token. Defaults to `false`. */
+  /**
+   * Admit clients with no auth token. Defaults to `false`.
+   *
+   * Anonymous access is gated TWICE, at both tiers: the server admits the
+   * connection, then the channel admits the join. Setting this alone is not
+   * enough if the owning `realtimeServer` refuses anonymous connections.
+   */
   anonymousClients?: boolean;
   /** Track and expose channel membership. Defaults to `false`. */
   presence?: boolean;

@@ -214,18 +214,45 @@ function liftTenantFromBase(
  *  - The server builds its context during the handshake; a frame sent
  *    immediately after `open` can be refused as not-ready. Wait out a short
  *    settle window before the first frame — there is no explicit ready frame.
+ *  - KEEP IT ALIVE. An idle connection is reaped after ~10 minutes, so a
+ *    LISTEN-ONLY client (a feed, a dashboard — anything that subscribes and
+ *    rarely publishes) must send something periodically or it is disconnected.
+ *    `{ action: "ping" }` answers `{ action: "pong" }` and exists for exactly
+ *    this; any frame resets the clock.
  *  - Client frames are JSON `{ action, channel, type?, payload?, options?, id? }`
- *    where `action` is `join` | `leave` | `broadcast` | `ack`, `channel` is the
- *    resolved channel path (`realtimeChannel().getChannel()`) and `type` is the
- *    `realtimeMessage()` name. You must `join` before you may `broadcast`.
- *  - Server frames carry `action`: `join` (ack — with `params`, plus
+ *    where `action` is `join` | `leave` | `broadcast` | `ack` | `ping` |
+ *    `presence`, `channel` is the resolved channel path
+ *    (`realtimeChannel().getChannel()`) and `type` is the `realtimeMessage()`
+ *    name. You must `join` before you may `broadcast`. `options` carries
+ *    `{ socketId?, client_id?, channel? }` — `socketId` addresses another client
+ *    directly and needs `publish.direct`, `client_id` is the at-least-once cursor
+ *    handle (below), and `options.channel` wins over a top-level `channel`.
+ *  - Server frames carry `action`: `join` (ack — `{ joined: true, params }`, plus
  *    `cursor`/`resumed` on an `at_least_once` channel), `message`, `replay`,
+ *    `broadcast` (a RECEIPT to the sender: `delivered_local` counts recipients on
+ *    the answering node only, NOT the channel, plus `id` on an at-least-once
+ *    channel and `dropped: true` when the handler returned null),
  *    `presence_full`/`presence_join`/`presence_leave`,
  *    `conversation_start`/`conversation_end` (replayed transcript frames are
  *    flagged `conversation: true` so they are distinguishable from live
- *    traffic), and `error` (`payload.message`, plus `payload.code` /
- *    `payload.retry_after` when rate limited). An `error` is a per-frame
- *    refusal, not a disconnect.
+ *    traffic), `pong`, `ack`, and `error`.
+ *  - `replay` and the `conversation_*` frames answer DIFFERENT questions and can
+ *    both be on: the transcript is the SHARED "what was said before I arrived"
+ *    (replayed as ordinary `message` frames), while `replay` is the PER-CLIENT
+ *    "what I missed while disconnected", resumed from this client's own cursor.
+ *  - AT-LEAST-ONCE IS A CLIENT CONTRACT. On such a channel, ack what you receive
+ *    with `{ action: "ack", channel, id }`; the server confirms with
+ *    `{ action: "ack", channel, payload: { cursor } }`, and the next reconnect
+ *    replays only what follows that cursor. An ANONYMOUS client must also send a
+ *    durable `options.client_id` in its JOIN frame — without one it has no cursor,
+ *    its acks are ignored silently, and it degrades to at-most-once. An
+ *    authenticated client is keyed by identity and needs no `client_id`.
+ *  - `error` carries `payload.message`, plus `payload.code` /
+ *    `payload.limit` / `payload.retry_after` when rate limited (`rate_limited` is
+ *    the only code — the rest are message-only, so do not switch on `code`). An
+ *    `error` is a per-frame refusal, NOT a disconnect — EXCEPT for a failed
+ *    handshake and a refused `connect` trigger, which each push an `error` and
+ *    then close with code 4401.
  *  - PRESENCE frames (only on a `presence: true` channel) carry a roster:
  *    `presence_full` → `payload.members` (an ARRAY — the whole roster, INCLUDING
  *    the receiving client), `presence_join`/`presence_leave` → `payload.member`
@@ -239,7 +266,10 @@ function liftTenantFromBase(
  *    Order on join is: `join` ack → `presence_full` → (others see
  *    `presence_join`) → conversation replay. A joined client can re-request the
  *    snapshot at any time by sending `{ action: "presence", channel }`; it
- *    answers with `presence_full`, or an `error` if you never joined.
+ *    answers with `presence_full`, or an `error` if you never joined. The full
+ *    join order, with everything optional included, is: `join` ack →
+ *    `presence_full` → (others see `presence_join`) → conversation replay →
+ *    `replay` frames.
  */
 export type RealtimeServerHandle = RealtimeServerDef & {
   /** The server's resolved `canonical` token; throws if none resolves. */
