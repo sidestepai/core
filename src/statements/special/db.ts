@@ -232,6 +232,14 @@ export interface DbAggregatePaging {
   per_page?: number;
   /** Wrap the result in the metadata envelope (engine default `true`). */
   metadata?: boolean;
+  /**
+   * The engine's gate. Every field here is read ONLY when this is on, so
+   * `enabled:false` parks a configured block without applying it — the state the
+   * editor leaves behind when pagination is switched back off. Defaults to `true`
+   * (passing `paging` at all is the usual way to ask for it); set `false` only to
+   * reproduce that parked state.
+   */
+  enabled?: boolean;
 }
 
 /**
@@ -1522,7 +1530,7 @@ function encodeAggregate(agg: DbAggregate | undefined, primaryAlias: string): un
       page: agg.paging.page ?? 1,
       per_page: agg.paging.per_page ?? 25,
       metadata: agg.paging.metadata ?? true,
-      enabled: true,
+      enabled: agg.paging.enabled ?? true,
     };
   }
   return { type: "aggregate", aggregate: block };

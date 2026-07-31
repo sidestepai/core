@@ -276,6 +276,78 @@ export function isBlankGroupStatement(v: unknown): boolean {
     (side as { operand?: unknown }).operand === "";
   return blankSide(node.left) && blankSide(node.right);
 }
+/**
+ * The per-return-type sub-blocks of a `db.query`'s `context.return`, and the
+ * return types that have none.
+ */
+const RETURN_BLOCKS = ["single", "list", "stream", "aggregate"] as const;
+const RETURN_TYPES = new Set<string>([...RETURN_BLOCKS, "count", "exists"]);
+
+/**
+ * A `context.return` reduced to its LIVE branch, or `undefined` when it is not a
+ * return section or has no dead branch to shed.
+ *
+ * `return.type` selects one of four sub-blocks — `single`, `list`, `stream`,
+ * `aggregate` (`count` and `exists` select none) — and the query editor writes
+ * ALL of them on save, because the panel builds one form group over the whole
+ * declared section and emits `form.value` wholesale. So a `type:"single"` query
+ * still stores a fully-populated `list` block, paging and all, and a query that
+ * was ever a list keeps whatever sort it had after switching away.
+ *
+ * Nothing reads the off-branches. The converter that turns the stored section
+ * into the engine's query config is a chain of `if (returnType == "…")` arms,
+ * each reading `return.<that type>.*` and nothing else; Xano's own
+ * XanoScript↔stack translator likewise writes only the live block. The dead ones
+ * are invisible in the editor and inert at runtime — the same editor exhaust as
+ * an expression group's `statement` branch (see {@link isBlankGroupStatement}),
+ * and dropped for the same reason: the rule is never discard what someone MEANT,
+ * not never discard bytes.
+ *
+ * A dead branch that carries real configuration — a sort, a group-by, paging
+ * switched on — is reported as an `expected-omission` by the decoder so the
+ * discard is visible; the default-filled ones the editor writes on every save go
+ * quietly, since reporting those would fire on nearly every query pulled.
+ */
+export function liveReturnSection(value: unknown): Record<string, unknown> | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const section = value as Record<string, unknown>;
+  const type = section.type;
+  if (typeof type !== "string" || !RETURN_TYPES.has(type)) return undefined;
+  const dead = RETURN_BLOCKS.filter((b) => b !== type && b in section);
+  if (dead.length === 0) return undefined;
+  const live: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(section)) {
+    if (!(RETURN_BLOCKS as readonly string[]).includes(k) || k === type) live[k] = v;
+  }
+  return live;
+}
+
+/**
+ * The dead `context.return` branches that carry authored configuration — a
+ * non-empty `sort`/`group`/`eval`/`index`, or paging switched on. Used to report
+ * what {@link liveReturnSection} drops; a branch holding only the editor's
+ * defaults returns nothing.
+ */
+export function configuredDeadReturnBlocks(value: unknown): string[] {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return [];
+  const section = value as Record<string, unknown>;
+  const type = section.type;
+  if (typeof type !== "string" || !RETURN_TYPES.has(type)) return [];
+  return RETURN_BLOCKS.filter((b) => b !== type && isConfiguredReturnBlock(section[b]));
+}
+
+function isConfiguredReturnBlock(block: unknown): boolean {
+  if (block === null || typeof block !== "object" || Array.isArray(block)) return false;
+  const b = block as Record<string, unknown>;
+  for (const list of ["sort", "group", "eval", "index"]) {
+    if (Array.isArray(b[list]) && (b[list] as unknown[]).length > 0) return true;
+  }
+  const paging = b.paging;
+  return (
+    paging !== null && typeof paging === "object" && (paging as { enabled?: unknown }).enabled === true
+  );
+}
+
 /** The engine's default `context.external` (paged-external input) — SDK omits it. */
 const DEFAULT_CONTEXT_EXTERNAL = {
   tag: "input",
@@ -1044,6 +1116,15 @@ export function normalize<T>(value: T): T {
           )
           .map((entry) => normalize(entry));
         continue;
+      }
+      // A `context.return` keeps only the branch its `type` selects; the editor
+      // writes all four and the engine reads one (see {@link liveReturnSection}).
+      if (k === "return") {
+        const live = liveReturnSection(v);
+        if (live) {
+          out[k] = normalize(live);
+          continue;
+        }
       }
       if (k === "context" && contextFill) {
         out[k] = normalize(contextFill);

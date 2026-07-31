@@ -21,7 +21,7 @@
  * that elision is verified rather than assumed.
  */
 import type { StackItemXdo, TaggedValue } from "../../types/xdo.js";
-import { isDefaultEnvelopeMember } from "../../validate/normalize.js";
+import { configuredDeadReturnBlocks, isDefaultEnvelopeMember } from "../../validate/normalize.js";
 import { outputPaths } from "../../statements/special/output-select.js";
 import { arr, lit, obj, type Expr } from "../print.js";
 import { isBoundNumericId, isReferenceId, isUnboundId, resolveReference } from "../ref-index.js";
@@ -858,6 +858,16 @@ const dbQuery: SpecialDecoder = (a) => {
 
   const ret = (context.return ?? {}) as Record<string, unknown>;
   const returnType = typeof ret.type === "string" ? ret.type : "list";
+  // The editor writes every return branch and the engine reads only the one
+  // `type` selects, so the rest are dropped (see `liveReturnSection`). A dropped
+  // branch that still holds real configuration is worth saying out loud — it is
+  // what the query used to do before its return type was switched.
+  for (const dead of configuredDeadReturnBlocks(ret)) {
+    a.ctx.problem(
+      "expected-omission",
+      `db.query returns "${returnType}", so its stored "${dead}" return block — which carries a sort, grouping, or paging — is inert: the engine reads only the branch \`return.type\` names. Dropped.`,
+    );
+  }
   if (returnType !== "list") {
     entries.push(["returnType", lit(returnType)]);
     runtime.returnType = returnType;
@@ -1149,6 +1159,12 @@ function decodeAggregate(
     if (paging.metadata === false) {
       cells.push(["metadata", lit(false)]);
       values.metadata = false;
+    }
+    // The gate defaults to on (a `paging` block is how you ask for paging), so
+    // only a parked block — configured but switched back off — authors it.
+    if (paging.enabled === false) {
+      cells.push(["enabled", lit(false)]);
+      values.enabled = false;
     }
     // An aggregate `paging` block exists only when it was authored, so the key
     // is emitted even when every field sits at its default.

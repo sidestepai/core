@@ -334,6 +334,52 @@ describe("validate normalizer — per-statement context defaults", () => {
     });
   });
 
+  it("drops a CUSTOMIZED sibling block too — only the branch `type` names is live", () => {
+    // The stronger half of the rule. A default sibling collapsing is not enough:
+    // the editor's return panel is one form group over the whole section and
+    // emits all four blocks on save, so a query that was a paged list before its
+    // type was switched to `single` keeps that list block forever — sort, paging
+    // and all. Nothing reads it: the converter that builds the engine's query
+    // config is a chain of `if (returnType == "…")` arms, each touching only its
+    // own branch, and Xano's own XanoScript translator writes only the live one.
+    const switched = {
+      return: {
+        type: "single",
+        single: { sort: [] },
+        list: {
+          sort: [{ sortBy: "post.created_at", orderBy: "desc" }],
+          paging: { page: 1, enabled: true, per_page: 10, metadata: true, totals: false, offset: 0 },
+          distinct: "auto",
+        },
+      },
+    };
+    expect(normalize(switched)).toEqual({ return: { type: "single" } });
+    // …and it compares equal to the same query with no leftover at all, which is
+    // the point: the SDK writes the second and the editor stores the first.
+    expect(normalize(switched)).toEqual(normalize({ return: { type: "single" } }));
+  });
+
+  it("keeps the LIVE block when a sibling is dropped, and drops nothing on a lone branch", () => {
+    // The paired negative — the rule must not be able to eat the branch that runs.
+    const live = {
+      return: {
+        type: "aggregate",
+        aggregate: { group: [{ name: "posts.author_id", as: "author" }] },
+        list: { sort: [{ sortBy: "posts.id", orderBy: "desc" }] },
+      },
+    };
+    expect(normalize(live)).toEqual({
+      return: { type: "aggregate", aggregate: { group: [{ name: "posts.author_id", as: "author" }] } },
+    });
+    // A section carrying only its live branch is left exactly alone.
+    const lone = { return: { type: "list", list: { sort: [{ sortBy: "a.id", orderBy: "asc" }] } } };
+    expect(normalize(lone)).toEqual(lone);
+    // And `return` is not a licence to strip these names anywhere else — a `list`
+    // beside a `type` elsewhere in the envelope is untouched.
+    const loose = { type: "single", list: { sort: [{ sortBy: "a.id", orderBy: "asc" }] } };
+    expect(normalize(loose)).toEqual(loose);
+  });
+
   it("preserves a result-shape block that is actually customized", () => {
     // The load-bearing negatives: the rule compares against each block's own frozen
     // default, so anything authored inside one still compares unequal.
