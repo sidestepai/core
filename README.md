@@ -1541,16 +1541,24 @@ import { writeBundle } from "@sidestep/core/node";  // writes a file — Node on
 
 `sidestep validate` proves your compiled output against a **real, running Xano
 instance** — not a static snapshot. It compiles your workspace, imports it into a
-disposable sandbox, exports it back, and diffs it against what you compiled, so
-you catch three classes of problem a local build can't:
+**fresh ephemeral environment created for that run**, exports it back, and diffs it
+against what you compiled, so you catch three classes of problem a local build can't:
 
 1. **Import accepts** — the engine actually accepts the bundle (malformed-but-shaped output is rejected here).
 2. **Round-trip parity** — the workspace the engine stores, re-exported in the same bundle format, matches your compiled JSON after normalization (full object logic included). Every authored kind is diffed — tables, functions, queries, triggers, tasks, and more — each object matched by identity and reported per kind.
 3. **Runtime** (`--runtime`) — each deployed function actually runs on the engine, with logs surfaced on failure.
 
-It talks only to public meta API routes (the same import routes
-the deploy uses, plus the workspace export), is non-destructive (imports
-into your disposable sandbox tenant), and never touches XanoScript.
+It talks only to public meta API routes — the **same** archive import `sidestep
+deploy` uses, plus the workspace export — and never touches XanoScript. There is one
+way into an instance, so a transport bug is one `validate` reproduces rather than
+routes around.
+
+It is non-destructive: nothing you own is written to. Each run creates its own
+ephemeral environment, imports into that, and deletes it afterwards — including when
+the import is rejected or a transport error is thrown. The environment carries a
+short expiry, so even a killed process leaves nothing permanent behind. A fresh
+environment per run is also what makes the diff trustworthy: the objects read back
+can only have come from this bundle, never from what a previous run left.
 
 **Setup** — copy `.env.example` to `.env` (gitignored) and fill in a base URL +
 token. Switching between a cloud dev instance and a local Docker one is just a
@@ -1560,7 +1568,7 @@ different `XANO_VALIDATE_INSTANCE`:
 # .env
 XANO_VALIDATE_INSTANCE=https://your-instance.xano.io   # or http://localhost:8080 for local Docker
 XANO_VALIDATE_TOKEN=your-meta-bearer-token
-# XANO_VALIDATE_WORKSPACE_ID=…                          # optional; the import supplies it otherwise
+# XANO_VALIDATE_WORKSPACE_ID=…                          # optional; PARENT workspace the run's env is created under (default 1)
 ```
 
 ```bash
