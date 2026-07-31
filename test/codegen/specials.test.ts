@@ -88,6 +88,38 @@ describe("variables", () => {
   it("round-trips update_var, which names its target in context", () => {
     expect(roundTrip(s.update_var("total", c.int(1)))).toBe('s.update_var("total", c.int(1))');
   });
+
+  // A `set_var` whose context is EMPTY. Not a shape the SDK writes — these bytes
+  // are copied from a real stored statement — but the engine's optional-schema
+  // pass fills `tag` with `const`, `filters` with `[]`, and `value` with the text
+  // type's `""`, so it is the blank const spelled a second way. 18 statements in
+  // the survey corpus store it against 101 that store the members explicitly.
+  const STORED_EMPTY_SET_VAR = {
+    as: "x2",
+    name: "mvp:set_var",
+    addon: [],
+    input: [],
+    output: { items: [], filters: [], customize: false },
+    context: {},
+    disabled: false,
+    description: "",
+    settings_registry: null,
+  } as unknown as StackItemXdo;
+
+  it("reads an empty set_var context as the blank const rather than falling back to raw()", () => {
+    const ctx = new DecodeContext();
+    const source = printExpr(decodeStatement(ctx, EMPTY_REFS, STORED_EMPTY_SET_VAR, {}));
+    expect(source).toBe('s.set_var("x2", c.text(""))');
+    // The recovered statement must compare equal to the bytes it came from —
+    // the empty and explicit spellings are one statement under the comparator.
+    expect(normalize(encodeStatement(evaluate(source)))).toEqual(normalize(STORED_EMPTY_SET_VAR));
+  });
+
+  it("still declines an empty update_var context, which has lost its target name", () => {
+    const ctx = new DecodeContext();
+    const stored = { ...STORED_EMPTY_SET_VAR, name: "mvp:update_var" } as unknown as StackItemXdo;
+    expect(printExpr(decodeStatement(ctx, EMPTY_REFS, stored, {}))).toContain("raw(");
+  });
 });
 
 describe("conditionals", () => {

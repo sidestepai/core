@@ -12,6 +12,7 @@ import type { TaggedValue } from "../../types/xdo.js";
 import { arr, lit, obj, type Expr } from "../print.js";
 import { decodeValue } from "../value.js";
 import { decodeConditionOrEmpty } from "../expression.js";
+import { blankVarContext } from "../../validate/normalize.js";
 import { declineHere, getPath, prove, type SpecialArgs, type SpecialDecoder } from "./prove.js";
 
 /** Coerce a stored `{value, tag, filters}` block to a tagged value. */
@@ -34,7 +35,9 @@ function nested(a: SpecialArgs, path: string): { exprs: Expr[]; statements: unkn
 
 /** `var $as { value }` — 78% of a typical workspace's statements. */
 const setVar: SpecialDecoder = (a) => {
-  const value = toValue(a.stored.context);
+  // An empty context is the blank const the engine's optional-schema pass fills
+  // in, not an unreadable statement (see {@link blankVarContext}).
+  const value = toValue(a.stored.context) ?? blankVarContext(a.stored);
   const as = (a.stored as { as?: unknown }).as;
   if (!value) return declineHere("set_var: context is not a tagged value");
   if (typeof as !== "string" || as === "") return declineHere("set_var: as is blank");

@@ -697,6 +697,45 @@ export function clearLocalDboRefs<T>(value: T, cleared?: Set<string>): T {
   return next as unknown as T;
 }
 
+/**
+ * The tagged value a `mvp:set_var` with an EMPTY `context` stands for, or null
+ * when the statement is not that shape.
+ *
+ * `set_var`'s context IS its tagged value, and the engine declares every member
+ * of it optional-with-a-default: `tag` defaults to `const`, `filters` is a list
+ * and so defaults to `[]`, and `value` is declared `text`, whose type default is
+ * `""`. An empty context therefore resolves to the blank const — the same
+ * statement as one that stores those three members explicitly. It is a second
+ * stored spelling, not a shape no authoring surface can produce.
+ *
+ * Evidenced twice, as a default must be. The engine's optional-schema pass
+ * supplies each member when the key is absent, AND real workspaces store both
+ * spellings side by side: 101 `set_var` carry the blank const explicitly against
+ * 18 that store nothing at all.
+ *
+ * `update_var` is deliberately NOT included even though it shares the context
+ * shape. Its context carries a sibling `name` naming the variable to reassign,
+ * so an empty one has lost the name too and genuinely cannot be re-authored —
+ * the single such row in the corpus declines, correctly, on the missing name.
+ *
+ * The decoder reads this to recover the value, and the comparison reads it so
+ * the recovered statement's explicit re-encode still matches the empty stored
+ * spelling. One implementation, used from both sides, because two copies of this
+ * rule would drift and the drift would be invisible.
+ */
+export function blankVarContext(
+  stored: unknown,
+): { value: string; tag: "const"; filters: never[] } | null {
+  if (stored === null || typeof stored !== "object") return null;
+  const { name, context } = stored as { name?: unknown; context?: unknown };
+  if (name !== "mvp:set_var") return null;
+  // Both empty spellings: `{}` from the SDK, `[]` from the engine's serializer.
+  const empty =
+    (Array.isArray(context) && context.length === 0) ||
+    (context !== null && typeof context === "object" && Object.keys(context).length === 0);
+  return empty ? { value: "", tag: "const", filters: [] } : null;
+}
+
 export function normalize<T>(value: T): T {
   if (Array.isArray(value)) {
     return value.map((v) => normalize(v)) as unknown as T;
@@ -732,6 +771,10 @@ export function normalize<T>(value: T): T {
     // licence to sort `input[]` anywhere else, where order IS meaningful (a row
     // write's columns, a lookup's leading field_name/field_value).
     const sortsInput = NAME_KEYED_INPUT.has((value as { name?: unknown }).name as string);
+    // An empty `set_var` context is the blank-const spelling of the same
+    // statement — substitute the members the engine would supply so the two
+    // spellings compare equal (see {@link blankVarContext}).
+    const varBlank = blankVarContext(value);
     // A middleware attachment block, identified by its own flags rather than by
     // the generic names `pre`/`post`. A phase list is read ONLY when its
     // `_customize` flag is set — the engine's resolver returns it on that branch
@@ -801,6 +844,10 @@ export function normalize<T>(value: T): T {
             ),
           )
           .map((entry) => normalize(entry));
+        continue;
+      }
+      if (k === "context" && varBlank) {
+        out[k] = normalize(varBlank);
         continue;
       }
       if (k === "context" && isEmptyArray(v)) {
