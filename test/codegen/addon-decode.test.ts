@@ -256,7 +256,8 @@ describe("addon decode — an unbound addon is reported, not just emitted", () =
 });
 
 /**
- * An UNBOUND addon attachment (`id: ""`) — the addon was deleted, or never bound.
+ * An UNBOUND addon attachment (`id: ""` or `id: 0`) — the addon was deleted, or
+ * never bound.
  *
  * Resolving it threw inside the factory, and a factory throw is not a local
  * failure: it degraded the whole enclosing `db.query` to `raw()`. 12 of the 17
@@ -265,7 +266,7 @@ describe("addon decode — an unbound addon is reported, not just emitted", () =
  */
 describe("unbound addon attachment", () => {
   /** A workspace with one query whose single attachment carries `id`. */
-  function queryWithAttachment(id: string): Bundle {
+  function queryWithAttachment(id: string | number): Bundle {
     const ws = workspace("w")
       .registerTables([users])
       .registerApiGroups([apiGroup({ name: "public" })])
@@ -290,6 +291,27 @@ describe("unbound addon attachment", () => {
     const file = decodeBundle(queryWithAttachment("")).files.find((x) => x.path.includes("queries"));
     expect(file!.contents).toContain("addon: null");
     expect(file!.contents).not.toContain("raw(");
+  });
+
+  it("reads a numeric `0` as the same absence, not as an identity", () => {
+    // The other stored spelling of "no target". A numeric id that is NOT the
+    // sentinel still declines — nothing here reads identity out of a number.
+    const file = decodeBundle(queryWithAttachment(0)).files.find((x) => x.path.includes("queries"));
+    expect(file!.contents).toContain("addon: null");
+    expect(file!.contents).not.toContain("raw(");
+  });
+
+  it("reports the blank rather than presenting a lost binding as a deliberate one", () => {
+    // Two indistinguishable causes — deleted/never bound, or blanked on the way
+    // out of a narrow export — so the discard is named, exactly as a blank
+    // `table` is.
+    const report = decodeBundle(queryWithAttachment("")).report;
+    const entry = report.entries.find((e) => e.category === "unresolved-ref");
+    expect(entry?.detail).toContain("_extra");
+    expect(entry?.detail).toContain("addon: null");
+    // …and a bound attachment says nothing.
+    const bound = decodeBundle(queryWithAttachment(deriveGuid("addon", "extra"))).report;
+    expect(bound.entries.some((e) => e.detail.includes("blank addon reference"))).toBe(false);
   });
 
   it("still resolves an attachment that names a real addon", () => {

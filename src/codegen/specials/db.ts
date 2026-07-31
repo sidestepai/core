@@ -258,7 +258,7 @@ function decodeAddonSpec(
     return declineHere(
       `addon[]: attachment id ${JSON.stringify(guid)} is a numeric object reference, not portable identity`,
     );
-  if (typeof guid !== "string" || typeof alias !== "string")
+  if ((typeof guid !== "string" && typeof guid !== "number") || typeof alias !== "string")
     return declineHere("addon[]: attachment has no id or no as");
 
   // The encoder splits the authored destination at its last dot into
@@ -267,23 +267,40 @@ function decodeAddonSpec(
   const offset = typeof block.offset === "string" ? block.offset : "";
   const destination = offset ? `${offset}.${alias}` : alias;
 
-  const target = a.refs.lookup(guid);
-  // A BLANK id is an unbound attachment — the addon was deleted, or never bound.
+  // An UNBOUND id is an attachment whose addon was deleted or never bound.
   // Resolving it threw inside the factory, which degraded the whole enclosing
   // query to `raw()`; `addon: null` is the same "no target" spelling `table:
   // null` and `fn: null` already carry, and it keeps the query readable.
-  const unbound = guid === "";
+  //
+  // Both stored spellings of "no target" count — the blank string and the
+  // numeric `0` a pre-guid attachment carries. A numeric id that is NOT the
+  // sentinel already declined above, so this reads no identity out of a number;
+  // it only recognizes the absence of one.
+  const unbound = isUnboundId(guid);
+  const target = unbound ? undefined : a.refs.lookup(guid as string);
+  // Reported for the same reason a blank `table` is: the two causes — deleted or
+  // never bound vs. blanked on the way out of a narrow export — are
+  // indistinguishable here, and emitting `addon: null` silently would present a
+  // real lost binding as a deliberate one.
+  if (unbound) {
+    a.ctx.problem(
+      "unresolved-ref",
+      `addon attachment "${alias}" has a blank addon reference, recovered as \`addon: null\`; ` +
+        "the addon was deleted or unbound, OR it sits outside this export's scope and was " +
+        "blanked on the way out — re-pull with the addon in scope to tell the two apart",
+    );
+  }
   const entries: Array<[string, Expr]> = [
     [
       "addon",
       unbound
         ? lit(null)
-        : resolveReference(a.ctx, a.refs, guid, { ...a.resolve, unresolved: "object-ref" }),
+        : resolveReference(a.ctx, a.refs, guid as string, { ...a.resolve, unresolved: "object-ref" }),
     ],
     ["as", lit(destination)],
   ];
   const runtime: Record<string, unknown> = {
-    addon: unbound ? null : { name: target?.name ?? "", guid },
+    addon: unbound ? null : { name: target?.name ?? "", guid: guid as string },
     as: destination,
   };
 
