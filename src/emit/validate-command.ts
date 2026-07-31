@@ -11,6 +11,7 @@
  * authoring bundle never pulls in the validate stack.
  */
 import type { ParsedArgs } from "./cli.js";
+import type { MetaClient as MetaClientType } from "../validate/meta-client.js";
 import { loadBundleText } from "./bundle-input.js";
 import { step, success, warn, info, detail, blank } from "./ui.js";
 
@@ -20,11 +21,9 @@ const EXIT_VALIDATION_FAILED = 2;
 export async function runValidateCommand(args: ParsedArgs): Promise<void> {
   const { resolveValidateConfig, verifyToken } = await import("../validate/config.js");
   const { MetaClient } = await import("../validate/meta-client.js");
-  const { runValidateLoop, runnableFunctionNames } = await import("../validate/loop.js");
-
-  // No workspace override from the CLI: `validate` targets a disposable sandbox
-  // tenant, and its workspace id comes from the import response (or the
-  // harness-only $XANO_VALIDATE_WORKSPACE_ID).
+  // No workspace override from the CLI: `validate` deploys into a disposable
+  // ephemeral environment. $XANO_VALIDATE_WORKSPACE_ID names the PARENT workspace
+  // that env is created under; reads target the env, whose internal id is always 1.
   const config = resolveValidateConfig({ instance: args.instance });
   const who = await verifyToken(config);
   const host = new URL(config.instance).host;
@@ -32,10 +31,27 @@ export async function runValidateCommand(args: ParsedArgs): Promise<void> {
 
   const { bundle } = await loadBundleText(args, `Missing input. Usage: sidestep validate <file> | --bundle <path>.`);
   const client = new MetaClient(config);
-  // Always a clean import: validate resets the disposable sandbox first so the
-  // round-trip reads back exactly what this bundle produced, never stale objects
-  // left by a prior deploy. (Not gated on --reset — a merge would corrupt the diff.)
-  const result = await runValidateLoop(client, bundle, { reset: true });
+  // The client creates a fresh ephemeral environment per run, so the round-trip
+  // reads back exactly what this bundle produced and never an object a prior run
+  // left behind. The `finally` tears it down on every path, including a rejected
+  // import and a thrown transport error.
+  try {
+    await validateWithClient(args, client, bundle);
+  } finally {
+    const teardown = await client.dispose();
+    // A leaked env is a real cost (it holds a URL and a database), so say so —
+    // but never fail the run over it: the env carries its own expiry.
+    if (teardown.error !== undefined) {
+      warn("Could not delete the validation environment; it will expire on its own:");
+      detail(teardown.error);
+    }
+  }
+}
+
+/** The validation body proper — everything that needs the imported environment. */
+async function validateWithClient(args: ParsedArgs, client: MetaClientType, bundle: string): Promise<void> {
+  const { runValidateLoop, runnableFunctionNames } = await import("../validate/loop.js");
+  const result = await runValidateLoop(client, bundle);
 
   if (!result.accepted) {
     warn("Import rejected by the engine:");

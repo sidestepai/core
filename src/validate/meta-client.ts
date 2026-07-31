@@ -3,28 +3,51 @@
  *
  * Every route here is a public `/api:meta/...` path (plus public `/api:{canonical}`
  * invocation). The client never touches a XanoScript-text route: the SDK emits a
- * JSON bundle, imports it via `sandbox/bundle`, and reads objects back as JSON.
+ * JSON bundle and reads objects back as JSON.
  *
- * The import reuses the proven `postDeploy` transport (the same call
- * `sandbox deploy` makes); the reads/runs are thin fetch wrappers that mirror its
- * bearer + timeout + non-2xx-throws discipline.
+ * The import uses the SAME transport `deploy` and `release` use — the
+ * `gzip(tar(workspace.json))` archive posted to `workspace/{id}/import`. There is
+ * exactly one way into an instance, so a bug in the deploy path is a bug validate
+ * reproduces rather than routes around.
+ *
+ * Each run gets its OWN ephemeral environment, created up front and deleted in
+ * {@link MetaClient.dispose}. That is what makes the round-trip trustworthy: the
+ * objects read back can only have come from this bundle, never from something a
+ * previous run left behind. The env carries a short expiry so a killed process
+ * leaks nothing permanent.
  *
  * Node-only; lazily imported by the command layer.
  */
-import { postDeploy } from "../deploy/client.js";
-import { decodeWorkspaceArchive } from "./archive.js";
+import { createEphemeral, deleteEphemeral, waitUntilReady } from "../deploy/ephemeral.js";
+import { importWorkspaceArchive } from "../deploy/import.js";
+import { decodeWorkspaceArchive, encodeWorkspaceArchive } from "./archive.js";
+import type { ResolvedAuth } from "../auth/token.js";
 import type { ValidateConfig } from "./config.js";
 
 /** Bound each read/run so a stalled endpoint can't hang the CLI. */
 const REQUEST_TIMEOUT_MS = 60_000;
 
-const IMPORT_PATH = "/api:meta/sandbox/bundle";
+/**
+ * An ephemeral env's internal workspace id is always `1`, and importing WITH an
+ * id takes the server's clear-then-import path — a full replace, which is the
+ * clean-slate semantics the round-trip diff depends on.
+ */
+const ENV_WORKSPACE_ID = 1;
 
-/** Result of importing a compiled bundle into the sandbox tenant. */
+/** Parent workspace used when the config names none. */
+const DEFAULT_PARENT_WORKSPACE_ID = 1;
+
+/**
+ * Expiry on the per-run env. It is deleted in `dispose()`, so this only matters
+ * when the process dies first — short enough that a crashed run sweeps itself.
+ */
+const ENV_EXPIRES_HOURS = 1;
+
+/** Result of importing a compiled bundle into this run's ephemeral environment. */
 export interface ImportResult {
   /** The imported workspace's numeric id — the key for reading objects back. */
   workspaceId: number | undefined;
-  /** The workspace's public base URL, when the endpoint returns one. */
+  /** The environment's public base URL. */
   baseUrl: string | undefined;
   /** Raw response body, kept for diagnostics. */
   raw: string;
@@ -45,16 +68,33 @@ export interface InvokeResult {
  */
 export class MetaClient {
   /**
-   * Origin that post-import reads/runs target. The import goes to the root
-   * instance's `sandbox/bundle`, but the objects land in a sandbox TENANT served
-   * under a `/tenant/<slug>` path (the import response's `base_url`). Reads must
-   * hit that tenant-scoped origin, not the root — so this is switched to
-   * `base_url` after a successful import (falls back to the root instance).
+   * Origin that post-import reads/runs target. The objects land in this run's
+   * ephemeral ENVIRONMENT, served under a `/tenant/<slug>` path, so reads must hit
+   * that env-scoped origin rather than the parent instance — this is switched to
+   * the env URL after a successful import (and starts at the parent instance, which
+   * is what `verifyToken` and any pre-import call use).
    */
   private readBase: string;
 
+  /** This run's ephemeral env, once created — the handle `dispose()` deletes. */
+  private env: { parentWorkspaceId: number; name: string } | undefined;
+
   constructor(private readonly config: ValidateConfig) {
     this.readBase = config.instance;
+  }
+
+  /**
+   * The validate config as the deploy transports' `ResolvedAuth`. Validate is
+   * engineer tooling authenticated by a bare instance token from the environment,
+   * never the interactive OAuth store — hence `credentialType: "token"`.
+   */
+  private deployAuth(workspaceId: number): ResolvedAuth {
+    return {
+      access_token: this.config.token,
+      instance: this.config.instance,
+      workspaceId,
+      credentialType: "token",
+    };
   }
 
   private authHeaders(): Record<string, string> {
@@ -70,41 +110,75 @@ export class MetaClient {
     return new URL(`${this.readBase}${path}`);
   }
 
-  /** Import a compiled JSON bundle into the disposable sandbox tenant. */
-  async importBundle(bundle: string, opts: { reset?: boolean } = {}): Promise<ImportResult> {
-    const query: Record<string, string> = {};
-    if (opts.reset) query.reset = "true";
-    let resp;
-    try {
-      resp = await postDeploy({
-        bundle,
-        endpointPath: IMPORT_PATH,
-        auth: { access_token: this.config.token, instance: this.config.instance },
-        query,
-      });
-    } catch (err) {
-      // A 404 here means the JSON bundle route is not served on this instance —
-      // surface it as an actionable message (validate is JSON-only; there is no
-      // XanoScript fallback).
-      const msg = err instanceof Error ? err.message : String(err);
-      if (/\b404\b/.test(msg)) {
-        throw new Error(
-          `The JSON import route (${IMPORT_PATH}) is not available on ${new URL(this.config.instance).host}. ` +
-            `sidestep validate is JSON-only and cannot fall back to a XanoScript route.\n${msg}`,
-        );
-      }
-      throw err;
+  /**
+   * Create this run's ephemeral environment and import the compiled bundle into
+   * it, as the `gzip(tar(workspace.json))` archive.
+   *
+   * There is no `reset` knob: importing with a workspace id is ALWAYS a full
+   * replace, and the env is brand new besides. A flag that could not change the
+   * outcome would only invite the belief that a merge import exists here.
+   */
+  async importBundle(bundle: string): Promise<ImportResult> {
+    const parentWorkspaceId = this.config.workspaceId ?? DEFAULT_PARENT_WORKSPACE_ID;
+    const auth = this.deployAuth(parentWorkspaceId);
+
+    const env = await createEphemeral(auth, {
+      parentWorkspaceId,
+      display: "sidestep-validate",
+      description: "Disposable environment for `sidestep validate`.",
+      expiresHours: ENV_EXPIRES_HOURS,
+    });
+    // Track it before the first thing that can throw, so `dispose()` can still
+    // clean up an env whose import failed.
+    this.env = { parentWorkspaceId, name: env.name };
+    await waitUntilReady(auth, { parentWorkspaceId, name: env.name });
+
+    // An env with no domain has no URL to import into or read back from, and every
+    // later step would fail with a less obvious message.
+    const envUrl = env.url;
+    if (envUrl === undefined || envUrl === "") {
+      throw new Error(
+        `The validation environment (${env.name}) came back without a URL, so there is nothing to deploy into.`,
+      );
     }
-    const workspaceId = typeof resp.workspace?.id === "number" ? resp.workspace.id : undefined;
-    // Point subsequent reads/runs at the tenant the import landed in.
-    if (resp.baseUrl !== undefined && resp.baseUrl !== "") {
-      this.readBase = resp.baseUrl.replace(/\/+$/, "");
-    }
-    return { workspaceId, baseUrl: resp.baseUrl, raw: resp.raw };
+
+    const result = await importWorkspaceArchive(auth, {
+      baseUrl: envUrl,
+      archive: encodeWorkspaceArchive(bundle),
+      workspaceId: ENV_WORKSPACE_ID,
+    });
+
+    // Reads and runs target the env, not the parent instance.
+    this.readBase = envUrl.replace(/\/+$/, "");
+    return {
+      workspaceId: result.workspaceId ?? ENV_WORKSPACE_ID,
+      baseUrl: env.url,
+      raw: result.raw,
+    };
   }
 
   /**
-   * Export the workspace (the sandbox tenant, post-import) as a `packageExport`
+   * Delete this run's ephemeral environment. Safe to call when no env was ever
+   * created, and never throws: a cleanup failure must not mask the validation
+   * result the caller is about to report. The env's own expiry is the backstop.
+   */
+  async dispose(): Promise<{ deleted: boolean; error?: string }> {
+    const env = this.env;
+    if (env === undefined) return { deleted: false };
+    this.env = undefined;
+    try {
+      await deleteEphemeral(this.deployAuth(env.parentWorkspaceId), {
+        parentWorkspaceId: env.parentWorkspaceId,
+        name: env.name,
+      });
+      return { deleted: true };
+    } catch (err) {
+      return { deleted: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  /**
+   * Export the workspace (this run's environment, post-import) as a `packageExport`
    * bundle — the SAME shape the SDK emits, carrying full object logic. This is
    * the faithful round-trip source: the response is a gzipped tar of
    * `workspace.json`, decoded here into its bundle object.
