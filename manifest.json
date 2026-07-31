@@ -1,6 +1,6 @@
 {
   "name": "sidestep",
-  "version": "4.1.15",
+  "version": "4.1.13",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
@@ -93,6 +93,11 @@
         "name": "auth",
         "signature": "(path?: string) => Value",
         "description": "Reference the authenticated identity (auth(\"id\") → $auth.id) → tag \"auth\"."
+      },
+      {
+        "name": "caught",
+        "signature": "(path?: \"code\" | \"message\" | \"name\" | \"result\") => Value",
+        "description": "Read the caught error inside an s.try_catch CATCH arm → tag \"trycatch\". Valid ONLY there — it reads empty in the try/finally arms and outside the statement. Those four fields are all the engine binds (result is the attached payload); bare caught() is the whole error record."
       },
       {
         "name": "env",

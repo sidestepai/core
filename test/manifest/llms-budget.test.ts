@@ -71,7 +71,15 @@ import { measureCommittedLlms } from "../../scripts/measure-llms.js";
 // meets it on `db.add` has every reason to read it as "insert only these
 // columns" — which would silently drop the rest of the row. The line exists to
 // say it narrows the RESPONSE, and to name the three statements that take it.
-const CEILING_TOKENS = 28_600;
+// Raised again from 28.6k for `caught(...)`, the catch arm's error scope. It is
+// the only way to read the thing a catch arm caught, and it is unguessable in
+// both directions: nothing in `s.try_catch({ try, catch })` hints that the error
+// is bound at all, so an agent writes a catch arm that cannot say what failed —
+// or reaches for `ref("error")`, which resolves to nothing and fails silently.
+// The scope rule has to ride along (it reads empty outside the catch arm), since
+// a value that is legal everywhere and correct in one place is the kind of thing
+// that gets copied into the try arm and quietly returns "".
+const CEILING_TOKENS = 28_700;
 
 describe("llms.txt token budget", () => {
   it("stays under the bloat-tripwire ceiling", () => {
