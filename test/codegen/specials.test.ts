@@ -633,6 +633,28 @@ function dbRoundTrip(statement: Statement): string {
 }
 
 describe("database family", () => {
+  it("round-trips enforceHiddenFields on all three statements that declare it", () => {
+    // A security-relevant flag: with it on, the engine refuses to auto-wire
+    // request inputs the endpoint never bound. The round trip is what proves the
+    // encoder and decoder agree — the flag reaches the source AND re-encodes to
+    // the same bytes.
+    for (const built of [
+      s.db.add({ table: USERS, data: [], enforceHiddenFields: true }),
+      s.db.edit({ table: USERS, fieldValue: c.int(1), data: [], enforceHiddenFields: true }),
+      s.db.add_or_edit({ table: USERS, fieldValue: c.int(1), data: [], enforceHiddenFields: true }),
+    ]) {
+      const source = dbRoundTrip(built);
+      expect(source).not.toContain("raw(");
+      expect(source).toContain("enforceHiddenFields: true");
+    }
+  });
+
+  it("says nothing about enforceHiddenFields when it is off", () => {
+    // Absent IS off, so recovering `enforceHiddenFields: false` would re-encode
+    // to an absent key and fail its own proof — it must simply not appear.
+    expect(dbRoundTrip(s.db.add({ table: USERS, data: [] }))).not.toContain("enforceHiddenFields");
+  });
+
   it("round-trips every single-row operation, eliding the default `id` lookup column", () => {
     // `fieldName` omitted means the primary key, so the decoder must NOT emit it
     // back — and must emit it when the author named a different column.

@@ -57,3 +57,33 @@ export const dbAddData = defineFunction({
   ],
   response: ref("created"),
 });
+
+/**
+ * Gate 4 — `enforceHiddenFields` closes the write side of the same door
+ * `output` closes on the read side.
+ *
+ * A row write AUTO-WIRES any column whose name matches an incoming request
+ * input. That is the convenience that makes `s.db.add({ table, data: [] })`
+ * work at all — and it is also how a caller can reach a column the endpoint
+ * never meant to accept, by posting a field nobody declared. Turning this on
+ * makes the engine consult the endpoint's input whitelist and skip auto-wiring
+ * anything outside it. Explicit `row`/`data` entries are unaffected: those are
+ * bindings you wrote.
+ *
+ * It is OFF by default, because that is the engine's default — so reach for it
+ * on any write whose table has a column a caller must not set (`role`,
+ * `is_admin`, `credits`).
+ */
+export const dbAddEnforceHiddenFields = defineFunction({
+  name: "ex_db_add_enforce_hidden_fields",
+  input: { email: input.email({ required: true }), name: input.text() },
+  stack: [
+    s.db.add({
+      table: users,
+      row: { email: inp("email"), name: inp("name") },
+      enforceHiddenFields: true,
+      as: "created",
+    }),
+  ],
+  response: ref("created"),
+});
