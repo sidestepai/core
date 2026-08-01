@@ -12,9 +12,9 @@
  *
  *   • `mvp:realtime_event`'s `context.auth.dbo_id`. The editor's form always
  *     materializes it (stored `0` when no auth table is bound); the SDK writes
- *     nothing. `RealtimeEvent::process` reads `$data["auth"]["dbo_id"] ?? 0`
- *     twice, so the two spellings are the same VALUE — this asks the separate
- *     question of which one comes back out.
+ *     nothing. The statement's runtime coalesces a missing `dbo_id` to `0` in
+ *     both places it reads one, so the two spellings are the same VALUE — this
+ *     asks the separate question of which one comes back out.
  *
  *   • a realtime CHANNEL trigger's `input[].default`. The engine's own trigger
  *     templates write `""` for every entry, and a current instance stores `null`

@@ -325,19 +325,16 @@ export function liveReturnSection(value: unknown): Record<string, unknown> | und
 /**
  * A REQUIRED schema descriptor's `default` is inert, in whichever spelling.
  *
- * `convertSchemaParamToConfig` opens with, unconditionally:
- *
- * ```php
- * if ($param["required"]) { $param["default"] = null; $param["hasDefault"] = false; }
- * ```
+ * The engine's schema-to-runtime conversion opens by discarding the default
+ * outright for any required entry — it overwrites it and clears the
+ * "has a default" flag, unconditionally, before any other rule runs.
  *
  * So the stored `default` is thrown away before anything reads it, and the
  * spellings found in the wild — `""` and `"0"` from the engine's own templates
  * and from this SDK, `null` from a current instance — are one unreachable member.
  *
- * It governs BOTH schema arrays, because the engine converts both through that
- * one function: `convertInputToConfig` for a query or trigger's `input`, and
- * `convertSchemaParamsToConfig($dbo, $params)` for a table's `schema`. Real
+ * It governs BOTH schema arrays, because the engine converts a query or
+ * trigger's `input` and a table's `schema` through that same one conversion. Real
  * workspaces store the two spellings side by side on the same required columns
  * (`id`/`name` as `"0"`/`""` in one workspace and `null` in another), and 82 of
  * 82 `.input[].default` verify-mismatch rows on a live sweep were required
@@ -347,10 +344,9 @@ export function liveReturnSection(value: unknown): Record<string, unknown> | und
  *
  * On an OPTIONAL entry the stored default is NOT discarded — `created_at`
  * defaulting to `now` is real and must survive — but `null` and `""` still
- * converge there, because the next two lines are `$param["default"] ??= ""`
- * (which turns a stored `null` into `""`) and then
- * `if ($param["nullable"] && in_array($param["default"], [null, "", []], true))
- * $param["default"] = null`. So across all three branches:
+ * converge there. The conversion's next step coalesces an absent-or-null
+ * default to `""`, and the step after that turns `""` (or `null`, or `[]`) back
+ * into `null` whenever the entry is nullable. So across all three branches:
  *
  * | entry | `null` becomes | `""` becomes |
  * |---|---|---|
@@ -379,9 +375,9 @@ export function liveReturnSection(value: unknown): Record<string, unknown> | und
  * collide with it.
  *
  * Evidenced three ways, which is what it takes to drop bytes:
- *   • `RealtimeEvent::process` reads `$data["auth"]["dbo_id"] ?? 0` — twice —
- *     so absent and `0` are literally the same value in the engine's own code,
- *     and it then gates the whole row lookup behind `if ($dbo_id)`;
+ *   • the statement's own runtime coalesces a missing `dbo_id` to `0` — in both
+ *     places it reads one — so absent and `0` are literally the same value to
+ *     it, and it then gates the whole row lookup on that id being truthy;
  *   • the statement's XanoScript schema declares `auth_table?=""`, so an
  *     unbound table is the declared default rather than a missing argument; and
  *   • a live round trip (`scripts/probe-persisted-defaults.ts`) deployed the
@@ -963,11 +959,11 @@ const EMPTY_CONTEXT_FILL: ReadonlyMap<string, { tag?: string; named: boolean }> 
   // twice on the engine, both times on the SCALAR `name`:
   //   • the statement's own XanoScript schema declares `name?='': context.name`
   //     — the default for an absent name IS the empty string; and
-  //   • `UpdateVarBase::getContextSchema` declares `name: text` and runs it
-  //     through the same `XS::optional` pass that licenses every entry here.
+  //   • the shared base class declares `name` as a plain `text` member and runs
+  //     it through the same optional-schema pass that licenses every entry here.
   //
   // That second point is exactly where the loops failed (see
-  // {@link LOOP_EMPTY_ITERAND}): `XS::optional` materializes a SCALAR member but
+  // {@link LOOP_EMPTY_ITERAND}): that pass materializes a SCALAR member but
   // defaults a NESTED object to the literal string `"{}"`. `name` is a scalar,
   // `list`/`cnt` are not, and the shape is what decides. The engine's own
   // statement-transform corpus stores `{"context":{}}` for `mvp:array_shift`.
@@ -1253,7 +1249,7 @@ export function normalize<T>(value: T): T {
       // `null` is the THIRD spelling of no-context, alongside the `[]` and `{}`
       // above. It does not appear anywhere in the 177-project corpus — that
       // instance is old — and turned up on a current one under `mvp:create_auth`,
-      // whose `getContextSchema()` returns the empty list outright: the statement
+      // whose declared context schema is empty outright: the statement
       // has no context to hold, so every empty spelling of it is the same
       // nothing. Canonicalize to `{}` with the others, or the statement loses its
       // readability to a key the engine never reads.

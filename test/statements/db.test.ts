@@ -482,7 +482,7 @@ describe("db row writes — enforceHiddenFields", () => {
   });
 
   it("covers all three statements the engine declares it on", () => {
-    // Add.php, EditBy.php and AddOrEditBy.php — and no others.
+    // The three row writes that declare it — and no others.
     for (const built of [
       dbAdd({ table: T, data: [], enforceHiddenFields: true }),
       dbEdit({ table: T, fieldValue: c.int(1), data: [], enforceHiddenFields: true }),

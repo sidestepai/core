@@ -302,7 +302,7 @@ describe("dispatch", () => {
  *
  * The 177-project corpus holds only `{}` and `[]`, both long canonicalized. A
  * sweep of a CURRENT instance turned up `null` on `mvp:create_auth`, whose
- * `getContextSchema()` returns the empty list outright — the statement has no
+ * declared context schema is empty outright — the statement has no
  * context to hold, so every empty spelling of it is the same nothing.
  */
 describe("a null context is the third spelling of empty", () => {

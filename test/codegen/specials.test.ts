@@ -1545,10 +1545,10 @@ describe("miscellaneous specials", () => {
 
   it("reads the editor's `dbo_id: 0` as the auth table the SDK omits", () => {
     // The editor's form materializes both auth members always and writes 0 for
-    // "no table bound"; the SDK writes nothing. The engine reads
-    // `$data["auth"]["dbo_id"] ?? 0`, and a live round trip showed it does not
-    // materialize the member on the way in — so the two are one state, and the
-    // stored spelling must not cost the statement its readability.
+    // "no table bound"; the SDK writes nothing. The engine coalesces a missing
+    // id to 0, and a live round trip showed it does not materialize the member
+    // on the way in — so the two are one state, and the stored spelling must not
+    // cost the statement its readability.
     const stored = encodeStatement(
       s.api.realtime_event({ channel: c.text("room"), data: ref("payload"), authId: c.int(0) }),
     ) as unknown as { context: { auth: Record<string, unknown> } };

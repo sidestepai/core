@@ -8,15 +8,14 @@
  * exactly the situation the fixture rules warn about: modelling from that would
  * be inventing an API.
  *
- * The engine DECLARES every shape — `script/kind/schema/{core/microservice,
- * component/{deployment,container,container_volume,ingress,chart,
- * microservice_config,microservice_volume}}.yaml` — so this probe is not
- * discovery, it is CONFIRMATION: author each declared block through the real
- * meta API, export the workspace, and read the JSON the engine persisted.
+ * The engine DECLARES every one of these shapes in its own schema catalog, so
+ * this probe is not discovery, it is CONFIRMATION: author each declared block
+ * through the real meta API, export the workspace, and read the JSON the engine
+ * persisted.
  *
- * Creating a microservice ROW does not deploy a container — `mvp:meta_add`
- * writes the row and deployment is a separate action — so this costs an
- * ephemeral tenant and no compute.
+ * Creating a microservice ROW does not deploy a container — the create writes
+ * the row and deployment is a separate action — so this costs an ephemeral
+ * tenant and no compute.
  *
  * The two questions that decide the design:
  *
@@ -25,8 +24,8 @@
  *      the workspace EXPORT carries it, a modelled microservice would write Helm
  *      values (documented as possibly holding secrets) into a committed tree.
  *   2. `registry_auth.dockerconfigjson` — a docker credential, never part of
- *      XanoScript, but on the row and NOT blacklisted by `stripExport`. Same
- *      question, higher stakes.
+ *      XanoScript, but on the row and not stripped on export. Same question,
+ *      higher stakes.
  *
  * Run: npx tsx scripts/probe-microservice-shapes.ts   (reads .env like the other probes)
  */

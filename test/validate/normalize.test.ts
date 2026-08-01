@@ -1027,19 +1027,18 @@ describe("validate normalizer — name-keyed input ordering", () => {
 /**
  * A REQUIRED input's `default` — an unreachable member with two spellings.
  *
- * `convertSchemaParamToConfig` opens with, unconditionally:
- *
- *     if ($param["required"]) { $param["default"] = null; $param["hasDefault"] = false; }
- *
- * so on a required input the stored `default` is discarded before anything reads
- * it. Both spellings occur in the wild — `""` from the engine's own trigger
- * templates and from this SDK, `null` from whatever wrote the realtime triggers
- * on a current instance — and a live sweep found 82 `.input[].default` mismatch
+ * The engine's schema-to-runtime conversion opens by discarding the default
+ * outright for any required entry — overwriting it and clearing the "has a
+ * default" flag — so on a required input the stored `default` is gone before
+ * anything reads it. Both spellings occur in the wild — `""` from the engine's
+ * own trigger templates and from this SDK, `null` from whatever wrote the
+ * realtime triggers on a current instance — and a live sweep found 82 `.input[].default` mismatch
  * rows, every one of them a required entry.
  *
- * The scope is the whole finding. The next lines of that same function are
- * `$param["default"] ??= ""` and a nullable branch that sets `null`, so on an
- * OPTIONAL input the two spellings can genuinely differ.
+ * The scope is the whole finding. The conversion's later steps coalesce an
+ * absent-or-null default to `""` and then, for a nullable entry, back to `null`
+ * — so the two spellings converge on an optional input too, while a REAL
+ * default survives.
  */
 describe("validate normalizer — a required input's inert default", () => {
   const entry = (over: Record<string, unknown>) => ({
@@ -1052,7 +1051,7 @@ describe("validate normalizer — a required input's inert default", () => {
 
   it("reads them as one state on an OPTIONAL input too", () => {
     // The optional branch does not discard the default, but it still converges
-    // the two spellings: `$param["default"] ??= ""` turns a stored null into "",
+    // the two spellings: the conversion coalesces a stored null to "",
     // and the nullable branch then turns "" back into null. Either way both
     // arrive at the same value.
     for (const over of [{ required: false, nullable: true }, { required: false, nullable: false }]) {
@@ -1099,8 +1098,8 @@ describe("validate normalizer — a required input's inert default", () => {
   });
 
   it("treats a table COLUMN the same way, because the engine does", () => {
-    // `convertSchemaParamsToConfig($dbo, $params)` runs a table's columns through
-    // the very same function, so a REQUIRED column's default is discarded too.
+    // A table's columns run through the very same conversion, so a REQUIRED
+    // column's default is discarded too.
     // Two real workspaces store the two spellings on the same required columns —
     // `id`/`name` as `"0"`/`""` in one and `null` in the other.
     const table = (d: unknown) => ({ schema: [{ name: "id", type: "int", required: true, default: d }] });
