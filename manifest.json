@@ -8,8 +8,8 @@
       "total": 30
     },
     "statements": {
-      "implemented": 216,
-      "total": 216
+      "implemented": 215,
+      "total": 215
     },
     "filters": {
       "typed": 129,
@@ -3945,13 +3945,6 @@
           "optional": true
         }
       ]
-    },
-    {
-      "surface": "service.function.run",
-      "storedName": "mvp:function",
-      "sPath": "service.function.run",
-      "registered": true,
-      "declarative": false
     },
     {
       "surface": "stack|expect.to_be_defined",

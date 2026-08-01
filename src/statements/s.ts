@@ -28,7 +28,6 @@ import {
   addonCall,
   actionCall,
   actionPackageCall,
-  serviceFunctionRun,
   workflowTestCall,
 } from "./special/calls.js";
 import {
@@ -112,7 +111,6 @@ export const s = {
   // `api.request`/`api.microservice` (and `stream.from_request`/`webflow.request`
   // below) are typed hand-authored overrides of their generated factories.
   function: { run: functionRun, call: functionCall },
-  service: { function: { run: serviceFunctionRun } },
   action: { call: actionCall, package: { call: actionPackageCall } },
   workflow_test: { call: workflowTestCall },
   api: { ...generated.api, call: apiCall, realtime_event: realtimeEvent, request: apiRequest, microservice },

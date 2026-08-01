@@ -21,6 +21,8 @@ import {
   middlewareCall,
   addonCall,
 } from "../../src/statements/special/calls.js";
+import { aiAgentRun } from "../../src/statements/special/ai-cloud.js";
+import type { AsyncMode } from "../../src/statements/special/async-runtime.js";
 import { encodeStatement } from "../../src/statements/statement.js";
 import { deriveGuid } from "../../src/refs/guid.js";
 import { Xano } from "../../src/workspace/xano.js";
@@ -164,5 +166,34 @@ describe("an async function call's runtime block", () => {
     // …but a dedicated block keeps every one of them, because they are live there.
     const dedicated = { runtime: { mode: "async-dedicated", cpu: "250m", memory: "1Gi", timeout: "60", max_retry: "2" } };
     expect(normalize(dedicated)).toEqual(dedicated);
+  });
+});
+
+describe("the async runtime is one model, shared by both call surfaces", () => {
+  it("gives ai.agent.run the same block function.run writes", () => {
+    // These drifted before they shared a type. `ai.agent.run` took
+    // `runtimeMode: "shared" | "dedicated"` — neither of which is an engine
+    // mode, so `{mode: "dedicated"}` landed on the converter's default arm and
+    // ran SYNCHRONOUSLY. Asking for a dedicated async agent silently got a
+    // blocking call and no error. One model is what makes that unrepresentable.
+    const fn = encodeStatement(
+      functionRun({ fn: { name: "f" }, runtime: { mode: "async-shared" } }),
+    ) as { runtime: unknown };
+    const agent = encodeStatement(
+      aiAgentRun({ agent: { name: "asst" }, runtime: { mode: "async-shared" } }),
+    ) as { runtime: unknown };
+    expect(agent.runtime).toEqual(fn.runtime);
+    expect(agent.runtime).toEqual({ mode: "async-shared" });
+  });
+
+  it("only accepts modes the engine actually switches on", () => {
+    // A compile-time guarantee, asserted here so the intent survives a refactor:
+    // `AsyncMode` is the engine's own vocabulary, so the old `"dedicated"`
+    // spelling cannot be written at all.
+    const modes: AsyncMode[] = ["async-shared", "async-dedicated"];
+    expect(modes).toHaveLength(2);
+    // @ts-expect-error `"dedicated"` is not an engine mode — it ran synchronously.
+    const bad: AsyncMode = "dedicated";
+    expect(bad).toBe("dedicated");
   });
 });

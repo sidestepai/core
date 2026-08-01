@@ -23,13 +23,16 @@
  * *type*: function.run/call → "function", api.call → "query" (an API endpoint
  * is a `query` object), and the rest map name-for-name.
  *
- * Scope: `service.function.run` (cross-workspace shared functions via
- * `service.guid`) and async `runtime` are deferred. api.call now emits the
- * `headers`/`auth` blocks (verb/name/api_group are engine-derived, not stored).
+ * Scope: connected-service functions are OUT, permanently — they were never
+ * released in Xano, so no engine produces the shape and no workspace can hold
+ * one. `mvp:function` therefore has exactly one authoring surface, storing the
+ * default payload. Async execution IS modelled (see {@link AsyncRuntime});
+ * api.call emits the `headers`/`auth` blocks (verb/name/api_group are
+ * engine-derived, not stored).
  *
  * @TODO(byte-verify): `function.run` (mvp:function) and `api.call` (context.token
  *   confirmed tagged) are golden-verified. Still modeled/unverified:
- *   - `workspace_run_*` (cross-workspace service.function.run) — deferred.
+ *   - `workspace_run_*` (cross-workspace calls) — no golden.
  *   - `workflow_test` → context.{datasource,id} — decode-accurate, no golden.
  *   - action / action_package — EXCLUDED from byte-verify: they need an
  *     action-identity model first (action id currently resolves via the "function"
@@ -42,6 +45,8 @@ import type { Value } from "../../values/value.js";
 import { resolveRef } from "../../refs/guid.js";
 import type { ObjectRef } from "../../refs/guid.js";
 import { coerceScalar } from "./coerce.js";
+import { encodeAsyncRuntime } from "./async-runtime.js";
+import type { AsyncRuntime } from "./async-runtime.js";
 import type { InputValue } from "./coerce.js";
 
 /** A call/agent `{name: value}` input map — raw scalar literals coerce to constants. */
@@ -77,60 +82,6 @@ type FnRef = ObjectRef | null;
 /** A target function's stored id — `""` for an unbound one (see {@link FnRef}). */
 function fnId(fn: FnRef): string {
   return fn === null ? "" : resolveRef("function", fn);
-}
-
-/**
- * How a call executes: synchronously (the default), or in the background on
- * shared or dedicated async workers.
- *
- * Stored as a TOP-LEVEL `runtime` block on the stack item — not inside
- * `context`. The engine switches on `runtime.mode` and treats every value
- * outside this union (including the absent block and the editor's explicit
- * `"disabled"`) as synchronous.
- *
- * Async is not a performance knob — it changes what the statement returns.
- * `mvp:function` is rewritten to `mvp:async_function`, so the call no longer
- * yields the function's result; it dispatches and continues. Pair it with
- * `s.await(...)` to collect results.
- */
-export type AsyncMode = "async-shared" | "async-dedicated";
-
-/** Background execution settings for a call. */
-export interface AsyncRuntime {
-  /**
-   * `"async-shared"` runs on the instance's pooled async workers and reads no
-   * other member here. `"async-dedicated"` reserves its own resources and is
-   * the only mode for which `cpu`/`memory`/`timeout`/`maxRetry` are read.
-   */
-  mode: AsyncMode;
-  /** Dedicated only. Kubernetes CPU request — e.g. `"100m"`, `"250m"`, `"500m"`. */
-  cpu?: string;
-  /** Dedicated only. Kubernetes memory request — e.g. `"256Mi"`, `"512Mi"`, `"1Gi"`. */
-  memory?: string;
-  /** Dedicated only. Seconds before the run is abandoned. */
-  timeout?: string | number;
-  /** Dedicated only. Retries after a failed run. */
-  maxRetry?: string | number;
-}
-
-/**
- * The stored `runtime` block, or `undefined` for a synchronous call.
- *
- * At `async-shared` the engine builds its runtime config from `mode` ALONE, so
- * the resource members are not emitted — the editor writes them blank at that
- * mode and they are inert. At `async-dedicated` all four are read and are
- * emitted at whatever was authored.
- */
-function encodeAsyncRuntime(runtime?: AsyncRuntime): Record<string, unknown> | undefined {
-  if (!runtime) return undefined;
-  if (runtime.mode !== "async-dedicated") return { mode: runtime.mode };
-  return {
-    mode: runtime.mode,
-    cpu: runtime.cpu ?? "",
-    memory: runtime.memory ?? "",
-    timeout: runtime.timeout === undefined ? "" : String(runtime.timeout),
-    max_retry: runtime.maxRetry === undefined ? "" : String(runtime.maxRetry),
-  };
 }
 
 export interface FunctionRunArgs {
@@ -293,29 +244,12 @@ export function addonCall(args: AddonCallArgs): Statement {
 }
 
 // ---------------------------------------------------------------------------
-// Call-family tail (structural — no persisted fixture yet). `service.function.run`
-// shares the `mvp:function` stored name with `function.run`; it is reachable as a
-// distinct authoring surface but adds no new registry entry.
+// Call-family tail (structural — no persisted fixture yet).
+//
+// There is deliberately no `service.function.run` here. Connected-service
+// functions were never released, so nothing produces that shape and nothing can
+// call one — `mvp:function` has a single surface and the default payload above.
 // ---------------------------------------------------------------------------
-
-export interface ServiceFunctionRunArgs {
-  /** The target function (def handle or name) in a connected service. */
-  fn: FnRef;
-  as?: string;
-  input?: CallInput;
-  /** Execution mode (`"shared"` default). */
-  runtimeMode?: string;
-}
-
-/** `service.function.run <fn>` — run a connected-service function (`mvp:function`). */
-export function serviceFunctionRun(args: ServiceFunctionRunArgs): Statement {
-  return {
-    name: "mvp:function",
-    context: { function: { id: fnId(args.fn) }, runtime_mode: args.runtimeMode ?? "shared" },
-    as: args.as,
-    input: encodeCallInput(args.input),
-  };
-}
 
 export interface ActionCallArgs {
   /** The action's name. */

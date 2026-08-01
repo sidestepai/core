@@ -4,9 +4,9 @@
  * SDK metadata (it drives the agent-grounding manifest and the coverage report),
  * so it lives in `src` rather than the test tree.
  *
- * Two surface-pairs share a stored name (so the catalog has fewer unique stored
- * names than surfaces): `function.run`/`service.function.run` → `mvp:function`, and
- * `util.get_raw_input`/`util.get_input` → `mvp:get_input`.
+ * One surface-pair shares a stored name (so the catalog has one fewer unique
+ * stored name than surfaces): `util.get_raw_input`/`util.get_input` →
+ * `mvp:get_input`.
  *
  * `raw()` (from `@sidestep/core/codegen`) is deliberately **not** in this catalog
  * and not under `s.`: it is a verbatim passthrough for stored statements the
@@ -168,7 +168,6 @@ export const STATEMENT_SURFACES: ReadonlyArray<readonly [string, string]> = [
   ["security.jws_encode", "mvp:crypto_jws_encode2"],
   ["security.random_bytes", "mvp:random_bytes"],
   ["security.random_number", "mvp:rand"],
-  ["service.function.run", "mvp:function"],
   ["stack|expect.to_be_defined", "mvp:test_expect_to_be_defined"],
   ["stack|expect.to_be_empty", "mvp:test_expect_to_be_empty"],
   ["stack|expect.to_be_false", "mvp:test_expect_to_be_false"],

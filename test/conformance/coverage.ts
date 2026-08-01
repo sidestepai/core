@@ -5,9 +5,9 @@
  * during research (24 object kinds, 214 statement schema files).
  *
  * Statements are counted by **authoring surface** = one entry per engine
- * statement schema file. Two file-pairs share a stored name (so the catalog has
- * fewer unique stored names than files): `function.run`/`service.function.run`
- * → `mvp:function`, and `util.get_raw_input`/`util.get_input` → `mvp:get_input`.
+ * statement schema file. One file-pair shares a stored name (so the catalog has
+ * one fewer unique stored name than files): `util.get_raw_input`/`util.get_input`
+ * → `mvp:get_input`.
  * A surface is "covered" when its stored name has a registered factory and the
  * surface is reachable through the `s` authoring tree.
  */
