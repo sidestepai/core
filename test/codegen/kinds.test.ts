@@ -151,6 +151,9 @@ describe("kind decoders — engine-verified goldens", () => {
     ["tool", "tool", "ex_kind_search_tool", "toolset/ex_kind_search_tool.json"],
     ["middleware", "middleware", "ex_kind_rate_limit", "middleware/ex_kind_rate_limit.json"],
     ["addon", "addon", "ex_kind_author_addon", "addon/ex_kind_author_addon.json"],
+    // Captured through the real meta API on a disposable tenant, not hand-minted.
+    ["microservice (builtin)", "microservice", "ex_kind_echo_service", "microservice/ex_kind_echo_service.json"],
+    ["microservice (helm)", "microservice", "ex_kind_helm_service", "microservice/ex_kind_helm_service.json"],
   ];
 
   let regenerated: Bundle;

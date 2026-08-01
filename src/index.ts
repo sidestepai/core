@@ -357,6 +357,24 @@ export type { QueryDef, QueryHandle, QueryXdo, HttpVerb, SearchParamValue } from
 export { apiGroup, apiGroupKind, encodeApiGroup } from "./kinds/api-group.js";
 export type { ApiGroupDef, ApiGroupXdo, CorsConfig } from "./kinds/api-group.js";
 
+// --- microservice: a container workload deployed alongside the workspace ---
+export { microservice, microserviceKind, encodeMicroservice } from "./kinds/microservice.js";
+export type {
+  MicroserviceDef,
+  MicroserviceXdo,
+  MicroserviceDeployment,
+  MicroserviceContainer,
+  MicroserviceIngress,
+  MicroserviceConfig,
+  MicroserviceVolume,
+  MicroserviceChart,
+  MicroserviceRegistryAuth,
+  ContainerPort,
+  ContainerResources,
+  ContainerEnv,
+  ContainerVolume,
+} from "./kinds/microservice.js";
+
 // --- realtime: realtime_server -> channel -> message ---
 export {
   realtimeServer,

@@ -297,6 +297,52 @@ describe("dispatch", () => {
  * `const:decimal`, `const:array` and `input` each behave identically to the
  * filled form.
  */
+/**
+ * `context: null` — the third spelling of no-context.
+ *
+ * The 177-project corpus holds only `{}` and `[]`, both long canonicalized. A
+ * sweep of a CURRENT instance turned up `null` on `mvp:create_auth`, whose
+ * declared context schema is empty outright — the statement has no
+ * context to hold, so every empty spelling of it is the same nothing.
+ */
+describe("a null context is the third spelling of empty", () => {
+  it("compares equal to the empty spellings the SDK and the engine write", () => {
+    const withNull = normalize({ name: "mvp:create_auth", context: null });
+    expect(withNull).toEqual(normalize({ name: "mvp:create_auth", context: {} }));
+    expect(withNull).toEqual(normalize({ name: "mvp:create_auth", context: [] }));
+  });
+
+  it("does not cost a statement its readability", () => {
+    // A real `create_auth`, whose four arguments all ride `input[]` — exactly the
+    // statement a current engine stored `context: null` on.
+    const stored = {
+      name: "mvp:create_auth",
+      as: "token",
+      context: null,
+      input: [
+        { name: "id", tag: "auth", value: "id", filters: [] },
+        { name: "dbtable", tag: "const", value: "", filters: [] },
+      ],
+    };
+    const source = printExpr(decodeStatement(new DecodeContext(), REFS, stored as never));
+    expect(source).not.toContain("raw(");
+    expect(source).toContain("s.security.create_auth_token(");
+  });
+
+  it("still fills a statement whose context IS its value", () => {
+    // The guard: `null` flows into the same fill as `{}`/`[]`, so a statement
+    // that needs members still gets them rather than an empty object.
+    const source = printExpr(
+      decodeStatement(new DecodeContext(), REFS, {
+        name: "mvp:text_append",
+        context: null,
+      } as never),
+    );
+    expect(source).not.toContain("raw(");
+    expect(source).toContain("s.text.append(");
+  });
+});
+
 describe("an empty context is the members the engine fills in", () => {
   /** The stored shape a workspace holds for one of these. */
   function storedEmpty(name: string): StackItemXdo {
@@ -321,6 +367,11 @@ describe("an empty context is the members the engine fills in", () => {
     "mvp:setheader", // input
     "mvp:die", // input, unnamed
     "mvp:sleep", // const:int, unnamed
+    // No operand at all — the fill is the name alone. The engine's own schema
+    // spells the default (`name?='': context.name`), and its statement-transform
+    // corpus stores this exact `{"context":{}}` shape.
+    "mvp:array_shift",
+    "mvp:array_pop",
   ]) {
     it(`decodes ${name} instead of falling back to raw()`, () => {
       const stored = storedEmpty(name);
@@ -331,10 +382,12 @@ describe("an empty context is the members the engine fills in", () => {
   }
 
   it("keeps the fill in step with each spec's actual rules", () => {
-    // The self-guard. `array_pop`/`array_shift` USE no value — their specs route
-    // no spread field — so filling one invents members the encoder can never
-    // produce, and the comparison then demands them forever. That shipped once
-    // and this is what catches it next time.
+    // The self-guard: a fill must be exactly the members the encoder writes.
+    // `array_pop`/`array_shift` USE no value — their specs route no spread field
+    // — so filling one invents members the encoder can never produce and the
+    // comparison then demands them forever. That shipped once. They still belong
+    // in the table for their `name`, which is why the rule is member-for-member
+    // rather than "must route a spread".
     let covered = 0;
     for (const spec of GENERATED_SPECS) {
       const stored = storedEmpty(spec.name);
@@ -342,8 +395,14 @@ describe("an empty context is the members the engine fills in", () => {
       if (!fill) continue; // not in the table — nothing to keep in step
       covered++;
 
+      // The value members ride together, and exactly when a spread is routed.
       const hasSpread = spec.rules.some((r) => r.route.kind === "context-spread");
-      expect(hasSpread, `${spec.name} is filled but routes no spread value`).toBe(true);
+      for (const member of ["value", "tag", "filters"]) {
+        expect(
+          member in fill,
+          `${spec.name} fill/spec disagree on \`${member}\``,
+        ).toBe(hasSpread);
+      }
 
       // `name` belongs in the fill exactly when the spec routes one, or the
       // comparison demands a member the encoder never writes.

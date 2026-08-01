@@ -633,6 +633,28 @@ function dbRoundTrip(statement: Statement): string {
 }
 
 describe("database family", () => {
+  it("round-trips enforceHiddenFields on all three statements that declare it", () => {
+    // A security-relevant flag: with it on, the engine refuses to auto-wire
+    // request inputs the endpoint never bound. The round trip is what proves the
+    // encoder and decoder agree — the flag reaches the source AND re-encodes to
+    // the same bytes.
+    for (const built of [
+      s.db.add({ table: USERS, data: [], enforceHiddenFields: true }),
+      s.db.edit({ table: USERS, fieldValue: c.int(1), data: [], enforceHiddenFields: true }),
+      s.db.add_or_edit({ table: USERS, fieldValue: c.int(1), data: [], enforceHiddenFields: true }),
+    ]) {
+      const source = dbRoundTrip(built);
+      expect(source).not.toContain("raw(");
+      expect(source).toContain("enforceHiddenFields: true");
+    }
+  });
+
+  it("says nothing about enforceHiddenFields when it is off", () => {
+    // Absent IS off, so recovering `enforceHiddenFields: false` would re-encode
+    // to an absent key and fail its own proof — it must simply not appear.
+    expect(dbRoundTrip(s.db.add({ table: USERS, data: [] }))).not.toContain("enforceHiddenFields");
+  });
+
   it("round-trips every single-row operation, eliding the default `id` lookup column", () => {
     // `fieldName` omitted means the primary key, so the decoder must NOT emit it
     // back — and must emit it when the author named a different column.
@@ -1519,6 +1541,43 @@ describe("miscellaneous specials", () => {
         authId: auth("id"),
       }),
     );
+  });
+
+  it("reads the editor's `dbo_id: 0` as the auth table the SDK omits", () => {
+    // The editor's form materializes both auth members always and writes 0 for
+    // "no table bound"; the SDK writes nothing. The engine coalesces a missing
+    // id to 0, and a live round trip showed it does not materialize the member
+    // on the way in — so the two are one state, and the stored spelling must not
+    // cost the statement its readability.
+    const stored = encodeStatement(
+      s.api.realtime_event({ channel: c.text("room"), data: ref("payload"), authId: c.int(0) }),
+    ) as unknown as { context: { auth: Record<string, unknown> } };
+    stored.context.auth = { dbo_id: 0, ...stored.context.auth };
+
+    const ctx = new DecodeContext();
+    const source = printExpr(decodeStatement(ctx, DB_REFS, stored as never));
+    expect(source).not.toContain("raw(");
+    expect(source).toContain("s.api.realtime_event(");
+    // Recovered as unbound — never as a table, and never as a literal 0.
+    expect(source).not.toContain("authTable");
+    expect(source).not.toContain("dbo_id");
+  });
+
+  it("still reads a BOUND auth table rather than dropping it", () => {
+    // The guard on the rule above: it fires on `0` alone, so a real table id
+    // must survive. Without this, "unbound" would quietly mean "any".
+    const stored = encodeStatement(
+      s.api.realtime_event({
+        channel: c.text("room"),
+        data: ref("payload"),
+        authTable: USERS,
+        authId: auth("id"),
+      }),
+    ) as unknown as { context: { auth: Record<string, unknown> } };
+    // A bound table rides as a GUID, so it can never equal the `0` sentinel.
+    expect(stored.context.auth["dbo_id"]).toBe(USERS.guid);
+    const normalized = normalize(stored) as { context: { auth: Record<string, unknown> } };
+    expect(normalized.context.auth["dbo_id"]).toBe(stored.context.auth["dbo_id"]);
   });
 
   it("round-trips a realtime publish, minimal and full", () => {

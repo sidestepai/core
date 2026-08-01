@@ -44,10 +44,10 @@ describe("manifest", () => {
 
   it("reports honest coverage", () => {
     expect(m.coverage.statements).toEqual({ implemented: TOTAL_STATEMENTS, total: TOTAL_STATEMENTS });
-    // 15 published kinds — the realtime family (server/channel/message) shipped,
-    // so nothing is withheld any more.
+    // 16 published kinds — the realtime family (server/channel/message) shipped,
+    // so nothing is withheld any more, and `microservice` joined them.
     // 30 = the engine catalog after the realtime kinds landed upstream (was 24).
-    expect(m.coverage.objectKinds).toEqual({ implemented: 15, total: 30 });
+    expect(m.coverage.objectKinds).toEqual({ implemented: 16, total: 30 });
   });
 
   it("every statement sPath resolves to a real callable leaf under s", () => {

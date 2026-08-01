@@ -162,6 +162,27 @@ describe("verifyBundles", () => {
     expect(result.mismatches[0]).toMatchObject({ payloadKey: "partial", name: "(section)" });
   });
 
+  it("reports an UNMODELED SECTION's objects as omissions, not mismatches", () => {
+    // Invariant 8: an omission and a mismatch must never both fire for one thing.
+    // A section this SDK models no kind for is already reported on the decode
+    // side; leaving it out of the omission table ALSO made every object in it
+    // come back as "missing from the generated tree", so a workspace whose pull
+    // was entirely correct read as a round-trip failure. `microservice` was that
+    // section — it is modelled now — and this is what stops the next one being it.
+    const source = { payload: { service: [{ name: "some-service" }] } };
+    const regenerated = { payload: {} };
+
+    const result = verifyBundles(source, regenerated);
+    expect(result.ok).toBe(true);
+    expect(result.mismatches).toEqual([]);
+    expect(result.omissions).toHaveLength(1);
+    expect(result.omissions[0]).toMatchObject({
+      payloadKey: "service",
+      name: "some-service",
+      reason: "unmodeled",
+    });
+  });
+
   it("reports a deliberately-dropped workspace secret as an omission, not a mismatch", () => {
     // The whole point of the split: declining to write an instance's crypto
     // material into a committed source tree is correct behavior, so it must not

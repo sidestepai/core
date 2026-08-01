@@ -67,7 +67,9 @@ export function decodeBundle(bundle: { payload: Record<string, unknown> }): Gene
     if (Array.isArray(entries) && entries.length > 0) {
       ctx.problem(
         "unsupported-section",
-        `payload.${section} has ${entries.length} entr${entries.length === 1 ? "y" : "ies"} that are not carried into the generated tree — ${policy.detail}`,
+        `payload.${section} has ${entries.length} ${
+          entries.length === 1 ? "entry that is" : "entries that are"
+        } not carried into the generated tree — ${policy.detail}`,
       );
     }
   }

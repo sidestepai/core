@@ -323,6 +323,83 @@ export function liveReturnSection(value: unknown): Record<string, unknown> | und
 }
 
 /**
+ * A REQUIRED schema descriptor's `default` is inert, in whichever spelling.
+ *
+ * The engine's schema-to-runtime conversion opens by discarding the default
+ * outright for any required entry — it overwrites it and clears the
+ * "has a default" flag, unconditionally, before any other rule runs.
+ *
+ * So the stored `default` is thrown away before anything reads it, and the
+ * spellings found in the wild — `""` and `"0"` from the engine's own templates
+ * and from this SDK, `null` from a current instance — are one unreachable member.
+ *
+ * It governs BOTH schema arrays, because the engine converts a query or
+ * trigger's `input` and a table's `schema` through that same one conversion. Real
+ * workspaces store the two spellings side by side on the same required columns
+ * (`id`/`name` as `"0"`/`""` in one workspace and `null` in another), and 82 of
+ * 82 `.input[].default` verify-mismatch rows on a live sweep were required
+ * entries. It also explains a finding an earlier session reached separately: a
+ * `default: "0"` on a required column is an "inert leftover the engine ignores",
+ * and this is the line that ignores it.
+ *
+ * On an OPTIONAL entry the stored default is NOT discarded — `created_at`
+ * defaulting to `now` is real and must survive — but `null` and `""` still
+ * converge there. The conversion's next step coalesces an absent-or-null
+ * default to `""`, and the step after that turns `""` (or `null`, or `[]`) back
+ * into `null` whenever the entry is nullable. So across all three branches:
+ *
+ * | entry | `null` becomes | `""` becomes |
+ * |---|---|---|
+ * | required | `null` | `null` |
+ * | optional, not nullable | `""` | `""` |
+ * | optional, nullable | `null` | `null` |
+ *
+ * The two spellings are therefore one state everywhere, and only a REQUIRED
+ * entry additionally collapses a real value like `"0"`.
+ *
+ * Applied to the DESCRIPTOR, not to the array holding it: the field decoder
+ * compares a lone descriptor, so an array-keyed rule missed every table column
+ * and query input this was written for while still passing its own unit tests.
+ */
+
+/**
+ * A realtime event's `auth` block with an UNBOUND auth table dropped, or
+ * `undefined` when there is nothing to drop.
+ *
+ * `mvp:realtime_event` scopes an event to one auth row via
+ * `context.auth.{dbo_id,row_id}`. The editor's form materializes both members
+ * always and writes `dbo_id: 0` when no table is bound; the SDK omits the member
+ * entirely when no `authTable` is given. `0` is not a table — this is the same
+ * "an internal row id is not portable identity" that makes `guid 0` unresolvable
+ * elsewhere — so the two spellings are one state, and a bound table can never
+ * collide with it.
+ *
+ * Evidenced three ways, which is what it takes to drop bytes:
+ *   • the statement's own runtime coalesces a missing `dbo_id` to `0` — in both
+ *     places it reads one — so absent and `0` are literally the same value to
+ *     it, and it then gates the whole row lookup on that id being truthy;
+ *   • the statement's XanoScript schema declares `auth_table?=""`, so an
+ *     unbound table is the declared default rather than a missing argument; and
+ *   • a live round trip (`scripts/probe-persisted-defaults.ts`) deployed the
+ *     SDK's omitted spelling into a fresh tenant and exported it back
+ *     unchanged — the engine does NOT materialize the member on the way in, so
+ *     omitting it cannot drift a deploy → pull cycle.
+ *
+ * Keyed on the SHAPE, not the name: an `auth` block pairing a numeric `dbo_id`
+ * with a `row_id`, and only when the id is `0`. `dbo_id` appears exactly once in
+ * the 177-project corpus and only here, but scoping by shape is what keeps that
+ * true if it ever appears somewhere it means something else.
+ */
+export function unboundAuthTable(value: unknown): Record<string, unknown> | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const block = value as Record<string, unknown>;
+  if (block.dbo_id !== 0 || !("row_id" in block)) return undefined;
+  const rest = { ...block };
+  delete rest["dbo_id"];
+  return rest;
+}
+
+/**
  * The dead `context.return` branches that carry authored configuration — a
  * non-empty `sort`/`group`/`eval`/`index`, or paging switched on. Used to report
  * what {@link liveReturnSection} drops; a branch holding only the editor's
@@ -864,23 +941,37 @@ export function clearLocalDboRefs<T>(value: T, cleared?: Set<string>): T {
  * workspace that stored `{}` re-exports as the EXPLICIT form — the bytes change,
  * deliberately, and the live probe is what licenses changing them at all.
  */
-const EMPTY_CONTEXT_FILL: ReadonlyMap<string, { tag: string; named: boolean }> = new Map([
+const EMPTY_CONTEXT_FILL: ReadonlyMap<string, { tag?: string; named: boolean }> = new Map([
   // Its name rides the envelope `as`, so the context is the value alone.
   ["mvp:set_var", { tag: "const", named: false }],
   // Standalone classes, each declaring its own default tag.
   ["mvp:sleep", { tag: "const:int", named: false }],
   ["mvp:die", { tag: "input", named: false }],
   ["mvp:setheader", { tag: "input", named: false }],
-  // The `UpdateVarBase` family: `{name, value, tag, filters}`, `tag` overridden
-  // per subclass by `getDefaultTag()`.
+  // `array_pop`/`array_shift` carry NO `tag`, because they take no operand:
+  // popping or shifting reads nothing, their specs route no spread field, and
+  // the encoder writes `name` alone. The fill must be exactly what the encoder
+  // writes — filling a value they cannot author invents members the comparison
+  // then demands forever, which is what shipped once when they were given the
+  // full `UpdateVarBase` treatment below.
   //
-  // `array_pop` and `array_shift` are deliberately ABSENT. The engine's base
-  // class declares a context value for them too, but neither USES one — popping
-  // or shifting takes no operand — so their specs route no spread field and the
-  // encoder writes only `name`. Filling a value they cannot author would invent
-  // members the comparison then demands and the encoder never produces, which is
-  // exactly what it did before they were removed. `test/codegen/specials`
-  // asserts this table against the spec catalog so the two cannot drift.
+  // A name-only fill is a different claim from that one, and it is evidenced
+  // twice on the engine, both times on the SCALAR `name`:
+  //   • the statement's own XanoScript schema declares `name?='': context.name`
+  //     — the default for an absent name IS the empty string; and
+  //   • the shared base class declares `name` as a plain `text` member and runs
+  //     it through the same optional-schema pass that licenses every entry here.
+  //
+  // That second point is exactly where the loops failed (see
+  // {@link LOOP_EMPTY_ITERAND}): that pass materializes a SCALAR member but
+  // defaults a NESTED object to the literal string `"{}"`. `name` is a scalar,
+  // `list`/`cnt` are not, and the shape is what decides. The engine's own
+  // statement-transform corpus stores `{"context":{}}` for `mvp:array_shift`.
+  ["mvp:array_pop", { named: true }],
+  ["mvp:array_shift", { named: true }],
+  // The `UpdateVarBase` family: `{name, value, tag, filters}`, `tag` overridden
+  // per subclass by `getDefaultTag()`. `test/codegen/spec-inverse` asserts every
+  // entry's members against the spec catalog so the two cannot drift.
   ["mvp:update_var", { tag: "const", named: true }],
   ["mvp:array_merge", { tag: "const:array", named: true }],
   ["mvp:array_push", { tag: "const", named: true }],
@@ -982,14 +1073,16 @@ export function filledContext(stored: unknown): Record<string, unknown> | null {
 
   const whole = EMPTY_CONTEXT_FILL.get(name);
   if (whole) {
-    // Both empty spellings: `{}` from the SDK, `[]` from the engine's serializer.
+    // All three empty spellings: `{}` from the SDK, `[]` from the engine's
+    // serializer, and `null` from a current engine.
     const empty =
+      context === null ||
       (Array.isArray(context) && context.length === 0) ||
-      (context !== null && typeof context === "object" && Object.keys(context).length === 0);
+      (typeof context === "object" && Object.keys(context).length === 0);
     if (!empty) return null;
-    return whole.named
-      ? { name: "", ...blankValue(whole.tag) }
-      : blankValue(whole.tag);
+    // No tag means no operand — the fill is the name alone.
+    if (whole.tag === undefined) return { name: "" };
+    return whole.named ? { name: "", ...blankValue(whole.tag) } : blankValue(whole.tag);
   }
 
   const loop = LOOP_EMPTY_ITERAND.get(name);
@@ -1053,6 +1146,11 @@ export function normalize<T>(value: T): T {
     // never runs, and compares equal to the empty list the SDK writes.
     const isMiddlewareBlock =
       "pre_customize" in (value as object) || "post_customize" in (value as object);
+    // A REQUIRED schema descriptor's `default` is discarded by the engine before
+    // anything reads it, in whichever spelling it was stored. See the block
+    // comment on this rule above for the engine line and the evidence.
+    const isDescriptor = "type" in (value as object) && "required" in (value as object);
+    const requiredEntry = (value as { required?: unknown }).required === true;
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
       if (STRIP_KEYS.has(k)) continue;
       if (isTable && k === "as") continue;
@@ -1069,6 +1167,15 @@ export function normalize<T>(value: T): T {
       // artifact between the parser and persisted generations — drop on both
       // sides (see {@link isDefaultEnvelopeMember}).
       if (isDefaultEnvelopeMember(k, v)) continue;
+      if (isDescriptor && k === "default") {
+        // Required: discarded outright. Otherwise: `null` and `""` converge in
+        // every remaining branch, so they are one state and a real default like
+        // `"now"` or `"pre"` still survives.
+        if (requiredEntry || v === null || v === "") {
+          out[k] = null;
+          continue;
+        }
+      }
       // `output` is an object only on statements; drop it when it carries no
       // selected items / customization (the `output:[]` array on query/function
       // envelopes is unaffected and falls through to normal handling).
@@ -1126,11 +1233,27 @@ export function normalize<T>(value: T): T {
           continue;
         }
       }
+      // An `auth` block naming no table: `dbo_id: 0` is the editor's spelling of
+      // the member the SDK omits (see {@link unboundAuthTable}).
+      if (k === "auth") {
+        const unbound = unboundAuthTable(v);
+        if (unbound) {
+          out[k] = normalize(unbound);
+          continue;
+        }
+      }
       if (k === "context" && contextFill) {
         out[k] = normalize(contextFill);
         continue;
       }
-      if (k === "context" && isEmptyArray(v)) {
+      // `null` is the THIRD spelling of no-context, alongside the `[]` and `{}`
+      // above. It does not appear anywhere in the 177-project corpus — that
+      // instance is old — and turned up on a current one under `mvp:create_auth`,
+      // whose declared context schema is empty outright: the statement
+      // has no context to hold, so every empty spelling of it is the same
+      // nothing. Canonicalize to `{}` with the others, or the statement loses its
+      // readability to a key the engine never reads.
+      if (k === "context" && (isEmptyArray(v) || v === null)) {
         out[k] = {};
         continue;
       }

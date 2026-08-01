@@ -23,6 +23,7 @@ import { nightlyCleanup } from "./kinds/task.js";
 import { rateLimit, publicRateLimit } from "./kinds/middleware.js";
 import { authorAddon } from "./kinds/addon.js";
 import { wsConfig } from "./kinds/workspaceConfig.js";
+import { echoService, helmService } from "./kinds/microservice.js";
 import {
   chatServer,
   lobbyChannel,
@@ -49,6 +50,7 @@ export default workspace("sidestep-examples")
   .registerAgents(defs([assistant, classifier]))
   .registerTasks(defs([nightlyCleanup]))
   .registerMiddleware(defs([rateLimit, publicRateLimit]))
+  .registerMicroservices(defs([echoService, helmService]))
   .registerAddons(defs([authorAddon]))
   .registerRealtimeServers(defs([chatServer]))
   .registerRealtimeChannels(defs([lobbyChannel, roomChannel]))

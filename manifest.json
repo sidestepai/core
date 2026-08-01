@@ -1,10 +1,10 @@
 {
   "name": "sidestep",
-  "version": "4.1.17",
+  "version": "4.1.18",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
-      "implemented": 15,
+      "implemented": 16,
       "total": 30
     },
     "statements": {
@@ -307,6 +307,14 @@
       "authorFactory": "realtimeMessage",
       "description": "A realtime message handler: a named message type on a channel with its own typed payload and stack — the realtime analogue of a query. Pass the `realtimeChannel()` handle as `channel` and the owning server comes with it.",
       "registerMethod": "registerRealtimeMessages",
+      "registered": true
+    },
+    {
+      "kind": "microservice",
+      "payloadKey": "microservice",
+      "authorFactory": "microservice",
+      "description": "A container workload deployed alongside the workspace, called from a stack with `s.api.microservice`. Two mutually exclusive shapes via `kind`: `builtin` declares containers (image/ports/resources/env/command/args) plus optional `ingresses`, and `helm` points at a chart and its `values` — passing both throws. EARLY SURFACE, expected to change: `configs`/`volumes` are typed but unconfirmed against a live engine. SECRETS RIDE ALONG — `chart.values` and `registryAuth.dockerconfigjson` are carried into a pulled tree verbatim (they must be, or a pulled microservice could not be redeployed), so a tree holding a private-registry microservice holds a live credential; prefer leaving `dockerconfigjson` unset and supplying it out of band.",
+      "registerMethod": "registerMicroservices",
       "registered": true
     },
     {

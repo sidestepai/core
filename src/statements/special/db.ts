@@ -463,11 +463,18 @@ function dboStatement(
   input: RichInput[],
   opts: EnvelopeOpts = {},
   tableAlias?: string,
+  enforceHiddenFields?: boolean,
 ): Statement {
   if (table !== null) assertNoAddonShadow(table, opts.addon);
   return {
     name,
-    context: { dbo: dboBinding(table, tableAlias) },
+    context: {
+      dbo: dboBinding(table, tableAlias),
+      // Written only when ON. The engine declares `enforce_hidden_fields?=false`
+      // and reads it as `?? false`, so absent IS off — and every one of the 557
+      // stored `dbo_add` statements in the offline corpus omits it.
+      ...(enforceHiddenFields === true ? { enforce_hidden_fields: true } : {}),
+    },
     as: as ?? "",
     input,
     ...envelope(opts),
@@ -951,6 +958,22 @@ export interface DbAddArgs<
    */
   tableAlias?: string;
 
+  /**
+   * Refuse to auto-wire request inputs the endpoint did not explicitly bind.
+   *
+   * A row write auto-wires any column whose name matches an incoming request
+   * input, which is convenient and is also how a caller can reach a column the
+   * endpoint never meant to expose. With this on, the engine consults the
+   * endpoint's declared inputs and skips auto-wiring anything outside them;
+   * explicit `data`/`row` entries are unaffected, because those are bindings you
+   * wrote.
+   *
+   * Off by default, matching the engine's own default — so leaving it unset
+   * writes nothing and changes nothing. Reach for it on any write whose table
+   * has a column a caller must not set (`role`, `is_admin`, `credits`).
+   */
+  enforceHiddenFields?: boolean;
+
   table: DbTableRef<T>;
   /** The row to insert as explicit entries (exact control over each field + `ignore`). */
   data?: DbField[];
@@ -992,6 +1015,7 @@ export function dbAdd<
     rowEntries(data),
     { output: args.output, addon: args.addon },
     args.tableAlias,
+    args.enforceHiddenFields,
   ) as DbResult<As, WithAddons<RowShapeOf<T, Cols>, A>>;
 }
 
@@ -1007,6 +1031,22 @@ export interface DbEditArgs<
    * is authored rather than derived (see {@link dboBinding}).
    */
   tableAlias?: string;
+
+  /**
+   * Refuse to auto-wire request inputs the endpoint did not explicitly bind.
+   *
+   * A row write auto-wires any column whose name matches an incoming request
+   * input, which is convenient and is also how a caller can reach a column the
+   * endpoint never meant to expose. With this on, the engine consults the
+   * endpoint's declared inputs and skips auto-wiring anything outside them;
+   * explicit `data`/`row` entries are unaffected, because those are bindings you
+   * wrote.
+   *
+   * Off by default, matching the engine's own default — so leaving it unset
+   * writes nothing and changes nothing. Reach for it on any write whose table
+   * has a column a caller must not set (`role`, `is_admin`, `credits`).
+   */
+  enforceHiddenFields?: boolean;
 
   table: DbTableRef<T>;
   fieldName?: ColsOf<T>;
@@ -1062,6 +1102,7 @@ export function dbEdit<
     ],
     { output: args.output, addon: args.addon },
     args.tableAlias,
+    args.enforceHiddenFields,
   ) as DbResult<As, WithAddons<RowShapeOf<T, Cols>, A>>;
 }
 
@@ -1081,6 +1122,22 @@ export function dbEdit<
  */
 
 export interface DbAddOrEditArgs<T extends ObjectRef = ObjectRef, As extends string = string> {
+  /**
+   * Refuse to auto-wire request inputs the endpoint did not explicitly bind.
+   *
+   * A row write auto-wires any column whose name matches an incoming request
+   * input, which is convenient and is also how a caller can reach a column the
+   * endpoint never meant to expose. With this on, the engine consults the
+   * endpoint's declared inputs and skips auto-wiring anything outside them;
+   * explicit `data`/`row` entries are unaffected, because those are bindings you
+   * wrote.
+   *
+   * Off by default, matching the engine's own default — so leaving it unset
+   * writes nothing and changes nothing. Reach for it on any write whose table
+   * has a column a caller must not set (`role`, `is_admin`, `credits`).
+   */
+  enforceHiddenFields?: boolean;
+
   table: DbTableRef<T>;
   /** The match field (defaults to the primary key `id`). */
   fieldName?: ColsOf<T>;
@@ -1115,7 +1172,10 @@ export function dbAddOrEdit<T extends ObjectRef, const As extends string = "">(
   ];
   return {
     name: "mvp:dbo_addoreditby",
-    context: { dbo: dboBinding(args.table, args.tableAlias) },
+    context: {
+      dbo: dboBinding(args.table, args.tableAlias),
+      ...(args.enforceHiddenFields === true ? { enforce_hidden_fields: true } : {}),
+    },
     as: args.as ?? "",
     input,
   } as DbResult<As, FullRowShapeOf<T>>;

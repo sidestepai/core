@@ -574,6 +574,7 @@ method. Payload keys use the engine's singular names.
 | `realtimeServer({ enabled, ... })` | `registerRealtimeServers` | `realtime_server` |
 | `realtimeChannel({ server, ... })` | `registerRealtimeChannels` | `channel` |
 | `realtimeMessage({ channel, ... })` | `registerRealtimeMessages` | `message` |
+| `microservice({ deployment, ... })` | `registerMicroservices` | `microservice` |
 | `workspaceConfig({...})` | `registerWorkspace` | `workspace` |
 
 **Triggers** — seven first-class root factories that share one envelope discriminated by
@@ -606,7 +607,7 @@ realtimeChannelTrigger({
 });
 ```
 
-Per-type inputs: **table** `new`/`old`/`action`/`datasource`; **realtimeServer** `action`/`realtime_server`/`client`; **realtimeChannel** `action`/`channel`/`client`; **mcpServer**/**agent** `toolset`/`tools`; **workspace** `to_branch`/`from_branch`/`action`; **error** `event`/`id`/`signature`/`error`/`caller`/`statement`/`actor`/`count`/`first_seen`/`last_seen`/`fixed_at`.
+Per-type inputs: **table** `new`/`old`/`action`/`datasource`; **realtimeServer** `action`/`realtime_server`/`client`; **realtimeChannel** `action`/`channel`/`payload`/`client`; **mcpServer**/**agent** `toolset`/`tools`; **workspace** `to_branch`/`from_branch`/`action`; **error** `event`/`id`/`signature`/`error`/`caller`/`statement`/`actor`/`count`/`first_seen`/`last_seen`/`fixed_at`.
 
 **Realtime** — the websocket family, and the only three-level containment chain in the
 SDK: `realtimeServer` owns `realtimeChannel`s, which own `realtimeMessage` handlers (a
@@ -1089,6 +1090,36 @@ when an `auth()`-keyed middleware is directly attached to a host where `auth()` 
 authenticated query is skipped. The check is direct-attachment only; tier-inherited attachment is
 not caught. It warns rather than throws because a bare `auth()` reference isn't proof of a collapse
 (an IP-disambiguated key uses `auth()` where null is fine).
+
+**Microservices** — a container workload deployed alongside the workspace, called from a
+stack with `s.api.microservice`. Two mutually exclusive shapes chosen by `kind`: `builtin`
+declares containers (image/ports/resources/env/command/args) plus optional `ingresses`, and
+`helm` points at a chart and its `values`. Passing both throws at the authoring site, because
+the engine serializes them as exclusive groups. `command`/`args` take plain strings and
+`containerPort` defaults to `servicePort`, matching what the platform's own scaffold does.
+
+```ts
+export const echo = microservice({
+  name: "echo",
+  deployment: {
+    replicas: 2,
+    containers: [{
+      name: "echo",
+      image: "ealen/echo-server:latest",
+      ports: [{ servicePort: "8080", containerPort: "80" }],
+      resources: { cpu: "50m", ram: "256Mi" },
+    }],
+  },
+});
+```
+
+**This surface is early and expected to change**, and two things are worth knowing before you
+lean on it. `configs` and `volumes` are typed but **unconfirmed** — authoring either currently
+fails upstream, so nothing has shown what a populated one persists as. And **two fields carry
+secrets into a pulled tree verbatim**: `chart.values` and `registryAuth.dockerconfigjson`. They
+have to, or a pulled microservice could not be redeployed — so a tree holding a
+private-registry microservice holds a live credential. `codegen` reports every one it carries;
+prefer leaving `dockerconfigjson` unset and supplying it out of band.
 
 ### Request history
 

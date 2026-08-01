@@ -136,6 +136,35 @@ function aliasEntry(stored: unknown): { entry: [string, Expr]; runtime: string }
   return { entry: ["tableAlias", lit(alias)], runtime: alias };
 }
 
+/**
+ * The `enforceHiddenFields:` argument for a stored `context.enforce_hidden_fields`.
+ *
+ * Read by VALUE rather than presence, because this one has a real default: the
+ * engine declares `enforce_hidden_fields?=false` and three statement classes read
+ * it as `?? false`, so absent and `false` are the same OFF and only `true` is
+ * worth authoring. All 557 stored `dbo_add` statements in the offline corpus omit
+ * it entirely; the flag showed up on a current instance.
+ *
+ * Returning null for a stored `false` is what keeps the round trip exact — the
+ * encoder writes the key only when on, so recovering `enforceHiddenFields: false`
+ * would re-encode to an absent key and fail its own proof.
+ *
+ * A stored `false` therefore falls back to `raw()`, and that is deliberate. The
+ * engine's side of "absent means false" is evidenced twice over, but invariant 2
+ * wants the other half too — a real workspace storing the key present-at-default
+ * beside one omitting it — and no workspace does: 557 stored `dbo_add` statements
+ * omit it and the only one that writes it writes `true`. Normalizing a spelling
+ * nothing produces would be modelling on an analogy. If it ever shows up, the
+ * fallback now names the exact key, which is the whole point of the report.
+ */
+function enforceHiddenFieldsEntry(
+  stored: unknown,
+): { entry: [string, Expr]; runtime: boolean } | null {
+  return getPath(stored, "enforce_hidden_fields") === true
+    ? { entry: ["enforceHiddenFields", lit(true)], runtime: true }
+    : null;
+}
+
 /** One parsed `input[]` entry, with the sub-entries of an expanded one. */
 interface InputEntry {
   readonly name: string;
@@ -481,6 +510,11 @@ function dboOp(shape: DboOpShape): SpecialDecoder {
       entries.push(alias.entry);
       runtime.tableAlias = alias.runtime;
     }
+    const enforce = enforceHiddenFieldsEntry(a.stored.context);
+    if (enforce) {
+      entries.push(enforce.entry);
+      runtime.enforceHiddenFields = enforce.runtime;
+    }
     let cursor = 0;
 
     if (shape.lookup) {
@@ -603,6 +637,11 @@ const dbAddOrEdit: SpecialDecoder = (a) => {
   if (alias) {
     entries.push(alias.entry);
     runtime.tableAlias = alias.runtime;
+  }
+  const enforce = enforceHiddenFieldsEntry(a.stored.context);
+  if (enforce) {
+    entries.push(enforce.entry);
+    runtime.enforceHiddenFields = enforce.runtime;
   }
 
   if (fieldName.value.value !== "id") {

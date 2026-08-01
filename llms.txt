@@ -1,4 +1,4 @@
-# sidestep v4.1.17
+# sidestep v4.1.18
 
 > TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.
 
@@ -6,7 +6,7 @@ Author a Xano workspace in TypeScript: build typed objects, register them on a
 `new Xano()` instance, and call `.export()` to get one importable bundle. Compile
 with `sidestep export ./xano/index.js`.
 
-Coverage: object kinds 15/30, statement surfaces 216/216, filters 225 (129 typed).
+Coverage: object kinds 16/30, statement surfaces 216/216, filters 225 (129 typed).
 
 Full reference: this doc shows the authoring signature for every kind, statement, and
 filter. For exhaustive per-entry detail NOT shown here — a statement's full field schema
@@ -417,6 +417,7 @@ Author with the factory, register on the Xano instance, lands under the payload 
 - realtime_server: `realtimeServer` → `Xano.registerRealtimeServers` → payload `realtime_server` — A realtime (websocket) server: the canonical-addressed container that owns realtime channels. Off until `enabled: true`. Returns a handle with `getUrl(baseUrl)`/`getPath()` for the client's socket URL (`wss://<host>/ws/<canonical>`).
 - channel: `realtimeChannel` → `Xano.registerRealtimeChannels` → payload `channel` — A realtime channel: a joinable path on a realtime server (`rooms/{room_id}`) with typed path params, join/publish policy, a client-visible conversation transcript, and delivery semantics. Owns message handlers. Returns a handle with `getChannel(params)` for the path a client joins.
 - message: `realtimeMessage` → `Xano.registerRealtimeMessages` → payload `message` — A realtime message handler: a named message type on a channel with its own typed payload and stack — the realtime analogue of a query. Pass the `realtimeChannel()` handle as `channel` and the owning server comes with it.
+- microservice: `microservice` → `Xano.registerMicroservices` → payload `microservice` — A container workload deployed alongside the workspace, called from a stack with `s.api.microservice`. Two mutually exclusive shapes via `kind`: `builtin` declares containers (image/ports/resources/env/command/args) plus optional `ingresses`, and `helm` points at a chart and its `values` — passing both throws. EARLY SURFACE, expected to change: `configs`/`volumes` are typed but unconfirmed against a live engine. SECRETS RIDE ALONG — `chart.values` and `registryAuth.dockerconfigjson` are carried into a pulled tree verbatim (they must be, or a pulled microservice could not be redeployed), so a tree holding a private-registry microservice holds a live credential; prefer leaving `dockerconfigjson` unset and supplying it out of band.
 - workspace: `workspaceConfig` → `Xano.registerWorkspace` → payload `workspace` — Workspace-level configuration such as default middleware chains and request-history defaults per host kind.
 
 ## Object def shapes

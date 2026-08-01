@@ -446,3 +446,49 @@ describe("tableAlias — opt-in, and unique across the workspace", () => {
     expect(built.context.dbo.as).toBe("");
   });
 });
+
+/**
+ * `enforceHiddenFields` — refusing to auto-wire request inputs the endpoint
+ * never bound.
+ *
+ * A row write auto-wires any column whose name matches an incoming request
+ * input. With this on, the engine consults the endpoint's input whitelist and
+ * skips anything outside it — so it is a security-relevant setting, not a
+ * formatting one. (The engine-side detail is documented in the decoder, which
+ * is internal and does not ship in the published types.)
+ *
+ * OFF is the engine's own default (`enforce_hidden_fields?=false`, read as
+ * `?? false` by all three statement classes), and the key must stay ABSENT then:
+ * all 557 stored `dbo_add` statements in the 177-project corpus omit it, and
+ * writing a redundant `false` would change the bytes of every row write.
+ */
+describe("db row writes — enforceHiddenFields", () => {
+  const ctxOf = (s: Statement) =>
+    (encodeStatement(s) as unknown as { context: Record<string, unknown> }).context;
+
+  it("writes the key only when ON", () => {
+    expect(ctxOf(dbAdd({ table: T, data: [] }))).not.toHaveProperty("enforce_hidden_fields");
+    expect(ctxOf(dbAdd({ table: T, data: [], enforceHiddenFields: true }))).toMatchObject({
+      enforce_hidden_fields: true,
+    });
+  });
+
+  it("stays absent when explicitly OFF, because absent IS off", () => {
+    // The engine reads `?? false`, so a written `false` would be a redundant
+    // byte on every row write that opts out by name.
+    expect(ctxOf(dbAdd({ table: T, data: [], enforceHiddenFields: false }))).not.toHaveProperty(
+      "enforce_hidden_fields",
+    );
+  });
+
+  it("covers all three statements the engine declares it on", () => {
+    // The three row writes that declare it — and no others.
+    for (const built of [
+      dbAdd({ table: T, data: [], enforceHiddenFields: true }),
+      dbEdit({ table: T, fieldValue: c.int(1), data: [], enforceHiddenFields: true }),
+      dbAddOrEdit({ table: T, fieldValue: c.int(1), data: [], enforceHiddenFields: true }),
+    ]) {
+      expect(ctxOf(built)).toMatchObject({ enforce_hidden_fields: true });
+    }
+  });
+});

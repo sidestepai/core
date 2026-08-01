@@ -8,6 +8,7 @@
  */
 import type { ImportStmt } from "./print.js";
 import { DecodeReport, type ReportCategory } from "./report.js";
+import { noteDecline, takePendingDecline } from "./prove-diff.js";
 
 /** The browser-safe authoring entry generated files import from. */
 export const CORE_MODULE = "@sidestep/core";
@@ -154,32 +155,22 @@ export class DecodeContext {
   }
 
   /**
-   * Why the decoder that just declined could not spell this statement.
-   *
-   * A decline is not a report entry: another arm may still prove, and a report
-   * describing an attempt that was thrown away is simply false. But when EVERY
-   * arm declines, "its decoder could not reproduce the stored statement" is all
-   * a reader gets, and the decoder usually knew exactly why. This is the channel
-   * for the ones that do: the note is written by a decliner, read only at the
-   * `raw()` fallback, and cleared the moment anything decodes — so it can never
-   * outlive the statement it describes.
+   * Record why this decode declined; last writer wins.
    *
    * Reserved for declines with a KNOWN, stable cause. A decoder that declined
    * because something surprised it should stay silent rather than guess.
+   *
+   * The note itself lives in `prove-diff`, because the other writer — a guard
+   * several frames down inside a shared helper — has no context to reach. See
+   * {@link noteDecline} for why there is exactly one store.
    */
-  #declineNote: string | undefined;
-
-  /** Record why this decode declined; last writer wins. See {@link takeDeclineNote}. */
   declined(why: string): null {
-    this.#declineNote = why;
-    return null;
+    return noteDecline(why);
   }
 
   /** Read and clear the pending decline note. */
   takeDeclineNote(): string | undefined {
-    const note = this.#declineNote;
-    this.#declineNote = undefined;
-    return note;
+    return takePendingDecline();
   }
 
   /** Record a problem at the current object/path scope. */

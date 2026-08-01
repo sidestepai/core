@@ -109,7 +109,9 @@ describe("realtimeChannelTrigger", () => {
     );
     expect(t.obj_type).toBe("channel");
     expectSkeleton(t.meta, "channel", { join: true, leave: true, deliver: false });
-    expect(t.input.map((i) => i.name)).toEqual(["action", "channel", "client"]);
+    // Four entries, and `payload` between the channel and the client is what
+    // distinguishes this type from the server one — which has three.
+    expect(t.input.map((i) => i.name)).toEqual(["action", "channel", "payload", "client"]);
   });
 
   it("carries the join/leave/deliver action enum", () => {
@@ -143,11 +145,10 @@ describe("realtimeChannelTrigger", () => {
   });
 
   it("gives a deliver-only trigger the SAME stored inputs as a join one", () => {
-    // Engine-verified against a live capture. `deliver` runs per recipient and its
-    // stack rewrites the payload, so a `payload` entry and a recipient identity were
-    // the natural things to expect — the engine declares neither. They arrive at
-    // runtime under reserved keys that never enter the stored input array, so their
-    // absence here is the engine's shape, not a gap.
+    // The input array describes the TYPE, not the enabled actions — a deliver-only
+    // trigger declares the same four entries as a join one, `payload` included.
+    // (An earlier reading of a live capture had this at three, omitting `payload`;
+    // a sweep of a current instance found all 30 channel triggers storing four.)
     const deliver = encodeTrigger(
       realtimeChannelTrigger({ name: "d", channel: rooms, actions: { deliver: true } }),
     );
@@ -155,7 +156,7 @@ describe("realtimeChannelTrigger", () => {
       realtimeChannelTrigger({ name: "j", channel: rooms, actions: { join: true } }),
     );
     expect(deliver.input).toEqual(join.input);
-    expect(deliver.input.map((i) => i.name)).toEqual(["action", "channel", "client"]);
+    expect(deliver.input.map((i) => i.name)).toEqual(["action", "channel", "payload", "client"]);
     expect((deliver.input[0] as { values?: string[] }).values).toEqual([
       "join",
       "leave",

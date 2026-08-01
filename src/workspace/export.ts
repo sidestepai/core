@@ -42,6 +42,9 @@ export const PAYLOAD_ARRAY_KEYS = [
   "realtime_server",
   "channel",
   "message",
+  // A container workload. Independent of every other object — nothing
+  // references it and it references nothing — so its position is arbitrary.
+  "microservice",
   "vault",
   "market_item",
   "run_install",
