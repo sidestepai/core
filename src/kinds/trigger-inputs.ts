@@ -146,19 +146,21 @@ const CATALOG: Record<TriggerInputObjType, () => Record<string, InputDescriptor>
   // regardless of which ones a given trigger enables: the enum describes what
   // `action` can hold at runtime, and the per-trigger selection lives in `meta`.
   //
-  // VERIFIED AGAINST A LIVE CAPTURE: a `deliver`-only trigger stores exactly this
-  // input array — the same three entries as a join/leave one, and the same enum
-  // values in the same order. That was the open question worth not guessing,
-  // because `deliver` runs per recipient and its stack rewrites the payload, so a
-  // `payload` entry and a recipient identity were the natural things to expect.
+  // `payload` IS declared, and it is what distinguishes this type from the server
+  // one above. It sits between `channel` and `client`, and it is the message body
+  // — optional (a join/leave carries none) and nullable, unlike the LEGACY
+  // channel trigger's required `payload`.
   //
-  // They are NOT declared, and that is the engine's shape rather than a gap here: a
-  // deliver stack receives the payload and the recipient at RUNTIME under reserved
-  // keys that never enter the stored input array. SideStep mirrors the stored array,
-  // so they are correspondingly absent from the typed `t` handle.
+  // This entry was previously absent, on the strength of a live capture read as
+  // showing a `deliver`-only trigger storing three inputs. A sweep of a current
+  // instance says otherwise, without exception: all 30 channel triggers store
+  // four entries in this order, and all 11 realtime_server triggers store three.
+  // A pulled channel trigger was regenerating an input short, so `inp("payload")`
+  // did not resolve and re-deploying dropped an entry the engine supplies.
   channel: () => ({
     action: input.enum(["join", "leave", "deliver"], { required: true }),
     channel: input.text({ required: true }),
+    payload: input.json({ nullable: true }),
     client: realtimeClientInput(),
   }),
 

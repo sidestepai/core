@@ -16,6 +16,11 @@
  *     twice, so the two spellings are the same VALUE — this asks the separate
  *     question of which one comes back out.
  *
+ *   • a realtime CHANNEL trigger's `input[].default`. The engine's own trigger
+ *     templates write `""` for every entry, and a current instance stores `null`
+ *     on the `enum` and `obj` ones — so if the coercion happens on the way IN,
+ *     no SDK spelling can avoid it and the mismatch is the engine's, not ours.
+ *
  *   • `mvp:array_shift`'s `context.name`, the statement whose empty context this
  *     SDK now fills. The engine's schema declares `name?='': context.name`, so
  *     an unconfigured stub stores `{}` and the SDK re-exports `{name:""}`. Same
@@ -33,6 +38,10 @@ import { workspace } from "../src/workspace/xano.js";
 import { apiGroup } from "../src/kinds/api-group.js";
 import { query } from "../src/kinds/query.js";
 import { s } from "../src/statements/s.js";
+import { realtimeServer } from "../src/kinds/realtime-server.js";
+import { realtimeChannel } from "../src/kinds/realtime-channel.js";
+import { realtimeChannelTrigger } from "../src/kinds/trigger.js";
+import { encodeTrigger } from "../src/kinds/trigger.js";
 import { c, ref } from "../src/values/value.js";
 import { encodeStatement } from "../src/statements/statement.js";
 import { createEphemeral, deleteEphemeral, waitUntilReady } from "../src/deploy/ephemeral.js";
@@ -87,6 +96,16 @@ const CASES: ReadonlyArray<{ stored: string; build: () => unknown }> = [
 
 const defs = (xs: unknown[]) => xs as never[];
 
+const chatServer = realtimeServer({ name: "probe_server" });
+const probeChannel = realtimeChannel({ name: "probe_room", server: chatServer });
+const channelTrigger = realtimeChannelTrigger({
+  name: "probe_join",
+  channel: probeChannel,
+  actions: { join: true },
+  stack: () => [],
+  response: () => ({ allowed: c.bool(true) }),
+} as never);
+
 function bundle(): Record<string, unknown> {
   const q = query({
     name: "probe",
@@ -98,7 +117,18 @@ function bundle(): Record<string, unknown> {
   return workspace("persisted-defaults-probe")
     .registerApiGroups(defs([api]))
     .registerQueries(defs([q]))
+    .registerRealtimeServers(defs([chatServer]))
+    .registerRealtimeChannels(defs([probeChannel]))
+    .registerTriggers(defs([channelTrigger]))
     .export() as unknown as Record<string, unknown>;
+}
+
+/** The trigger the engine stored, by name. */
+function persistedTrigger(exported: unknown): Record<string, unknown> | undefined {
+  const triggers = (exported as { payload?: Record<string, unknown[]> }).payload?.["trigger"] ?? [];
+  return triggers.find((t) => (t as { name?: string }).name === "probe_join") as
+    | Record<string, unknown>
+    | undefined;
 }
 
 /**
@@ -179,6 +209,28 @@ async function main(): Promise<void> {
       console.log(`    sent:      ${sent}`);
       console.log(`    persisted: ${back}`);
     }
+    const sentTrigger = encodeTrigger(channelTrigger as never) as unknown as {
+      input: Array<Record<string, unknown>>;
+    };
+    const backTrigger = persistedTrigger(exported);
+    console.log("\n=== realtime channel trigger input[].default");
+    if (!backTrigger) {
+      console.log("  <trigger not found in export>");
+    } else {
+      for (const sentEntry of sentTrigger.input) {
+        const backEntry = (backTrigger["input"] as Array<Record<string, unknown>>).find(
+          (i) => i["name"] === sentEntry["name"],
+        );
+        const same = JSON.stringify(sentEntry["default"]) === JSON.stringify(backEntry?.["default"]);
+        if (!same) drift = true;
+        console.log(
+          `  ${String(sentEntry["name"]).padEnd(18)} type=${String(sentEntry["type"]).padEnd(6)}` +
+            ` sent=${JSON.stringify(sentEntry["default"])} persisted=${JSON.stringify(backEntry?.["default"])}` +
+            `  ${same ? "" : "<-- COERCED BY THE ENGINE"}`,
+        );
+      }
+    }
+
     console.log(
       drift
         ? "\nVERDICT: the engine rewrites at least one of these — the SDK must write what it writes."

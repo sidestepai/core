@@ -134,6 +134,42 @@
       "description": ""
     },
     {
+      "name": "payload",
+      "type": "json",
+      "_xsid": "",
+      "nullable": true,
+      "default": "",
+      "merge": false,
+      "hidden": [],
+      "override": [],
+      "customize": {},
+      "required": false,
+      "values": [],
+      "mode": "",
+      "format": "",
+      "sensitive": false,
+      "list": {
+        "min": "",
+        "max": ""
+      },
+      "vector": {
+        "size": 3
+      },
+      "access": "public",
+      "style": {
+        "type": "single"
+      },
+      "children": [],
+      "methods": [],
+      "market_item": {
+        "id": 0,
+        "version": 0,
+        "guid": ""
+      },
+      "is_settings_registry": false,
+      "description": ""
+    },
+    {
       "name": "client",
       "type": "obj",
       "_xsid": "",
