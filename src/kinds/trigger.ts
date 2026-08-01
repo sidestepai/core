@@ -69,8 +69,20 @@ export interface RealtimeActions {
 /**
  * Realtime SERVER lifecycle actions (obj_type=realtime_server).
  *
- * `connect` GATES the connection — the stack's return admits or denies it, and it
- * is fail-closed. `disconnect` is OBSERVATIONAL: its return is ignored.
+ * `connect` GATES the connection — the stack's return admits or denies it. A
+ * denial closes the socket (code 4401) after an `error` frame, before the
+ * connection is ever ready, so it is a real front door and not just an observer.
+ * Same return shape as a channel `join`: `{ allowed: true }` or any truthy value
+ * admits, and an EMPTY OR FALSY return DENIES — including a gating trigger with
+ * no `response`, which returns nothing and so refuses every client. A CRASH goes
+ * the other way (gating actions fail OPEN, so a broken stack admits); it is the
+ * clean-but-empty return that locks the door.
+ *
+ * `disconnect` is OBSERVATIONAL: its return is ignored and a throw is swallowed,
+ * because the connection is already gone and cleanup must always complete.
+ *
+ * Both are server-scoped, so `s.realtime.get_session` works but carries no
+ * channel path and no bound params.
  */
 export interface RealtimeServerActions {
   connect?: boolean;
@@ -82,13 +94,30 @@ export interface RealtimeServerActions {
  *
  * The three do NOT share a posture, and the difference decides what a stack
  * should return:
- *  - `join` GATES the join (return admits or denies; fail-closed).
- *  - `leave` is OBSERVATIONAL (return ignored).
+ *  - `join` GATES the join, and runs BEFORE the client becomes a member, so a
+ *    denial means it never receives a fan-out. Return `{ allowed: true }` (an
+ *    optional `reason` surfaces in the client's error frame) or any other truthy
+ *    value to admit. AN EMPTY OR FALSY RETURN DENIES — a stack that just falls
+ *    through, or a gating trigger with no `response`, refuses the join. A CRASH
+ *    is the opposite: gating actions fail OPEN, so a broken stack admits.
+ *  - `leave` is OBSERVATIONAL (return ignored, throws swallowed).
  *  - `deliver` GATES delivery PER RECIPIENT — it runs once for each client the
- *    message is about to reach, and its return rewrites the payload for that one
- *    recipient, drops the message for that recipient, or passes the original
- *    through untouched. It is the heaviest of the three by a wide margin: a
- *    channel with a `deliver` trigger runs a stack per recipient per message.
+ *    message is about to reach. It is the heaviest of the three by a wide
+ *    margin (a stack per recipient per message) and needs `delivery.perRecipient`
+ *    on the channel to run at all.
+ *
+ *    ITS RETURN VALUES DO NOT READ LIKE A FILTER. Only an explicit **null**
+ *    drops the message for that recipient. An **object** replaces that
+ *    recipient's payload. ANYTHING ELSE — including `false`, `0`, and `""` —
+ *    DELIVERS THE MESSAGE UNCHANGED, as does a crash. So `return false` from a
+ *    yes/no redaction check sends the message it was meant to suppress; return
+ *    null instead.
+ *
+ *    The delivered payload arrives NESTED under `payload`, so read
+ *    `inp("payload").<field>`. And the two identities differ: `t.client` is the
+ *    SENDER, while `s.realtime.get_session` describes the RECIPIENT this run is
+ *    for — per-viewer redaction needs both, and reaching for the wrong one is
+ *    silent.
  */
 export interface RealtimeChannelActions {
   join?: boolean;

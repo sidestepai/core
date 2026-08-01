@@ -28,6 +28,21 @@
  * same values reach a channel `join`/`leave` trigger's stack, and ride the
  * realtime session as `session.params.<name>` (`s.realtime.get_session`).
  *
+ * WHAT THE STACK RETURNS IS WHAT IS DELIVERED, and the three failure directions
+ * are not symmetric:
+ *
+ *  - a RESPONSE is fanned out to `deliverTo` and, for `channel`/`others`, stored
+ *    as the `conversation` transcript row — so broadcast everything a replayed
+ *    message needs to render (author name, id, timestamp); nothing else comes back
+ *  - a NULL response delivers NOTHING. This is the supported way for a handler to
+ *    veto its own message; the sender is told it was dropped
+ *  - a REJECTED PAYLOAD (the declared `input` refusing it) also delivers nothing,
+ *    and the validation detail goes only to the sender
+ *  - a CRASHED stack FAILS OPEN: the sender's ORIGINAL, UNVALIDATED payload is
+ *    broadcast to the channel unchanged, so a bug cannot black-hole a channel.
+ *    A handler that redacts, authorizes, or enriches must therefore not be the
+ *    only thing between client input and subscribers
+ *
  * A message names BOTH its channel and its server: a channel path is unique only
  * within a server, so the path alone cannot be resolved. Passing a
  * `realtimeChannel()` handle supplies both.
@@ -111,6 +126,10 @@ export interface RealtimeMessageDef<
    * `s.realtime.publish` is NOT the missing piece: it originates an event INTO a
    * channel from an ordinary stack (the push direction) and never chooses who a
    * handler's own response reaches.
+   *
+   * Only `"channel"` and `"others"` fan out, and ONLY THOSE TWO are written to
+   * the channel's `conversation` transcript — a `"sender"` response is invisible
+   * to every future joiner by construction.
    */
   deliverTo?: MessageDeliverTo;
   /** The message PAYLOAD schema. Distinct from the channel's path parameters. */

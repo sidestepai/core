@@ -34,6 +34,7 @@ import {
   input,
   inp,
   s,
+  c,
 } from "@sidestep/core";
 
 /** Gate 1 — the server: the canonical-addressed container. Off until enabled. */
@@ -65,8 +66,18 @@ export const roomChannel = realtimeChannel({
   description: "One channel per room",
   input: { room_id: input.int() },
   publish: { who: "authenticated" },
-  // The client-visible TRANSCRIPT: a rejoining client is sent the last 50
-  // messages. Distinct from `history`, which is execution history for debugging.
+  // The client-visible TRANSCRIPT: at join the server PUSHES the last 50
+  // messages back, unasked — `conversation_start`, then ordinary `message`
+  // frames flagged `conversation: true`, then `conversation_end`. That IS the
+  // frontend's hydration; do not write a "fetch recent messages" endpoint for
+  // it. Log to a table only for durability/search beyond this window.
+  // Distinct from `history`, which is execution history for debugging.
+  //
+  // `limit` IS NOT OPTIONAL IN PRACTICE — it defaults to 0, and 0 means retain
+  // NONE rather than retain everything, so `{ enabled: true }` on its own
+  // records nothing, replays nothing, and reports no error. Note also that what
+  // a handler broadcasts IS the stored row (see `sendMessage.response` below):
+  // anything the response omits is simply gone on replay.
   conversation: { enabled: true, limit: 50 },
 });
 
@@ -101,12 +112,28 @@ export const typingMessage = realtimeMessage({
   deliverTo: "others",
 });
 
-/** Server lifecycle trigger — fires on connect/disconnect. */
+/**
+ * Server lifecycle trigger — fires on connect/disconnect.
+ *
+ * `connect` GATES the connection: the stack's return admits or denies it, and a
+ * denial closes the socket (code 4401) before it is ever ready. `disconnect` is
+ * observational and ignores the return, so one admitting response serves both.
+ *
+ * WHICH IS WHY `response` IS MANDATORY ON A GATING TRIGGER. Without it the
+ * trigger returns nothing, nothing is falsy, and a falsy return DENIES — a
+ * `connect` trigger with no response refuses every client on the server. (A
+ * trigger that CRASHES is different: gating actions fail OPEN, so a broken stack
+ * admits. It is the clean-but-empty return that locks the door.)
+ */
 export const onChatConnect = realtimeServerTrigger({
   name: "ex_kind_trigger_on_chat_connect",
   realtimeServer: chatServer,
   actions: { connect: true, disconnect: true },
   stack: (t) => [s.debug.log({ value: t.action })],
+  // `{ allowed }` is the explicit admit shape; an optional `reason` rides along
+  // on a denial and reaches the client's error frame. Swap the constant for a
+  // real decision (a ban check, a seat count) to gate for real.
+  response: () => ({ allowed: c.bool(true) }),
 });
 
 /**
@@ -114,6 +141,7 @@ export const onChatConnect = realtimeServerTrigger({
  * defs, so a rename or a re-minted canonical cannot desync the client:
  *
  *   chatServer.getUrl("https://x.dev.xano.io")      // wss://x.dev.xano.io/ws/<canonical>
+ *   chatServer.getUrl("https://x/tenant/a-b-c")     // /ws/a-b-c:<canonical> — lifted from the URL
  *   chatServer.getUrl(base, { tenant: "a-b-c" })    // /ws/<tenant>:<canonical> — tenant DB
  *   roomChannel.getChannel({ room_id: 42 })         // "rooms/42" — the frame's `channel`
  *
@@ -125,9 +153,15 @@ export const onChatConnect = realtimeServerTrigger({
  * do it in the URL — but not in the same shape. The socket glues it on with a
  * colon inside ONE segment (`/ws/<tenant>:<canonical>`, `{ tenant }` above),
  * while HTTP gives it a segment of its own
- * (`/tenant/<tenant>/api:<canonical>/…`). No request header either way. Tokens
- * are tenant-scoped, so one minted through the instance workspace is rejected by
- * the tenant's realtime server — authenticate and dial through the same tenant.
+ * (`/tenant/<tenant>/api:<canonical>/…`). No request header is required either
+ * way. So
+ * `getUrl` TRANSLATES a tenant base URL rather than concatenating it: pass the
+ * `window.XANO_HOST` deploy injects (`https://<host>/tenant/<name>`) and the
+ * tenant is lifted into the socket form with no `{ tenant }` needed; a
+ * conflicting `{ tenant }` throws. A tenant on its OWN DOMAIN has nothing to
+ * lift — pass `{ tenant }` there. Tokens are tenant-scoped, so one minted
+ * through the instance workspace is rejected by the tenant's realtime server —
+ * authenticate and dial through the same tenant.
  *
  * Auth is a bearer token passed as the
  * websocket SUBPROTOCOL — `new WebSocket(url, token)` — with no token meaning an
@@ -140,16 +174,52 @@ export const onChatConnect = realtimeServerTrigger({
  *     ws.send(JSON.stringify({ action: "broadcast", channel, type: "send", payload: { body: "hi" } }));
  *   }, 500); // the server finishes its handshake first; an early frame is refused
  *
+ *   // KEEP IT ALIVE. An idle socket is reaped after ~10 minutes, which is easy
+ *   // to miss because a chatty client never hits it — but a listen-only client
+ *   // (a feed, a dashboard, a presence sidebar) joins and then goes quiet, and
+ *   // silently drops. Any frame resets the clock; `ping` exists for this.
+ *   setInterval(() => ws.send(JSON.stringify({ action: "ping" })), 60_000);
+ *
+ * IF YOU SET `delivery: { guarantee: "at_least_once" }` on a channel, the client
+ * has to hold up its end or the guarantee is silently absent. It must ack what
+ * it receives — `{ action: "ack", channel, id }` — and if it may be ANONYMOUS it
+ * must also send a durable id once, in the join frame:
+ *
+ *   ws.send(JSON.stringify({ action: "join", channel, options: { client_id: DEVICE_ID } }));
+ *
+ * An authenticated client is keyed by its identity and needs no `client_id`; an
+ * anonymous one without it has no cursor, its acks are ignored, and it quietly
+ * falls back to at-most-once. The gap it missed then arrives as `replay` frames
+ * — which are NOT the transcript above: `conversation_*` is the shared "what was
+ * said before I arrived", `replay` is the per-client "what I missed while
+ * disconnected".
+ *
  * A canonical is minted and frozen by `sidestep export --lock`, so these throw
  * (rather than guess) until one is pinned in code or in `xano.lock`.
  */
 
-/** Channel lifecycle trigger — fires on join/leave of a specific channel. */
+/**
+ * Channel lifecycle trigger — fires on join/leave of a specific channel.
+ *
+ * `join` GATES: it runs before the client becomes a member, so a denial means it
+ * never receives a fan-out. Return `{ allowed: true }` (an optional `reason`
+ * reaches the client) or any truthy value to admit — an EMPTY OR FALSY return
+ * DENIES.
+ *
+ * WHICH MEANS `response` IS NOT OPTIONAL ON A GATING TRIGGER. A `join` trigger
+ * with a stack but no `response` returns nothing, nothing is falsy, and a falsy
+ * return DENIES — it refuses every join on the channel it was added to protect.
+ * A `leave` trigger may omit `response` safely; a `join` one may not.
+ *
+ * Note `c.bool(true)`, not `true`: a response member is a VALUE, and a bare
+ * JavaScript boolean is not one.
+ */
 export const onRoomJoin = realtimeChannelTrigger({
   name: "ex_kind_trigger_on_room_join",
   channel: roomChannel,
   actions: { join: true },
   stack: (t) => [s.debug.log({ value: t.channel })],
+  response: () => ({ allowed: c.bool(true) }),
 });
 
 /**
@@ -157,18 +227,40 @@ export const onRoomJoin = realtimeChannelTrigger({
  * runs once per RECIPIENT of a message, not once per channel event.
  *
  * `join` gates the join and `leave` only observes, but `deliver` gates each
- * individual delivery — its return rewrites that recipient's copy of the payload,
- * drops the message for that recipient, or passes the original through. That makes
- * it the tool for per-viewer redaction ("hide the author's address from everyone
- * but the author"), and also the most expensive action here by a wide margin: a
- * stack per recipient per message.
+ * individual delivery, which makes it the tool for per-viewer redaction ("hide
+ * the author's address from everyone but the author") and also the most
+ * expensive action here by a wide margin: a stack per recipient per message. It
+ * needs `delivery: { perRecipient: true }` on the channel to run at all.
+ *
+ * ITS RETURN VALUES DO NOT READ LIKE A FILTER, and this is the easiest thing in
+ * the family to write backwards. Only an explicit NULL drops the message for
+ * that recipient. An OBJECT replaces that recipient's payload. Everything else
+ * — including `false`, `0` and `""` — delivers it UNCHANGED. So a yes/no
+ * redaction check that returns `false` sends the very message it was written to
+ * suppress; return null instead.
  *
  * Kept as its own trigger rather than folded into `onRoomJoin` because the two
  * fire at unrelated moments and want unrelated stacks.
+ *
+ * ITS RESPONSE SHAPE IS DELIBERATELY UNLIKE THE GATES ABOVE. `join`/`connect`
+ * answer a yes/no with `{ allowed }`, but `deliver` answers "what does THIS
+ * recipient get", so an OBJECT means REWRITE — returning `{ allowed: true }`
+ * here would replace the message payload with `{ allowed: true }`. A bare truthy
+ * value means "deliver the original untouched", which is the right no-op, and
+ * omitting `response` entirely returns null, which DROPS the message for every
+ * recipient.
+ *
+ * `roomChannel` does not set `delivery: { perRecipient: true }`, so this trigger
+ * is declared for shape and does not run — the hook only fires on a
+ * per-recipient channel. Turn that on when you actually need per-viewer
+ * redaction, and expect a stack per recipient per message.
  */
 export const onRoomDeliver = realtimeChannelTrigger({
   name: "ex_kind_trigger_on_room_deliver",
   channel: roomChannel,
   actions: { deliver: true },
   stack: (t) => [s.debug.log({ value: t.action })],
+  // Truthy NON-object = pass the original through. Return an object to rewrite
+  // this recipient's payload, or null to drop the message for them.
+  response: () => c.bool(true),
 });

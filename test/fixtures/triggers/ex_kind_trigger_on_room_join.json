@@ -340,6 +340,15 @@
       "settings_registry": null
     }
   ],
-  "result": [],
+  "result": [
+    {
+      "filters": [],
+      "name": "allowed",
+      "tag": "const:bool",
+      "value": "true",
+      "_xsid": "",
+      "disabled": false
+    }
+  ],
   "guid": "2495edcf4e1b595c455142d0c6cd1588"
 }

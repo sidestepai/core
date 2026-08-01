@@ -90,15 +90,53 @@ import { measureCommittedLlms } from "../../scripts/measure-llms.js";
 // `deliverTo: "explicit"` still delivers to nobody, and an agent that reads the
 // two lines together would otherwise conclude the gap is closed.
 // Raised again from 28.95k for tenant instances. A tenant client has TWO places
-// to name the tenant and they share no syntax — a `<tenant>:<canonical>` prefix
-// on the socket path, an `X-Tenant` header on HTTP — and the failure when you
-// set one and not the other is the worst kind: tokens are tenant-scoped, so
+// to name the tenant and they share no syntax — the socket glues it to the
+// canonical inside one segment (`<tenant>:<canonical>`), while HTTP gives it a
+// segment of its own (`/tenant/<tenant>/api:<canonical>`) — and the failure when
+// you set one and not the other is the worst kind: tokens are tenant-scoped, so
 // authenticating through the instance workspace mints a token the tenant's
-// realtime server rejects, and nothing on the wire says why. An agent cannot
-// infer the header from the path form (there is no URL form to generalize), nor
-// guess that a bare canonical on a tenant host silently resolves against a
-// different workspace's channels rather than erroring.
-const CEILING_TOKENS = 29_250;
+// realtime server rejects, and nothing on the wire says why. Neither form is
+// derivable from the other, and an agent cannot guess that a bare canonical on a
+// tenant host silently resolves against a different workspace's channels rather
+// than erroring. (This note originally claimed HTTP had no URL form and required
+// an `X-Tenant` header; corrected in 4.1.16 — the header is not required.)
+// Raised again from 29.25k for the `getUrl` tenant LIFT that closes that trap in
+// code rather than prose. The SDK's own `sandbox details` baseUrl and injected
+// `window.XANO_HOST` are `https://<host>/tenant/<name>` — the HTTP shape — so the
+// obvious `getUrl(window.XANO_HOST)` used to emit a URL that was wrong twice over
+// (no tenant applied, and the leftover segments swallowed into the connection
+// hash) — live, that URL never upgrades at all and the handshake is answered
+// with a plain 404. The behavior is now "translate, not
+// concatenate", and the doc has to carry all three parts or it is a new trap of
+// its own: the lift, the throw on a conflicting `{ tenant }`, and the one case
+// that still needs an explicit tenant (a tenant on its own domain, where the
+// websocket tier reads only the hash and there is nothing in the URL to lift).
+// Raised again from 29.45k for the conversation transcript's CONSEQUENCE. The
+// frame names were already listed, which turned out to be worse than useless:
+// an agent that knows `conversation_start` exists still builds a messages table
+// and a "fetch recent messages" endpoint to hydrate a joining client, because
+// nothing said the replay is PUSHED at join and is already that hydration. The
+// entry has to carry what the frame list cannot imply — that the backfill
+// arrives as ordinary `message` frames a client already renders, that the
+// broadcast payload IS the stored transcript row (so anything the handler
+// omits, like the author's name, is gone on replay), and that the ring is
+// capped by `limit`/`ttl`, which is the real and much narrower reason to
+// persist to a table.
+// Raised again from 29.6k for the realtime v2 source audit — the largest single
+// rise here, and the one with the clearest justification, because reading the
+// tier turned up a cluster of options whose NAMES actively mislead. Four of them
+// fail SILENTLY, which is the category this doc exists for: `conversation:
+// { enabled: true }` with no `limit` records and replays nothing (0 means retain
+// none, not retain everything); `at_least_once` is a CLIENT contract, so an
+// anonymous client that sends no durable id at join has no cursor and quietly
+// drops to at_most_once; a `deliver` trigger suppresses a message only on an
+// explicit null, so `return false` — how anyone writes a yes/no filter — sends
+// the message it was meant to hide; and an idle socket is reaped after ~10
+// minutes, so the listen-only client that most realtime UIs are gets
+// disconnected unless it pings. None of these throw, none appear in a def, and
+// an agent cannot infer any of them from the option name — which is precisely
+// the grounding that must never be cut to fit a number.
+const CEILING_TOKENS = 31_500;
 
 describe("llms.txt token budget", () => {
   it("stays under the bloat-tripwire ceiling", () => {
