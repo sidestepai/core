@@ -453,8 +453,9 @@ describe("tableAlias — opt-in, and unique across the workspace", () => {
  *
  * A row write auto-wires any column whose name matches an incoming request
  * input. With this on, the engine consults the endpoint's input whitelist and
- * skips anything outside it (`processPayloadArgs`, DEV-6431) — so it is a
- * security-relevant setting, not a formatting one.
+ * skips anything outside it — so it is a security-relevant setting, not a
+ * formatting one. (The engine-side detail is documented in the decoder, which
+ * is internal and does not ship in the published types.)
  *
  * OFF is the engine's own default (`enforce_hidden_fields?=false`, read as
  * `?? false` by all three statement classes), and the key must stay ABSENT then:

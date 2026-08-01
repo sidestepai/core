@@ -964,12 +964,13 @@ export interface DbAddArgs<
    * A row write auto-wires any column whose name matches an incoming request
    * input, which is convenient and is also how a caller can reach a column the
    * endpoint never meant to expose. With this on, the engine consults the
-   * endpoint's input whitelist and skips auto-wiring anything outside it
-   * (`processPayloadArgs`); explicit `data`/`row` entries are unaffected,
-   * because those are bindings you wrote.
+   * endpoint's declared inputs and skips auto-wiring anything outside them;
+   * explicit `data`/`row` entries are unaffected, because those are bindings you
+   * wrote.
    *
-   * Off by default, which is the engine's own default (`enforce_hidden_fields?=false`,
-   * read as `?? false`) — so leaving it unset writes nothing and changes nothing.
+   * Off by default, matching the engine's own default — so leaving it unset
+   * writes nothing and changes nothing. Reach for it on any write whose table
+   * has a column a caller must not set (`role`, `is_admin`, `credits`).
    */
   enforceHiddenFields?: boolean;
 
@@ -1037,12 +1038,13 @@ export interface DbEditArgs<
    * A row write auto-wires any column whose name matches an incoming request
    * input, which is convenient and is also how a caller can reach a column the
    * endpoint never meant to expose. With this on, the engine consults the
-   * endpoint's input whitelist and skips auto-wiring anything outside it
-   * (`processPayloadArgs`); explicit `data`/`row` entries are unaffected,
-   * because those are bindings you wrote.
+   * endpoint's declared inputs and skips auto-wiring anything outside them;
+   * explicit `data`/`row` entries are unaffected, because those are bindings you
+   * wrote.
    *
-   * Off by default, which is the engine's own default (`enforce_hidden_fields?=false`,
-   * read as `?? false`) — so leaving it unset writes nothing and changes nothing.
+   * Off by default, matching the engine's own default — so leaving it unset
+   * writes nothing and changes nothing. Reach for it on any write whose table
+   * has a column a caller must not set (`role`, `is_admin`, `credits`).
    */
   enforceHiddenFields?: boolean;
 
@@ -1126,12 +1128,13 @@ export interface DbAddOrEditArgs<T extends ObjectRef = ObjectRef, As extends str
    * A row write auto-wires any column whose name matches an incoming request
    * input, which is convenient and is also how a caller can reach a column the
    * endpoint never meant to expose. With this on, the engine consults the
-   * endpoint's input whitelist and skips auto-wiring anything outside it
-   * (`processPayloadArgs`); explicit `data`/`row` entries are unaffected,
-   * because those are bindings you wrote.
+   * endpoint's declared inputs and skips auto-wiring anything outside them;
+   * explicit `data`/`row` entries are unaffected, because those are bindings you
+   * wrote.
    *
-   * Off by default, which is the engine's own default (`enforce_hidden_fields?=false`,
-   * read as `?? false`) — so leaving it unset writes nothing and changes nothing.
+   * Off by default, matching the engine's own default — so leaving it unset
+   * writes nothing and changes nothing. Reach for it on any write whose table
+   * has a column a caller must not set (`role`, `is_admin`, `credits`).
    */
   enforceHiddenFields?: boolean;
 

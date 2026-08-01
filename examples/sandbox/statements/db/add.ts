@@ -66,8 +66,8 @@ export const dbAddData = defineFunction({
  * input. That is the convenience that makes `s.db.add({ table, data: [] })`
  * work at all — and it is also how a caller can reach a column the endpoint
  * never meant to accept, by posting a field nobody declared. Turning this on
- * makes the engine consult the endpoint's input whitelist and skip auto-wiring
- * anything outside it. Explicit `row`/`data` entries are unaffected: those are
+ * makes the engine consult the endpoint's declared inputs and skip auto-wiring
+ * anything outside them. Explicit `row`/`data` entries are unaffected: those are
  * bindings you wrote.
  *
  * It is OFF by default, because that is the engine's default — so reach for it
