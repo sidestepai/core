@@ -1023,3 +1023,69 @@ describe("validate normalizer — name-keyed input ordering", () => {
     expect(normalize(lead)).not.toEqual(normalize(moved));
   });
 });
+
+/**
+ * A REQUIRED input's `default` — an unreachable member with two spellings.
+ *
+ * `convertSchemaParamToConfig` opens with, unconditionally:
+ *
+ *     if ($param["required"]) { $param["default"] = null; $param["hasDefault"] = false; }
+ *
+ * so on a required input the stored `default` is discarded before anything reads
+ * it. Both spellings occur in the wild — `""` from the engine's own trigger
+ * templates and from this SDK, `null` from whatever wrote the realtime triggers
+ * on a current instance — and a live sweep found 82 `.input[].default` mismatch
+ * rows, every one of them a required entry.
+ *
+ * The scope is the whole finding. The next lines of that same function are
+ * `$param["default"] ??= ""` and a nullable branch that sets `null`, so on an
+ * OPTIONAL input the two spellings can genuinely differ.
+ */
+describe("validate normalizer — a required input's inert default", () => {
+  const entry = (over: Record<string, unknown>) => ({
+    input: [{ name: "action", type: "enum", required: true, default: "", ...over }],
+  });
+
+  it("reads `null` and `\"\"` as one state on a required input", () => {
+    expect(normalize(entry({ default: null }))).toEqual(normalize(entry({ default: "" })));
+  });
+
+  it("keeps them DISTINCT on an optional input", () => {
+    // The guard that stops this flattening a real nullable default. Same shape,
+    // opposite answer, decided by `required`.
+    const optionalNull = entry({ required: false, nullable: true, default: null });
+    const optionalBlank = entry({ required: false, nullable: true, default: "" });
+    expect(normalize(optionalNull)).not.toEqual(normalize(optionalBlank));
+  });
+
+  it("applies to an obj input's children, which convert recursively", () => {
+    const child = (d: unknown) => ({
+      input: [
+        {
+          name: "client",
+          type: "obj",
+          required: true,
+          default: "",
+          children: [{ name: "permissions", type: "obj", required: true, default: d }],
+        },
+      ],
+    });
+    expect(normalize(child(null))).toEqual(normalize(child("")));
+  });
+
+  it("leaves a statement's input[] entries alone", () => {
+    // A statement's `input[]` is `{name, tag, value}` — no `type`/`required`, so
+    // it must pass straight through rather than acquire a `default`.
+    const stmt = { input: [{ name: "dbtable", tag: "const", value: "x", filters: [] }] };
+    const entry0 = (normalize(stmt) as { input: Array<Record<string, unknown>> }).input[0]!;
+    expect(entry0).not.toHaveProperty("default");
+    expect(entry0).toMatchObject({ name: "dbtable", tag: "const", value: "x" });
+  });
+
+  it("leaves a table COLUMN's default alone", () => {
+    // A column's `default` is a real DB default, and `required` there means NOT
+    // NULL. It lives under `schema`, never under `input`, and must not be blanked.
+    const table = { schema: [{ name: "id", type: "int", required: true, default: "0" }] };
+    expect((normalize(table) as typeof table).schema[0]!.default).toBe("0");
+  });
+});

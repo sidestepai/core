@@ -323,6 +323,43 @@ export function liveReturnSection(value: unknown): Record<string, unknown> | und
 }
 
 /**
+ * A schema input's `default` blanked wherever the engine will discard it anyway.
+ *
+ * `convertSchemaParamToConfig` opens with, unconditionally:
+ *
+ * ```php
+ * if ($param["required"]) { $param["default"] = null; $param["hasDefault"] = false; }
+ * ```
+ *
+ * So on a REQUIRED input the stored `default` is thrown away before anything can
+ * read it — the two spellings found in the wild (`""` from the engine's own
+ * trigger templates and from this SDK, `null` from whatever wrote the realtime
+ * triggers on a current instance) are the same unreachable member. 82 of the 82
+ * `.input[].default` verify-mismatch rows on a live sweep were required entries.
+ *
+ * **Scoped to `required` for a reason, not for caution.** The very next lines are
+ * `$param["default"] ??= ""` and then `if ($param["nullable"] && …) $param["default"] = null`
+ * — so on an OPTIONAL input the two spellings can genuinely differ, and a blanket
+ * rule would flatten a real nullable default into an empty string. Same shape,
+ * opposite answer, decided by a member.
+ *
+ * Applied to schema descriptors only — they carry `type` and `required`. A
+ * statement's `input[]` entries are `{name, tag, value}` and pass straight
+ * through, and a table COLUMN never reaches here (its `default` is a real DB
+ * default, and this walks `input` arrays alone).
+ */
+function blankInertDefaults(entry: unknown): unknown {
+  if (entry === null || typeof entry !== "object" || Array.isArray(entry)) return entry;
+  const e = entry as Record<string, unknown>;
+  if (!("type" in e) || !("required" in e)) return entry;
+  const out: Record<string, unknown> = { ...e };
+  if (e["required"] === true && "default" in e) out["default"] = null;
+  // An `obj` input's members go through the same conversion, recursively.
+  if (Array.isArray(e["children"])) out["children"] = e["children"].map(blankInertDefaults);
+  return out;
+}
+
+/**
  * A realtime event's `auth` block with an UNBOUND auth table dropped, or
  * `undefined` when there is nothing to drop.
  *
@@ -1160,14 +1197,21 @@ export function normalize<T>(value: T): T {
       //
       // Scoped to `context` deliberately. A blanket array→object coercion would
       // corrupt every genuinely-empty list in the envelope.
-      if (sortsInput && k === "input" && Array.isArray(v)) {
-        out[k] = [...v]
-          .sort((a, b) =>
-            String((a as { name?: unknown })?.name ?? "").localeCompare(
-              String((b as { name?: unknown })?.name ?? ""),
-            ),
-          )
-          .map((entry) => normalize(entry));
+      if (k === "input" && Array.isArray(v)) {
+        // A required input's `default` is discarded by the engine before anything
+        // reads it, so its two stored spellings are one state (see
+        // {@link blankInertDefaults}). Applied to every input array; the sort
+        // below is the separate, statement-scoped rule.
+        const entries = v.map(blankInertDefaults);
+        out[k] = (
+          sortsInput
+            ? [...entries].sort((a, b) =>
+                String((a as { name?: unknown })?.name ?? "").localeCompare(
+                  String((b as { name?: unknown })?.name ?? ""),
+                ),
+              )
+            : entries
+        ).map((entry) => normalize(entry));
         continue;
       }
       // A `context.return` keeps only the branch its `type` selects; the editor
