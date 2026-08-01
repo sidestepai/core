@@ -307,3 +307,29 @@ describe("a fallback explains itself without instrumentation", () => {
     expect(detail).not.toContain("is not a decodable condition");
   });
 });
+
+describe("an `ignore` flag on an entry that is not row data", () => {
+  it("names itself instead of surfacing as an anonymous byte difference", () => {
+    // `ignore` is honoured on EVERY input entry, not just row data: the engine
+    // walks a statement's `input[]` through one generic routine that records a
+    // flagged entry as `"<name>:ignore"` and then skips it, so it never reaches
+    // the statement and never joins the input whitelist. On a lookup that means
+    // the row is never found by `field_name` at all.
+    //
+    // The SDK has no authoring surface for that, and should not grow one — so
+    // `raw()` is right, and the only defect was that the decline said nothing.
+    // It reported two anonymous `.input[].ignore` byte diffs and left a
+    // maintainer to work out which entry and why.
+    const detail = fallbackDetail({
+      name: "mvp:dbo_editby",
+      context: { dbo: { id: deriveGuid("dbo", "post") } },
+      input: [
+        { name: "field_name", tag: "const", value: "id", filters: [], ignore: true },
+        { name: "field_value", tag: "var", value: "x", filters: [] },
+      ],
+    });
+    expect(detail).toContain("field_name");
+    expect(detail).toContain("ignore");
+    expect(detail).toContain("only row data can hold");
+  });
+});

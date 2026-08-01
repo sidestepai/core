@@ -227,14 +227,33 @@ function outputCols(stored: StackItemXdo): string[] | undefined {
 }
 
 /**
- * Only row-data entries have an authored home for sub-entries. A lookup or named
- * entry that carries them would re-encode without them, so this declines with a
- * label rather than letting `prove` report it as an anonymous byte difference.
+ * Only row-data entries have an authored home for sub-entries or an `ignore`
+ * flag. A lookup or named entry that carries either would re-encode without it,
+ * so this declines with a label rather than letting `prove` report it as an
+ * anonymous byte difference.
+ *
+ * `ignore` is not exhaust on these entries — it is honoured. The engine walks
+ * every statement's `input[]` through ONE generic routine that knows nothing
+ * about which slot an entry fills: a flagged entry is recorded as
+ * `"<name>:ignore"` and then skipped, so it never reaches the statement and
+ * never joins the input whitelist. On a lookup that means `field_name` or
+ * `field_value` is simply not passed. That is a real (if broken-looking) stored
+ * state, and `raw()` preserves it rather than re-encoding a statement that
+ * would suddenly start passing the entry.
  */
-function unexpanded(row: InputEntry, path: string): boolean {
-  if (row.children.length === 0) return true;
-  declineHere(`${path}: "${row.name}" carries sub-entries, which only row data can hold`);
-  return false;
+function plainEntry(row: InputEntry, path: string): boolean {
+  if (row.children.length > 0) {
+    declineHere(`${path}: "${row.name}" carries sub-entries, which only row data can hold`);
+    return false;
+  }
+  if (row.ignore) {
+    declineHere(
+      `${path}: "${row.name}" is flagged \`ignore\`, which only row data can hold — the engine ` +
+        `drops the entry, so it is not passed at all`,
+    );
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -524,7 +543,7 @@ function dboOp(shape: DboOpShape): SpecialDecoder {
         return declineHere(`${shape.path}: input[] does not lead with field_name/field_value`);
       if (fieldName.value.tag !== "const" || fieldName.value.filters.length > 0)
         return declineHere(`${shape.path}: field_name is not a bare constant`);
-      if (!unexpanded(fieldName, shape.path) || !unexpanded(fieldValue, shape.path)) return null;
+      if (!plainEntry(fieldName, shape.path) || !plainEntry(fieldValue, shape.path)) return null;
       // `id` is the encoder's default lookup column, so naming it adds nothing.
       if (fieldName.value.value !== "id") {
         entries.push(["fieldName", lit(fieldName.value.value)]);
@@ -542,7 +561,7 @@ function dboOp(shape: DboOpShape): SpecialDecoder {
         return declineHere(`${shape.path}: input[] is missing required "${spec.entry}"`);
       }
       cursor += 1;
-      if (!unexpanded(found, shape.path)) return null;
+      if (!plainEntry(found, shape.path)) return null;
       if (spec.bool) {
         const value = plainBool(found.value);
         if (value === null)
@@ -624,7 +643,7 @@ const dbAddOrEdit: SpecialDecoder = (a) => {
     return declineHere("db.add_or_edit: input[] does not lead with field_name/field_value");
   if (fieldName.value.tag !== "const" || fieldName.value.filters.length > 0)
     return declineHere("db.add_or_edit: field_name is not a bare constant");
-  if (!unexpanded(fieldName, "db.add_or_edit") || !unexpanded(fieldValue, "db.add_or_edit"))
+  if (!plainEntry(fieldName, "db.add_or_edit") || !plainEntry(fieldValue, "db.add_or_edit"))
     return null;
 
   // Through the shared table argument like the rest of the family, which is what
