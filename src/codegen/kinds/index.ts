@@ -355,6 +355,91 @@ function identity(args: KindDecodeArgs): DefEntry[] {
   return entries;
 }
 
+
+// --- microservice sub-structures ---------------------------------------------
+
+/** An argv list back to plain strings — the engine stores `[{name}]`. */
+function argvStrings(raw: unknown): string[] {
+  return Array.isArray(raw)
+    ? raw.map((e) => String((e as { name?: unknown })?.name ?? ""))
+    : [];
+}
+
+/** Drop members equal to their default, so a generated container stays readable. */
+function prune(entries: Array<[string, unknown]>, defaults: Record<string, unknown>): Expr {
+  const kept = entries.filter(([k, v]) => {
+    if (v === undefined) return false;
+    if (Array.isArray(v) && v.length === 0) return false;
+    return !deepEqual(v, defaults[k]);
+  });
+  return obj(kept.map(([k, v]) => [k, lit(v)] as [string, Expr]));
+}
+
+/** A microservice's `deployment`, containers and all. */
+function deployment(a: KindDecodeArgs): DefEntry | null {
+  const block = a.stored["deployment"] as Record<string, unknown> | undefined;
+  if (block === undefined) return null;
+  const containers = Array.isArray(block["containers"]) ? block["containers"] : [];
+  const entries: Array<[string, Expr]> = [];
+  if (block["replicas"] !== undefined && block["replicas"] !== 1) {
+    entries.push(["replicas", lit(block["replicas"])]);
+  }
+  if (block["strategy"] !== undefined && block["strategy"] !== "Recreate") {
+    entries.push(["strategy", lit(block["strategy"])]);
+  }
+  if (block["docker"]) entries.push(["docker", lit(block["docker"])]);
+  if (containers.length > 0) {
+    entries.push([
+      "containers",
+      arr(
+        containers.map((raw) => {
+          const c = raw as Record<string, unknown>;
+          const resources = (c["resources"] ?? {}) as Record<string, unknown>;
+          return prune(
+            [
+              ["name", c["name"]],
+              ["image", c["image"]],
+              ["type", c["type"]],
+              ["pullSecret", c["pull_secret"]],
+              ["ports", c["ports"]],
+              ["resources", resources["cpu"] || resources["ram"] ? resources : undefined],
+              ["command", argvStrings(c["command"])],
+              ["args", argvStrings(c["args"])],
+              ["env", c["envs"]],
+              ["volumes", c["volumes"]],
+            ],
+            { type: "standard", image: "" },
+          );
+        }),
+      ),
+    ]);
+  }
+  if (entries.length === 0) return null;
+  return ["deployment", obj(entries)];
+}
+
+/** A block emitted only when it holds something — `chart`, `registry_auth`. */
+function populatedBlock(
+  a: KindDecodeArgs,
+  storedKey: string,
+  defKey: string,
+  rename: Record<string, string> = {},
+): DefEntry | null {
+  const block = a.stored[storedKey] as Record<string, unknown> | undefined;
+  if (block === undefined) return null;
+  const entries = Object.entries(block)
+    .filter(([, v]) => v !== "" && v !== null && v !== undefined)
+    .map(([k, v]) => [rename[k] ?? k, lit(v)] as [string, Expr]);
+  return entries.length === 0 ? null : [defKey, obj(entries)];
+}
+
+/** A list block emitted only when non-empty. */
+function listBlock(a: KindDecodeArgs, storedKey: string, defKey = storedKey): DefEntry | null {
+  const list = a.stored[storedKey];
+  if (!Array.isArray(list) || list.length === 0) return null;
+  return [defKey, lit(list)];
+}
+
 /** Drop the nulls a table of optional entries produces. */
 function compact(entries: Array<DefEntry | null>): DefEntry[] {
   return entries.filter((e): e is DefEntry => e !== null);
@@ -571,6 +656,43 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
         tags(a.stored),
         cors(a),
       ]),
+  },
+  {
+    name: "microservice",
+    payloadKey: "microservice",
+    dir: "microservices",
+    register: "registerMicroservices",
+    defType: "MicroserviceDef",
+    factory: "microservice",
+    decode: (a) => {
+      // A credential in a generated tree is worth a line in the report every
+      // time, not a footnote in the docs. Carried deliberately (dropping it
+      // would mean a pulled microservice could not be redeployed), so the report
+      // is what keeps it from happening quietly.
+      const auth = a.stored["registry_auth"] as Record<string, unknown> | undefined;
+      if (typeof auth?.["dockerconfigjson"] === "string" && auth["dockerconfigjson"] !== "") {
+        a.ctx.problem(
+          "expected-omission",
+          `microservice "${String(a.stored.name)}" carries a private-registry credential ` +
+            "(`registryAuth.dockerconfigjson`) into the generated tree — it is needed to redeploy, " +
+            "so treat this tree as secret material, or clear it here and supply it from the environment",
+        );
+      }
+      return compact([
+        ...identity(a),
+        plain(a.stored, "description", ""),
+        plain(a.stored, "kind", "builtin"),
+        plain(a.stored, "tenant_deploy", "auto", "tenantDeploy"),
+        listBlock(a, "configs"),
+        listBlock(a, "volumes"),
+        listBlock(a, "ingresses"),
+        deployment(a),
+        populatedBlock(a, "chart", "chart"),
+        populatedBlock(a, "registry_auth", "registryAuth", {
+          dockerconfigjson: "dockerconfigjson",
+        }),
+      ]);
+    },
   },
   {
     name: "realtime_server",

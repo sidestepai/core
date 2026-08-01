@@ -1,0 +1,62 @@
+{
+  "guid": "Phlt4v1K9rXLcg47FDqs2VJ6QpA",
+  "kind": "builtin",
+  "name": "ex_kind_echo_service",
+  "chart": {
+    "ref": "",
+    "values": "",
+    "version": ""
+  },
+  "configs": [],
+  "volumes": [],
+  "ingresses": [],
+  "deployment": {
+    "docker": "",
+    "replicas": 2,
+    "strategy": "RollingUpdate",
+    "containers": [
+      {
+        "args": [
+          {
+            "name": "-c"
+          },
+          {
+            "name": "echo hi"
+          }
+        ],
+        "envs": [
+          {
+            "name": "MODE",
+            "value": "probe"
+          }
+        ],
+        "name": "probe_c",
+        "type": "standard",
+        "image": "ealen/echo-server:latest",
+        "ports": [
+          {
+            "servicePort": "8080",
+            "containerPort": "80"
+          }
+        ],
+        "command": [
+          {
+            "name": "/bin/sh"
+          }
+        ],
+        "volumes": [],
+        "resources": {
+          "cpu": "50m",
+          "ram": "256Mi"
+        }
+      }
+    ]
+  },
+  "description": "",
+  "registry_auth": {
+    "type": "",
+    "server": "",
+    "dockerconfigjson": ""
+  },
+  "tenant_deploy": "auto"
+}

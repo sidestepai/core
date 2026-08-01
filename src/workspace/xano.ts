@@ -161,6 +161,10 @@ export class Xano {
     return this.register("addon", defs);
   }
 
+  registerMicroservices(defs: unknown[]): this {
+    return this.register("microservice", defs);
+  }
+
   registerRealtimeServers(defs: unknown[]): this {
     return this.register("realtime_server", defs);
   }

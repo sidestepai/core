@@ -1,0 +1,26 @@
+{
+  "guid": "Cg9xomFW9D9XA5FBGJbmfds0ZGQ",
+  "kind": "helm",
+  "name": "ex_kind_helm_service",
+  "chart": {
+    "ref": "oci://registry-1.docker.io/bitnamicharts/nginx",
+    "values": "PROBE_SENTINEL_VALUES: not-a-real-secret",
+    "version": "18.1.0"
+  },
+  "configs": [],
+  "volumes": [],
+  "ingresses": [],
+  "deployment": {
+    "docker": "",
+    "replicas": 1,
+    "strategy": "Recreate",
+    "containers": []
+  },
+  "description": "",
+  "registry_auth": {
+    "type": "",
+    "server": "",
+    "dockerconfigjson": ""
+  },
+  "tenant_deploy": "auto"
+}

@@ -168,8 +168,8 @@ describe("verifyBundles", () => {
     // side; leaving it out of the omission table ALSO made every object in it
     // come back as "missing from the generated tree", so a workspace whose pull
     // was entirely correct read as a round-trip failure. `microservice` was that
-    // section, and this is what stops the next one being it.
-    const source = { payload: { microservice: [{ name: "echo-docker", kind: "builtin" }] } };
+    // section — it is modelled now — and this is what stops the next one being it.
+    const source = { payload: { service: [{ name: "some-service" }] } };
     const regenerated = { payload: {} };
 
     const result = verifyBundles(source, regenerated);
@@ -177,8 +177,8 @@ describe("verifyBundles", () => {
     expect(result.mismatches).toEqual([]);
     expect(result.omissions).toHaveLength(1);
     expect(result.omissions[0]).toMatchObject({
-      payloadKey: "microservice",
-      name: "echo-docker",
+      payloadKey: "service",
+      name: "some-service",
       reason: "unmodeled",
     });
   });

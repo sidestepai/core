@@ -15,6 +15,7 @@ import "./api-group.js";
 import "./task.js";
 import "./middleware.js";
 import "./addon.js";
+import "./microservice.js";
 import "./realtime-server.js";
 import "./realtime-channel.js";
 import "./realtime-message.js";

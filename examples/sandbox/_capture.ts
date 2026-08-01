@@ -22,6 +22,7 @@ import { exampleMcpServer, assistant, askAssistant } from "./kinds/ai.js";
 import { nightlyCleanup } from "./kinds/task.js";
 import { rateLimit } from "./kinds/middleware.js";
 import { authorAddon } from "./kinds/addon.js";
+import { echoService, helmService } from "./kinds/microservice.js";
 import {
   chatServer,
   lobbyChannel,
@@ -59,6 +60,7 @@ export default workspace("sidestep-capture-kinds")
   .registerTasks(defs([nightlyCleanup]))
   .registerMiddleware(defs([rateLimit]))
   .registerAddons(defs([authorAddon]))
+  .registerMicroservices(defs([echoService, helmService]))
   .registerRealtimeServers(defs([chatServer]))
   .registerRealtimeChannels(defs([lobbyChannel, roomChannel]))
   .registerRealtimeMessages(defs([sendMessage, typingMessage]));

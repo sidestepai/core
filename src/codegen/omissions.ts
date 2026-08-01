@@ -89,22 +89,6 @@ export const UNSUPPORTED_SECTIONS: Readonly<Record<string, OmissionPolicy>> = {
   },
   workflow_test: { reason: "unmodeled", detail: "workflow tests are not modeled by this SDK" },
   service: { reason: "unmodeled", detail: "services are not modeled by this SDK" },
-  // A microservice is a deployed CONTAINER — chart, deployment, volumes,
-  // ingresses, and `registry_auth` credentials — rather than workspace source.
-  // This SDK models the CALL (`s.api.microservice`) and not the service
-  // definition, which is the same split as `service` above.
-  //
-  // Listed here because being absent had a cost: an unlisted section falls to
-  // the unknown-key branch, which reports it, AND leaves verification with no
-  // policy — so every object in it ALSO came back as "missing from the generated
-  // tree". That is invariant 8 (an omission and a mismatch must never both fire
-  // for one thing), and it made a workspace whose pull was entirely correct read
-  // as a round-trip failure.
-  microservice: {
-    reason: "unmodeled",
-    detail:
-      "microservices are deployed container services owned by the instance; this SDK models calling one, not defining it",
-  },
   branch: { reason: "server-managed", detail: "branches are instance state, not workspace source" },
 };
 
