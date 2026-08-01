@@ -291,6 +291,14 @@ export function decodeFromSpec(ctx: DecodeContext, stored: StackItemXdo): Expr |
         encoded = encodeStatement(applied.statement);
       } catch (error) {
         recordProveAbort(`spec:${sPath}`, stored.name, `factory threw: ${String(error)}`);
+        // The authoring surface rejected the recovered arguments, and its message
+        // names the exact conflict for a human — carried through to the fallback
+        // report exactly as the special arm does it.
+        ctx.declined(
+          `the recovered arguments were rejected by the authoring surface — ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
         continue;
       }
       if (!sameStatement(encoded, stored)) {

@@ -59,6 +59,7 @@
     "codegen:filters": "tsx scripts/codegen-filters.ts",
     "codegen:methods": "tsx scripts/codegen-field-methods.ts",
     "codegen:sweep": "tsx scripts/codegen-sweep.ts",
+    "codegen:replay": "tsx scripts/codegen-replay.ts",
     "manifest": "tsx scripts/manifest.ts",
     "measure:llms": "tsx scripts/measure-llms.ts",
     "typecheck": "tsc --noEmit",

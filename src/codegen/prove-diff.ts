@@ -103,22 +103,50 @@ export function diffKeyPaths(encoded: unknown, stored: unknown): string[] {
   return out;
 }
 
-/** Record a declined proof. No-op unless `SIDESTEP_PROVE_DIFF` names a file. */
+/** How many disagreeing key paths a decline note quotes before summarizing the rest. */
+const NOTE_PATHS = 3;
+
+/**
+ * Record a declined proof, and leave the disagreeing key paths as the note.
+ *
+ * The JSON line is still conditional on `SIDESTEP_PROVE_DIFF`, but the diff walk
+ * is not: a byte-mismatch decline is the one kind that knows precisely which
+ * stored detail it failed to carry, and withholding that from the report is what
+ * left "could not reproduce the stored statement" as a user's only clue. The
+ * walk is bounded (see `MAX_PATHS`/`MAX_DEPTH`) and runs only on a decline.
+ *
+ * The paths are storage paths rather than authoring ones on purpose. They are
+ * what the stored bytes actually disagree on, so they say the true thing, and a
+ * reader chasing one has something exact to search for.
+ */
 export function recordProveDecline(
   arm: string,
   name: unknown,
   encoded: unknown,
   stored: unknown,
 ): void {
+  const diffs = diffKeyPaths(encoded, stored);
+  if (diffs.length > 0) {
+    const shown = diffs.slice(0, NOTE_PATHS).join("; ");
+    const rest = diffs.length - NOTE_PATHS;
+    noteDecline(
+      `the re-encode disagrees with the stored bytes at ${shown}` +
+        (rest > 0 ? ` (and ${rest} more)` : ""),
+    );
+  }
   const file = sink();
   if (file === undefined || file === "") return;
-  appendFileSync(file, `${JSON.stringify({ arm, name, diffs: diffKeyPaths(encoded, stored) })}\n`);
+  appendFileSync(file, `${JSON.stringify({ arm, name, diffs })}\n`);
 }
 
 /**
  * Record a candidate that could not even be built — the factory threw before any
  * comparison happened. Distinguishing this from a byte mismatch matters: a throw
  * means the recovered arguments were the wrong *shape*, not the wrong value.
+ *
+ * This one does NOT note. The throw message needs framing to read as an
+ * explanation rather than a stack-trace fragment, and only the caller knows
+ * which surface rejected what — so both call sites wrap it themselves.
  */
 export function recordProveAbort(arm: string, name: unknown, why: string): void {
   const file = sink();
@@ -149,6 +177,47 @@ export function withDeclineContext<T>(name: unknown, body: () => T): T {
 }
 
 /**
+ * Why the decode that just declined could not spell this statement.
+ *
+ * A decline is not a report entry: another arm may still prove, and a report
+ * describing an attempt that was thrown away is simply false. But when EVERY arm
+ * declines, "its decoder could not reproduce the stored statement" is all a
+ * reader gets, and the decoder usually knew exactly why. This is the channel for
+ * the ones that do.
+ *
+ * It lives here rather than on the context because its two writers cannot both
+ * reach a context: `prove` has one, and `declineHere` — several frames down
+ * inside a shared helper — does not. Two stores would drift, and the drift would
+ * be invisible, so there is one (invariant 4). The dispatch takes the note on
+ * every path out of a statement decode, which is what stops it outliving the
+ * statement it describes.
+ */
+let pendingNote: string | undefined;
+
+/**
+ * Record why this decode declined. **First writer wins**, and that direction is
+ * load-bearing: the most specific reason is the one that fires deepest, and a
+ * coarse outer guard runs strictly after it. A condition that declined with
+ * "the first sibling carries an `or` flag, which joins it to nothing" is
+ * immediately followed by its statement's "context.expr is not a decodable
+ * condition" — true, and useless next to what it would have overwritten.
+ *
+ * Safe because the note's lifetime is one statement: the dispatch takes it on
+ * every path out, so "first" never reaches back into a previous statement.
+ */
+export function noteDecline(why: string): null {
+  pendingNote ??= why;
+  return null;
+}
+
+/** Read and clear the pending decline note. */
+export function takePendingDecline(): string | undefined {
+  const note = pendingNote;
+  pendingNote = undefined;
+  return note;
+}
+
+/**
  * Record a decoder giving up at an internal guard, and return `null` for the
  * caller to propagate.
  *
@@ -158,16 +227,26 @@ export function withDeclineContext<T>(name: unknown, body: () => T): T {
  * fallbacks reported only 153 declines and why `db.query` was the largest
  * undiagnosable family in the sweep.
  *
- * `where` is a stable label, not a message: it is what the sweep clusters on, so
- * it names the decoder and the guard (`"db.query: where[] is not a decodable
- * condition"`) rather than quoting the offending value.
+ * `where` names the decoder and the guard (`"db.query: where[] is not a decodable
+ * condition"`) rather than quoting the offending value, so that declines cluster.
+ * **It is also read by users**: it becomes the reason on the `raw-fallback`
+ * report line, because a guard is the one decline that always knows exactly what
+ * it refused and a label that clusters is already most of the way to a sentence
+ * that explains. Write it to be read — name the surface, then what it could not
+ * recover — and keep it stable enough to cluster on.
+ *
+ * The note is recorded whether or not `SIDESTEP_PROVE_DIFF` is set; only the
+ * JSON line is conditional. The report must not depend on maintainer
+ * instrumentation being switched on.
  *
  * **Only fatal guards belong here.** Several helpers return `null` to mean "not
  * applicable" — an absent `addon[]`, an empty `sort[]` — and their callers go on
- * to decode fine. Recording those would drown the real signal, so the call sits
- * at the site that actually abandons the statement, not at every `return null`.
+ * to decode fine. Recording those would drown the real signal *and* attach a
+ * reason to a statement that decoded, so the call sits at the site that actually
+ * abandons the statement, not at every `return null`.
  */
 export function declineHere(where: string): null {
+  noteDecline(where);
   const file = sink();
   if (file === undefined || file === "") return null;
   appendFileSync(

@@ -224,3 +224,86 @@ describe("an ignored input binding", () => {
     expect(Object.keys(params)).not.toContain("__ignored");
   });
 });
+
+/**
+ * Every `raw()` fallback names a CAUSE.
+ *
+ * Sessions of sweep triage kept re-deriving the same thing: 19 of 31 fallback
+ * rows in a 177-project replay said only "could not reproduce the stored
+ * statement", and the reason was already known at the point of decline — a
+ * guard's label, or the key paths a re-encode disagreed on. Both were written
+ * exclusively to `SIDESTEP_PROVE_DIFF`, maintainer instrumentation nobody
+ * pulling a workspace has switched on.
+ *
+ * So the reason reaches the report itself. The guard labels double as the
+ * explanation (they already name the surface and what it refused), and a byte
+ * mismatch quotes the paths where the bytes actually disagree.
+ */
+describe("a fallback explains itself without instrumentation", () => {
+  /** With the maintainer dump explicitly OFF — the report must not depend on it. */
+  function detailWithoutDump(stored: Record<string, unknown>): string {
+    const previous = process.env["SIDESTEP_PROVE_DIFF"];
+    delete process.env["SIDESTEP_PROVE_DIFF"];
+    try {
+      return fallbackDetail(stored);
+    } finally {
+      if (previous !== undefined) process.env["SIDESTEP_PROVE_DIFF"] = previous;
+    }
+  }
+
+  it("carries a guard's label through as the reason", () => {
+    // `update_var` guards on its context being a tagged value; this one is not.
+    const detail = detailWithoutDump({
+      name: "mvp:update_var",
+      context: { nothing: "tagged here" },
+    });
+    expect(detail).toContain("could not reproduce");
+    expect(detail).toContain("update_var");
+    // The guard's own words, not a generic "could not reproduce".
+    expect(detail).toContain("not a tagged value");
+  });
+
+  it("names the key path a re-encode disagreed on", () => {
+    // A REAL statement the decoder handles, plus one key no authoring surface
+    // writes. The decode must fail — and say which key did it.
+    const stored = encodeStatement(
+      s.api.request({ url: c.text("https://x.test") } as never),
+    ) as unknown as Record<string, unknown>;
+    (stored["context"] as Record<string, unknown>)["not_a_modelled_key"] = true;
+
+    const detail = detailWithoutDump(stored);
+    expect(detail).toContain("disagrees with the stored bytes");
+    expect(detail).toContain("not_a_modelled_key");
+  });
+
+  it("keeps the most specific reason when a coarser guard follows it", () => {
+    // First writer wins. The condition decliner runs deepest and knows exactly
+    // what it refused; its statement's guard then reports the same failure in
+    // the vaguest available terms. Losing the first to the second is the whole
+    // bug this ordering exists to prevent.
+    const detail = detailWithoutDump({
+      name: "mvp:conditional",
+      context: {
+        expr: {
+          expression: [
+            {
+              or: true,
+              type: "statement",
+              group: { expression: [] },
+              statement: {
+                op: "=",
+                left: { tag: "var", operand: "a", filters: [] },
+                right: { tag: "const", operand: "1", filters: [] },
+              },
+            },
+          ],
+        },
+        if: { run: [] },
+        elif: { run: [] },
+        else: { run: [] },
+      },
+    });
+    expect(detail).toContain("joins it to nothing");
+    expect(detail).not.toContain("is not a decodable condition");
+  });
+});
