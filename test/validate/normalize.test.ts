@@ -359,6 +359,36 @@ describe("validate normalizer — per-statement context defaults", () => {
     expect(normalize(switched)).toEqual(normalize({ return: { type: "single" } }));
   });
 
+  it("sheds the inert `iterator` from the LIVE result block, not just the dead ones", () => {
+    // `iterator` sits INSIDE the live branch, so the dead-sibling rule above
+    // never reaches it. Streaming is selected by `return.type` alone — the
+    // `dbo_view` engine class switches on it and its only arm is `"stream"` —
+    // and no engine code reads `return.<block>.iterator` anywhere, so the member
+    // cannot change what the query does. The SDK omits it; one query in the
+    // survey corpus stores it (as `false`) against 555 that do not, and without
+    // this rule that lone query loses its whole statement to `raw()`.
+    const stored = {
+      return: {
+        type: "list",
+        list: { paging: { enabled: true, per_page: 10 }, iterator: false },
+        aggregate: { eval: [], sort: [], group: [], index: [], iterator: false },
+      },
+    };
+    expect(normalize(stored)).toEqual({
+      return: { type: "list", list: { paging: { enabled: true, per_page: 10 } } },
+    });
+    // It compares equal to the same query with no `iterator` stored at all —
+    // which is the SDK's spelling, and the point of the rule.
+    expect(normalize(stored)).toEqual(
+      normalize({ return: { type: "list", list: { paging: { enabled: true, per_page: 10 } } } }),
+    );
+    // A `stream` return still streams: the rule touches the inert member only,
+    // never the `type` that actually selects the iterator.
+    expect(normalize({ return: { type: "stream", stream: { iterator: true } } })).toEqual({
+      return: { type: "stream" },
+    });
+  });
+
   it("keeps the LIVE block when a sibling is dropped, and drops nothing on a lone branch", () => {
     // The paired negative — the rule must not be able to eat the branch that runs.
     const live = {

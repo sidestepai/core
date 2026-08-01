@@ -405,6 +405,52 @@ export function unboundAuthTable(value: unknown): Record<string, unknown> | unde
  * what {@link liveReturnSection} drops; a branch holding only the editor's
  * defaults returns nothing.
  */
+/**
+ * A `context.return` with the inert `iterator` member dropped from every result
+ * block, or `undefined` when it is not a return section or carries none.
+ *
+ * `iterator` is a dead key. Streaming is selected by `return.type` alone: the
+ * `dbo_view` engine class picks its iterator in a `switch` on `return["type"]`
+ * whose only arm is `"stream"`, and no other engine code — neither the
+ * stored-context-to-query-config converter nor the query parser — reads
+ * `return.<block>.iterator` at all. So the member cannot change what a query
+ * does, in any block, at any value.
+ *
+ * It is editor exhaust of the same kind as the dead sibling branches
+ * {@link liveReturnSection} sheds, and is dropped for the same reason — except
+ * this one sits INSIDE the live branch, so that function never reaches it. In
+ * the survey corpus it appears on exactly one query (as `false`, on both `list`
+ * and `aggregate`) against 555 that omit it entirely: the absent-vs-present
+ * generational split, with the engine evidence that closes it.
+ *
+ * Modelling it instead would give the SDK an authoring surface for a key the
+ * engine ignores — the same mistake `allow_notfound` is kept out of the SDK to
+ * avoid.
+ */
+export function returnWithoutIterator(value: unknown): Record<string, unknown> | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const section = value as Record<string, unknown>;
+  if (typeof section.type !== "string" || !RETURN_TYPES.has(section.type)) return undefined;
+  let found = false;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(section)) {
+    if (
+      (RETURN_BLOCKS as readonly string[]).includes(k) &&
+      v !== null &&
+      typeof v === "object" &&
+      !Array.isArray(v) &&
+      "iterator" in (v as Record<string, unknown>)
+    ) {
+      found = true;
+      const { iterator: _dropped, ...rest } = v as Record<string, unknown>;
+      out[k] = rest;
+      continue;
+    }
+    out[k] = v;
+  }
+  return found ? out : undefined;
+}
+
 export function configuredDeadReturnBlocks(value: unknown): string[] {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return [];
   const section = value as Record<string, unknown>;
@@ -1151,7 +1197,21 @@ export function normalize<T>(value: T): T {
     // comment on this rule above for the engine line and the evidence.
     const isDescriptor = "type" in (value as object) && "required" in (value as object);
     const requiredEntry = (value as { required?: unknown }).required === true;
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    for (const [k, stored] of Object.entries(value as Record<string, unknown>)) {
+      // A `context.return` is reduced BEFORE any other rule sees it: it keeps
+      // only the branch its `type` selects — the editor writes all four and the
+      // engine reads one ({@link liveReturnSection}) — and sheds the inert
+      // `iterator` inside whichever branch survives ({@link returnWithoutIterator}).
+      // Reducing first is what lets the default-envelope drop below still fire:
+      // a section that is all editor exhaust collapses to the minimal `{type}`,
+      // which is the spelling the SDK omits entirely.
+      const v =
+        k === "return"
+          ? (() => {
+              const live = liveReturnSection(stored) ?? stored;
+              return returnWithoutIterator(live) ?? live;
+            })()
+          : stored;
       if (STRIP_KEYS.has(k)) continue;
       if (isTable && k === "as") continue;
       if (k === "test" && isSavedTestList(v)) continue;
@@ -1223,15 +1283,6 @@ export function normalize<T>(value: T): T {
           )
           .map((entry) => normalize(entry));
         continue;
-      }
-      // A `context.return` keeps only the branch its `type` selects; the editor
-      // writes all four and the engine reads one (see {@link liveReturnSection}).
-      if (k === "return") {
-        const live = liveReturnSection(v);
-        if (live) {
-          out[k] = normalize(live);
-          continue;
-        }
       }
       // An `auth` block naming no table: `dbo_id: 0` is the editor's spelling of
       // the member the SDK omits (see {@link unboundAuthTable}).
