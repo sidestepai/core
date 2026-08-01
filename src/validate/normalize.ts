@@ -864,23 +864,37 @@ export function clearLocalDboRefs<T>(value: T, cleared?: Set<string>): T {
  * workspace that stored `{}` re-exports as the EXPLICIT form — the bytes change,
  * deliberately, and the live probe is what licenses changing them at all.
  */
-const EMPTY_CONTEXT_FILL: ReadonlyMap<string, { tag: string; named: boolean }> = new Map([
+const EMPTY_CONTEXT_FILL: ReadonlyMap<string, { tag?: string; named: boolean }> = new Map([
   // Its name rides the envelope `as`, so the context is the value alone.
   ["mvp:set_var", { tag: "const", named: false }],
   // Standalone classes, each declaring its own default tag.
   ["mvp:sleep", { tag: "const:int", named: false }],
   ["mvp:die", { tag: "input", named: false }],
   ["mvp:setheader", { tag: "input", named: false }],
-  // The `UpdateVarBase` family: `{name, value, tag, filters}`, `tag` overridden
-  // per subclass by `getDefaultTag()`.
+  // `array_pop`/`array_shift` carry NO `tag`, because they take no operand:
+  // popping or shifting reads nothing, their specs route no spread field, and
+  // the encoder writes `name` alone. The fill must be exactly what the encoder
+  // writes — filling a value they cannot author invents members the comparison
+  // then demands forever, which is what shipped once when they were given the
+  // full `UpdateVarBase` treatment below.
   //
-  // `array_pop` and `array_shift` are deliberately ABSENT. The engine's base
-  // class declares a context value for them too, but neither USES one — popping
-  // or shifting takes no operand — so their specs route no spread field and the
-  // encoder writes only `name`. Filling a value they cannot author would invent
-  // members the comparison then demands and the encoder never produces, which is
-  // exactly what it did before they were removed. `test/codegen/specials`
-  // asserts this table against the spec catalog so the two cannot drift.
+  // A name-only fill is a different claim from that one, and it is evidenced
+  // twice on the engine, both times on the SCALAR `name`:
+  //   • the statement's own XanoScript schema declares `name?='': context.name`
+  //     — the default for an absent name IS the empty string; and
+  //   • `UpdateVarBase::getContextSchema` declares `name: text` and runs it
+  //     through the same `XS::optional` pass that licenses every entry here.
+  //
+  // That second point is exactly where the loops failed (see
+  // {@link LOOP_EMPTY_ITERAND}): `XS::optional` materializes a SCALAR member but
+  // defaults a NESTED object to the literal string `"{}"`. `name` is a scalar,
+  // `list`/`cnt` are not, and the shape is what decides. The engine's own
+  // statement-transform corpus stores `{"context":{}}` for `mvp:array_shift`.
+  ["mvp:array_pop", { named: true }],
+  ["mvp:array_shift", { named: true }],
+  // The `UpdateVarBase` family: `{name, value, tag, filters}`, `tag` overridden
+  // per subclass by `getDefaultTag()`. `test/codegen/spec-inverse` asserts every
+  // entry's members against the spec catalog so the two cannot drift.
   ["mvp:update_var", { tag: "const", named: true }],
   ["mvp:array_merge", { tag: "const:array", named: true }],
   ["mvp:array_push", { tag: "const", named: true }],
@@ -987,9 +1001,9 @@ export function filledContext(stored: unknown): Record<string, unknown> | null {
       (Array.isArray(context) && context.length === 0) ||
       (context !== null && typeof context === "object" && Object.keys(context).length === 0);
     if (!empty) return null;
-    return whole.named
-      ? { name: "", ...blankValue(whole.tag) }
-      : blankValue(whole.tag);
+    // No tag means no operand — the fill is the name alone.
+    if (whole.tag === undefined) return { name: "" };
+    return whole.named ? { name: "", ...blankValue(whole.tag) } : blankValue(whole.tag);
   }
 
   const loop = LOOP_EMPTY_ITERAND.get(name);

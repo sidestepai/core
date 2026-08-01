@@ -321,6 +321,11 @@ describe("an empty context is the members the engine fills in", () => {
     "mvp:setheader", // input
     "mvp:die", // input, unnamed
     "mvp:sleep", // const:int, unnamed
+    // No operand at all — the fill is the name alone. The engine's own schema
+    // spells the default (`name?='': context.name`), and its statement-transform
+    // corpus stores this exact `{"context":{}}` shape.
+    "mvp:array_shift",
+    "mvp:array_pop",
   ]) {
     it(`decodes ${name} instead of falling back to raw()`, () => {
       const stored = storedEmpty(name);
@@ -331,10 +336,12 @@ describe("an empty context is the members the engine fills in", () => {
   }
 
   it("keeps the fill in step with each spec's actual rules", () => {
-    // The self-guard. `array_pop`/`array_shift` USE no value — their specs route
-    // no spread field — so filling one invents members the encoder can never
-    // produce, and the comparison then demands them forever. That shipped once
-    // and this is what catches it next time.
+    // The self-guard: a fill must be exactly the members the encoder writes.
+    // `array_pop`/`array_shift` USE no value — their specs route no spread field
+    // — so filling one invents members the encoder can never produce and the
+    // comparison then demands them forever. That shipped once. They still belong
+    // in the table for their `name`, which is why the rule is member-for-member
+    // rather than "must route a spread".
     let covered = 0;
     for (const spec of GENERATED_SPECS) {
       const stored = storedEmpty(spec.name);
@@ -342,8 +349,14 @@ describe("an empty context is the members the engine fills in", () => {
       if (!fill) continue; // not in the table — nothing to keep in step
       covered++;
 
+      // The value members ride together, and exactly when a spread is routed.
       const hasSpread = spec.rules.some((r) => r.route.kind === "context-spread");
-      expect(hasSpread, `${spec.name} is filled but routes no spread value`).toBe(true);
+      for (const member of ["value", "tag", "filters"]) {
+        expect(
+          member in fill,
+          `${spec.name} fill/spec disagree on \`${member}\``,
+        ).toBe(hasSpread);
+      }
 
       // `name` belongs in the fill exactly when the spec routes one, or the
       // comparison demands a member the encoder never writes.
