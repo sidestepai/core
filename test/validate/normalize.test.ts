@@ -1050,12 +1050,28 @@ describe("validate normalizer — a required input's inert default", () => {
     expect(normalize(entry({ default: null }))).toEqual(normalize(entry({ default: "" })));
   });
 
-  it("keeps them DISTINCT on an optional input", () => {
-    // The guard that stops this flattening a real nullable default. Same shape,
-    // opposite answer, decided by `required`.
-    const optionalNull = entry({ required: false, nullable: true, default: null });
-    const optionalBlank = entry({ required: false, nullable: true, default: "" });
-    expect(normalize(optionalNull)).not.toEqual(normalize(optionalBlank));
+  it("reads them as one state on an OPTIONAL input too", () => {
+    // The optional branch does not discard the default, but it still converges
+    // the two spellings: `$param["default"] ??= ""` turns a stored null into "",
+    // and the nullable branch then turns "" back into null. Either way both
+    // arrive at the same value.
+    for (const over of [{ required: false, nullable: true }, { required: false, nullable: false }]) {
+      expect(normalize(entry({ ...over, default: null }))).toEqual(
+        normalize(entry({ ...over, default: "" })),
+      );
+    }
+  });
+
+  it("still preserves a REAL default on an optional input", () => {
+    // The line that stops the rule becoming "defaults do not exist". Only null
+    // and "" converge; `"pre"` is an authored value and must survive.
+    const withValue = normalize(entry({ required: false, default: "pre" })) as {
+      input: Array<Record<string, unknown>>;
+    };
+    expect(withValue.input[0]!["default"]).toBe("pre");
+    expect(normalize(entry({ required: false, default: "pre" }))).not.toEqual(
+      normalize(entry({ required: false, default: "" })),
+    );
   });
 
   it("applies to an obj input's children, which convert recursively", () => {
@@ -1082,10 +1098,19 @@ describe("validate normalizer — a required input's inert default", () => {
     expect(entry0).toMatchObject({ name: "dbtable", tag: "const", value: "x" });
   });
 
-  it("leaves a table COLUMN's default alone", () => {
-    // A column's `default` is a real DB default, and `required` there means NOT
-    // NULL. It lives under `schema`, never under `input`, and must not be blanked.
-    const table = { schema: [{ name: "id", type: "int", required: true, default: "0" }] };
-    expect((normalize(table) as typeof table).schema[0]!.default).toBe("0");
+  it("treats a table COLUMN the same way, because the engine does", () => {
+    // `convertSchemaParamsToConfig($dbo, $params)` runs a table's columns through
+    // the very same function, so a REQUIRED column's default is discarded too.
+    // Two real workspaces store the two spellings on the same required columns —
+    // `id`/`name` as `"0"`/`""` in one and `null` in the other.
+    const table = (d: unknown) => ({ schema: [{ name: "id", type: "int", required: true, default: d }] });
+    expect(normalize(table(null))).toEqual(normalize(table("0")));
+  });
+
+  it("KEEPS an optional column's default, which is the point of the check", () => {
+    // `created_at` defaulting to `now` is real and must survive. This is the
+    // assertion that stops the rule above becoming "columns have no defaults".
+    const table = { schema: [{ name: "created_at", type: "epochms", required: false, default: "now" }] };
+    expect((normalize(table) as typeof table).schema[0]!.default).toBe("now");
   });
 });
