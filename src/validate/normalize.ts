@@ -1033,10 +1033,12 @@ export function filledContext(stored: unknown): Record<string, unknown> | null {
 
   const whole = EMPTY_CONTEXT_FILL.get(name);
   if (whole) {
-    // Both empty spellings: `{}` from the SDK, `[]` from the engine's serializer.
+    // All three empty spellings: `{}` from the SDK, `[]` from the engine's
+    // serializer, and `null` from a current engine.
     const empty =
+      context === null ||
       (Array.isArray(context) && context.length === 0) ||
-      (context !== null && typeof context === "object" && Object.keys(context).length === 0);
+      (typeof context === "object" && Object.keys(context).length === 0);
     if (!empty) return null;
     // No tag means no operand — the fill is the name alone.
     if (whole.tag === undefined) return { name: "" };
@@ -1190,7 +1192,14 @@ export function normalize<T>(value: T): T {
         out[k] = normalize(contextFill);
         continue;
       }
-      if (k === "context" && isEmptyArray(v)) {
+      // `null` is the THIRD spelling of no-context, alongside the `[]` and `{}`
+      // above. It does not appear anywhere in the 177-project corpus — that
+      // instance is old — and turned up on a current one under `mvp:create_auth`,
+      // whose `getContextSchema()` returns the empty list outright: the statement
+      // has no context to hold, so every empty spelling of it is the same
+      // nothing. Canonicalize to `{}` with the others, or the statement loses its
+      // readability to a key the engine never reads.
+      if (k === "context" && (isEmptyArray(v) || v === null)) {
         out[k] = {};
         continue;
       }

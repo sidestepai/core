@@ -297,6 +297,52 @@ describe("dispatch", () => {
  * `const:decimal`, `const:array` and `input` each behave identically to the
  * filled form.
  */
+/**
+ * `context: null` — the third spelling of no-context.
+ *
+ * The 177-project corpus holds only `{}` and `[]`, both long canonicalized. A
+ * sweep of a CURRENT instance turned up `null` on `mvp:create_auth`, whose
+ * `getContextSchema()` returns the empty list outright — the statement has no
+ * context to hold, so every empty spelling of it is the same nothing.
+ */
+describe("a null context is the third spelling of empty", () => {
+  it("compares equal to the empty spellings the SDK and the engine write", () => {
+    const withNull = normalize({ name: "mvp:create_auth", context: null });
+    expect(withNull).toEqual(normalize({ name: "mvp:create_auth", context: {} }));
+    expect(withNull).toEqual(normalize({ name: "mvp:create_auth", context: [] }));
+  });
+
+  it("does not cost a statement its readability", () => {
+    // A real `create_auth`, whose four arguments all ride `input[]` — exactly the
+    // statement a current engine stored `context: null` on.
+    const stored = {
+      name: "mvp:create_auth",
+      as: "token",
+      context: null,
+      input: [
+        { name: "id", tag: "auth", value: "id", filters: [] },
+        { name: "dbtable", tag: "const", value: "", filters: [] },
+      ],
+    };
+    const source = printExpr(decodeStatement(new DecodeContext(), REFS, stored as never));
+    expect(source).not.toContain("raw(");
+    expect(source).toContain("s.security.create_auth_token(");
+  });
+
+  it("still fills a statement whose context IS its value", () => {
+    // The guard: `null` flows into the same fill as `{}`/`[]`, so a statement
+    // that needs members still gets them rather than an empty object.
+    const source = printExpr(
+      decodeStatement(new DecodeContext(), REFS, {
+        name: "mvp:text_append",
+        context: null,
+      } as never),
+    );
+    expect(source).not.toContain("raw(");
+    expect(source).toContain("s.text.append(");
+  });
+});
+
 describe("an empty context is the members the engine fills in", () => {
   /** The stored shape a workspace holds for one of these. */
   function storedEmpty(name: string): StackItemXdo {
