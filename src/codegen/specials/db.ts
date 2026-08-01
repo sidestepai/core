@@ -963,18 +963,21 @@ const dbQuery: SpecialDecoder = (a) => {
       const bindAlias = getPath(stored, "dbo.as");
       if (typeof bindGuid !== "string")
         return declineHere("db.query: a context.bind[] join has no dbo.id");
-      // A join to an UNBOUND table. The top-level `table` models this as `null`
-      // and `DbBind.table` does not, so the factory throws on the blank guid —
-      // and a factory throw takes the whole statement to `raw()` rather than
-      // just this join. Declined by name instead, so the dump says which join is
-      // unbound rather than reporting an unresolvable reference from nowhere.
-      if (isUnboundId(bindGuid))
-        return declineHere("db.query: a context.bind[] join has a blank table reference");
-      const joined = tableArg(a, bindGuid);
+      // A join to an UNBOUND table — the join's table was deleted, and the
+      // engine clears the id rather than recording a tombstone. `DbBind.table`
+      // models this as `null` on the same contract the query's own `table`
+      // holds, so it round-trips instead of taking the whole statement to
+      // `raw()` for one broken join.
+      const unbound = isUnboundId(bindGuid);
+      const joined = unbound
+        ? unboundTableArg(a, "db.query bind")
+        : tableArg(a, bindGuid);
       const cells: Array<[string, Expr]> = [["table", joined.expr]];
       const entry: Record<string, unknown> = { table: joined.runtime };
-      // The alias defaults to the joined table's own name.
-      if (typeof bindAlias === "string" && bindAlias !== joined.runtime?.name) {
+      // The alias defaults to the joined table's own name — except on an unbound
+      // join, which has no name to default from, so it is always authored. The
+      // stored bytes show the alias outliving the table (`{as:"…", id:""}`).
+      if (typeof bindAlias === "string" && (unbound || bindAlias !== joined.runtime?.name)) {
         cells.push(["as", lit(bindAlias)]);
         entry.as = bindAlias;
       }

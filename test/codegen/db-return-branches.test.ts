@@ -172,3 +172,64 @@ describe("an aggregate's parked paging block", () => {
     expect(stored.context.return.aggregate.paging).toMatchObject({ enabled: true });
   });
 });
+
+/**
+ * A join whose table was deleted.
+ *
+ * `context.bind[]` stores `{dbo:{as,id:""}}` — the engine clears the id rather
+ * than recording a tombstone, so an unbound join is byte-identical to one that
+ * was never bound. `DbBind.table` models that as `null`, on the same contract
+ * the query's own `table` and an addon's have held all along.
+ *
+ * Before that it declined, and a decline on one join took the WHOLE statement to
+ * `raw()` — an entire readable query lost to a single broken join.
+ */
+describe("a db.query join to an unbound table", () => {
+  const storedWithBind = (bind: unknown) => {
+    const stored = encodeStatement(dbQuery({ table: post })) as unknown as {
+      context: Record<string, unknown>;
+    };
+    stored.context.bind = [bind];
+    return stored as unknown as StackItemXdo;
+  };
+
+  it("recovers the join as `table: null` instead of losing the statement", () => {
+    const { source, ctx } = decode(
+      storedWithBind({ dbo: { as: "userJoin", id: "" }, join: "inner", search: { expression: [] } }),
+    );
+    expect(source).not.toContain("raw(");
+    expect(source).toContain("table: null");
+    // The alias is authored even though a bound join would default it — an
+    // unbound join has no table name to default FROM, and the stored bytes show
+    // the user's alias outliving the table.
+    expect(source).toContain("userJoin");
+    // Reported, not emitted quietly: a lost binding presented as a deliberate
+    // `null` would hide a real defect in the pulled workspace.
+    expect(ctx.report.entries.some((e) => e.category === "unresolved-ref")).toBe(true);
+  });
+
+  it("decodes through `prove`, so the emitted form reproduces the stored bytes", () => {
+    // `prove` re-encodes the candidate and compares it to the stored statement;
+    // a disagreement is what produces `raw()`. So the absence of a `raw-fallback`
+    // entry IS the byte-equality assertion here — including the blank `dbo.id`
+    // and the alias that outlived the table.
+    const { ctx } = decode(
+      storedWithBind({
+        dbo: { as: "userJoin", id: "" },
+        join: "inner",
+        search: { expression: [] },
+      }),
+    );
+    expect(ctx.report.entries.some((e) => e.category === "raw-fallback")).toBe(false);
+  });
+
+  it("still resolves a BOUND join, and still defaults its alias", () => {
+    const { source, ctx } = decode(
+      storedWithBind({ dbo: { as: post.name, id: deriveGuid("dbo", post.name) }, join: "inner" }),
+    );
+    expect(source).not.toContain("table: null");
+    // Alias equals the table name, so it is left to default.
+    expect(source).not.toContain(`as: "${post.name}"`);
+    expect(ctx.report.entries.some((e) => e.category === "unresolved-ref")).toBe(false);
+  });
+});

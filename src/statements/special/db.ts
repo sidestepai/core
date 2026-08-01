@@ -289,8 +289,13 @@ type DbTableRef<T extends ObjectRef = ObjectRef> = T | null;
  * they do not by themselves change the returned row shape.
  */
 export interface DbBind {
-  /** The table to join. */
-  table: ObjectRef;
+  /**
+   * The table to join, or `null` when unbound — see {@link DbTableRef} for the
+   * contract, which is the same one the query's own `table` holds. ⚠ Do not
+   * author `null`; it exists so a join whose table was deleted round-trips
+   * instead of taking the whole statement to `raw()`.
+   */
+  table: DbTableRef;
   /** SQL alias for the joined table — defaults to the table name. Two binds to the same table need distinct aliases. */
   as?: string;
   /** Join kind (default `"inner"`). */
@@ -1561,7 +1566,18 @@ function encodeBind(binds?: readonly DbBind[]): unknown[] | undefined {
   if (!binds?.length) return undefined;
   const seen = new Set<string>();
   return binds.map((b) => {
-    const as = b.as ?? (typeof b.table === "string" ? b.table : b.table.name);
+    // An UNBOUND join has no table name to default its alias from, and the
+    // stored bytes show the alias outliving the table (`{as:"userJoin", id:""}`)
+    // — it is the user's own label, not a function of the target. So `as` is
+    // required there rather than being invented.
+    if (b.table === null && b.as === undefined) {
+      throw new Error(
+        "db.query bind: a join with `table: null` must name its `as` alias — an unbound join " +
+          "has no table name to derive one from. (`table: null` represents a join whose table " +
+          "was deleted; fix the pulled workspace rather than authoring it.)",
+      );
+    }
+    const as = b.as ?? (typeof b.table === "string" ? b.table : (b.table as { name: string }).name);
     if (seen.has(as)) {
       throw new Error(
         `db.query bind: duplicate join alias "${as}" — two joins to the same table need ` +
@@ -1570,7 +1586,10 @@ function encodeBind(binds?: readonly DbBind[]): unknown[] | undefined {
     }
     seen.add(as);
     const entry: Record<string, unknown> = {
-      dbo: { as, id: resolveRef("dbo", b.table) },
+      // `null` writes the engine's own empty binding, exactly as `dboBinding`
+      // does for the query's own table — `resolveRef` rejects a target with
+      // neither a name nor a guid.
+      dbo: { as, id: b.table === null ? "" : resolveRef("dbo", b.table) },
       join: b.join ?? "inner",
     };
     const search = encodeSearch(b.where);
