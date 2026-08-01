@@ -69,11 +69,14 @@ export interface RealtimeActions {
 /**
  * Realtime SERVER lifecycle actions (obj_type=realtime_server).
  *
- * `connect` GATES the connection — the stack's return admits or denies it, and it
- * is fail-closed. A denial closes the socket (code 4401) after an `error` frame,
- * before the connection is ever ready, so it is a real front door and not just an
- * observer. Same return shape as a channel `join`: `{ allowed: true }` or any
- * truthy value admits, and an EMPTY OR FALSY return DENIES.
+ * `connect` GATES the connection — the stack's return admits or denies it. A
+ * denial closes the socket (code 4401) after an `error` frame, before the
+ * connection is ever ready, so it is a real front door and not just an observer.
+ * Same return shape as a channel `join`: `{ allowed: true }` or any truthy value
+ * admits, and an EMPTY OR FALSY return DENIES — including a gating trigger with
+ * no `response`, which returns nothing and so refuses every client. A CRASH goes
+ * the other way (gating actions fail OPEN, so a broken stack admits); it is the
+ * clean-but-empty return that locks the door.
  *
  * `disconnect` is OBSERVATIONAL: its return is ignored and a throw is swallowed,
  * because the connection is already gone and cleanup must always complete.
@@ -91,11 +94,12 @@ export interface RealtimeServerActions {
  *
  * The three do NOT share a posture, and the difference decides what a stack
  * should return:
- *  - `join` GATES the join (fail-closed), and runs BEFORE the client becomes a
- *    member, so a denial means it never receives a fan-out. Return `{ allowed:
- *    true }` (an optional `reason` surfaces in the client's error frame) or any
- *    other truthy value to admit. AN EMPTY OR FALSY RETURN DENIES — a stack that
- *    just falls through refuses the join.
+ *  - `join` GATES the join, and runs BEFORE the client becomes a member, so a
+ *    denial means it never receives a fan-out. Return `{ allowed: true }` (an
+ *    optional `reason` surfaces in the client's error frame) or any other truthy
+ *    value to admit. AN EMPTY OR FALSY RETURN DENIES — a stack that just falls
+ *    through, or a gating trigger with no `response`, refuses the join. A CRASH
+ *    is the opposite: gating actions fail OPEN, so a broken stack admits.
  *  - `leave` is OBSERVATIONAL (return ignored, throws swallowed).
  *  - `deliver` GATES delivery PER RECIPIENT — it runs once for each client the
  *    message is about to reach. It is the heaviest of the three by a wide

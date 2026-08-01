@@ -619,11 +619,14 @@ until `enabled: true`. Lifecycle events are triggers: `realtimeServerTrigger` (c
 connect/disconnect) and `realtimeChannelTrigger` (join/leave/deliver). Those actions do
 not share a posture, and the posture decides what your stack should return:
 
-- **`connect` and `join` gate**, fail-closed. `connect` really does refuse the socket — an
-  error frame, then a close with code 4401, before the connection is ever ready — and `join`
-  runs before the client becomes a member, so a denial means it never sees a fan-out. Return
+- **`connect` and `join` gate.** `connect` really does refuse the socket — an error frame,
+  then a close with code 4401, before the connection is ever ready — and `join` runs before
+  the client becomes a member, so a denial means it never sees a fan-out. Return
   `{ allowed: true }` (an optional `reason` reaches the client) or any truthy value to
-  admit. **An empty or falsy return denies**, so a stack that just falls through refuses.
+  admit. **An empty or falsy return denies**, so a stack that just falls through — or a
+  gating trigger with no `response` at all — refuses everyone. Note that a *crash* does the
+  opposite: gating actions fail **open**, so a broken stack admits rather than locking
+  everyone out over a workspace bug. It is the clean-but-empty return that shuts the door.
 - **`disconnect` and `leave` are observational** — the return is ignored and a throw is
   swallowed, because the connection is already gone and cleanup has to complete regardless.
 - **`deliver` gates per recipient.** It runs once for each client a message is about to

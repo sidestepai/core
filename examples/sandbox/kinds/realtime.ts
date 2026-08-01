@@ -34,6 +34,7 @@ import {
   input,
   inp,
   s,
+  c,
 } from "@sidestep/core";
 
 /** Gate 1 — the server: the canonical-addressed container. Off until enabled. */
@@ -111,12 +112,28 @@ export const typingMessage = realtimeMessage({
   deliverTo: "others",
 });
 
-/** Server lifecycle trigger — fires on connect/disconnect. */
+/**
+ * Server lifecycle trigger — fires on connect/disconnect.
+ *
+ * `connect` GATES the connection: the stack's return admits or denies it, and a
+ * denial closes the socket (code 4401) before it is ever ready. `disconnect` is
+ * observational and ignores the return, so one admitting response serves both.
+ *
+ * WHICH IS WHY `response` IS MANDATORY ON A GATING TRIGGER. Without it the
+ * trigger returns nothing, nothing is falsy, and a falsy return DENIES — a
+ * `connect` trigger with no response refuses every client on the server. (A
+ * trigger that CRASHES is different: gating actions fail OPEN, so a broken stack
+ * admits. It is the clean-but-empty return that locks the door.)
+ */
 export const onChatConnect = realtimeServerTrigger({
   name: "ex_kind_trigger_on_chat_connect",
   realtimeServer: chatServer,
   actions: { connect: true, disconnect: true },
   stack: (t) => [s.debug.log({ value: t.action })],
+  // `{ allowed }` is the explicit admit shape; an optional `reason` rides along
+  // on a denial and reaches the client's error frame. Swap the constant for a
+  // real decision (a ban check, a seat count) to gate for real.
+  response: () => ({ allowed: c.bool(true) }),
 });
 
 /**
@@ -190,21 +207,19 @@ export const onChatConnect = realtimeServerTrigger({
  * DENIES.
  *
  * WHICH MEANS `response` IS NOT OPTIONAL ON A GATING TRIGGER. A `join` trigger
- * with a stack but no `response` returns nothing, and nothing is falsy — it
- * refuses every join on the channel it was added to protect. A `leave` trigger
- * may omit `response` safely; a `join` one may not.
+ * with a stack but no `response` returns nothing, nothing is falsy, and a falsy
+ * return DENIES — it refuses every join on the channel it was added to protect.
+ * A `leave` trigger may omit `response` safely; a `join` one may not.
  *
- * This example still omits it, and that is a known bug being fixed separately:
- * adding the response changes compiled output and its conformance golden, which
- * is not a documentation change. Write yours as
- * `response: () => ({ allowed: c.bool(true) })` (a bare `true` is not a value —
- * it needs `c.bool`), with a real decision in place of the constant.
+ * Note `c.bool(true)`, not `true`: a response member is a VALUE, and a bare
+ * JavaScript boolean is not one.
  */
 export const onRoomJoin = realtimeChannelTrigger({
   name: "ex_kind_trigger_on_room_join",
   channel: roomChannel,
   actions: { join: true },
   stack: (t) => [s.debug.log({ value: t.channel })],
+  response: () => ({ allowed: c.bool(true) }),
 });
 
 /**
@@ -226,10 +241,26 @@ export const onRoomJoin = realtimeChannelTrigger({
  *
  * Kept as its own trigger rather than folded into `onRoomJoin` because the two
  * fire at unrelated moments and want unrelated stacks.
+ *
+ * ITS RESPONSE SHAPE IS DELIBERATELY UNLIKE THE GATES ABOVE. `join`/`connect`
+ * answer a yes/no with `{ allowed }`, but `deliver` answers "what does THIS
+ * recipient get", so an OBJECT means REWRITE — returning `{ allowed: true }`
+ * here would replace the message payload with `{ allowed: true }`. A bare truthy
+ * value means "deliver the original untouched", which is the right no-op, and
+ * omitting `response` entirely returns null, which DROPS the message for every
+ * recipient.
+ *
+ * `roomChannel` does not set `delivery: { perRecipient: true }`, so this trigger
+ * is declared for shape and does not run — the hook only fires on a
+ * per-recipient channel. Turn that on when you actually need per-viewer
+ * redaction, and expect a stack per recipient per message.
  */
 export const onRoomDeliver = realtimeChannelTrigger({
   name: "ex_kind_trigger_on_room_deliver",
   channel: roomChannel,
   actions: { deliver: true },
   stack: (t) => [s.debug.log({ value: t.action })],
+  // Truthy NON-object = pass the original through. Return an object to rewrite
+  // this recipient's payload, or null to drop the message for them.
+  response: () => c.bool(true),
 });
