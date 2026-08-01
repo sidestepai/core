@@ -196,6 +196,51 @@ const apiCallExtra: CallShape["extra"] = (a) => {
 };
 
 /**
+ * The TOP-LEVEL `runtime` block that makes a call asynchronous.
+ *
+ * The engine switches on `runtime.mode` and recognizes exactly two values:
+ * `async-shared` builds its runtime config from `mode` alone, and
+ * `async-dedicated` additionally reads `cpu`/`memory`/`max_retry`/`timeout`.
+ * Every other value — the absent block, `null`, and the editor's explicit
+ * `"disabled"` — falls to the default arm, which is synchronous.
+ *
+ * So a non-async block carries nothing and is not authored back; anything else
+ * would be noise on the 222 synchronous calls in the survey corpus that store
+ * `null` or nothing at all.
+ */
+const asyncRuntimeExtra: CallShape["extra"] = (a) => {
+  const block = (a.stored as { runtime?: unknown }).runtime;
+  if (block === null || block === undefined) return { entries: [], runtime: {} };
+  if (typeof block !== "object" || Array.isArray(block))
+    return declineHere("function.run: `runtime` is present but not a block");
+  const mode = (block as { mode?: unknown }).mode;
+  if (mode !== "async-shared" && mode !== "async-dedicated")
+    return { entries: [], runtime: {} };
+
+  const cells: Array<[string, Expr]> = [["mode", lit(mode)]];
+  const runtime: Record<string, unknown> = { mode };
+  // The dedicated resources, and ONLY at the mode that reads them. At
+  // `async-shared` the editor writes all four blank and the engine never looks
+  // at them, so carrying them across would author inert members.
+  if (mode === "async-dedicated") {
+    for (const [stored, arg] of [
+      ["cpu", "cpu"],
+      ["memory", "memory"],
+      ["timeout", "timeout"],
+      ["max_retry", "maxRetry"],
+    ] as const) {
+      const v = (block as Record<string, unknown>)[stored];
+      if (typeof v !== "string" && typeof v !== "number")
+        return declineHere(`function.run: \`runtime.${stored}\` is not a scalar`);
+      if (v === "") continue;
+      cells.push([arg, lit(String(v))]);
+      runtime[arg] = String(v);
+    }
+  }
+  return { entries: [["runtime", obj(cells)]], runtime: { runtime } };
+};
+
+/**
  * `mvp:function` — the non-injective stored name.
  *
  * `serviceFunctionRun` writes `context.runtime_mode`; `functionRun` does not.
@@ -210,6 +255,7 @@ const functionRunOrService: SpecialDecoder = (a) => {
       arg: "fn",
       idPath: "function.id",
       unbindable: true,
+      extra: asyncRuntimeExtra,
     })(a);
   }
   return callDecoder({

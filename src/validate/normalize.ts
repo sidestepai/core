@@ -451,6 +451,52 @@ export function returnWithoutIterator(value: unknown): Record<string, unknown> |
   return found ? out : undefined;
 }
 
+/** Members of a `runtime` block the engine reads only at `async-dedicated`. */
+const DEDICATED_RUNTIME_KEYS = ["cpu", "memory", "timeout", "max_retry"] as const;
+
+/**
+ * A call's `runtime` block with the members its `mode` does not read dropped,
+ * or `undefined` when there is nothing to shed.
+ *
+ * The engine's stack converter switches on `runtime.mode` and copies the
+ * resource members in the `async-dedicated` arm ALONE — `async-shared` falls
+ * through to a block built from `mode` by itself, and every other value lands
+ * on a default arm that discards the runtime outright. So outside
+ * `async-dedicated` those four members cannot reach the statement.
+ *
+ * They are still written: the settings panel is one form over all five fields,
+ * so switching to `async-shared` leaves whatever the dedicated form held (blank,
+ * in the corpus). Same editor exhaust as a dead `context.return` branch, dropped
+ * on the same rule and for the same reason — the SDK emits only what the mode
+ * reads, and without this the two spellings never compare equal.
+ */
+export function liveAsyncRuntime(value: unknown): Record<string, unknown> | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const block = value as Record<string, unknown>;
+  const mode = block.mode;
+  // Not a mode-carrying runtime block — leave it entirely alone.
+  if (typeof mode !== "string") return undefined;
+  // `"disabled"` is what the settings panel writes when the user picks
+  // "Standard run (Synchronous)". The converter's default arm discards the whole
+  // block there, so it is the third spelling of the unset state, alongside
+  // `null` and an absent key — and the empty block it reduces to is what the
+  // default-envelope rule already drops.
+  //
+  // Scoped to the spellings actually observed, NOT to "any mode that is not
+  // async". An unrecognized mode keeps its members: the engine would ignore it
+  // too, but a value nothing in the corpus stores is not evidence of anything,
+  // and silently emptying it would discard a shape before it was understood.
+  if (mode === "disabled") return {};
+  // At `async-dedicated` all four resource members are read, so nothing sheds.
+  if (mode !== "async-shared") return undefined;
+  if (!DEDICATED_RUNTIME_KEYS.some((k) => k in block)) return undefined;
+  const live: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(block)) {
+    if (!(DEDICATED_RUNTIME_KEYS as readonly string[]).includes(k)) live[k] = v;
+  }
+  return live;
+}
+
 export function configuredDeadReturnBlocks(value: unknown): string[] {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return [];
   const section = value as Record<string, unknown>;
@@ -1205,13 +1251,19 @@ export function normalize<T>(value: T): T {
       // Reducing first is what lets the default-envelope drop below still fire:
       // a section that is all editor exhaust collapses to the minimal `{type}`,
       // which is the spelling the SDK omits entirely.
+      // A call's `runtime` block is reduced the same way and for the same
+      // reason: only the members its `mode` actually reads survive (see
+      // {@link liveAsyncRuntime}), so a block that is all exhaust collapses to
+      // the unset state the default-envelope drop below already handles.
       const v =
         k === "return"
           ? (() => {
               const live = liveReturnSection(stored) ?? stored;
               return returnWithoutIterator(live) ?? live;
             })()
-          : stored;
+          : k === "runtime"
+            ? (liveAsyncRuntime(stored) ?? stored)
+            : stored;
       if (STRIP_KEYS.has(k)) continue;
       if (isTable && k === "as") continue;
       if (k === "test" && isSavedTestList(v)) continue;
