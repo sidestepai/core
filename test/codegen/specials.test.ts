@@ -1521,6 +1521,43 @@ describe("miscellaneous specials", () => {
     );
   });
 
+  it("reads the editor's `dbo_id: 0` as the auth table the SDK omits", () => {
+    // The editor's form materializes both auth members always and writes 0 for
+    // "no table bound"; the SDK writes nothing. The engine reads
+    // `$data["auth"]["dbo_id"] ?? 0`, and a live round trip showed it does not
+    // materialize the member on the way in — so the two are one state, and the
+    // stored spelling must not cost the statement its readability.
+    const stored = encodeStatement(
+      s.api.realtime_event({ channel: c.text("room"), data: ref("payload"), authId: c.int(0) }),
+    ) as unknown as { context: { auth: Record<string, unknown> } };
+    stored.context.auth = { dbo_id: 0, ...stored.context.auth };
+
+    const ctx = new DecodeContext();
+    const source = printExpr(decodeStatement(ctx, DB_REFS, stored as never));
+    expect(source).not.toContain("raw(");
+    expect(source).toContain("s.api.realtime_event(");
+    // Recovered as unbound — never as a table, and never as a literal 0.
+    expect(source).not.toContain("authTable");
+    expect(source).not.toContain("dbo_id");
+  });
+
+  it("still reads a BOUND auth table rather than dropping it", () => {
+    // The guard on the rule above: it fires on `0` alone, so a real table id
+    // must survive. Without this, "unbound" would quietly mean "any".
+    const stored = encodeStatement(
+      s.api.realtime_event({
+        channel: c.text("room"),
+        data: ref("payload"),
+        authTable: USERS,
+        authId: auth("id"),
+      }),
+    ) as unknown as { context: { auth: Record<string, unknown> } };
+    // A bound table rides as a GUID, so it can never equal the `0` sentinel.
+    expect(stored.context.auth["dbo_id"]).toBe(USERS.guid);
+    const normalized = normalize(stored) as { context: { auth: Record<string, unknown> } };
+    expect(normalized.context.auth["dbo_id"]).toBe(stored.context.auth["dbo_id"]);
+  });
+
   it("round-trips a realtime publish, minimal and full", () => {
     // Minimal: the three required keys and nothing else — the optionals must NOT
     // be materialized on the way back, or the regenerated source writes bytes the

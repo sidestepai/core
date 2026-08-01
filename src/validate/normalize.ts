@@ -323,6 +323,43 @@ export function liveReturnSection(value: unknown): Record<string, unknown> | und
 }
 
 /**
+ * A realtime event's `auth` block with an UNBOUND auth table dropped, or
+ * `undefined` when there is nothing to drop.
+ *
+ * `mvp:realtime_event` scopes an event to one auth row via
+ * `context.auth.{dbo_id,row_id}`. The editor's form materializes both members
+ * always and writes `dbo_id: 0` when no table is bound; the SDK omits the member
+ * entirely when no `authTable` is given. `0` is not a table — this is the same
+ * "an internal row id is not portable identity" that makes `guid 0` unresolvable
+ * elsewhere — so the two spellings are one state, and a bound table can never
+ * collide with it.
+ *
+ * Evidenced three ways, which is what it takes to drop bytes:
+ *   • `RealtimeEvent::process` reads `$data["auth"]["dbo_id"] ?? 0` — twice —
+ *     so absent and `0` are literally the same value in the engine's own code,
+ *     and it then gates the whole row lookup behind `if ($dbo_id)`;
+ *   • the statement's XanoScript schema declares `auth_table?=""`, so an
+ *     unbound table is the declared default rather than a missing argument; and
+ *   • a live round trip (`scripts/probe-persisted-defaults.ts`) deployed the
+ *     SDK's omitted spelling into a fresh tenant and exported it back
+ *     unchanged — the engine does NOT materialize the member on the way in, so
+ *     omitting it cannot drift a deploy → pull cycle.
+ *
+ * Keyed on the SHAPE, not the name: an `auth` block pairing a numeric `dbo_id`
+ * with a `row_id`, and only when the id is `0`. `dbo_id` appears exactly once in
+ * the 177-project corpus and only here, but scoping by shape is what keeps that
+ * true if it ever appears somewhere it means something else.
+ */
+export function unboundAuthTable(value: unknown): Record<string, unknown> | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const block = value as Record<string, unknown>;
+  if (block.dbo_id !== 0 || !("row_id" in block)) return undefined;
+  const rest = { ...block };
+  delete rest["dbo_id"];
+  return rest;
+}
+
+/**
  * The dead `context.return` branches that carry authored configuration — a
  * non-empty `sort`/`group`/`eval`/`index`, or paging switched on. Used to report
  * what {@link liveReturnSection} drops; a branch holding only the editor's
@@ -1137,6 +1174,15 @@ export function normalize<T>(value: T): T {
         const live = liveReturnSection(v);
         if (live) {
           out[k] = normalize(live);
+          continue;
+        }
+      }
+      // An `auth` block naming no table: `dbo_id: 0` is the editor's spelling of
+      // the member the SDK omits (see {@link unboundAuthTable}).
+      if (k === "auth") {
+        const unbound = unboundAuthTable(v);
+        if (unbound) {
+          out[k] = normalize(unbound);
           continue;
         }
       }
