@@ -7,7 +7,7 @@
  * persisted golden fixtures (KTD-4). Regenerate with `npm run codegen`.
  *
  * Coverage: 153 declarative statements generated.
- * Deferred (see PENDING.md): 62.
+ * Deferred (see PENDING.md): 63.
  */
 import type { StatementSpec } from "../schema-dsl/interpret.js";
 
