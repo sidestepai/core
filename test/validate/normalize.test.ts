@@ -97,6 +97,32 @@ describe("validate normalizer — per-kind default/serialization rules", () => {
     expect(normalize(toolset)).toEqual(toolset);
   });
 
+  it("fills an absent history limit at the engine default, so both saves are one state", () => {
+    // Evidenced twice, per the plan's invariant 2: EVERY limit read in the
+    // engine's history resolver is `?? 100`, at every tier, and the corpus holds
+    // both spellings side by side on the same key (69 api groups store
+    // `query_limit: 100`, 9 omit it). The editor renders the absent form as 100
+    // and writes it back on the next save — the generational gap that made both.
+    expect(normalize({ history: { inherit: false, query_enabled: false } })).toEqual({
+      history: { inherit: false, query_enabled: false, query_limit: 100 },
+    });
+    // The object tier's unprefixed shape converges the same way…
+    expect(normalize({ history: { inherit: false, enabled: true } })).toEqual({
+      history: { inherit: false, enabled: true, limit: 100 },
+    });
+    // …and a real limit is never overwritten.
+    const authored = { history: { inherit: false, tool_enabled: true, tool_limit: -1 } };
+    expect(normalize(authored)).toEqual(authored);
+  });
+
+  it("leaves an absent history ENABLED alone — its default varies by object type", () => {
+    // `function`/`middleware`/`trigger` default OFF and everything else ON, so
+    // filling this in would take a guess at the object type from inside a rule
+    // that cannot see it.
+    const block = { history: { inherit: false, limit: 5 } };
+    expect(normalize(block)).toEqual(block);
+  });
+
   it("drops the engine's BLANK agent scaffold, which an MCP toolset always carries", () => {
     // An MCP toolset that configures no model still gets the whole block
     // written: every member empty, `configs` keyed by the empty provider name.

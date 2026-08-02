@@ -1043,6 +1043,29 @@ export function isEmptyOutput(v: unknown): boolean {
   return noItems && o.customize !== true;
 }
 
+/**
+ * A customized `history` block with its absent limit filled in at the engine's
+ * default, or `undefined` when there is nothing to fill.
+ *
+ * Handles both shapes: the object tier's `{inherit, enabled, limit}` and a
+ * container's `{inherit, <prefix>_enabled, <prefix>_limit}`. An INHERITING block
+ * is left alone — it is dropped wholesale elsewhere, because an inherited
+ * setting makes its own members inert.
+ */
+function historyWithDefaultLimit(v: unknown): Record<string, unknown> | undefined {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return undefined;
+  const block = v as Record<string, unknown>;
+  if (block.inherit !== false) return undefined;
+  const enabledKey = Object.keys(block).find((key) => key === "enabled" || key.endsWith("_enabled"));
+  if (enabledKey === undefined) return undefined;
+  const limitKey = enabledKey === "enabled" ? "limit" : `${enabledKey.slice(0, -"_enabled".length)}_limit`;
+  if (Object.hasOwn(block, limitKey)) return undefined;
+  return { ...block, [limitKey]: ENGINE_HISTORY_LIMIT };
+}
+
+/** The limit every tier of the engine's history resolver falls back to. */
+export const ENGINE_HISTORY_LIMIT = 100;
+
 /** An `@` target naming a table by local row id (`dbo=14`) rather than by guid. */
 const LOCAL_DBO_REF = /^dbo=\d+$/;
 
@@ -1391,6 +1414,27 @@ export function normalize<T>(value: T): T {
       // selected items / customization (the `output:[]` array on query/function
       // envelopes is unaffected and falls through to normal handling).
       if (k === "output" && isEmptyOutput(v)) continue;
+      // A CUSTOMIZED history block whose limit member is absent: materialize it
+      // at the engine's default, so the older save and the current one are one
+      // state. Evidenced twice, which is what invariant 2 asks for — every limit
+      // read in the engine's resolver is `?? 100`, at every tier (object,
+      // api-group, toolset, channel, server, branch, workspace), and the corpus
+      // holds both spellings side by side on the SAME key (69 api groups store
+      // `query_limit: 100`, 9 omit it). The editor renders the absent form as
+      // 100 and writes it back on the next save, which is the generational gap
+      // that produced both.
+      //
+      // Only the LIMIT converges. An absent `*_enabled` is left alone: its
+      // default varies by object type (`function`/`middleware`/`trigger` are
+      // off, the rest on), so one rule here would have to re-derive the type,
+      // and a wrong guess would change what the engine records.
+      if (k === "history") {
+        const filled = historyWithDefaultLimit(v);
+        if (filled !== undefined) {
+          out[k] = normalize(filled);
+          continue;
+        }
+      }
       // `customize` empty form is a serialization-generation artifact: the corpus
       // emits `{}` on some fields and `""` on others within the *same* table, with
       // no authoring distinction. Canonicalize both empties to the CURRENT form

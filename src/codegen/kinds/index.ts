@@ -34,6 +34,7 @@ import { decodeCondition } from "../expression.js";
 import { isDefaultEnvelopeMember, isEmptyOutput, isBlankAgentSettings } from "../../validate/normalize.js";
 import type { ContainerPrefix } from "../../kinds/history.js";
 import { parsePathParams, unboundPathParams } from "../../kinds/path-params.js";
+import { ENGINE_HISTORY_LIMIT } from "../../validate/normalize.js";
 
 /** One `key: value` pair of a generated def literal. */
 export type DefEntry = readonly [string, Expr];
@@ -121,10 +122,16 @@ function historyScalar(block: unknown): boolean | number | "all" | null | undefi
   // and a block toggled back to inherit keeps whatever it last held.
   if (value.inherit === true) return null;
   if (value.inherit !== false) return undefined;
-  if (value.enabled === false) return value.limit === 100 ? false : undefined;
-  if (value.limit === -1) return "all";
-  if (value.limit === 100) return true;
-  return typeof value.limit === "number" && value.limit >= 0 ? value.limit : undefined;
+  // An ABSENT limit IS the engine default: every limit read in the engine's
+  // history resolver is `?? 100`, at every tier, and the corpus holds the two
+  // spellings side by side on the same key. `normalize` fills it in from the
+  // same constant, so the scalar this recovers and the bytes the comparison
+  // accepts cannot disagree.
+  const limit = value.limit ?? ENGINE_HISTORY_LIMIT;
+  if (value.enabled === false) return limit === ENGINE_HISTORY_LIMIT ? false : undefined;
+  if (limit === -1) return "all";
+  if (limit === ENGINE_HISTORY_LIMIT) return true;
+  return typeof limit === "number" && limit >= 0 ? limit : undefined;
 }
 
 /**
