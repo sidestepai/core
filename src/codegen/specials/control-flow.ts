@@ -49,6 +49,14 @@ const updateVar: SpecialDecoder = (a) => {
   const context = (a.stored.context ?? {}) as Record<string, unknown>;
   const value = toValue(context);
   const name = context.name;
+  // An entirely empty context is an UNCONFIGURED statement — dropped into a
+  // stack and never filled in — not an unreadable one. It names neither the
+  // variable it reassigns nor a value, so there is nothing to recover; `raw()`
+  // is what the stub looks like, and the message says which case it is (the
+  // same split the raw-SQL guard makes).
+  if (Object.keys(context).length === 0) {
+    return declineHere("update_var: context is empty — the statement was never configured");
+  }
   if (!value) return declineHere("update_var: context is not a tagged value");
   if (typeof name !== "string") return declineHere("update_var: context.name is not a string");
   return prove(

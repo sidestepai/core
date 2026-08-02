@@ -119,6 +119,10 @@ describe("variables", () => {
     const ctx = new DecodeContext();
     const stored = { ...STORED_EMPTY_SET_VAR, name: "mvp:update_var" } as unknown as StackItemXdo;
     expect(printExpr(decodeStatement(ctx, EMPTY_REFS, stored, {}))).toContain("raw(");
+    // …and says it is an unconfigured stub, not an unreadable value — the same
+    // split the raw-SQL guard makes, so the two cluster apart in a sweep.
+    const detail = ctx.report.entries.map((e) => String(e.detail)).join(" | ");
+    expect(detail).toContain("never configured");
   });
 });
 
