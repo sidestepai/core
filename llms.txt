@@ -916,12 +916,12 @@ Auth & calls:
 ### cloud
 
 - `s.cloud.algolia.request({ as?: string; application_id: value; api_key: value; url: value; method: value; payload: value })` [output]
-- `s.cloud.aws.opensearch.document({ as?: string; auth_type?: value; key_id?: value; access_key?: value; region?: value; method?: value; index?: value; base_url: value; doc_id?: value; doc?: value })`
-- `s.cloud.aws.opensearch.query({ as?: string; auth_type?: value; key_id?: value; access_key?: value; region?: value; index?: value; payload?: value; size?: value; from?: value; sort?: value; included_fields?: value; return_type?: value })`
+- `s.cloud.aws.opensearch.document({ as?: string; auth_type?: value; key_id?: value; access_key?: value; region?: value; base_url: value; method?: value; index?: value; doc_id?: value; doc?: value })`
+- `s.cloud.aws.opensearch.query({ as?: string; auth_type?: value; key_id?: value; access_key?: value; region?: value; base_url?: value; index?: value; payload?: value; size?: value; from?: value; included_fields?: value; return_type?: value; expression?: value; sort?: value })`
 - `s.cloud.aws.opensearch.request({ as?: string; auth_type?: value; key_id?: value; access_key?: value; region?: value; method?: value; url?: value; query?: value })`
 - `s.cloud.aws.s3.delete_file({ as?: string; bucket: value; region: value; key: value; secret: value; file_key: value })`
 - `s.cloud.aws.s3.get_file_info({ as?: string; bucket: value; region: value; key: value; secret: value; file_key: value })`
-- `s.cloud.aws.s3.list_directory({ as?: string; bucket: value; region: value; key: value; secret: value; prefix: value; next_page_token: value })`
+- `s.cloud.aws.s3.list_directory({ as?: string; bucket: value; region: value; key: value; secret: value; prefix?: value; next_page_token?: value })`
 - `s.cloud.aws.s3.read_file({ as?: string; bucket: value; region: value; key: value; secret: value; file_key: value })`
 - `s.cloud.aws.s3.sign_url({ as?: string; bucket: value; region: value; key: value; secret: value; file_key: value; ttl?: value })`
 - `s.cloud.aws.s3.upload_file({ as?: string; bucket: value; region: value; key: value; secret: value; file_key?: value; file: value; metadata: value; object_lock_mode?: value; object_lock_retain_until?: value })`
@@ -931,9 +931,9 @@ Auth & calls:
 - `s.cloud.azure.storage.read_file({ as?: string; account_name: value; account_key: value; container_name: value; filePath: value })`
 - `s.cloud.azure.storage.sign_url({ as?: string; account_name: value; account_key: value; container_name: value; path: value; ttl: value })`
 - `s.cloud.azure.storage.upload_file({ as?: string; account_name: value; account_key: value; container_name: value; filePath: value; file: value; metadata: value })`
-- `s.cloud.elasticsearch.document({ as?: string; auth_type?: value; key_id: value; access_key: value; region: value; method?: value; index: value; base_url: value; doc_id: value; doc: value })`
-- `s.cloud.elasticsearch.query({ as?: string; auth_type?: value; key_id?: value; access_key?: value; region?: value; index?: value; payload?: value; size?: value; from?: value; sort?: value; included_fields?: value; return_type?: value })`
-- `s.cloud.elasticsearch.request({ as?: string; auth_type?: value; key_id?: value; access_key?: value; region?: value; method?: value; url?: value; query?: value })`
+- `s.cloud.elasticsearch.document({ as?: string; auth_type?: value; key_id: value; access_key: value; base_url: value; index: value; method?: value; doc_id: value; doc: value })`
+- `s.cloud.elasticsearch.query({ as?: string; auth_type?: value; key_id?: value; access_key?: value; base_url?: value; index?: value; payload?: value; size?: value; from?: value; included_fields?: value; return_type?: value; expression?: value; sort?: value })`
+- `s.cloud.elasticsearch.request({ as?: string; auth_type?: value; key_id?: value; access_key?: value; method?: value; url?: value; payload?: value })`
 - `s.cloud.google.storage.delete_file({ as?: string; service_account: value; bucket: value; filePath: value })`
 - `s.cloud.google.storage.get_file_info({ as?: string; service_account: value; bucket: value; filePath: value })`
 - `s.cloud.google.storage.list_directory({ as?: string; service_account: value; bucket: value; path: value })`

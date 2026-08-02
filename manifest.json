@@ -1231,6 +1231,11 @@
           "default": ""
         },
         {
+          "name": "base_url",
+          "type": "value",
+          "optional": false
+        },
+        {
           "name": "method",
           "type": "value",
           "optional": true,
@@ -1241,11 +1246,6 @@
           "type": "value",
           "optional": true,
           "default": ""
-        },
-        {
-          "name": "base_url",
-          "type": "value",
-          "optional": false
         },
         {
           "name": "doc_id",
@@ -1299,6 +1299,12 @@
           "default": ""
         },
         {
+          "name": "base_url",
+          "type": "value",
+          "optional": true,
+          "default": ""
+        },
+        {
           "name": "index",
           "type": "value",
           "optional": true,
@@ -1323,12 +1329,6 @@
           "default": ""
         },
         {
-          "name": "sort",
-          "type": "value",
-          "optional": true,
-          "default": "[]"
-        },
-        {
           "name": "included_fields",
           "type": "value",
           "optional": true,
@@ -1339,6 +1339,18 @@
           "type": "value",
           "optional": true,
           "default": "search"
+        },
+        {
+          "name": "expression",
+          "type": "value",
+          "optional": true,
+          "default": "[]"
+        },
+        {
+          "name": "sort",
+          "type": "value",
+          "optional": true,
+          "default": "[]"
         }
       ]
     },
@@ -1515,12 +1527,12 @@
         {
           "name": "prefix",
           "type": "value",
-          "optional": false
+          "optional": true
         },
         {
           "name": "next_page_token",
           "type": "value",
-          "optional": false
+          "optional": true
         }
       ]
     },
@@ -1925,7 +1937,12 @@
           "optional": false
         },
         {
-          "name": "region",
+          "name": "base_url",
+          "type": "value",
+          "optional": false
+        },
+        {
+          "name": "index",
           "type": "value",
           "optional": false
         },
@@ -1934,16 +1951,6 @@
           "type": "value",
           "optional": true,
           "default": "GET"
-        },
-        {
-          "name": "index",
-          "type": "value",
-          "optional": false
-        },
-        {
-          "name": "base_url",
-          "type": "value",
-          "optional": false
         },
         {
           "name": "doc_id",
@@ -1989,7 +1996,7 @@
           "default": ""
         },
         {
-          "name": "region",
+          "name": "base_url",
           "type": "value",
           "optional": true,
           "default": ""
@@ -2019,12 +2026,6 @@
           "default": ""
         },
         {
-          "name": "sort",
-          "type": "value",
-          "optional": true,
-          "default": "[]"
-        },
-        {
           "name": "included_fields",
           "type": "value",
           "optional": true,
@@ -2035,6 +2036,18 @@
           "type": "value",
           "optional": true,
           "default": "search"
+        },
+        {
+          "name": "expression",
+          "type": "value",
+          "optional": true,
+          "default": "[]"
+        },
+        {
+          "name": "sort",
+          "type": "value",
+          "optional": true,
+          "default": "[]"
         }
       ]
     },
@@ -2070,12 +2083,6 @@
           "default": ""
         },
         {
-          "name": "region",
-          "type": "value",
-          "optional": true,
-          "default": ""
-        },
-        {
           "name": "method",
           "type": "value",
           "optional": true,
@@ -2088,7 +2095,7 @@
           "default": ""
         },
         {
-          "name": "query",
+          "name": "payload",
           "type": "value",
           "optional": true,
           "default": "{}"

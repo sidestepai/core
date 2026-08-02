@@ -84,10 +84,10 @@ export const generated = {
     },
     aws: {
       opensearch: {
-        document: /** `mvp:amazon_opensearch_document` — fields: as, auth_type, key_id, access_key, region, method, index, base_url, doc_id, doc */
-(a: { as?: string; auth_type?: Value; key_id?: Value; access_key?: Value; region?: Value; method?: Value; index?: Value; base_url: Value; doc_id?: Value; doc?: Value }): Statement => fromSpec("mvp:amazon_opensearch_document", a),
-        query: /** `mvp:amazon_opensearch_query` — fields: as, auth_type, key_id, access_key, region, index, payload, size, from, sort, included_fields, return_type */
-(a: { as?: string; auth_type?: Value; key_id?: Value; access_key?: Value; region?: Value; index?: Value; payload?: Value; size?: Value; from?: Value; sort?: Value; included_fields?: Value; return_type?: Value } = {}): Statement => fromSpec("mvp:amazon_opensearch_query", a),
+        document: /** `mvp:amazon_opensearch_document` — fields: as, auth_type, key_id, access_key, region, base_url, method, index, doc_id, doc */
+(a: { as?: string; auth_type?: Value; key_id?: Value; access_key?: Value; region?: Value; base_url: Value; method?: Value; index?: Value; doc_id?: Value; doc?: Value }): Statement => fromSpec("mvp:amazon_opensearch_document", a),
+        query: /** `mvp:amazon_opensearch_query` — fields: as, auth_type, key_id, access_key, region, base_url, index, payload, size, from, included_fields, return_type, expression, sort */
+(a: { as?: string; auth_type?: Value; key_id?: Value; access_key?: Value; region?: Value; base_url?: Value; index?: Value; payload?: Value; size?: Value; from?: Value; included_fields?: Value; return_type?: Value; expression?: Value; sort?: Value } = {}): Statement => fromSpec("mvp:amazon_opensearch_query", a),
         request: /** `mvp:amazon_opensearch_request` — fields: as, auth_type, key_id, access_key, region, method, url, query */
 (a: { as?: string; auth_type?: Value; key_id?: Value; access_key?: Value; region?: Value; method?: Value; url?: Value; query?: Value } = {}): Statement => fromSpec("mvp:amazon_opensearch_request", a),
       },
@@ -97,7 +97,7 @@ export const generated = {
         get_file_info: /** `mvp:amazon_s3_get_file_metadata` — fields: as, bucket, region, key, secret, file_key */
 (a: { as?: string; bucket: Value; region: Value; key: Value; secret: Value; file_key: Value }): Statement => fromSpec("mvp:amazon_s3_get_file_metadata", a),
         list_directory: /** `mvp:amazon_s3_list_directory` — fields: as, bucket, region, key, secret, prefix, next_page_token */
-(a: { as?: string; bucket: Value; region: Value; key: Value; secret: Value; prefix: Value; next_page_token: Value }): Statement => fromSpec("mvp:amazon_s3_list_directory", a),
+(a: { as?: string; bucket: Value; region: Value; key: Value; secret: Value; prefix?: Value; next_page_token?: Value }): Statement => fromSpec("mvp:amazon_s3_list_directory", a),
         read_file: /** `mvp:amazon_s3_create_var_from_file_resource` — fields: as, bucket, region, key, secret, file_key */
 (a: { as?: string; bucket: Value; region: Value; key: Value; secret: Value; file_key: Value }): Statement => fromSpec("mvp:amazon_s3_create_var_from_file_resource", a),
         sign_url: /** `mvp:amazon_s3_signed_url` — fields: as, bucket, region, key, secret, file_key, ttl */
@@ -123,12 +123,12 @@ export const generated = {
       },
     },
     elasticsearch: {
-      document: /** `mvp:elasticsearch_document` — fields: as, auth_type, key_id, access_key, region, method, index, base_url, doc_id, doc */
-(a: { as?: string; auth_type?: Value; key_id: Value; access_key: Value; region: Value; method?: Value; index: Value; base_url: Value; doc_id: Value; doc: Value }): Statement => fromSpec("mvp:elasticsearch_document", a),
-      query: /** `mvp:elasticsearch_query` — fields: as, auth_type, key_id, access_key, region, index, payload, size, from, sort, included_fields, return_type */
-(a: { as?: string; auth_type?: Value; key_id?: Value; access_key?: Value; region?: Value; index?: Value; payload?: Value; size?: Value; from?: Value; sort?: Value; included_fields?: Value; return_type?: Value } = {}): Statement => fromSpec("mvp:elasticsearch_query", a),
-      request: /** `mvp:elasticsearch_request` — fields: as, auth_type, key_id, access_key, region, method, url, query */
-(a: { as?: string; auth_type?: Value; key_id?: Value; access_key?: Value; region?: Value; method?: Value; url?: Value; query?: Value } = {}): Statement => fromSpec("mvp:elasticsearch_request", a),
+      document: /** `mvp:elasticsearch_document` — fields: as, auth_type, key_id, access_key, base_url, index, method, doc_id, doc */
+(a: { as?: string; auth_type?: Value; key_id: Value; access_key: Value; base_url: Value; index: Value; method?: Value; doc_id: Value; doc: Value }): Statement => fromSpec("mvp:elasticsearch_document", a),
+      query: /** `mvp:elasticsearch_query` — fields: as, auth_type, key_id, access_key, base_url, index, payload, size, from, included_fields, return_type, expression, sort */
+(a: { as?: string; auth_type?: Value; key_id?: Value; access_key?: Value; base_url?: Value; index?: Value; payload?: Value; size?: Value; from?: Value; included_fields?: Value; return_type?: Value; expression?: Value; sort?: Value } = {}): Statement => fromSpec("mvp:elasticsearch_query", a),
+      request: /** `mvp:elasticsearch_request` — fields: as, auth_type, key_id, access_key, method, url, payload */
+(a: { as?: string; auth_type?: Value; key_id?: Value; access_key?: Value; method?: Value; url?: Value; payload?: Value } = {}): Statement => fromSpec("mvp:elasticsearch_request", a),
     },
     google: {
       storage: {
