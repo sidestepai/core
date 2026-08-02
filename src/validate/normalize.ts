@@ -1146,7 +1146,10 @@ export function clearLocalDboRefs<T>(value: T, cleared?: Set<string>): T {
  * workspace that stored `{}` re-exports as the EXPLICIT form — the bytes change,
  * deliberately, and the live probe is what licenses changing them at all.
  */
-const EMPTY_CONTEXT_FILL: ReadonlyMap<string, { tag?: string; named: boolean }> = new Map([
+const EMPTY_CONTEXT_FILL: ReadonlyMap<
+  string,
+  { tag?: string; named: boolean; extra?: Readonly<Record<string, unknown>> }
+> = new Map([
   // Its name rides the envelope `as`, so the context is the value alone.
   ["mvp:set_var", { tag: "const", named: false }],
   // Standalone classes, each declaring its own default tag.
@@ -1200,6 +1203,27 @@ const EMPTY_CONTEXT_FILL: ReadonlyMap<string, { tag?: string; named: boolean }> 
   ["mvp:text_iends_with", { tag: "const", named: true }],
   ["mvp:text_contains", { tag: "const", named: true }],
   ["mvp:text_icontains", { tag: "const", named: true }],
+  // The file-resource family and `debug_log`: the context IS the value, like
+  // `set_var`, but the file resources declare a sibling SCALAR (`access`) that
+  // the same optional pass materializes alongside it — so the fill carries it.
+  // The nested `filename` is NOT filled: a nested object defaults to the literal
+  // string `"{}"` and materializes nothing.
+  //
+  // `extra` is exactly where the `array_pop` note above applies. `create_attachment`
+  // ALSO declares `include_meta?=false`, and filling it failed the round trip —
+  // the SDK's spec models no such field, so the encoder never writes it and the
+  // fill demanded a member the recovered record could not produce. The fill has
+  // to equal what the ENCODER writes, not everything the engine would supply.
+  // (A workspace that stores a real `include_meta` still degrades to `raw()`,
+  // which is the correct handling for an unmodelled member.)
+  //
+  // Read off each statement class's own schema, and the default tag is NOT
+  // uniform across them — the file resources declare `tag?=input` while
+  // `debug_log` declares `tag?=const`, the same split `die`/`setheader` have.
+  ["mvp:create_image", { tag: "input", named: false, extra: { access: "public" } }],
+  ["mvp:create_audio", { tag: "input", named: false, extra: { access: "public" } }],
+  ["mvp:create_attachment", { tag: "input", named: false, extra: { access: "public" } }],
+  ["mvp:debug_log", { tag: "const", named: false }],
 ]);
 
 /**
@@ -1287,7 +1311,11 @@ export function filledContext(stored: unknown): Record<string, unknown> | null {
     if (!empty) return null;
     // No tag means no operand — the fill is the name alone.
     if (whole.tag === undefined) return { name: "" };
-    return whole.named ? { name: "", ...blankValue(whole.tag) } : blankValue(whole.tag);
+    return {
+      ...(whole.named ? { name: "" } : {}),
+      ...blankValue(whole.tag),
+      ...(whole.extra ?? {}),
+    };
   }
 
   const loop = LOOP_EMPTY_ITERAND.get(name);

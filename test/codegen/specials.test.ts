@@ -115,14 +115,26 @@ describe("variables", () => {
     expect(normalize(encodeStatement(evaluate(source)))).toEqual(normalize(STORED_EMPTY_SET_VAR));
   });
 
-  it("still declines an empty update_var context, which has lost its target name", () => {
+  it("recovers an empty update_var context, taking BOTH members from the fill", () => {
+    // `update_var` carries its target variable inside `context`, so an empty one
+    // has to take the name and the value from the same fill or neither. Every
+    // member is a scalar (`{name, value, tag?=const, filters[]}`), so the
+    // engine's optional pass materializes all of them — and the editor saves
+    // this state: its context form declares no required validator.
     const ctx = new DecodeContext();
-    const stored = { ...STORED_EMPTY_SET_VAR, name: "mvp:update_var" } as unknown as StackItemXdo;
-    expect(printExpr(decodeStatement(ctx, EMPTY_REFS, stored, {}))).toContain("raw(");
-    // …and says it is an unconfigured stub, not an unreadable value — the same
-    // split the raw-SQL guard makes, so the two cluster apart in a sweep.
-    const detail = ctx.report.entries.map((e) => String(e.detail)).join(" | ");
-    expect(detail).toContain("never configured");
+    // The real stored shape, from the workspace that carries one: `as` is blank
+    // (an update names its target in `context`, not on the envelope).
+    const stored = {
+      ...STORED_EMPTY_SET_VAR,
+      as: "",
+      name: "mvp:update_var",
+    } as unknown as StackItemXdo;
+    const source = printExpr(decodeStatement(ctx, EMPTY_REFS, stored, {}));
+    expect(source).toBe('s.update_var("", c.text(""))');
+    expect(ctx.report.entries).toEqual([]);
+    // Byte-exact against the sparse spelling it came from, which is the only
+    // reason recovering it is safe.
+    expect(normalize(encodeStatement(evaluate(source)))).toEqual(normalize(stored));
   });
 });
 
