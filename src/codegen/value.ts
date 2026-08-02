@@ -340,10 +340,29 @@ export function decodeValue(ctx: DecodeContext, v: TaggedValue): Expr {
     return candidate.expr;
   }
   ctx.use(CODEGEN_MODULE, "rawValue");
-  const known = (TAGS as readonly string[]).includes(v.tag);
-  ctx.problem(
-    "value-fallback",
-    `${known ? "tag" : "unknown tag"} ${v.tag} has no idiomatic form; emitted verbatim`,
-  );
+  ctx.problem("value-fallback", describeFallback(v));
   return fallbackExpr(v);
+}
+
+/**
+ * Why a stored value had no readable form — the cause, not just the tag.
+ *
+ * "tag const:int has no idiomatic form" reads as though the SDK cannot express
+ * integer constants, which it plainly can; every such row in the survey corpus
+ * is the editor's EMPTY value box, and one is a decimal whose trailing zeros
+ * (`"10.00"`) no number literal reproduces. Naming that is what lets the
+ * category be clustered instead of merely counted — the same move that turned
+ * the `rawField()` and `raw()` piles into named decisions.
+ */
+function describeFallback(v: TaggedValue): string {
+  if (!(TAGS as readonly string[]).includes(v.tag)) {
+    return `unknown tag ${v.tag} has no idiomatic form; emitted verbatim`;
+  }
+  if (v.value === "") {
+    return (
+      `a blank ${v.tag} — the editor's unconfigured value box, which is not the same stored value as ` +
+      `a zero or an empty collection. Carried verbatim so it keeps meaning exactly what it stores`
+    );
+  }
+  return `tag ${v.tag} stores ${JSON.stringify(v.value)}, which no \`c.*\` constructor reproduces exactly; emitted verbatim`;
 }
