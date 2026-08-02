@@ -497,6 +497,34 @@ export function liveAsyncRuntime(value: unknown): Record<string, unknown> | unde
   return live;
 }
 
+/**
+ * Whether a toolset's `agent_settings` is the engine's BLANK scaffold — present,
+ * fully-shaped, and carrying no agent configuration at all.
+ *
+ * An MCP toolset that configures no model still gets the whole block written,
+ * every member at its empty value and `configs` keyed by the empty provider name
+ * (`{"": {}}`). It is inert: every engine consumer reaches a provider config
+ * through `agent_settings.type`, so a blank type selects `configs.` and
+ * configures nothing.
+ *
+ * The two members read WITHOUT going through `type` — `structuredOutputs` and
+ * `structuredOutputsSchema` — are checked too, so a block that only looks blank
+ * is not mistaken for one. That is what keeps this from being a rule on a
+ * generic key name (invariant 5).
+ *
+ * The SDK spells this state by omitting the block, so the two forms have to
+ * compare equal or every MCP server without an `llm` fails to round-trip.
+ */
+export function isBlankAgentSettings(value: unknown): boolean {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const settings = value as Record<string, unknown>;
+  if (settings.type !== "") return false;
+  if (settings.structuredOutputs === true) return false;
+  const schema = settings.structuredOutputsSchema;
+  if (Array.isArray(schema) && schema.length > 0) return false;
+  return true;
+}
+
 export function configuredDeadReturnBlocks(value: unknown): string[] {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return [];
   const section = value as Record<string, unknown>;
@@ -854,8 +882,11 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
       );
     // An MCP-server toolset persists `agent_settings:null` (only agents carry a
     // real settings block); the SDK omits it. Drop the null form.
+    // `null`, and the engine's BLANK SCAFFOLD — an MCP toolset that configures no
+    // model still gets the whole block written, inert (see
+    // {@link isBlankAgentSettings}). The SDK spells both by omitting it.
     case "agent_settings":
-      return v === null;
+      return v === null || isBlankAgentSettings(v);
     // An agent's default `agent_settings.telemetry` (all providers off, empty
     // keys): the SDK omits it. Drop when telemetry is disabled.
     case "telemetry":
