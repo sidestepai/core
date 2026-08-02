@@ -161,15 +161,28 @@ describe("query() enforces the path↔input contract", () => {
     ).toThrow(/cannot be an `obj`/);
   });
 
-  it("throws for a malformed marker rather than treating it as a literal segment", () => {
+  it("accepts a partial-segment marker — the engine routes it", () => {
+    // Was asserted as a throw. The router substitutes each marker in place and
+    // matches the whole action string, so `post-{slug}` is a real route; the old
+    // rule refused it and named it as the canonical mistake.
+    const q = query({
+      name: "blog/post-{slug}",
+      verb: "GET",
+      apiGroup: blog,
+      input: { slug: input.text({ required: true }) },
+    });
+    expect(q.name).toBe("blog/post-{slug}");
+  });
+
+  it("throws for a marker that never closes, which routes nothing", () => {
     expect(() =>
       query({
-        name: "blog/post-{slug}",
+        name: "blog/{slug",
         verb: "GET",
         apiGroup: blog,
         input: { slug: input.text({ required: true }) },
       }),
-    ).toThrow(/whole path segment/);
+    ).toThrow(/unmatched brace/);
   });
 
   it("leaves non-path inputs alone — they are query-string/body params", () => {

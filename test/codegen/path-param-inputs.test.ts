@@ -93,11 +93,24 @@ describe("codegen — a {param} that binds to nothing upstream", () => {
   });
 
   it("reports rather than crashes on a marker it cannot parse, emitting the name as-is", () => {
-    const malformed = bundleWith(storedQuery("blog/post-{slug}"));
+    // A marker that never closes — the one shape still worth refusing, since a
+    // route that LOOKS parameterized and is not is silent breakage. A
+    // partial-segment marker is NOT this case any more: `blog/post-{slug}` is a
+    // route the engine serves, and is covered by the binding test below.
+    const malformed = bundleWith(storedQuery("blog/{slug"));
     const project = decodeBundle(malformed);
     const entries = project.report.entries.filter((e) => e.category === "path-param-bound");
     expect(entries).toHaveLength(1);
     expect(entries[0]!.detail).toMatch(/will not import until the object is renamed/);
+    expect(project.files.map((f) => f.contents).join("\n")).toContain('name: "blog/{slug"');
+  });
+
+  it("binds a partial-segment marker like any other, with nothing to report", () => {
+    // The live-sweep regression in miniature: this used to reach the
+    // cannot-parse branch above and, at the workspace level, fail verification
+    // outright. Xano generates exactly this shape (`1table/{1table_id}`).
+    const project = decodeBundle(bundleWith(storedQuery("blog/post-{slug}")));
+    expect(project.report.entries.filter((e) => e.category === "path-param-bound")).toHaveLength(1);
     expect(project.files.map((f) => f.contents).join("\n")).toContain('name: "blog/post-{slug}"');
   });
 });
