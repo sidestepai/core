@@ -137,6 +137,32 @@ export function assertPathParamInputs(
 }
 
 /**
+ * The `{param}` names in a stored object's path that bind to NO stored input —
+ * the segments codegen synthesizes an `input.text()` for, and therefore the only
+ * inputs a regenerated bundle is expected to hold that its source did not.
+ *
+ * Exported so the decoder that adds them and the verifier that forgives them
+ * read one rule (invariant 4): two copies would drift, and the drift would show
+ * up as a round-trip failure nobody could act on. A path whose markers do not
+ * parse yields `[]` — nothing is synthesized for it either, so nothing is
+ * expected.
+ */
+export function unboundPathParams(path: string, storedInput: unknown): string[] {
+  let params: string[];
+  try {
+    params = parsePathParams("path", path);
+  } catch {
+    return [];
+  }
+  const bound = new Set(
+    (Array.isArray(storedInput) ? storedInput : []).map((entry) =>
+      entry !== null && typeof entry === "object" ? (entry as { name?: unknown }).name : undefined,
+    ),
+  );
+  return params.filter((param) => !bound.has(param));
+}
+
+/**
  * Substitute `{param}` segments with real values, yielding the concrete path a
  * client addresses. Throws rather than emitting a path that would silently hit
  * the wrong route: an unknown key, a missing/empty value, a non-finite number,

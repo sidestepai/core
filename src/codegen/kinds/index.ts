@@ -33,7 +33,7 @@ import { decodeStack } from "../statement.js";
 import { decodeCondition } from "../expression.js";
 import { isDefaultEnvelopeMember, isEmptyOutput, isBlankAgentSettings } from "../../validate/normalize.js";
 import type { ContainerPrefix } from "../../kinds/history.js";
-import { parsePathParams } from "../../kinds/path-params.js";
+import { parsePathParams, unboundPathParams } from "../../kinds/path-params.js";
 
 /** One `key: value` pair of a generated def literal. */
 export type DefEntry = readonly [string, Expr];
@@ -284,9 +284,8 @@ function pathAwareInputs(args: KindDecodeArgs): DefEntry | null {
     name?: unknown;
   }>;
   const name = typeof args.stored.name === "string" ? args.stored.name : "";
-  let params: string[] = [];
   try {
-    params = parsePathParams("path", name);
+    parsePathParams("path", name);
   } catch (error) {
     args.ctx.problem(
       "path-param-bound",
@@ -296,8 +295,9 @@ function pathAwareInputs(args: KindDecodeArgs): DefEntry | null {
     );
     return inputs(args);
   }
-  const bound = new Set(stored.map((field) => field.name));
-  const missing = params.filter((param) => !bound.has(param));
+  // Which params are synthesized comes from the shared rule, so the verifier
+  // forgives exactly the inputs this adds and no others.
+  const missing = unboundPathParams(name, stored);
   if (missing.length === 0) return inputs(args);
 
   args.ctx.problem(
