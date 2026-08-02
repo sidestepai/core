@@ -515,6 +515,64 @@ export function liveAsyncRuntime(value: unknown): Record<string, unknown> | unde
  * The SDK spells this state by omitting the block, so the two forms have to
  * compare equal or every MCP server without an `llm` fails to round-trip.
  */
+/**
+ * Whether a `result[]` entry is one the engine's response builder DISCARDS.
+ *
+ * `convertResultToConfig` walks the stored list and drops an entry before it can
+ * contribute anything in two cases this models:
+ *
+ *  - `disabled` is set — skipped outright;
+ *  - the `name` is blank AND the list holds more than one entry. A blank name
+ *    has nothing to key the response object by, so it is skipped. The exception
+ *    is a list of exactly ONE blank-named entry, which is the "bare value"
+ *    response — that entry is the whole response and is very much alive.
+ *
+ * A third rule the engine has (an empty `value` with no filters, on a non-`const`
+ * entry) is deliberately NOT modelled: those entries round-trip today, so
+ * dropping them would change stored bytes for no gain.
+ *
+ * Dead entries are editor exhaust with a real cost — one query stores four
+ * items, three of them blank-named, and the whole response fell back to
+ * `rawResponse()` because a record cannot be keyed by a name three items share.
+ * The engine's answer is that those three contribute nothing, so the response
+ * really is the one named item.
+ */
+export function isDeadResultItem(item: unknown, total: number): boolean {
+  if (item === null || typeof item !== "object" || Array.isArray(item)) return false;
+  const entry = item as { name?: unknown; disabled?: unknown };
+  if (entry.disabled !== undefined && entry.disabled !== false) return true;
+  return entry.name === "" && total !== 1;
+}
+
+/** Whether `value` is a stored `result[]` — an array of `{name,value,tag,filters}`. */
+function isResultList(value: unknown): value is ReadonlyArray<Record<string, unknown>> {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every(
+      (e) =>
+        e !== null &&
+        typeof e === "object" &&
+        !Array.isArray(e) &&
+        "name" in e &&
+        "value" in e &&
+        "tag" in e &&
+        "filters" in e,
+    )
+  );
+}
+
+/**
+ * A `result[]` reduced to the entries the engine actually reads, or `undefined`
+ * when nothing is dropped. Keyed on the entry SHAPE, never on the generic name
+ * `result` (invariant 5).
+ */
+export function liveResultItems(value: unknown): unknown[] | undefined {
+  if (!isResultList(value)) return undefined;
+  const live = value.filter((e) => !isDeadResultItem(e, value.length));
+  return live.length === value.length ? undefined : live;
+}
+
 export function isBlankAgentSettings(value: unknown): boolean {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
   const settings = value as Record<string, unknown>;
@@ -1290,8 +1348,13 @@ export function normalize<T>(value: T): T {
       // reason: only the members its `mode` actually reads survive (see
       // {@link liveAsyncRuntime}), so a block that is all exhaust collapses to
       // the unset state the default-envelope drop below already handles.
+      // A `result[]` keeps only the entries the engine's response builder reads
+      // (see {@link liveResultItems}); the dead ones are editor exhaust the SDK
+      // does not write back.
       const v =
-        k === "return"
+        k === "result"
+          ? (liveResultItems(stored) ?? stored)
+          : k === "return"
           ? (() => {
               const live = liveReturnSection(stored) ?? stored;
               return returnWithoutIterator(live) ?? live;

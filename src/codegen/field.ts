@@ -24,7 +24,7 @@ import { input } from "../inputs/input.js";
 import { CODEGEN_MODULE, CORE_MODULE, type DecodeContext } from "./context.js";
 import { call, lit, obj, type Expr } from "./print.js";
 import { resolveReference, type RefIndex, type ResolveOptions } from "./ref-index.js";
-import { clearLocalDboRefs, normalize } from "../validate/normalize.js";
+import { clearLocalDboRefs, normalize, isDeadResultItem } from "../validate/normalize.js";
 import { decodeValue } from "./value.js";
 
 /** Which authoring catalog to emit against: table columns (`f`) or inputs (`input`). */
@@ -632,50 +632,54 @@ export function decodeResponse(
     filters: item.filters ?? [],
   });
 
-  // `encodeResponse` writes `disabled` unconditionally at its default, so a
-  // stored item that sets it cannot come back through the `response:` field in
-  // any form. Carry the whole `result[]` verbatim instead. Checked before
-  // decoding, since one such item spoils the array.
+  // The engine's response builder DISCARDS some stored entries before they can
+  // contribute anything: one that sets `disabled`, and one whose `name` is blank
+  // when the list holds more than one entry (a blank name has nothing to key the
+  // response object by). Dropping those is what lets the rest keep the readable
+  // record form — they are editor exhaust, and carrying them cost whole
+  // responses their decode.
+  //
+  // Order matters and mirrors the engine's: the `disabled` test comes BEFORE the
+  // blank-name test, so a lone disabled entry is skipped rather than becoming
+  // the bare value — the builder then accumulates nothing and the response is
+  // null. That is why the bare-value case is read off the SURVIVORS below
+  // instead of off the stored list.
   //
   // `_xsid` is deliberately NOT a trigger. It is an engine-generated editor id
   // on `normalize()`'s strip list, so it is not authored data and can never fail
   // verification — measured across the fixture corpus, 13 result items carry a
-  // non-empty one and none carry `disabled`. Treating it as unrepresentable
-  // (as this check first did) would push nearly every real query onto the raw
-  // path and cost the readability the typed decode exists for.
-  const unrepresentable = stored.filter((item) => item.disabled !== false);
-  if (unrepresentable.length > 0) {
-    ctx.use(CODEGEN_MODULE, "rawResponse");
+  // non-empty one. Treating it as unrepresentable (as this check first did)
+  // would push nearly every real query onto the raw path.
+  const live = stored.filter((item) => !isDeadResultItem(item, stored.length));
+  if (live.length < stored.length) {
+    const dropped = stored.length - live.length;
     ctx.problem(
-      "raw-fallback",
-      `response item${unrepresentable.length === 1 ? "" : "s"} ${unrepresentable
-        .map((item) => `"${item.name || "(unnamed)"}"`)
-        .join(", ")} set \`disabled\`, which no authoring surface can produce; the response is emitted verbatim via rawResponse()`,
+      "expected-omission",
+      `${dropped} response item${dropped === 1 ? " is" : "s are"} skipped by the engine — ` +
+        `${dropped === 1 ? "it sets" : "they set"} \`disabled\`, or ${dropped === 1 ? "names" : "name"} ` +
+        `nothing to key the response by — so ${dropped === 1 ? "it contributes" : "they contribute"} ` +
+        `no value and ${dropped === 1 ? "is" : "are"} not carried across`,
     );
-    return call("rawResponse", lit(stored));
   }
+  // Every survivor was dead: the engine builds no response at all from this list.
+  if (live.length === 0) return undefined;
+  if (live.length === 1 && live[0]!.name === "") return decodeValue(ctx, asValue(live[0]!));
 
-  const single = stored.length === 1 && stored[0]!.name === "";
-  if (single) return decodeValue(ctx, asValue(stored[0]!));
-
-  // Everything else is emitted as a RECORD, which is keyed by name — so it can
-  // only carry items whose names are non-empty and distinct. Two items sharing a
-  // name collapse into one, and a blank name is a name items share: one real
-  // query stores four items, three of them unnamed, and came back as two with
-  // the survivors' tags and values shuffled onto each other.
-  const names = stored.map((item) => item.name);
-  const keyed = names.every((name) => name !== "") && new Set(names).size === names.length;
-  if (!keyed) {
+  // The survivors form a RECORD, keyed by name. Two sharing a name still cannot
+  // be carried — the engine keeps the LAST and the record would silently do the
+  // same, so it stays verbatim rather than quietly dropping the shadowed one.
+  const names = live.map((item) => item.name);
+  if (new Set(names).size !== names.length || names.some((name) => name === "")) {
     ctx.use(CODEGEN_MODULE, "rawResponse");
     ctx.problem(
       "raw-fallback",
-      `the response has ${stored.length} items whose names do not key it (blank or repeated), which the record form cannot carry; emitted verbatim via rawResponse()`,
+      `the response has ${live.length} live items whose names do not key it (blank or repeated), which the record form cannot carry; emitted verbatim via rawResponse()`,
     );
     return call("rawResponse", lit(stored));
   }
 
   return obj(
-    stored.map((item) => [item.name, ctx.at(`response.${item.name}`, () => decodeValue(ctx, asValue(item)))]),
+    live.map((item) => [item.name, ctx.at(`response.${item.name}`, () => decodeValue(ctx, asValue(item)))]),
   );
 }
 
