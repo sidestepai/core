@@ -231,6 +231,31 @@ describe("expression algebra", () => {
       expect(entry?.detail).toContain("left to right");
     });
 
+    it("declines a comparison whose operator no authoring form accepts", () => {
+      // A filter row added and never configured stores `op: ""`. Emitting
+      // `cmp(…, "", …)` for it produced a tree that THREW the moment it was
+      // loaded, so one unconfigured row failed a whole workspace's verification.
+      // Declining hands the caller its own exact fallback instead.
+      const stored = structuredClone(
+        encodeStatement(
+          s.conditional({
+            when: expr(ref("a"), "=", c.int(1)),
+            then: [s.set_var("hit", c.bool(true))],
+          }),
+        ),
+      ) as StackItemXdo;
+      const nodes = (stored.context as { expr: { expression: Array<{ statement: { op: string } }> } })
+        .expr.expression;
+      nodes[0]!.statement.op = "";
+
+      const ctx = new DecodeContext();
+      const source = printExpr(decodeStatement(ctx, EMPTY_REFS, stored));
+      expect(source).toContain("raw(");
+      expect(source).not.toContain('cmp(');
+      // Still byte-exact — `raw()` is what fidelity looks like here.
+      expect(normalize(encodeStatement(evaluate(source)))).toEqual(normalize(stored));
+    });
+
     it("declines an `or` flag on the FIRST sibling, which joins to nothing", () => {
       const stored = structuredClone(
         encodeStatement(

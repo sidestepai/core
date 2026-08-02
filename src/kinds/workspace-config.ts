@@ -246,7 +246,14 @@ function encodeWorkspaceMiddleware(m: WorkspaceMiddlewareDef): WorkspaceMiddlewa
 }
 
 export function encodeWorkspaceConfig(def: WorkspaceConfigDef): WorkspaceConfigXdo {
-  if (!def.name) throw new Error("workspace: `name` is required.");
+  // Present-but-empty is accepted, absent is not. A real instance holds a
+  // workspace whose stored `name` is `""` — the engine allows it — and refusing
+  // that spelling made a faithful pull of it impossible to export at all, which
+  // is the SDK inventing a stricter rule than the engine's. A MISSING key is
+  // still a mistake worth catching, since the type says the field is there.
+  if (def.name === undefined || def.name === null) {
+    throw new Error("workspace: `name` is required.");
+  }
   return {
     name: def.name,
     description: def.description ?? "",
