@@ -23,13 +23,16 @@
  * *type*: function.run/call → "function", api.call → "query" (an API endpoint
  * is a `query` object), and the rest map name-for-name.
  *
- * Scope: `service.function.run` (cross-workspace shared functions via
- * `service.guid`) and async `runtime` are deferred. api.call now emits the
- * `headers`/`auth` blocks (verb/name/api_group are engine-derived, not stored).
+ * Scope: connected-service functions are OUT, permanently — they were never
+ * released in Xano, so no engine produces the shape and no workspace can hold
+ * one. `mvp:function` therefore has exactly one authoring surface, storing the
+ * default payload. Async execution IS modelled (see {@link AsyncRuntime});
+ * api.call emits the `headers`/`auth` blocks (verb/name/api_group are
+ * engine-derived, not stored).
  *
  * @TODO(byte-verify): `function.run` (mvp:function) and `api.call` (context.token
  *   confirmed tagged) are golden-verified. Still modeled/unverified:
- *   - `workspace_run_*` (cross-workspace service.function.run) — deferred.
+ *   - `workspace_run_*` (cross-workspace calls) — no golden.
  *   - `workflow_test` → context.{datasource,id} — decode-accurate, no golden.
  *   - action / action_package — EXCLUDED from byte-verify: they need an
  *     action-identity model first (action id currently resolves via the "function"
@@ -42,6 +45,8 @@ import type { Value } from "../../values/value.js";
 import { resolveRef } from "../../refs/guid.js";
 import type { ObjectRef } from "../../refs/guid.js";
 import { coerceScalar } from "./coerce.js";
+import { encodeAsyncRuntime } from "./async-runtime.js";
+import type { AsyncRuntime } from "./async-runtime.js";
 import type { InputValue } from "./coerce.js";
 
 /** A call/agent `{name: value}` input map — raw scalar literals coerce to constants. */
@@ -86,6 +91,12 @@ export interface FunctionRunArgs {
   as?: string;
   /** Input bindings, keyed by the target's input names. */
   input?: CallInput;
+  /**
+   * Run the function in the background instead of inline. Omit for a normal
+   * synchronous call. See {@link AsyncRuntime} — an async call does NOT return
+   * the function's result.
+   */
+  runtime?: AsyncRuntime;
 }
 
 /** `function.run <fn>` — run another function inline. */
@@ -95,6 +106,7 @@ export function functionRun(args: FunctionRunArgs): Statement {
     context: { function: { id: fnId(args.fn) } },
     as: args.as,
     input: encodeCallInput(args.input),
+    runtime: encodeAsyncRuntime(args.runtime),
   };
 }
 
@@ -232,29 +244,12 @@ export function addonCall(args: AddonCallArgs): Statement {
 }
 
 // ---------------------------------------------------------------------------
-// Call-family tail (structural — no persisted fixture yet). `service.function.run`
-// shares the `mvp:function` stored name with `function.run`; it is reachable as a
-// distinct authoring surface but adds no new registry entry.
+// Call-family tail (structural — no persisted fixture yet).
+//
+// There is deliberately no `service.function.run` here. Connected-service
+// functions were never released, so nothing produces that shape and nothing can
+// call one — `mvp:function` has a single surface and the default payload above.
 // ---------------------------------------------------------------------------
-
-export interface ServiceFunctionRunArgs {
-  /** The target function (def handle or name) in a connected service. */
-  fn: FnRef;
-  as?: string;
-  input?: CallInput;
-  /** Execution mode (`"shared"` default). */
-  runtimeMode?: string;
-}
-
-/** `service.function.run <fn>` — run a connected-service function (`mvp:function`). */
-export function serviceFunctionRun(args: ServiceFunctionRunArgs): Statement {
-  return {
-    name: "mvp:function",
-    context: { function: { id: fnId(args.fn) }, runtime_mode: args.runtimeMode ?? "shared" },
-    as: args.as,
-    input: encodeCallInput(args.input),
-  };
-}
 
 export interface ActionCallArgs {
   /** The action's name. */

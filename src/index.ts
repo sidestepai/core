@@ -116,7 +116,6 @@ export {
   addonCall,
   actionCall,
   actionPackageCall,
-  serviceFunctionRun,
   workflowTestCall,
 } from "./statements/special/calls.js";
 export type {
@@ -129,7 +128,6 @@ export type {
   MiddlewareCallArgs,
   AddonCallArgs,
   ActionCallArgs,
-  ServiceFunctionRunArgs,
   WorkflowTestCallArgs,
 } from "./statements/special/calls.js";
 export {

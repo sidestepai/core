@@ -537,23 +537,22 @@ describe("decodeResponse", () => {
     expect(encodeResponse(evaluateValue(source))).toEqual(stored);
   });
 
-  it("carries a response item that sets `disabled` through rawResponse(), exactly", () => {
-    // `encodeResponse` writes `disabled` unconditionally at its default, so no
-    // authoring surface reaches it. Previously this was reported and then lost;
-    // now it round-trips verbatim.
+  it("drops a `disabled` response item — the engine skips it before anything else", () => {
+    // The builder's `disabled` test runs BEFORE its blank-name test, so a lone
+    // disabled entry never becomes the bare value: it is skipped, nothing
+    // accumulates, and the response is null. So the def declares no response.
     const stored = encodeResponse(ref("user")).map((item) => ({ ...item, disabled: true }));
     const ctx = new DecodeContext();
-    const source = printExpr(decodeResponse(ctx, stored)!);
-    expect(source).toContain("rawResponse(");
-    expect(ctx.report.entries[0]!.category).toBe("raw-fallback");
-    expect(encodeResponse(evaluateValue(source))).toEqual(stored);
+    expect(decodeResponse(ctx, stored)).toBeUndefined();
+    expect(ctx.report.entries[0]!.category).toBe("expected-omission");
   });
 
-  it("carries a result[] with more than one UNNAMED item through rawResponse()", () => {
-    // The record form is keyed by name, so two items sharing a name collapse
-    // into one — and a blank name is the name three of these share. One real
-    // query stores four items, three of them unnamed: it came back as TWO,
-    // silently, with the survivors' tags and values shuffled.
+  it("drops the UNNAMED items in a multi-item result[] and keeps the record readable", () => {
+    // A blank name has nothing to key the response object by, so the engine
+    // skips it — unless it is the only entry, which is the bare-value case
+    // below. This one query (four items, three unnamed) was the whole reason the
+    // response fell back to `rawResponse()`; the engine's answer is that the
+    // response really is just the one named item.
     const stored = [
       { name: "", tag: "var", value: "hello_1", filters: [], _xsid: "", disabled: false },
       { name: "", tag: "input", value: "ab", filters: [], _xsid: "", disabled: false },
@@ -561,9 +560,22 @@ describe("decodeResponse", () => {
     ] as const satisfies readonly ResultItemXdo[];
     const ctx = new DecodeContext();
     const source = printExpr(decodeResponse(ctx, stored)!);
-    expect(source).toContain("rawResponse(");
-    expect(ctx.report.entries[0]!.category).toBe("raw-fallback");
-    expect(encodeResponse(evaluateValue(source))).toEqual(stored);
+    expect(source).not.toContain("rawResponse(");
+    expect(source).toContain("func_1");
+    expect(ctx.report.entries[0]!.category).toBe("expected-omission");
+    // The discard is visible, and what survives is what the engine builds.
+    expect(encodeResponse(evaluateValue(source))).toEqual([
+      { name: "func_1", tag: "var", value: "func_1", filters: [], _xsid: "", disabled: false },
+    ]);
+  });
+
+  it("keeps a LONE unnamed item, which is the bare-value response", () => {
+    // The paired negative for the rule above: `count === 1` is exactly when a
+    // blank name is meaningful, and dropping it would erase the response.
+    const stored = encodeResponse(ref("user"));
+    const ctx = new DecodeContext();
+    expect(printExpr(decodeResponse(ctx, stored)!)).toBe('ref("user")');
+    expect(ctx.report.entries).toEqual([]);
   });
 
   it("carries a result[] with a REPEATED name through rawResponse()", () => {
@@ -599,15 +611,18 @@ describe("decodeResponse", () => {
   it("preserves absence — rawResponse() does not invent keys the item lacks", () => {
     // The contract `raw()` and `rawField()` both had to be fixed into. The
     // engine omits keys at their defaults, so completing them changes the bytes.
+    // Reached via a REPEATED name, which is still unrepresentable as a record.
     const source = printExpr(
       decodeResponse(new DecodeContext(), [
-        { name: "", tag: "input", value: "user", disabled: true } as never,
+        { name: "id", tag: "input", value: "user" } as never,
+        { name: "id", tag: "input", value: "other" } as never,
       ])!,
     );
+    expect(source).toContain("rawResponse(");
     const reencoded = encodeResponse(evaluateValue(source)) as unknown as Record<string, unknown>[];
     expect(Object.hasOwn(reencoded[0]!, "filters")).toBe(false);
     expect(Object.hasOwn(reencoded[0]!, "_xsid")).toBe(false);
-    expect(reencoded[0]).toEqual({ name: "", tag: "input", value: "user", disabled: true });
+    expect(reencoded[0]).toEqual({ name: "id", tag: "input", value: "user" });
   });
 });
 

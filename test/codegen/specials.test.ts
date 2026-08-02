@@ -448,12 +448,11 @@ describe("call family", () => {
     );
   });
 
-  it("decodes an unbound call target as `fn: null`, on both mvp:function surfaces", () => {
+  it("decodes an unbound call target as `fn: null`", () => {
     // A call whose target function was deleted stores a blank `context.function.id`
     // — an unbound reference, not a decode failure. 17 statements across the sweep.
     for (const [statement, expected] of [
       [s.function.run({ fn: { name: "helper", guid: "aaaa000000000000000000000000aaaa" } }), "s.function.run("],
-      [s.service.function.run({ fn: { name: "helper", guid: "aaaa000000000000000000000000aaaa" } }), "s.service.function.run("],
     ] as const) {
       const bound = encodeStatement(statement);
       const stored = {
@@ -487,8 +486,11 @@ describe("call family", () => {
     expect(normalize(encodeStatement(evaluate(source, CALL_SYMBOLS)))).toEqual(normalize(stored));
   });
 
-  // The plan's headline discrimination case: one stored name, two surfaces.
-  it("routes mvp:function by its stored context, not by name", () => {
+  // Once the plan's headline discrimination case: one stored name, two surfaces.
+  // It is one surface now — connected-service functions were never released in
+  // Xano, and the key that discriminated them (`context.runtime_mode`) is not a
+  // stored key at all, so the branch could only fire on the SDK's own bytes.
+  it("routes every mvp:function to the one surface that exists", () => {
     const plain = roundTrip(
       s.function.run({ fn: { name: "helper", guid: "aaaa000000000000000000000000aaaa" } }),
       REFS,
@@ -496,21 +498,6 @@ describe("call family", () => {
     );
     expect(plain).toContain("s.function.run(");
     expect(plain).not.toContain("service");
-
-    const service = roundTrip(
-      s.service.function.run({ fn: { name: "helper", guid: "aaaa000000000000000000000000aaaa" } }),
-      REFS,
-      CALL_SYMBOLS,
-    );
-    expect(service).toContain("s.service.function.run(");
-  });
-
-  it("keeps a non-default runtimeMode and omits the default one", () => {
-    const target = { name: "helper", guid: "aaaa000000000000000000000000aaaa" };
-    expect(roundTrip(s.service.function.run({ fn: target }), REFS)).not.toContain("runtimeMode");
-    expect(
-      roundTrip(s.service.function.run({ fn: target, runtimeMode: "dedicated" }), REFS),
-    ).toContain("runtimeMode");
   });
 
   it("preserves a call whose target is absent from the bundle", () => {
@@ -1475,10 +1462,14 @@ describe("AI agent and cloud jobs", () => {
     );
     expect(source).toContain("agent: assistant");
     // `runtime` is written only when a mode was authored — absence is meaningful.
-    expect(source).not.toContain("runtimeMode");
+    expect(source).not.toContain("runtime");
+    // The engine reads the same top-level block here as on `function.run`, so
+    // only the real `async-*` vocabulary means anything.
     expect(
-      dbRoundTrip(s.ai.agent.run({ agent: ASSISTANT, runtimeMode: "dedicated", as: "answer" })),
-    ).toContain('runtimeMode: "dedicated"');
+      dbRoundTrip(
+        s.ai.agent.run({ agent: ASSISTANT, runtime: { mode: "async-shared" }, as: "answer" }),
+      ),
+    ).toContain('mode: "async-shared"');
     dbRoundTrip(
       s.ai.agent.run({
         agent: ASSISTANT,

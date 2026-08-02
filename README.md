@@ -1013,6 +1013,20 @@ endpoint's inputs reach the prompt. Templatable: `systemPrompt`, `prompt`/`messa
 (the dynamic sibling of `c.obj` — it allows nested `inp`/`ref`/… values):
 `s.ai.agent.run({ agent, args: obj({ name: inp("name") }) })` reaches `{{ $args.name }}`.
 
+**Background execution (`runtime`).** `s.function.run` and `s.ai.agent.run` both accept a
+`runtime` block that moves the call off the request path:
+
+```ts
+s.function.run({ fn: sendDigest, runtime: { mode: "async-shared" } });
+s.function.run({ fn: rebuildIndex, runtime: { mode: "async-dedicated", cpu: "250m", memory: "512Mi" } });
+```
+
+This is **not** a performance knob — it changes what the statement gives you. Xano rewrites
+an async call to a different statement that *dispatches and continues*, so it does **not**
+return the function's result; don't bind `as` expecting a value. Collect results later with
+`s.await({ ids })`. `cpu`/`memory`/`timeout`/`maxRetry` are read at `async-dedicated` only.
+Omit `runtime` entirely for a normal synchronous call.
+
 **Middleware attachment** — a `middleware({...})` is reusable logic (`input`/`stack`/
 `response` + `resultStrategy: "merge"|"replace"` + `exceptionPolicy: "silent"|"rethrow"|
 "critical"`). To run one, *attach* it with a host's `middleware: { pre, post }` field on

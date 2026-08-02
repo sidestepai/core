@@ -31,7 +31,7 @@ import { resolveReference } from "../ref-index.js";
 import { decodeFieldMap, decodeResponse, deepEqual } from "../field.js";
 import { decodeStack } from "../statement.js";
 import { decodeCondition } from "../expression.js";
-import { isDefaultEnvelopeMember, isEmptyOutput } from "../../validate/normalize.js";
+import { isDefaultEnvelopeMember, isEmptyOutput, isBlankAgentSettings } from "../../validate/normalize.js";
 import type { ContainerPrefix } from "../../kinds/history.js";
 import { parsePathParams } from "../../kinds/path-params.js";
 
@@ -1531,7 +1531,15 @@ function providerConfigEntries(provider: string, config: Record<string, unknown>
 /** Does this toolset store a settings block with anything in it? */
 function hasAgentSettings(a: KindDecodeArgs): boolean {
   const settings = a.stored.agent_settings;
-  return typeof settings === "object" && settings !== null && Object.keys(settings).length > 0;
+  if (typeof settings !== "object" || settings === null || Object.keys(settings).length === 0) {
+    return false;
+  }
+  // Present but BLANK is the same as absent: an MCP toolset that configures no
+  // model still gets the whole block written, and it is inert (see
+  // {@link isBlankAgentSettings}). Reading it as authored produced an `llm` with
+  // a blank provider type, which then re-encoded as the SDK's `prompt` default
+  // and failed to round-trip — one live toolset, invisible to the offline corpus.
+  return !isBlankAgentSettings(settings);
 }
 
 /** A toolset's `agent_settings` → the `llm` and `output` authoring blocks. */

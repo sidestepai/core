@@ -37,28 +37,41 @@ describe("parsePathParams", () => {
     expect(parsePathParams(CTX, "{id}")).toEqual(["id"]);
   });
 
-  it("rejects a partial-segment param", () => {
-    expect(() => parsePathParams(CTX, "blog/post-{slug}")).toThrow(/whole path segment/);
-    expect(() => parsePathParams(CTX, "blog/{slug}.json")).toThrow(/whole path segment/);
+  it("accepts a PARTIAL-segment param, which the engine routes fine", () => {
+    // The router substitutes a capture group for each marker in place and
+    // matches the whole action string, so a marker never had to own its segment.
+    // This used to throw, and the message cited "blog/post-{slug}" as the
+    // canonical mistake — a route the engine serves.
+    expect(parsePathParams(CTX, "blog/post-{slug}")).toEqual(["slug"]);
+    expect(parsePathParams(CTX, "blog/{slug}.json")).toEqual(["slug"]);
   });
 
-  it("rejects two params in one segment", () => {
-    expect(() => parsePathParams(CTX, "blog/{a}{b}")).toThrow(/whole path segment/);
+  it("accepts two params in one segment, in order", () => {
+    expect(parsePathParams(CTX, "blog/{a}-{b}")).toEqual(["a", "b"]);
+    // Adjacent markers too: the name excludes braces, so the first cannot
+    // swallow the second the way the engine's own greedy `[^/]+` would.
+    expect(parsePathParams(CTX, "blog/{a}{b}")).toEqual(["a", "b"]);
   });
 
-  it("rejects an empty param name", () => {
-    expect(() => parsePathParams(CTX, "blog/{}")).toThrow(/whole path segment/);
+  it("accepts a name that is not a plain identifier", () => {
+    // The engine's name pattern is `[^/]+`. A leading digit matters in
+    // practice: a table named `1table` gets the generated CRUD route
+    // `1table/{1table_id}`, which this rule used to refuse outright — two
+    // workspaces in a live sweep failed verification on exactly that.
+    expect(parsePathParams(CTX, "1table/{1table_id}")).toEqual(["1table_id"]);
+    expect(parsePathParams(CTX, "blog/{sl-ug}")).toEqual(["sl-ug"]);
+    expect(parsePathParams(CTX, "blog/{a b}")).toEqual(["a b"]);
   });
 
-  it("rejects a param name that is not a plain identifier", () => {
-    expect(() => parsePathParams(CTX, "blog/{sl-ug}")).toThrow(/whole path segment/);
-    expect(() => parsePathParams(CTX, "blog/{2fast}")).toThrow(/whole path segment/);
-    expect(() => parsePathParams(CTX, "blog/{a b}")).toThrow(/whole path segment/);
+  it("still rejects an empty param name", () => {
+    // `{}` has no name to bind an input to, so the braces survive as residue.
+    expect(() => parsePathParams(CTX, "blog/{}")).toThrow(/unmatched brace/);
   });
 
-  it("rejects an unbalanced brace", () => {
-    expect(() => parsePathParams(CTX, "blog/{slug")).toThrow(/whole path segment/);
-    expect(() => parsePathParams(CTX, "blog/slug}")).toThrow(/whole path segment/);
+  it("still rejects an unbalanced brace", () => {
+    // The one thing worth refusing: a route that LOOKS parameterized and is not.
+    expect(() => parsePathParams(CTX, "blog/{slug")).toThrow(/unmatched brace/);
+    expect(() => parsePathParams(CTX, "blog/slug}")).toThrow(/unmatched brace/);
   });
 
   it("rejects a duplicate param name", () => {

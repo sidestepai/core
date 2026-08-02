@@ -3,10 +3,9 @@
  *
  * The family is uniform in shape: a target guid somewhere in `context`, an
  * optional `as`, and a lean `input[]` of named bindings. The one place it is not
- * uniform is `mvp:function`, which two distinct public surfaces share:
- * `service.function.run` writes `context.runtime_mode` and `function.run` does
- * not, so the stored context — not the name — is what discriminates them. A
- * name lookup would pick one arbitrarily and re-encode the wrong shape.
+ * Every stored name maps to exactly one authoring surface — including
+ * `mvp:function`, which briefly carried a second one (see
+ * {@link functionRunDecoder} for why that went away).
  */
 import type { TaggedValue } from "../../types/xdo.js";
 import { lit, obj, type Expr } from "../print.js";
@@ -196,42 +195,76 @@ const apiCallExtra: CallShape["extra"] = (a) => {
 };
 
 /**
- * `mvp:function` — the non-injective stored name.
+ * The TOP-LEVEL `runtime` block that makes a call asynchronous.
  *
- * `serviceFunctionRun` writes `context.runtime_mode`; `functionRun` does not.
- * That single key is the discriminator, so it is read rather than guessed.
+ * The engine switches on `runtime.mode` and recognizes exactly two values:
+ * `async-shared` builds its runtime config from `mode` alone, and
+ * `async-dedicated` additionally reads `cpu`/`memory`/`max_retry`/`timeout`.
+ * Every other value — the absent block, `null`, and the editor's explicit
+ * `"disabled"` — falls to the default arm, which is synchronous.
+ *
+ * So a non-async block carries nothing and is not authored back; anything else
+ * would be noise on the 222 synchronous calls in the survey corpus that store
+ * `null` or nothing at all.
  */
-const functionRunOrService: SpecialDecoder = (a) => {
-  const context = (a.stored.context ?? {}) as Record<string, unknown>;
-  const isService = context.runtime_mode !== undefined;
-  if (!isService) {
-    return callDecoder({
-      path: "function.run",
-      arg: "fn",
-      idPath: "function.id",
-      unbindable: true,
-    })(a);
-  }
-  return callDecoder({
-    path: "service.function.run",
-    arg: "fn",
-    idPath: "function.id",
-    unbindable: true,
-    extra: () => {
-      const mode = context.runtime_mode;
-      if (typeof mode !== "string")
-        return declineHere("service.function.run: context.runtime_mode is not a string");
-      // `"shared"` is the factory default; stating it would be noise.
-      return mode === "shared"
-        ? { entries: [], runtime: {} }
-        : { entries: [["runtimeMode", lit(mode)]], runtime: { runtimeMode: mode } };
-    },
-  })(a);
-};
+export function asyncRuntimeExtra(path: string): NonNullable<CallShape["extra"]> {
+  return (a) => {
+    const block = (a.stored as { runtime?: unknown }).runtime;
+    if (block === null || block === undefined) return { entries: [], runtime: {} };
+    if (typeof block !== "object" || Array.isArray(block))
+      return declineHere(`${path}: \`runtime\` is present but not a block`);
+    const mode = (block as { mode?: unknown }).mode;
+    if (mode !== "async-shared" && mode !== "async-dedicated")
+      return { entries: [], runtime: {} };
+
+    const cells: Array<[string, Expr]> = [["mode", lit(mode)]];
+    const runtime: Record<string, unknown> = { mode };
+    // The dedicated resources, and ONLY at the mode that reads them. At
+    // `async-shared` the editor writes all four blank and the engine never looks
+    // at them, so carrying them across would author inert members.
+    if (mode === "async-dedicated") {
+      for (const [stored, arg] of [
+        ["cpu", "cpu"],
+        ["memory", "memory"],
+        ["timeout", "timeout"],
+        ["max_retry", "maxRetry"],
+      ] as const) {
+        const v = (block as Record<string, unknown>)[stored];
+        if (typeof v !== "string" && typeof v !== "number")
+          return declineHere(`${path}: \`runtime.${stored}\` is not a scalar`);
+        if (v === "") continue;
+        cells.push([arg, lit(String(v))]);
+        runtime[arg] = String(v);
+      }
+    }
+    return { entries: [["runtime", obj(cells)]], runtime: { runtime } };
+  };
+}
+
+/**
+ * `mvp:function` — one stored name, one authoring surface.
+ *
+ * This used to branch on `context.runtime_mode` to pick between `function.run`
+ * and a `service.function.run` surface. Both halves of that were wrong.
+ * Connected-service functions were never released in Xano, so no workspace
+ * holds one; and `runtime_mode` is not a stored key at all — it is the
+ * XanoScript SOURCE spelling of the top-level runtime block (see
+ * {@link asyncRuntimeExtra}), which the engine's transform emits and re-parses.
+ * The real discriminator was always `context.service.guid`.
+ *
+ * So the branch could only ever fire on bytes this SDK had written itself.
+ */
+const functionRunDecoder: SpecialDecoder = callDecoder({
+  path: "function.run",
+  arg: "fn",
+  idPath: "function.id",
+  unbindable: true,
+  extra: asyncRuntimeExtra("function.run"),
+});
 
 /** Call-family decoders by stored name. */
 export const CALL_DECODERS: ReadonlyMap<string, SpecialDecoder> = new Map<string, SpecialDecoder>([
-  ["mvp:function", functionRunOrService],
+  ["mvp:function", functionRunDecoder],
   ["mvp:workspace_run_function", callDecoder({ path: "function.call", arg: "fn", idPath: "id" })],
   [
     "mvp:workspace_run_endpoint",

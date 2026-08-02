@@ -1,6 +1,6 @@
 {
   "name": "sidestep",
-  "version": "4.1.18",
+  "version": "4.1.19",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
@@ -8,8 +8,8 @@
       "total": 30
     },
     "statements": {
-      "implemented": 216,
-      "total": 216
+      "implemented": 215,
+      "total": 215
     },
     "filters": {
       "typed": 129,
@@ -45,8 +45,8 @@
       },
       {
         "name": "c.obj",
-        "signature": "(o: Json) => Value",
-        "description": "Object constant (JSON string) → tag \"const:obj\". No argument = the empty object {}, the editor default. Plain JSON literals only — a nested tagged value (inp/ref/auth/c.*) is rejected; for a computed object response use a record of values, not c.obj (issue #42)."
+        "signature": "(o?: Json | null) => Value",
+        "description": "Object constant (JSON string) → tag \"const:obj\". No argument = the empty object {} — use this one. Explicit null = the legacy blank form the engine evaluates to null, NOT {}; it exists only so a pulled workspace round-trips, do not author it. Plain JSON literals only — a nested tagged value (inp/ref/auth/c.*) is rejected; for a computed object response use a record of values, not c.obj (issue #42)."
       },
       {
         "name": "c.array",
@@ -1231,6 +1231,11 @@
           "default": ""
         },
         {
+          "name": "base_url",
+          "type": "value",
+          "optional": false
+        },
+        {
           "name": "method",
           "type": "value",
           "optional": true,
@@ -1241,11 +1246,6 @@
           "type": "value",
           "optional": true,
           "default": ""
-        },
-        {
-          "name": "base_url",
-          "type": "value",
-          "optional": false
         },
         {
           "name": "doc_id",
@@ -1299,6 +1299,12 @@
           "default": ""
         },
         {
+          "name": "base_url",
+          "type": "value",
+          "optional": true,
+          "default": ""
+        },
+        {
           "name": "index",
           "type": "value",
           "optional": true,
@@ -1323,12 +1329,6 @@
           "default": ""
         },
         {
-          "name": "sort",
-          "type": "value",
-          "optional": true,
-          "default": "[]"
-        },
-        {
           "name": "included_fields",
           "type": "value",
           "optional": true,
@@ -1339,6 +1339,18 @@
           "type": "value",
           "optional": true,
           "default": "search"
+        },
+        {
+          "name": "expression",
+          "type": "value",
+          "optional": true,
+          "default": "[]"
+        },
+        {
+          "name": "sort",
+          "type": "value",
+          "optional": true,
+          "default": "[]"
         }
       ]
     },
@@ -1515,12 +1527,12 @@
         {
           "name": "prefix",
           "type": "value",
-          "optional": false
+          "optional": true
         },
         {
           "name": "next_page_token",
           "type": "value",
-          "optional": false
+          "optional": true
         }
       ]
     },
@@ -1925,7 +1937,12 @@
           "optional": false
         },
         {
-          "name": "region",
+          "name": "base_url",
+          "type": "value",
+          "optional": false
+        },
+        {
+          "name": "index",
           "type": "value",
           "optional": false
         },
@@ -1934,16 +1951,6 @@
           "type": "value",
           "optional": true,
           "default": "GET"
-        },
-        {
-          "name": "index",
-          "type": "value",
-          "optional": false
-        },
-        {
-          "name": "base_url",
-          "type": "value",
-          "optional": false
         },
         {
           "name": "doc_id",
@@ -1989,7 +1996,7 @@
           "default": ""
         },
         {
-          "name": "region",
+          "name": "base_url",
           "type": "value",
           "optional": true,
           "default": ""
@@ -2019,12 +2026,6 @@
           "default": ""
         },
         {
-          "name": "sort",
-          "type": "value",
-          "optional": true,
-          "default": "[]"
-        },
-        {
           "name": "included_fields",
           "type": "value",
           "optional": true,
@@ -2035,6 +2036,18 @@
           "type": "value",
           "optional": true,
           "default": "search"
+        },
+        {
+          "name": "expression",
+          "type": "value",
+          "optional": true,
+          "default": "[]"
+        },
+        {
+          "name": "sort",
+          "type": "value",
+          "optional": true,
+          "default": "[]"
         }
       ]
     },
@@ -2070,12 +2083,6 @@
           "default": ""
         },
         {
-          "name": "region",
-          "type": "value",
-          "optional": true,
-          "default": ""
-        },
-        {
           "name": "method",
           "type": "value",
           "optional": true,
@@ -2088,7 +2095,7 @@
           "default": ""
         },
         {
-          "name": "query",
+          "name": "payload",
           "type": "value",
           "optional": true,
           "default": "{}"
@@ -3945,13 +3952,6 @@
           "optional": true
         }
       ]
-    },
-    {
-      "surface": "service.function.run",
-      "storedName": "mvp:function",
-      "sPath": "service.function.run",
-      "registered": true,
-      "declarative": false
     },
     {
       "surface": "stack|expect.to_be_defined",

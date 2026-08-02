@@ -14,6 +14,7 @@ import { lit, obj, type Expr } from "../print.js";
 import { resolveReference } from "../ref-index.js";
 import { decodeValue } from "../value.js";
 import { declineHere, getPath, prove, type SpecialArgs, type SpecialDecoder } from "./prove.js";
+import { asyncRuntimeExtra } from "./calls.js";
 
 /** Coerce a stored `{value, tag, filters}` block to a tagged value. */
 function toValue(raw: unknown): TaggedValue | null {
@@ -109,13 +110,13 @@ const aiAgentRun: SpecialDecoder = (a) => {
       `ai.agent.run: unmodelled input entry "${[...values.keys()][0] ?? ""}"`,
     );
 
-  // `runtime` is written only when a mode was authored, so its presence — not a
-  // comparison against a default — is what carries `runtimeMode` back.
-  const mode = getPath(a.stored, "runtime.mode");
-  if (typeof mode === "string" && mode !== "") {
-    entries.push(["runtimeMode", lit(mode)]);
-    runtime.runtimeMode = mode;
-  }
+  // The same top-level block `function.run` carries, read by the same rule: only
+  // the two async modes mean anything, and the resource members are live at
+  // `async-dedicated` alone. One implementation, so the two surfaces cannot drift.
+  const async = asyncRuntimeExtra("ai.agent.run")(a);
+  if (!async) return null;
+  entries.push(...async.entries);
+  Object.assign(runtime, async.runtime);
   const as = (a.stored as { as?: unknown }).as;
   if (typeof as === "string" && as !== "") {
     entries.push(["as", lit(as)]);

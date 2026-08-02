@@ -20,6 +20,8 @@ import type { ObjInput } from "../../values/obj.js";
 import { resolveRef } from "../../refs/guid.js";
 import type { ObjectRef } from "../../refs/guid.js";
 import type { AgentResultOf } from "../../kinds/agent.js";
+import { encodeAsyncRuntime } from "./async-runtime.js";
+import type { AsyncRuntime } from "./async-runtime.js";
 
 function vf(v: Value): { value: string; tag: string; filters: unknown[] } {
   return { value: v.value, tag: v.tag, filters: v.filters };
@@ -79,8 +81,12 @@ export interface AiAgentRunArgs<As extends string = "", A extends ObjectRef = Ob
   allowToolExecution?: Value;
   /** Pinned agent version. */
   version?: Value;
-  /** Execution mode (`"shared"` default). */
-  runtimeMode?: string;
+  /**
+   * Run the agent in the background instead of inline. Omit for a normal
+   * synchronous call. Shares {@link AsyncRuntime} with `function.run` — the
+   * engine reads the same top-level block for both.
+   */
+  runtime?: AsyncRuntime;
   /**
    * Type-only override for the `.result` completion type. Usually unnecessary:
    * when `agent` is a def handle from `agent({ output: { schema } })`, `.result`
@@ -127,7 +133,8 @@ export function aiAgentRun<
     as: a.as ?? "",
     input,
   };
-  if (a.runtimeMode) stmt.runtime = { mode: a.runtimeMode };
+  const runtime = encodeAsyncRuntime(a.runtime);
+  if (runtime) stmt.runtime = runtime;
   return stmt as unknown as Statement & AsShapeBrand<As, AgentRunResult<R>>;
 }
 

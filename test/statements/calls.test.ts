@@ -21,6 +21,8 @@ import {
   middlewareCall,
   addonCall,
 } from "../../src/statements/special/calls.js";
+import { aiAgentRun } from "../../src/statements/special/ai-cloud.js";
+import type { AsyncMode } from "../../src/statements/special/async-runtime.js";
 import { encodeStatement } from "../../src/statements/statement.js";
 import { deriveGuid } from "../../src/refs/guid.js";
 import { Xano } from "../../src/workspace/xano.js";
@@ -105,5 +107,93 @@ describe("call-family specials", () => {
     const callStmt = callerFn.run[0] as { name: string; context: { id: string } };
     expect(callStmt.name).toBe("mvp:workspace_run_function");
     expect(callStmt.context.id).toBe(target.guid);
+  });
+});
+
+/**
+ * A call's background-execution block.
+ *
+ * `runtime` is a TOP-LEVEL member of the stack item, not part of `context`, and
+ * the engine's stack converter switches on `runtime.mode`: `async-shared`
+ * builds its config from `mode` alone, `async-dedicated` additionally reads
+ * `cpu`/`memory`/`max_retry`/`timeout`, and every other value — absent, `null`,
+ * the editor's explicit `"disabled"` — falls to a default arm that discards the
+ * block. Async is not a tuning knob: at either async mode `mvp:function` is
+ * rewritten to `mvp:async_function`, so the call dispatches instead of
+ * returning the function's result.
+ */
+describe("an async function call's runtime block", () => {
+  it("omits the block entirely for a normal synchronous call", () => {
+    const stored = encodeStatement(functionRun({ fn: { name: "f" } })) as { runtime: unknown };
+    expect(stored.runtime).toBeNull();
+  });
+
+  it("emits `mode` alone at async-shared — the resources are not read there", () => {
+    const stored = encodeStatement(
+      // `cpu`/`memory` are accepted but inert at this mode, so they must not be
+      // written: the engine would ignore them and the bytes would claim more
+      // than the statement does.
+      functionRun({ fn: { name: "f" }, runtime: { mode: "async-shared", cpu: "250m" } }),
+    ) as { runtime: unknown };
+    expect(stored.runtime).toEqual({ mode: "async-shared" });
+  });
+
+  it("emits every dedicated resource at async-dedicated, blank for the unset ones", () => {
+    const stored = encodeStatement(
+      functionRun({
+        fn: { name: "f" },
+        runtime: { mode: "async-dedicated", cpu: "250m", memory: "512Mi", timeout: 300 },
+      }),
+    ) as { runtime: unknown };
+    // The editor writes all five members at this mode; `max_retry` is left blank
+    // rather than omitted so the stored shape matches what the panel produces.
+    expect(stored.runtime).toEqual({
+      mode: "async-dedicated",
+      cpu: "250m",
+      memory: "512Mi",
+      timeout: "300",
+      max_retry: "",
+    });
+  });
+
+  it("compares equal to the editor's spelling, which writes blank resources at async-shared", () => {
+    // The settings panel is one form over all five fields, so switching to
+    // `async-shared` leaves the dedicated inputs behind, blank. The engine never
+    // reads them at that mode — without this the SDK's lean form and the
+    // editor's would never verify against each other.
+    const editor = { runtime: { cpu: "", mode: "async-shared", memory: "", timeout: "", max_retry: "" } };
+    expect(normalize(editor)).toEqual(normalize({ runtime: { mode: "async-shared" } }));
+    // …but a dedicated block keeps every one of them, because they are live there.
+    const dedicated = { runtime: { mode: "async-dedicated", cpu: "250m", memory: "1Gi", timeout: "60", max_retry: "2" } };
+    expect(normalize(dedicated)).toEqual(dedicated);
+  });
+});
+
+describe("the async runtime is one model, shared by both call surfaces", () => {
+  it("gives ai.agent.run the same block function.run writes", () => {
+    // These drifted before they shared a type. `ai.agent.run` took
+    // `runtimeMode: "shared" | "dedicated"` — neither of which is an engine
+    // mode, so `{mode: "dedicated"}` landed on the converter's default arm and
+    // ran SYNCHRONOUSLY. Asking for a dedicated async agent silently got a
+    // blocking call and no error. One model is what makes that unrepresentable.
+    const fn = encodeStatement(
+      functionRun({ fn: { name: "f" }, runtime: { mode: "async-shared" } }),
+    ) as { runtime: unknown };
+    const agent = encodeStatement(
+      aiAgentRun({ agent: { name: "asst" }, runtime: { mode: "async-shared" } }),
+    ) as { runtime: unknown };
+    expect(agent.runtime).toEqual(fn.runtime);
+    expect(agent.runtime).toEqual({ mode: "async-shared" });
+  });
+
+  it("only accepts modes the engine actually switches on", () => {
+    // A compile-time guarantee, asserted here so the intent survives a refactor:
+    // `AsyncMode` is the engine's own vocabulary, so the old `"dedicated"`
+    // spelling cannot be written at all.
+    const modes: AsyncMode[] = ["async-shared", "async-dedicated"];
+    expect(modes).toHaveLength(2);
+    // @ts-expect-error `"dedicated"` is not an engine mode — it ran synchronously.
+    const bad: AsyncMode = "dedicated";
+    expect(bad).toBe("dedicated");
   });
 });

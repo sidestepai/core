@@ -307,3 +307,93 @@ describe("a fallback explains itself without instrumentation", () => {
     expect(detail).not.toContain("is not a decodable condition");
   });
 });
+
+describe("an `ignore` flag on an entry that is not row data", () => {
+  it("names itself instead of surfacing as an anonymous byte difference", () => {
+    // `ignore` is honoured on EVERY input entry, not just row data: the engine
+    // walks a statement's `input[]` through one generic routine that records a
+    // flagged entry as `"<name>:ignore"` and then skips it, so it never reaches
+    // the statement and never joins the input whitelist. On a lookup that means
+    // the row is never found by `field_name` at all.
+    //
+    // The SDK has no authoring surface for that, and should not grow one — so
+    // `raw()` is right, and the only defect was that the decline said nothing.
+    // It reported two anonymous `.input[].ignore` byte diffs and left a
+    // maintainer to work out which entry and why.
+    const detail = fallbackDetail({
+      name: "mvp:dbo_editby",
+      context: { dbo: { id: deriveGuid("dbo", "post") } },
+      input: [
+        { name: "field_name", tag: "const", value: "id", filters: [], ignore: true },
+        { name: "field_value", tag: "var", value: "x", filters: [] },
+      ],
+    });
+    expect(detail).toContain("field_name");
+    expect(detail).toContain("ignore");
+    expect(detail).toContain("only row data can hold");
+  });
+});
+
+describe("an async call's runtime block decodes instead of falling back", () => {
+  /** Decode one stored statement and print the expression it produced. */
+  function decoded(stored: Record<string, unknown>): string {
+    const ctx = new DecodeContext();
+    const refs = RefIndex.fromPayload(
+      { function: [{ name: "worker", guid: deriveGuid("function", "worker") }] },
+      ctx,
+    );
+    return printExpr(decodeStatement(ctx, refs, stored as never, {} as never));
+  }
+
+  it("recovers the editor's async-shared spelling, blank resources and all", () => {
+    // The one shape in the 177-project corpus that carried a real `runtime`. It
+    // cost the whole statement to `raw()` because nothing modelled the block.
+    const source = decoded({
+      name: "mvp:function",
+      context: { function: { id: deriveGuid("function", "worker") } },
+      input: [],
+      runtime: { cpu: "", mode: "async-shared", memory: "", timeout: "", max_retry: "" },
+    });
+    expect(source).toContain("function.run");
+    expect(source).toContain("async-shared");
+    expect(source).not.toContain("raw(");
+    // The inert resources are NOT carried across — the engine does not read them
+    // at this mode, so authoring them back would claim more than the statement does.
+    expect(source).not.toContain("cpu");
+  });
+
+  it("carries the dedicated resources, which that mode DOES read", () => {
+    const source = decoded({
+      name: "mvp:function",
+      context: { function: { id: deriveGuid("function", "worker") } },
+      input: [],
+      runtime: { mode: "async-dedicated", cpu: "250m", memory: "512Mi", timeout: "300", max_retry: "2" },
+    });
+    expect(source).toContain("async-dedicated");
+    expect(source).toContain("250m");
+    expect(source).toContain("maxRetry");
+    expect(source).not.toContain("raw(");
+  });
+
+  it("says nothing about a synchronous call, in every stored spelling", () => {
+    // Three spellings of "not async": the absent key, the `null` one engine
+    // generation writes, and the explicit `"disabled"` the settings panel writes
+    // when the user picks "Standard run (Synchronous)" — with the dedicated
+    // inputs left behind blank, as that form does.
+    const spellings: Array<Record<string, unknown>> = [
+      {},
+      { runtime: null },
+      { runtime: { mode: "disabled", cpu: "", memory: "", timeout: "", max_retry: "" } },
+    ];
+    for (const spelling of spellings) {
+      const source = decoded({
+        name: "mvp:function",
+        context: { function: { id: deriveGuid("function", "worker") } },
+        input: [],
+        ...spelling,
+      });
+      expect(source).not.toContain("runtime");
+      expect(source).not.toContain("raw(");
+    }
+  });
+});

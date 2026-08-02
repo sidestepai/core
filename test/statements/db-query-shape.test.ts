@@ -640,4 +640,20 @@ describe("db.query (mvp:dbo_view) emit shape", () => {
   it("two binds resolving to the same alias throw", () => {
     expect(() => dbQuery({ table: note, bind: [{ table: note }, { table: note }] })).toThrow(/duplicate join alias/);
   });
+
+  it("an UNBOUND join writes the engine's empty binding and must name its alias", () => {
+    // `table: null` is the same broken-state contract the query's own `table`
+    // holds — it exists so a join whose table was deleted round-trips instead of
+    // taking the whole statement to `raw()`, not to be authored.
+    const enc = encodeStatement(
+      dbQuery({ table: note, bind: [{ table: null, as: "userJoin" }] }),
+    );
+    const bind = (enc.context as { bind: { dbo: { as: string; id: string } }[] }).bind;
+    expect(bind[0]!.dbo).toEqual({ as: "userJoin", id: "" });
+
+    // An unbound join has no table name to default an alias FROM, so `as` is
+    // required rather than invented — the stored bytes show the user's alias
+    // outliving the table.
+    expect(() => dbQuery({ table: note, bind: [{ table: null }] })).toThrow(/must name its `as` alias/);
+  });
 });

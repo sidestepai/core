@@ -95,10 +95,13 @@ describe("structural db specials", () => {
 });
 
 describe("structural call-family tail", () => {
-  it("service.function.run shares mvp:function and resolves the fn guid", () => {
-    const enc = encodeStatement(s.service.function.run({ fn: { name: "f" } }));
+  it("mvp:function stores only the default payload — there is no service variant", () => {
+    // Connected-service functions were never released in Xano, so the SDK has one
+    // `mvp:function` surface and its context carries nothing but the target.
+    const enc = encodeStatement(s.function.run({ fn: { name: "f" } }));
     expect(enc.name).toBe("mvp:function");
     expect((enc.context as { function: { id: string } }).function.id).toBe(deriveGuid("function", "f"));
+    expect(Object.keys(enc.context as object)).toEqual(["function"]);
   });
 
   it("action.call / action.package.call / workflow_test.call resolve refs", () => {
@@ -112,10 +115,12 @@ describe("structural call-family tail", () => {
 
 describe("structural ai/cloud specials", () => {
   it("ai.agent.run resolves the agent into context.toolset.id + top-level runtime", () => {
-    const enc = encodeStatement(s.ai.agent.run({ agent: { name: "asst" }, runtimeMode: "shared" }));
+    const enc = encodeStatement(
+      s.ai.agent.run({ agent: { name: "asst" }, runtime: { mode: "async-shared" } }),
+    );
     expect(enc.name).toBe("mvp:call_agent");
     expect((enc.context as { toolset: { id: unknown } }).toolset.id).toBeDefined();
-    expect((enc.runtime as { mode: string }).mode).toBe("shared");
+    expect((enc.runtime as { mode: string }).mode).toBe("async-shared");
   });
 
   it("cloud.job statements carry their blocks in input[] (not context)", () => {

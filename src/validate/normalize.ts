@@ -405,6 +405,184 @@ export function unboundAuthTable(value: unknown): Record<string, unknown> | unde
  * what {@link liveReturnSection} drops; a branch holding only the editor's
  * defaults returns nothing.
  */
+/**
+ * A `context.return` with the inert `iterator` member dropped from every result
+ * block, or `undefined` when it is not a return section or carries none.
+ *
+ * `iterator` is a dead key. Streaming is selected by `return.type` alone: the
+ * `dbo_view` engine class picks its iterator in a `switch` on `return["type"]`
+ * whose only arm is `"stream"`, and no other engine code — neither the
+ * stored-context-to-query-config converter nor the query parser — reads
+ * `return.<block>.iterator` at all. So the member cannot change what a query
+ * does, in any block, at any value.
+ *
+ * It is editor exhaust of the same kind as the dead sibling branches
+ * {@link liveReturnSection} sheds, and is dropped for the same reason — except
+ * this one sits INSIDE the live branch, so that function never reaches it. In
+ * the survey corpus it appears on exactly one query (as `false`, on both `list`
+ * and `aggregate`) against 555 that omit it entirely: the absent-vs-present
+ * generational split, with the engine evidence that closes it.
+ *
+ * Modelling it instead would give the SDK an authoring surface for a key the
+ * engine ignores — the same mistake `allow_notfound` is kept out of the SDK to
+ * avoid.
+ */
+export function returnWithoutIterator(value: unknown): Record<string, unknown> | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const section = value as Record<string, unknown>;
+  if (typeof section.type !== "string" || !RETURN_TYPES.has(section.type)) return undefined;
+  let found = false;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(section)) {
+    if (
+      (RETURN_BLOCKS as readonly string[]).includes(k) &&
+      v !== null &&
+      typeof v === "object" &&
+      !Array.isArray(v) &&
+      "iterator" in (v as Record<string, unknown>)
+    ) {
+      found = true;
+      const { iterator: _dropped, ...rest } = v as Record<string, unknown>;
+      out[k] = rest;
+      continue;
+    }
+    out[k] = v;
+  }
+  return found ? out : undefined;
+}
+
+/** Members of a `runtime` block the engine reads only at `async-dedicated`. */
+const DEDICATED_RUNTIME_KEYS = ["cpu", "memory", "timeout", "max_retry"] as const;
+
+/**
+ * A call's `runtime` block with the members its `mode` does not read dropped,
+ * or `undefined` when there is nothing to shed.
+ *
+ * The engine's stack converter switches on `runtime.mode` and copies the
+ * resource members in the `async-dedicated` arm ALONE — `async-shared` falls
+ * through to a block built from `mode` by itself, and every other value lands
+ * on a default arm that discards the runtime outright. So outside
+ * `async-dedicated` those four members cannot reach the statement.
+ *
+ * They are still written: the settings panel is one form over all five fields,
+ * so switching to `async-shared` leaves whatever the dedicated form held (blank,
+ * in the corpus). Same editor exhaust as a dead `context.return` branch, dropped
+ * on the same rule and for the same reason — the SDK emits only what the mode
+ * reads, and without this the two spellings never compare equal.
+ */
+export function liveAsyncRuntime(value: unknown): Record<string, unknown> | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const block = value as Record<string, unknown>;
+  const mode = block.mode;
+  // Not a mode-carrying runtime block — leave it entirely alone.
+  if (typeof mode !== "string") return undefined;
+  // `"disabled"` is what the settings panel writes when the user picks
+  // "Standard run (Synchronous)". The converter's default arm discards the whole
+  // block there, so it is the third spelling of the unset state, alongside
+  // `null` and an absent key — and the empty block it reduces to is what the
+  // default-envelope rule already drops.
+  //
+  // Scoped to the spellings actually observed, NOT to "any mode that is not
+  // async". An unrecognized mode keeps its members: the engine would ignore it
+  // too, but a value nothing in the corpus stores is not evidence of anything,
+  // and silently emptying it would discard a shape before it was understood.
+  if (mode === "disabled") return {};
+  // At `async-dedicated` all four resource members are read, so nothing sheds.
+  if (mode !== "async-shared") return undefined;
+  if (!DEDICATED_RUNTIME_KEYS.some((k) => k in block)) return undefined;
+  const live: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(block)) {
+    if (!(DEDICATED_RUNTIME_KEYS as readonly string[]).includes(k)) live[k] = v;
+  }
+  return live;
+}
+
+/**
+ * Whether a toolset's `agent_settings` is the engine's BLANK scaffold — present,
+ * fully-shaped, and carrying no agent configuration at all.
+ *
+ * An MCP toolset that configures no model still gets the whole block written,
+ * every member at its empty value and `configs` keyed by the empty provider name
+ * (`{"": {}}`). It is inert: every engine consumer reaches a provider config
+ * through `agent_settings.type`, so a blank type selects `configs.` and
+ * configures nothing.
+ *
+ * The two members read WITHOUT going through `type` — `structuredOutputs` and
+ * `structuredOutputsSchema` — are checked too, so a block that only looks blank
+ * is not mistaken for one. That is what keeps this from being a rule on a
+ * generic key name (invariant 5).
+ *
+ * The SDK spells this state by omitting the block, so the two forms have to
+ * compare equal or every MCP server without an `llm` fails to round-trip.
+ */
+/**
+ * Whether a `result[]` entry is one the engine's response builder DISCARDS.
+ *
+ * `convertResultToConfig` walks the stored list and drops an entry before it can
+ * contribute anything in two cases this models:
+ *
+ *  - `disabled` is set — skipped outright;
+ *  - the `name` is blank AND the list holds more than one entry. A blank name
+ *    has nothing to key the response object by, so it is skipped. The exception
+ *    is a list of exactly ONE blank-named entry, which is the "bare value"
+ *    response — that entry is the whole response and is very much alive.
+ *
+ * A third rule the engine has (an empty `value` with no filters, on a non-`const`
+ * entry) is deliberately NOT modelled: those entries round-trip today, so
+ * dropping them would change stored bytes for no gain.
+ *
+ * Dead entries are editor exhaust with a real cost — one query stores four
+ * items, three of them blank-named, and the whole response fell back to
+ * `rawResponse()` because a record cannot be keyed by a name three items share.
+ * The engine's answer is that those three contribute nothing, so the response
+ * really is the one named item.
+ */
+export function isDeadResultItem(item: unknown, total: number): boolean {
+  if (item === null || typeof item !== "object" || Array.isArray(item)) return false;
+  const entry = item as { name?: unknown; disabled?: unknown };
+  if (entry.disabled !== undefined && entry.disabled !== false) return true;
+  return entry.name === "" && total !== 1;
+}
+
+/** Whether `value` is a stored `result[]` — an array of `{name,value,tag,filters}`. */
+function isResultList(value: unknown): value is ReadonlyArray<Record<string, unknown>> {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every(
+      (e) =>
+        e !== null &&
+        typeof e === "object" &&
+        !Array.isArray(e) &&
+        "name" in e &&
+        "value" in e &&
+        "tag" in e &&
+        "filters" in e,
+    )
+  );
+}
+
+/**
+ * A `result[]` reduced to the entries the engine actually reads, or `undefined`
+ * when nothing is dropped. Keyed on the entry SHAPE, never on the generic name
+ * `result` (invariant 5).
+ */
+export function liveResultItems(value: unknown): unknown[] | undefined {
+  if (!isResultList(value)) return undefined;
+  const live = value.filter((e) => !isDeadResultItem(e, value.length));
+  return live.length === value.length ? undefined : live;
+}
+
+export function isBlankAgentSettings(value: unknown): boolean {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const settings = value as Record<string, unknown>;
+  if (settings.type !== "") return false;
+  if (settings.structuredOutputs === true) return false;
+  const schema = settings.structuredOutputsSchema;
+  if (Array.isArray(schema) && schema.length > 0) return false;
+  return true;
+}
+
 export function configuredDeadReturnBlocks(value: unknown): string[] {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return [];
   const section = value as Record<string, unknown>;
@@ -762,8 +940,11 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
       );
     // An MCP-server toolset persists `agent_settings:null` (only agents carry a
     // real settings block); the SDK omits it. Drop the null form.
+    // `null`, and the engine's BLANK SCAFFOLD — an MCP toolset that configures no
+    // model still gets the whole block written, inert (see
+    // {@link isBlankAgentSettings}). The SDK spells both by omitting it.
     case "agent_settings":
-      return v === null;
+      return v === null || isBlankAgentSettings(v);
     // An agent's default `agent_settings.telemetry` (all providers off, empty
     // keys): the SDK omits it. Drop when telemetry is disabled.
     case "telemetry":
@@ -1101,13 +1282,17 @@ export function normalize<T>(value: T): T {
   }
   if (value !== null && typeof value === "object") {
     const out: Record<string, unknown> = {};
-    // A `const:obj` stored blank (`value:""` or `value:null`) is the empty
-    // object written by an older editor generation; today it writes `{}`, and
-    // that is the only form this SDK emits. Canonicalize forward so the two
-    // compare equal — same rule as `customize`, and the reason a decoded blank
-    // object can come back as `c.obj()` and still round-trip. The decoder
-    // reports every such site under `modernized`, because unlike `customize`
-    // this one does change what the value evaluates to.
+    // A `const:obj` stored blank in its TWO blank spellings — `value:""` and
+    // `value:null`. These really are one value: the engine JSON-decodes the
+    // stored string and both yield null. Canonicalize to `""`, the form
+    // `c.obj(null)` writes and the dominant one in the corpus (96 vs 17).
+    //
+    // This rule used to canonicalize blank forward to `"{}"` instead, which is
+    // NOT an equivalence — `{}` decodes to an empty object, not null — and it
+    // let a decoded `c.obj()` "round-trip" while re-pointing 113 corpus
+    // statements at a different value on the next deploy. An alias is a semantic
+    // claim (invariant 3); the engine's evaluator is what settles it, and it
+    // says these two are equal and that one was not.
     const blankObj =
       (value as { tag?: unknown }).tag === "const:obj" &&
       "value" in (value as object) &&
@@ -1151,7 +1336,32 @@ export function normalize<T>(value: T): T {
     // comment on this rule above for the engine line and the evidence.
     const isDescriptor = "type" in (value as object) && "required" in (value as object);
     const requiredEntry = (value as { required?: unknown }).required === true;
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    for (const [k, stored] of Object.entries(value as Record<string, unknown>)) {
+      // A `context.return` is reduced BEFORE any other rule sees it: it keeps
+      // only the branch its `type` selects — the editor writes all four and the
+      // engine reads one ({@link liveReturnSection}) — and sheds the inert
+      // `iterator` inside whichever branch survives ({@link returnWithoutIterator}).
+      // Reducing first is what lets the default-envelope drop below still fire:
+      // a section that is all editor exhaust collapses to the minimal `{type}`,
+      // which is the spelling the SDK omits entirely.
+      // A call's `runtime` block is reduced the same way and for the same
+      // reason: only the members its `mode` actually reads survive (see
+      // {@link liveAsyncRuntime}), so a block that is all exhaust collapses to
+      // the unset state the default-envelope drop below already handles.
+      // A `result[]` keeps only the entries the engine's response builder reads
+      // (see {@link liveResultItems}); the dead ones are editor exhaust the SDK
+      // does not write back.
+      const v =
+        k === "result"
+          ? (liveResultItems(stored) ?? stored)
+          : k === "return"
+          ? (() => {
+              const live = liveReturnSection(stored) ?? stored;
+              return returnWithoutIterator(live) ?? live;
+            })()
+          : k === "runtime"
+            ? (liveAsyncRuntime(stored) ?? stored)
+            : stored;
       if (STRIP_KEYS.has(k)) continue;
       if (isTable && k === "as") continue;
       if (k === "test" && isSavedTestList(v)) continue;
@@ -1224,15 +1434,6 @@ export function normalize<T>(value: T): T {
           .map((entry) => normalize(entry));
         continue;
       }
-      // A `context.return` keeps only the branch its `type` selects; the editor
-      // writes all four and the engine reads one (see {@link liveReturnSection}).
-      if (k === "return") {
-        const live = liveReturnSection(v);
-        if (live) {
-          out[k] = normalize(live);
-          continue;
-        }
-      }
       // An `auth` block naming no table: `dbo_id: 0` is the editor's spelling of
       // the member the SDK omits (see {@link unboundAuthTable}).
       if (k === "auth") {
@@ -1289,7 +1490,7 @@ export function normalize<T>(value: T): T {
       // other providers confirm the same (agent objects aren't capturable via the
       // function-only round-trip path today).
       if (k === "value" && blankObj) {
-        out[k] = "{}";
+        out[k] = "";
         continue;
       }
       // A tagged `value` is declared a STRING (`TaggedValue.value`), and the engine

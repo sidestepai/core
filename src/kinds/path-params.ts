@@ -8,15 +8,31 @@
  * permanently-broken route. These helpers make the pair a checked contract and
  * give both kinds one interpolation routine, so their rules cannot drift.
  *
- * Grammar (no wildcards, no special characters):
- *   path    := segment ("/" segment)*
- *   segment := literal | "{" identifier "}"    — a param is a WHOLE segment
- *   ident   := [A-Za-z_][A-Za-z0-9_]*          — unique within one path
+ * Grammar, taken from the engine's router rather than invented here:
+ *   path   := any literal text with `{name}` markers embedded anywhere
+ *   name   := any run of characters other than `/` `{` `}` — unique within one path
+ *
+ * The router scans the whole action string for `{...}` markers, substitutes a
+ * capture group for each (`[^/]+`, narrowed to `\d+` for an `int` input and
+ * `\d+\.?\d*` for a `decimal`), then matches the request path against the
+ * result. So a marker does NOT have to be a whole segment — `"blog/post-{slug}"`
+ * routes fine — and a name is not restricted to an identifier.
+ *
+ * This was previously specified as "a whole segment naming `[A-Za-z_]\w*`",
+ * stricter than the engine on both counts, and it rejected routes XANO ITSELF
+ * generates: a table named `1table` gets the CRUD route `"1table/{1table_id}"`,
+ * whose param starts with a digit. Two workspaces in a 187-workspace live sweep
+ * failed verification on that rule alone, and the error text held the mistake up
+ * as an example ("not blog/post-{slug}").
  */
 import type { InputDescriptor } from "../inputs/input.js";
 
-/** A `{param}` segment: the whole segment, naming a plain identifier. */
-const PARAM_SEGMENT = /^\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
+/**
+ * One `{param}` marker, anywhere in the path. The name excludes `/` (the engine's
+ * own `[^/]+`) and the braces themselves, so adjacent markers cannot be swallowed
+ * by a single greedy match the way the engine's own pattern would.
+ */
+const PARAM_MARKER = /\{([^/{}]+)\}/g;
 
 /**
  * Stored field types a URL/channel segment cannot carry. A segment is one
@@ -43,16 +59,17 @@ function isSegmentType(type: string): boolean {
  */
 export function parsePathParams(context: string, path: string): string[] {
   const params: string[] = [];
-  for (const segment of path.replace(/^\/+/, "").split("/")) {
-    if (!segment.includes("{") && !segment.includes("}")) continue;
-    const match = PARAM_SEGMENT.exec(segment);
-    if (!match) {
-      throw new Error(
-        `${context}: "${segment}" is not a valid path param. A {param} must be a whole path segment ` +
-          `naming a plain identifier — "blog/{slug}", not "blog/post-{slug}". There are no wildcards ` +
-          `or patterns; chain segments instead ("blog/{slug}/review/{review_id}").`,
-      );
-    }
+  const cleaned = path.replace(/^\/+/, "");
+  // Consume every well-formed marker, keeping what falls between them. A brace
+  // surviving in that residue is a marker that never closed (or never opened) —
+  // still worth refusing, because a route that LOOKS parameterized and is not is
+  // the silent breakage this module exists to prevent. Everything else the
+  // engine's router accepts is accepted here.
+  let residue = "";
+  let cursor = 0;
+  for (const match of cleaned.matchAll(PARAM_MARKER)) {
+    residue += cleaned.slice(cursor, match.index);
+    cursor = match.index + match[0].length;
     const name = match[1]!;
     if (params.includes(name)) {
       throw new Error(
@@ -61,6 +78,14 @@ export function parsePathParams(context: string, path: string): string[] {
       );
     }
     params.push(name);
+  }
+  residue += cleaned.slice(cursor);
+  if (residue.includes("{") || residue.includes("}")) {
+    throw new Error(
+      `${context}: "${path}" has an unmatched brace. A path param is written \`{name}\`, where the ` +
+        `name holds no "/", "{" or "}" — it may sit anywhere in the path ("blog/{slug}", ` +
+        `"files/{name}.json"), and each name must have an input of the same name to bind to.`,
+    );
   }
   return params;
 }
@@ -160,9 +185,6 @@ export function fillPathParams(
     return text;
   });
 }
-
-/** Matches a well-formed marker for substitution; validity is `parsePathParams`'s job. */
-const PARAM_MARKER = /\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
 
 /**
  * The `{param}` names in a path literal, as a union of string literal types —

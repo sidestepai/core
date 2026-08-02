@@ -97,6 +97,39 @@ describe("validate normalizer — per-kind default/serialization rules", () => {
     expect(normalize(toolset)).toEqual(toolset);
   });
 
+  it("drops the engine's BLANK agent scaffold, which an MCP toolset always carries", () => {
+    // An MCP toolset that configures no model still gets the whole block
+    // written: every member empty, `configs` keyed by the empty provider name.
+    // It is inert — every engine consumer reaches a provider config through
+    // `agent_settings.type`, so a blank type selects `configs.` and configures
+    // nothing. The SDK spells that state by omitting the block, so the two must
+    // compare equal or no MCP server without an `llm` round-trips.
+    const blank = {
+      agent_settings: {
+        type: "", model: "", prompt: "", configs: { "": {} }, max_steps: 0,
+        telemetry: { api_key: "", enabled: false, destination: "" },
+        prompt_type: "", system_prompt: "", prompt_messages: "",
+        structuredOutputs: false, structuredOutputsSchema: [],
+      },
+    };
+    expect(normalize(blank)).toEqual({});
+    expect(normalize(blank)).toEqual(normalize({}));
+  });
+
+  it("KEEPS an agent_settings that configures anything — the point of the check", () => {
+    // The load-bearing negative. A real agent selects a provider…
+    const configured = { agent_settings: { type: "anthropic", configs: { anthropic: {} } } };
+    expect(normalize(configured)).toEqual(configured);
+    // …and the two members the engine reads WITHOUT going through `type` keep a
+    // blank-typed block alive too, so "looks blank" is not mistaken for blank.
+    expect(
+      normalize({ agent_settings: { type: "", structuredOutputs: true } }),
+    ).toEqual({ agent_settings: { type: "", structuredOutputs: true } });
+    expect(
+      normalize({ agent_settings: { type: "", structuredOutputsSchema: [{ name: "x", type: "text" }] } }),
+    ).not.toEqual({});
+  });
+
   it("drops null agent_settings and a disabled telemetry block", () => {
     expect(normalize({ agent_settings: null })).toEqual({});
     expect(normalize({ telemetry: { enabled: false, langfuse: { api_key: "" } } })).toEqual({});
@@ -357,6 +390,36 @@ describe("validate normalizer — per-statement context defaults", () => {
     // …and it compares equal to the same query with no leftover at all, which is
     // the point: the SDK writes the second and the editor stores the first.
     expect(normalize(switched)).toEqual(normalize({ return: { type: "single" } }));
+  });
+
+  it("sheds the inert `iterator` from the LIVE result block, not just the dead ones", () => {
+    // `iterator` sits INSIDE the live branch, so the dead-sibling rule above
+    // never reaches it. Streaming is selected by `return.type` alone — the
+    // `dbo_view` engine class switches on it and its only arm is `"stream"` —
+    // and no engine code reads `return.<block>.iterator` anywhere, so the member
+    // cannot change what the query does. The SDK omits it; one query in the
+    // survey corpus stores it (as `false`) against 555 that do not, and without
+    // this rule that lone query loses its whole statement to `raw()`.
+    const stored = {
+      return: {
+        type: "list",
+        list: { paging: { enabled: true, per_page: 10 }, iterator: false },
+        aggregate: { eval: [], sort: [], group: [], index: [], iterator: false },
+      },
+    };
+    expect(normalize(stored)).toEqual({
+      return: { type: "list", list: { paging: { enabled: true, per_page: 10 } } },
+    });
+    // It compares equal to the same query with no `iterator` stored at all —
+    // which is the SDK's spelling, and the point of the rule.
+    expect(normalize(stored)).toEqual(
+      normalize({ return: { type: "list", list: { paging: { enabled: true, per_page: 10 } } } }),
+    );
+    // A `stream` return still streams: the rule touches the inert member only,
+    // never the `type` that actually selects the iterator.
+    expect(normalize({ return: { type: "stream", stream: { iterator: true } } })).toEqual({
+      return: { type: "stream" },
+    });
   });
 
   it("keeps the LIVE block when a sibling is dropped, and drops nothing on a lone branch", () => {

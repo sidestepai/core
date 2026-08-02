@@ -219,12 +219,13 @@ describe("decodeFromSpec — refusing to guess", () => {
     }
   });
 
-  it("does not resolve a stored name with two distinct public surfaces by lookup", () => {
-    // `mvp:function` reaches both `function.run` and `service.function.run`,
-    // which are different factories with different context shapes. Picking one
-    // by name would re-encode the wrong shape.
+  it("does not resolve a hand-authored stored name by lookup", () => {
+    // `mvp:function` is hand-authored, not spec-driven. It briefly had two
+    // surfaces sharing the stored name; connected-service functions were never
+    // released, so it has one now — but the spec arm must still refuse it by
+    // SHAPE rather than reaching it by name.
     const surfaces = STATEMENT_SURFACES.filter(([, stored]) => stored === "mvp:function");
-    expect(surfaces.map(([key]) => key).sort()).toEqual(["function.run", "service.function.run"]);
+    expect(surfaces.map(([key]) => key)).toEqual(["function.run"]);
 
     // It is not spec-driven at all, so this arm declines it outright rather than
     // picking whichever surface a name lookup happened to reach first.
