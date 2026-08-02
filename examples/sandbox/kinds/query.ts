@@ -61,6 +61,10 @@ export const userPostQuery = query({
  * want for server-managed columns (`id`, `created_at`) — a caller has no
  * business supplying them.
  *
+ * `customize` tunes the columns that DO expand, one at a time: make one
+ * required, give one a default, or bind a normalizing filter. Anything not named
+ * expands exactly as the table declares it.
+ *
  * By convention the editor names the entry after the table with a trailing `__`.
  * The name is just the map key and any name works; matching the convention keeps
  * a pulled workspace diffing cleanly against a hand-written one.
@@ -69,7 +73,12 @@ export const signupQuery = query({
   name: "ex_signup",
   verb: "POST",
   apiGroup: api,
-  input: { users__: input.dbLink(users, { hidden: ["id", "created_at"] }) },
+  input: {
+    users__: input.dbLink(users, {
+      hidden: ["id", "created_at"],
+      customize: { email: { required: true, methods: ["lower"] } },
+    }),
+  },
   stack: [
     s.db.add({ table: users, row: { name: inp("name"), email: inp("email") }, as: "created" }),
   ],

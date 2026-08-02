@@ -99,7 +99,7 @@ function isEmptyObject(v: unknown): boolean {
  * fields, 45% of a cluster the plan had classified as a field-authoring design
  * question rather than a canonicalization gap.
  */
-function isEmptyCustomize(v: unknown): boolean {
+export function isEmptyCustomize(v: unknown): boolean {
   return v === "" || isEmptyObject(v) || isEmptyArray(v);
 }
 function isEmptyArray(v: unknown): boolean {
@@ -442,7 +442,8 @@ export function returnWithoutIterator(value: unknown): Record<string, unknown> |
       "iterator" in (v as Record<string, unknown>)
     ) {
       found = true;
-      const { iterator: _dropped, ...rest } = v as Record<string, unknown>;
+      const rest = { ...(v as Record<string, unknown>) };
+      delete rest.iterator;
       out[k] = rest;
       continue;
     }

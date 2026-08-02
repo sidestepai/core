@@ -89,6 +89,39 @@ export interface FieldOptions {
   array?: boolean;
   /** Nested fields for `type:"obj"` columns; each is itself a named, typed field. */
   children?: NestedField[];
+  /**
+   * Per-column overrides applied to this field's EXPANSION, keyed by the
+   * expanded column's name. Meaningful on a merged field — an
+   * {@link input.dbLink} — where the engine expands a table's columns into
+   * request inputs and consults this map for each one.
+   *
+   * **Leave this unset** unless reproducing a pulled field; it defaults to `{}`.
+   * Xano's own CRUD scaffold writes it, so it is the common shape in a pulled
+   * workspace, not an edge case.
+   */
+  customize?: Readonly<Record<string, FieldCustomization>>;
+}
+
+/**
+ * One expanded column's override inside a merged field's {@link
+ * FieldOptions.customize} map.
+ *
+ * Every member restates what the column already declares, so an omitted member
+ * is not "inherit" — it is the stored default (`hidden:false`, `required:false`,
+ * `default:""`, no methods). Author the ones you mean to change and accept the
+ * rest, which is what the editor writes.
+ */
+export interface FieldCustomization {
+  /** Drop this column from the expansion entirely. */
+  hidden?: boolean;
+  /** Whether the expanded input is required. */
+  required?: boolean;
+  /** Default for the expanded input; stored as a string (`0` → `"0"`). */
+  default?: string | number | boolean;
+  /** Methods/filters appended to the column's own, in the same spellings as {@link FieldOptions.methods}. */
+  methods?: readonly MethodSpec[];
+  /** Overrides for an object column's OWN children, keyed by child name. */
+  customize?: Readonly<Record<string, FieldCustomization>>;
 }
 
 /** A nested field inside an object column's `children` — a named, typed `FieldOptions`. */
@@ -182,11 +215,36 @@ function isNumericArg(part: string): boolean {
   return part !== "" && String(Number(part)) === part;
 }
 
-export function encodeMethods(methods: MethodSpec[] | undefined): MethodXdo[] {
+export function encodeMethods(methods: readonly MethodSpec[] | undefined): MethodXdo[] {
   return (methods ?? []).map((spec) => {
     const { name, arg } = parseMethod(spec);
     return { name, disabled: false, arg };
   });
+}
+
+/**
+ * Encode a {@link FieldOptions.customize} map into the stored node shape.
+ *
+ * Every stored node in the survey corpus carries the same five keys — 589 of
+ * them, no variants — so each is written unconditionally at its default rather
+ * than elided. The nested `customize` is written as `{}` when empty, the current
+ * engine spelling; `normalize` canonicalizes the older `""`/`[]` empties forward
+ * to it, so a legacy map still compares equal without this ever writing one.
+ */
+export function encodeCustomize(
+  customize: Readonly<Record<string, FieldCustomization>> | undefined,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [name, node] of Object.entries(customize ?? {})) {
+    out[name] = {
+      hidden: node.hidden ?? false,
+      default: node.default !== undefined ? String(node.default) : "",
+      methods: encodeMethods(node.methods),
+      required: node.required ?? false,
+      customize: encodeCustomize(node.customize),
+    };
+  }
+  return out;
 }
 
 /**
@@ -233,7 +291,7 @@ export function encodeField(
     merge: options.merge ?? false,
     hidden: options.hidden !== undefined ? [...options.hidden] : [],
     override: [],
-    customize: ctx.customize,
+    customize: options.customize !== undefined ? encodeCustomize(options.customize) : ctx.customize,
     required: options.required ?? false,
     values: options.values ?? [],
     mode: options.mode ?? "",
