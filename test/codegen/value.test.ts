@@ -15,7 +15,6 @@ import { rawValue } from "../../src/values/raw-value.js";
 import { DecodeContext } from "../../src/codegen/context.js";
 import { printExpr } from "../../src/codegen/print.js";
 import { decodeValue } from "../../src/codegen/value.js";
-import { severityOf } from "../../src/codegen/report.js";
 import { normalize } from "../../src/validate/normalize.js";
 
 /** Decode a stored value to source text, keeping the context for import/report checks. */
@@ -137,21 +136,35 @@ describe("decodeValue — tag coverage", () => {
     expect(source).toContain("rawValue");
   });
 
-  it("updates a blank const:obj to c.obj(), and flags it as a change in behavior", () => {
-    // The editor stopped writing blank object constants long ago — a new object
-    // variable starts at `{}`. Decoding brings them to that current default,
-    // which is NOT a no-op: blank evaluates to null, `{}` to an empty object
-    // (both live-verified). So it is reported — `modernized`, warning severity:
-    // worth a look, not a failure.
+  it("recovers a blank const:obj EXACTLY, as c.obj(null), with nothing to report", () => {
+    // A blank object constant and `{}` are not one value. The engine JSON-decodes
+    // the stored string, so a blank yields null where `{}` yields an empty object
+    // (both live-verified). Both blank spellings — `""` and `null` — do decode to
+    // null, so they ARE one value, and `c.obj(null)` writes the dominant one.
+    //
+    // This used to come back as `c.obj()` behind a `modernized` warning, which
+    // re-pointed 113 statements in the survey corpus at `{}` on the next deploy.
+    // An exact spelling needs no warning at all.
     for (const blank of ["", null]) {
       const ctx = new DecodeContext();
       const stored = { value: blank, tag: "const:obj", filters: [] } as unknown as TaggedValue;
-      expect(roundTrip(stored, ctx)).toBe("c.obj()");
-      expect(ctx.report.entries).toHaveLength(1);
-      expect(ctx.report.entries[0]!.category).toBe("modernized");
-      expect(ctx.report.entries[0]!.detail).toContain("EVALUATES DIFFERENTLY");
-      expect(severityOf("modernized")).toBe("warning");
+      expect(roundTrip(stored, ctx)).toBe("c.obj(null)");
+      expect(ctx.report.entries).toEqual([]);
     }
+  });
+
+  it("keeps `c.obj()` and `c.obj(null)` as DISTINCT values", () => {
+    // The load-bearing negative. If these ever collapse into one spelling, the
+    // blank form silently becomes an empty object again — which is exactly the
+    // regression this pair exists to catch.
+    expect(c.obj()).toEqual({ value: "{}", tag: "const:obj", filters: [] });
+    expect(c.obj(null)).toEqual({ value: "", tag: "const:obj", filters: [] });
+    // …and `normalize` must NOT equate them: it canonicalizes the two BLANK
+    // spellings together, and nothing else.
+    expect(normalize(c.obj(null))).toEqual(
+      normalize({ value: null, tag: "const:obj", filters: [] }),
+    );
+    expect(normalize(c.obj(null))).not.toEqual(normalize(c.obj()));
   });
 
   it("leaves a populated object constant alone", () => {

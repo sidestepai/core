@@ -1193,13 +1193,17 @@ export function normalize<T>(value: T): T {
   }
   if (value !== null && typeof value === "object") {
     const out: Record<string, unknown> = {};
-    // A `const:obj` stored blank (`value:""` or `value:null`) is the empty
-    // object written by an older editor generation; today it writes `{}`, and
-    // that is the only form this SDK emits. Canonicalize forward so the two
-    // compare equal — same rule as `customize`, and the reason a decoded blank
-    // object can come back as `c.obj()` and still round-trip. The decoder
-    // reports every such site under `modernized`, because unlike `customize`
-    // this one does change what the value evaluates to.
+    // A `const:obj` stored blank in its TWO blank spellings — `value:""` and
+    // `value:null`. These really are one value: the engine JSON-decodes the
+    // stored string and both yield null. Canonicalize to `""`, the form
+    // `c.obj(null)` writes and the dominant one in the corpus (96 vs 17).
+    //
+    // This rule used to canonicalize blank forward to `"{}"` instead, which is
+    // NOT an equivalence — `{}` decodes to an empty object, not null — and it
+    // let a decoded `c.obj()` "round-trip" while re-pointing 113 corpus
+    // statements at a different value on the next deploy. An alias is a semantic
+    // claim (invariant 3); the engine's evaluator is what settles it, and it
+    // says these two are equal and that one was not.
     const blankObj =
       (value as { tag?: unknown }).tag === "const:obj" &&
       "value" in (value as object) &&
@@ -1392,7 +1396,7 @@ export function normalize<T>(value: T): T {
       // other providers confirm the same (agent objects aren't capturable via the
       // function-only round-trip path today).
       if (k === "value" && blankObj) {
-        out[k] = "{}";
+        out[k] = "";
         continue;
       }
       // A tagged `value` is declared a STRING (`TaggedValue.value`), and the engine

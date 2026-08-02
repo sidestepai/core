@@ -257,13 +257,24 @@ export const c = {
    * See issue #42.
    *
    * Called with no argument it is the **empty object**, `{}` — the same default
-   * the editor gives a new object variable, and the only empty form this SDK
-   * writes. (Older workspaces can hold a `const:obj` stored blank, `""` or
-   * `null`, which the engine evaluates to `null` rather than `{}`. Codegen
-   * brings those to `c.obj()` and reports each one, since that changes what they
-   * evaluate to.)
+   * the editor gives a new object variable, and the only empty form current
+   * editors write.
+   *
+   * Called with an explicit `null` it is the **blank** form (stored `value: ""`),
+   * which the engine evaluates to `null` rather than `{}` — it JSON-decodes the
+   * stored string, and decoding `""` yields null. That is a real difference in
+   * what the statement sees, so the two are separate spellings rather than one
+   * "empty object": `c.obj()` is `{}`, `c.obj(null)` is null.
+   *
+   * ⚠ **Prefer `c.obj()`.** The blank form is legacy — no current editor path
+   * writes it — and it exists here so a pulled workspace round-trips to the
+   * same bytes instead of being quietly re-pointed at `{}`.
    */
-  obj<const T>(o?: T & RejectValues<T>): Value {
+  obj<const T>(o?: (T & RejectValues<T>) | null): Value {
+    // Explicit `null` is the blank form, and is NOT the same as no argument:
+    // `c.obj()` writes `{}`. Checked before the `??` below, which would
+    // otherwise fold the two together.
+    if (o === null) return val("", "const:obj");
     assertPlainJson(o ?? {});
     return val(JSON.stringify(o ?? {}), "const:obj");
   },
