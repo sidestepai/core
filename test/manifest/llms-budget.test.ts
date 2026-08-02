@@ -136,7 +136,18 @@ import { measureCommittedLlms } from "../../scripts/measure-llms.js";
 // disconnected unless it pings. None of these throw, none appear in a def, and
 // an agent cannot infer any of them from the option name — which is precisely
 // the grounding that must never be cut to fit a number.
-const CEILING_TOKENS = 31_500;
+// Raised from 31.5k for the async `runtime` block and the `c.obj(null)` split.
+// Both are SEMANTIC TRAPS, which is the category this doc exists for, and both
+// are invisible in a type signature. An async call does not merely run
+// elsewhere: the engine rewrites it to a different statement that dispatches
+// and continues, so the `as` an agent naturally binds receives nothing and the
+// result has to be collected with `s.await` — a `runtime?: AsyncRuntime` field
+// says none of that. And `c.obj()` and `c.obj(null)` differ by what the ENGINE
+// evaluates them to (`{}` vs null), so an agent choosing between them from the
+// signature alone would pick wrong half the time; the doc has to say which one
+// to author and that the other exists only for round-tripping a pulled
+// workspace. Both entries were compressed twice before raising this.
+const CEILING_TOKENS = 31_600;
 
 describe("llms.txt token budget", () => {
   it("stays under the bloat-tripwire ceiling", () => {
