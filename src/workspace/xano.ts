@@ -244,10 +244,14 @@ export class Xano {
    * Cross-check every query's resolved `auth` against the registered auth tables.
    *
    * `resolveAuth` (in `encodeQuery`) turns a table ref into a guid with no
-   * registry visibility, so a bare-name typo — or a name that resolves to a
-   * table that isn't `table({ auth: true })` — produces a valid-looking guid
-   * that only fails at deploy with an opaque engine error. Here we have the
-   * registry, so we catch it at export and name the offending query. A numeric
+   * registry visibility, so a bare-name typo produces a valid-looking guid that
+   * only fails at deploy with an opaque engine error. Here we have the registry,
+   * so we catch it at export and name the offending query.
+   *
+   * A registered table that is not `table({ auth: true })` only WARNS: the
+   * engine reads that flag nowhere at request time (it compares the token's
+   * `dbo` to the endpoint's by name, and mints tokens for any table by name), so
+   * refusing the combination blocked a real workspace's round trip. A numeric
    * `auth` (raw `dbo.id` escape hatch) references a table by id sidestep never
    * sees, so it's left as-is; `false` is a public endpoint. A table that pins an
    * explicit `guid` referenced by bare name lands in the "not registered" branch
@@ -275,13 +279,23 @@ export class Xano {
       if (typeof auth !== "string" || authGuids.has(auth)) continue;
       const name = String((q as { name?: unknown }).name ?? "?");
       const known = tableNameByGuid.get(auth);
+      // A REGISTERED table that isn't flagged `auth` warns rather than throws.
+      // The engine compares the token's `dbo` to the endpoint's by name and reads
+      // the table's flag nowhere, so the combination works — and one real
+      // workspace ships it, which throwing made impossible to pull.
+      if (known) {
+        console.warn(
+          `sidestep: query "${name}" requires auth against table "${known}", which is not marked ` +
+            `\`table({ auth: true })\`. The engine allows it — a token minted for that table is ` +
+            `accepted — but the editor will not offer the table as an auth source. Mark it if that ` +
+            `is what you meant.`,
+        );
+        continue;
+      }
       throw new Error(
-        known
-          ? `query "${name}": \`auth\` references table "${known}", which is not an auth table. ` +
-              `Mark it with \`table({ auth: true })\`.`
-          : `query "${name}": \`auth\` references a table that isn't registered on this workspace. ` +
-              `Check for a typo, or register the auth table; if it pins an explicit \`guid\`, pass the ` +
-              `table def rather than its name.`,
+        `query "${name}": \`auth\` references a table that isn't registered on this workspace. ` +
+          `Check for a typo, or register the auth table; if it pins an explicit \`guid\`, pass the ` +
+          `table def rather than its name.`,
       );
     }
   }

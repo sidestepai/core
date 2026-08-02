@@ -538,8 +538,9 @@ function views(args: KindDecodeArgs): DefEntry | null {
 const EMPTY_EXTERNAL = { source: "", id: "" };
 
 /**
- * Function/query `cache` default. A function's is hard-coded by the encoder, so
- * only a query can author it.
+ * The `cache` default both a function and a query carry. Authorable on both —
+ * the engine reads a function's block through the same runtime path, and the
+ * encoder hard-coding it meant a pulled function silently lost real caching.
  */
 const DEFAULT_CACHE = {
   active: false,
@@ -598,6 +599,9 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
         plain(a.stored, "description", ""),
         plain(a.stored, "docs", ""),
         plain((a.stored.workspace ?? {}) as StoredObject, "id", 0, "workspace"),
+        // Same block, same default, same engine read as a query's — a function
+        // with caching switched on used to re-export with it OFF.
+        plain(a.stored, "cache", DEFAULT_CACHE),
         history(a),
         middleware(a),
         tags(a.stored),

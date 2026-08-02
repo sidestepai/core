@@ -13,6 +13,7 @@ import type { ObjectKind } from "./kind.js";
 import { encodeTags } from "./common.js";
 import { encodeHistory } from "./history.js";
 import { buildMiddlewareBlock } from "./middleware-attach.js";
+import { defaultCache } from "./query.js";
 
 /** Encode a `FunctionDef` into the flattened importable function `xdo`. */
 export function encodeFunction(fn: FunctionDef): FunctionXdo {
@@ -26,16 +27,7 @@ export function encodeFunction(fn: FunctionDef): FunctionXdo {
     docs: fn.docs ?? "",
     workspace: { id: fn.workspace ?? 0 },
     branch: { id: 0 },
-    cache: {
-      active: false,
-      ttl: 3600,
-      input: true,
-      auth: true,
-      datasource: true,
-      ip: false,
-      headers: [],
-      env: [],
-    },
+    cache: defaultCache(fn.cache),
     history: encodeHistory("function", fn.history),
     middleware: buildMiddlewareBlock(fn.middleware),
     tag: encodeTags(fn.tags),

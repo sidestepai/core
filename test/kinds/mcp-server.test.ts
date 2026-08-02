@@ -60,10 +60,13 @@ describe("mcp_server kind", () => {
     expect(ts.tool[0]!.auth).toBe(deriveGuid("dbo", "users"));
   });
 
-  it("per-tool auth rejects a non-auth table", () => {
+  it("per-tool auth accepts any table, as the engine does", () => {
+    // The table's own `auth` flag gates nothing at runtime — the engine compares
+    // the token's `dbo` to the tool's configured `dbo` by name. Same resolver as
+    // a query's `auth`, so the two surfaces cannot drift.
     const plain = table({ name: "posts", schema: [] });
-    expect(() => encodeMcpServer({ name: "s", tools: [{ id: 1, auth: plain }] })).toThrow(
-      /not an auth table/,
+    expect(encodeMcpServer({ name: "s", tools: [{ id: 1, auth: plain }] }).tool[0]!.auth).toBe(
+      deriveGuid("dbo", "posts"),
     );
   });
 
