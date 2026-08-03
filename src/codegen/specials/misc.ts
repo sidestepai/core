@@ -271,11 +271,15 @@ const createAuthToken: SpecialDecoder = (a) => {
   //  - or it is a guid whose table was deleted, re-keyed, or sat outside the
   //    export's scope — a real broken reference.
   //
-  // Reported as `unresolved-ref` because that is literally and only what is
-  // known: the reference did not resolve. Same contract {@link unboundTableArg}
-  // holds a blank table to — name both readings, leave the judgement to whoever
-  // reads it — rather than picking one and quietly downgrading the other. The
-  // bytes are faithful either way: the value rides through verbatim on the
+  // Reported as `name-bound-ref` because that is literally and only what is
+  // known: the reference is stored by name and did not resolve as a guid. Same
+  // contract {@link unboundTableArg} holds a blank table to — name both
+  // readings, leave the judgement to whoever reads it — rather than picking one
+  // and quietly downgrading the other. Warning rather than error for the reason
+  // spelled out on the category: the bytes round-trip, so the output is not
+  // unsafe to act on; what a reader has to decide is whether the missing symbol
+  // link matters to them. The bytes are faithful either way: the value rides
+  // through verbatim on the
   // `{name, guid}` escape hatch and re-encodes identically. What is lost is the
   // link to the table's symbol, and resolving it would be worse than useless —
   // re-encoding a table handle writes that table's real guid, changing the
@@ -283,7 +287,7 @@ const createAuthToken: SpecialDecoder = (a) => {
   const unresolvable = !unbound && a.refs.lookup(table.value) === undefined;
   if (unresolvable) {
     a.ctx.problem(
-      "unresolved-ref",
+      "name-bound-ref",
       `security.create_auth_token references table "${table.value}", which this bundle does not resolve as a guid — SideStep resolves references by guid only. Older workspaces store this field by NAME, which the engine still honours, so this may be working as stored; it may equally be a table that was deleted or re-keyed. Carried verbatim, so the bytes are preserved, but it is not linked to the table's symbol and a re-deploy will not re-link it`,
     );
   }

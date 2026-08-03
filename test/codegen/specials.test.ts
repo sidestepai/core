@@ -564,7 +564,7 @@ describe("call family", () => {
     const source = printExpr(decodeStatement(ctx, EMPTY_REFS, stored, {}));
 
     expect(source).toContain("20c63dfc-dfcf-420e-8435-8212d1a8305d");
-    expect(ctx.report.entries.filter((e) => e.category === "unresolved-ref")).toEqual([]);
+    expect(ctx.report.entries.filter((e) => e.category === "blank-binding")).toEqual([]);
     // The bytes are unchanged by the fix — only the report is.
     expect(normalize(encodeStatement(evaluate(source)))).toEqual(normalize(stored));
   });
@@ -981,7 +981,7 @@ describe("db family — an unbound table", () => {
     const source = printExpr(decodeStatement(ctx, DB_REFS, stored));
     expect(source).toContain("table: null");
 
-    const unresolved = ctx.report.entries.filter((e) => e.category === "unresolved-ref");
+    const unresolved = ctx.report.entries.filter((e) => e.category === "blank-binding");
     expect(unresolved).toHaveLength(1);
     // One cause, named without a hedge. This flow pulls whole workspaces, so a
     // blank reference cannot be a live target that merely sat outside a scoped
@@ -1001,7 +1001,7 @@ describe("db family — an unbound table", () => {
         encodeStatement(s.db.get({ table: USERS, fieldValue: inp("id"), as: "user" })),
       ),
     );
-    expect(ctx.report.entries.filter((e) => e.category === "unresolved-ref")).toEqual([]);
+    expect(ctx.report.entries.filter((e) => e.category === "blank-binding")).toEqual([]);
   });
 
   it("treats a zero numeric id as unbound, like a blank guid", () => {
@@ -1714,7 +1714,7 @@ describe("miscellaneous specials", () => {
     // table's symbol would write the table's real guid instead and break that.
     expect(source).toContain('guid: "users"');
     expect(source).not.toContain("s.raw");
-    expect(ctx.report.entries.map((e) => e.category)).toEqual(["unresolved-ref"]);
+    expect(ctx.report.entries.map((e) => e.category)).toEqual(["name-bound-ref"]);
     expect(ctx.report.entries[0]!.detail).toContain("by guid only");
     // The load-bearing negative: not the old `guid users is not present in this
     // bundle`, which called the value a guid on no evidence.

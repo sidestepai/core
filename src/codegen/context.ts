@@ -173,13 +173,19 @@ export class DecodeContext {
     return takePendingDecline();
   }
 
-  /** Record a problem at the current object/path scope. */
-  problem(category: ReportCategory, detail: string): void {
+  /**
+   * Record a problem at the current object/path scope.
+   *
+   * `subject` names what the entry is about in a word or two, for the categories
+   * the report coalesces per object. Optional everywhere else and ignored there.
+   */
+  problem(category: ReportCategory, detail: string, subject?: string): void {
     this.report.add({
       category,
       object: this.#object,
       ...(this.#path.length > 0 ? { path: this.#path.join(".") } : {}),
       detail,
+      ...(subject !== undefined ? { subject } : {}),
     });
   }
 }

@@ -21,8 +21,60 @@ export type ReportCategory =
   | "superseded"
   /** A value was emitted as an annotated literal instead of a `c.*`/`ref` call. */
   | "value-fallback"
-  /** A guid referenced by an object is not present in the bundle. */
+  /**
+   * A guid referenced by an object is not present in the bundle, and the
+   * reference is one this SDK would otherwise have resolved. Error severity:
+   * the generated tree does not reproduce its source.
+   *
+   * Narrow on purpose. This category used to absorb three other causes — an
+   * unportable internal id, a binding that is blank upstream, and a reference
+   * stored by name — each of which round-trips exactly. They shared one
+   * severity, so the loudest cause set the tone for all of them and 371 rows
+   * across the survey corpus read as "acting on this output is unsafe" when
+   * none of them meant it. They are {@link ReportCategory}'s `unportable-id`,
+   * `blank-binding`, and `name-bound-ref` now.
+   */
   | "unresolved-ref"
+  /**
+   * A reference stored as an INTERNAL id rather than portable identity — a
+   * `guid 0`, or a `customize` block naming its target by local row id.
+   *
+   * Notice severity, and the reason is that there is nothing to decide. An
+   * internal row id is not identity that survives leaving the workspace, so
+   * carrying it as `raw()`/unbound is the only faithful reading; no authoring
+   * choice, no upstream fix, and no re-deploy would change it. It is reported
+   * at all only because the output is otherwise indistinguishable from a
+   * reference the decoder simply failed to follow.
+   */
+  | "unportable-id"
+  /**
+   * A statement or attachment whose binding is blank upstream — a `db.*`
+   * pointing at no table, a `function.run` pointing at no fn, an addon
+   * attachment pointing at no addon. Recovered as `null`.
+   *
+   * Warning severity, NOT notice. The decode is faithful and `null`
+   * re-encodes to exactly what was stored, so nothing is lost — but the
+   * workspace has a statement wired to a target that no longer exists, and
+   * emitting that silently would let a lost binding pass as a deliberate
+   * choice. The thing to fix is upstream rather than in the generated tree,
+   * which is what makes it a warning and not an error.
+   *
+   * Coalesced per object by {@link COALESCE_BY_OBJECT}: one workspace in the
+   * survey corpus carries 48 of these, and 48 lines saying the same sentence
+   * about one workspace is not 48 times the signal.
+   */
+  | "blank-binding"
+  /**
+   * A reference stored by NAME rather than by guid, which this SDK resolves by
+   * guid only. Carried verbatim, so the bytes are preserved.
+   *
+   * Warning severity: the output is faithful, but the reference is not linked
+   * to its target's symbol and a re-deploy will not re-link it. Two readings
+   * fit — an older workspace whose stored spelling the engine still honours, or
+   * a target that was deleted or re-keyed — and the entry states both, because
+   * nothing here can tell them apart.
+   */
+  | "name-bound-ref"
   /** A non-empty payload section this SDK models no kind for. */
   | "unsupported-section"
   /** Runtime verification found a re-export that does not match the source bundle. */
@@ -98,13 +150,32 @@ const CATEGORY_LABELS: ReadonlyArray<readonly [ReportCategory, string, ReportSev
   ["raw-fallback", "Statements emitted as raw() passthroughs", "warning"],
   ["unsupported-section", "Unsupported payload sections", "warning"],
   ["value-fallback", "Values emitted as annotated literals", "warning"],
+  ["blank-binding", "Bindings that are blank upstream", "warning"],
+  ["name-bound-ref", "References stored by name, not by guid", "warning"],
   ["superseded", "Retired statement versions, carried verbatim", "notice"],
   ["modernized", "Updated to the current form (evaluates differently)", "warning"],
   ["ambiguous-condition", "Conditions that mix AND and OR at one level", "warning"],
   ["path-param-bound", "Unbound {param} segments given an input", "warning"],
   ["expected-omission", "Deliberately not carried into the tree", "notice"],
   ["empty-source", "Objects that were already empty in the source", "notice"],
+  ["unportable-id", "Internal ids that are not portable identity", "notice"],
 ];
+
+/**
+ * Categories rendered as one entry per OBJECT rather than one per site.
+ *
+ * A per-site entry is the right unit for a cause a reader acts on individually.
+ * It is the wrong unit for a cause that repeats mechanically within one object —
+ * every column of a lost table, every statement against a deleted fn — where the
+ * count is a property of the object's size rather than of how much went wrong.
+ *
+ * Coalescing happens in {@link DecodeReport.summarize}, not at the call site, for
+ * the same reason severity does: the decoder does not know when it is finished
+ * with an object, and a second aggregation living in the CLI could disagree with
+ * the README's. {@link DecodeReport.entries} is left untouched, so tooling that
+ * wants every site still has it.
+ */
+const COALESCE_BY_OBJECT: ReadonlySet<ReportCategory> = new Set<ReportCategory>(["blank-binding"]);
 
 /** How each severity is prefixed in the two renderings. */
 const SEVERITY_LABEL: Readonly<Record<ReportSeverity, string>> = {
@@ -126,6 +197,17 @@ export interface ReportEntry {
   /** Where inside that object, e.g. `stack[2].context.where`. */
   readonly path?: string;
   readonly detail: string;
+  /**
+   * What the entry is about, in one or two words — `db.query`, `function.run`,
+   * `addon "comments"`. Optional, and only meaningful for a category in
+   * {@link COALESCE_BY_OBJECT}, which lists the distinct subjects it saw rather
+   * than repeating one sentence per site.
+   *
+   * Carried as a field rather than parsed back out of `detail`: the coalesced
+   * line would otherwise be built by regexing prose that exists to be read by a
+   * human, and every future rewording of that prose would silently degrade it.
+   */
+  readonly subject?: string;
 }
 
 /** Entries for one category, with its count. */
@@ -149,6 +231,36 @@ export interface ReportSummary {
 /** `object` + optional `path`, as shown to the user. */
 function location(entry: ReportEntry): string {
   return entry.path ? `${entry.object} → ${entry.path}` : entry.object;
+}
+
+/**
+ * One entry per object, listing the distinct subjects seen within it.
+ *
+ * The `path` is dropped deliberately: it named a single site, and this entry no
+ * longer stands for a single site. The count comes along so a reader can tell
+ * one lost binding from twelve without the report printing twelve lines.
+ *
+ * Order is first-seen, matching the order the decoder walked the object — the
+ * rest of this module preserves record order for the same reason, so a report
+ * reads in the same sequence as the tree it describes.
+ */
+function coalesceByObject(entries: readonly ReportEntry[]): ReportEntry[] {
+  const byObject = new Map<string, ReportEntry[]>();
+  for (const entry of entries) {
+    const found = byObject.get(entry.object);
+    if (found) found.push(entry);
+    else byObject.set(entry.object, [entry]);
+  }
+  return [...byObject].map(([object, group]) => {
+    if (group.length === 1) return group[0]!;
+    const subjects = [...new Set(group.map((e) => e.subject).filter((s) => s !== undefined))];
+    const named = subjects.length > 0 ? `${subjects.join(", ")} — ` : "";
+    return {
+      category: group[0]!.category,
+      object,
+      detail: `${named}${group.length} references in this object are blank upstream, recovered as \`null\`. The targets were deleted, or the bindings were never made. Fix them upstream, or bind them`,
+    };
+  });
 }
 
 /** Collects decode problems and renders them for every surface that shows them. */
@@ -182,13 +294,16 @@ export class DecodeReport {
   summarize(): ReportSummary {
     const byCategory: ReportGroup[] = [];
     const bySeverity: Record<ReportSeverity, number> = { error: 0, warning: 0, notice: 0 };
+    let total = 0;
     for (const [category, label, severity] of CATEGORY_LABELS) {
-      const entries = this.#entries.filter((e) => e.category === category);
-      if (entries.length === 0) continue;
+      const found = this.#entries.filter((e) => e.category === category);
+      if (found.length === 0) continue;
+      const entries = COALESCE_BY_OBJECT.has(category) ? coalesceByObject(found) : found;
       byCategory.push({ category, label, severity, count: entries.length, entries });
       bySeverity[severity] += entries.length;
+      total += entries.length;
     }
-    return { total: this.#entries.length, bySeverity, byCategory };
+    return { total, bySeverity, byCategory };
   }
 
   /** The generated README's report section. Empty string when there is nothing to say. */

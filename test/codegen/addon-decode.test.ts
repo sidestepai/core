@@ -329,7 +329,7 @@ describe("unbound addon attachment", () => {
 
   it("reports the blank rather than presenting a lost binding as a deliberate one", () => {
     const report = decodeBundle(queryWithAttachment("")).report;
-    const entry = report.entries.find((e) => e.category === "unresolved-ref");
+    const entry = report.entries.find((e) => e.category === "blank-binding");
     expect(entry?.detail).toContain("_extra");
     expect(entry?.detail).toContain("addon: null");
     // …and a bound attachment says nothing.
@@ -344,7 +344,7 @@ describe("unbound addon attachment", () => {
     // advice about a situation this SDK cannot produce.
     const detail =
       decodeBundle(queryWithAttachment("")).report.entries.find(
-        (e) => e.category === "unresolved-ref",
+        (e) => e.category === "blank-binding",
       )?.detail ?? "";
     expect(detail).toContain("deleted, or the binding was never made");
     expect(detail).not.toContain("re-pull");

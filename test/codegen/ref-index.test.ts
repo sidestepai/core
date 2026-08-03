@@ -175,4 +175,21 @@ describe("resolveReference", () => {
     expect(ctx.report.entries[0]!.category).toBe("unresolved-ref");
     expect(ctx.report.entries[0]!.detail).toContain(missing);
   });
+
+  it("separates a `guid 0` from a guid that is merely missing", () => {
+    // 219 of the 220 misses in the survey corpus are `0` — an internal row id
+    // standing where portable identity belongs, which no bundle could contain.
+    // Sharing one category made `unresolved-ref` mean "unsafe to act on" for a
+    // pile of rows where nothing was wrong and nothing could be done.
+    const zero = new DecodeContext();
+    expect(printExpr(resolveReference(zero, refs, "0"))).toBe('"0"');
+    expect(zero.report.entries[0]!.category).toBe("unportable-id");
+    expect(zero.report.entries[0]!.detail).toContain("internal row id");
+
+    // The load-bearing negative: a real miss keeps error severity. A `0` guard
+    // written as "anything falsy" or "anything short" would swallow this too.
+    const real = new DecodeContext();
+    resolveReference(real, refs, "00000000000000000000000000000000");
+    expect(real.report.entries[0]!.category).toBe("unresolved-ref");
+  });
 });

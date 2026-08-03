@@ -195,7 +195,7 @@ describe("create_auth stores its named entries in either order", () => {
       expect(normalize(encodeStatement(evaluateAuth(source)))).toEqual(normalize(stored));
       // Reported as what is literally known — the reference did not resolve —
       // with both readings named and neither asserted.
-      expect(ctx.report.entries.map((e) => e.category)).toEqual(["unresolved-ref"]);
+      expect(ctx.report.entries.map((e) => e.category)).toEqual(["name-bound-ref"]);
       expect(ctx.report.entries[0]!.detail).toContain("by guid only");
       // NOT the old `guid <x> is not present in this bundle`, which called a
       // value a guid on no evidence.

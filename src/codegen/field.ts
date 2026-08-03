@@ -409,7 +409,7 @@ export function decodeField(
   const { field: stored_, unbound } = unbindLocalCustomizeRefs(stored);
   if (unbound.length > 0) {
     ctx.problem(
-      "unresolved-ref",
+      "unportable-id",
       `field "${stored.name}" references ${unbound.join(", ")} inside \`customize\` by LOCAL row id rather than by guid — ` +
         `an internal id is not portable identity, so it is recovered as unbound (\`dbo=\`). ` +
         `A re-deploy will not re-link it, including back into the workspace it came from`,

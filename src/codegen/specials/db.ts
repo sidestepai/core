@@ -116,7 +116,7 @@ function tableArg(a: SpecialArgs, guid: string): TableArg {
  * deleted table's alias frequently outlives it (`{as: "user", id: ""}`).
  */
 function unboundTableArg(a: SpecialArgs, what: string): TableArg {
-  a.ctx.problem("unresolved-ref", blankRefDetail(`${what} has a blank table reference`, "table"));
+  a.ctx.problem("blank-binding", blankRefDetail(`${what} has a blank table reference`, "table"), what);
   return { expr: lit(null), runtime: null };
 }
 
@@ -327,8 +327,9 @@ function decodeAddonSpec(
   // real lost binding as a deliberate one.
   if (unbound) {
     a.ctx.problem(
-      "unresolved-ref",
+      "blank-binding",
       blankRefDetail(`addon attachment "${alias}" has a blank addon reference`, "addon"),
+      `addon "${alias}"`,
     );
   }
   const entries: Array<[string, Expr]> = [
