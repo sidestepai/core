@@ -7,9 +7,11 @@
  *   leading digits, and they collide across kinds (a `users` table and a `users`
  *   function are both legal). Sanitization plus deterministic disambiguation
  *   happens once, up front, so every reference site agrees.
- * - **File layout.** Tables, and anything referenced from more than one file,
- *   land in `_shared.ts` — mirroring `examples/sandbox/`, and keeping the import
- *   graph shallow enough to read.
+ * - **File layout.** One directory per kind, with an object nested under its
+ *   parent where it has one (a query under its api group, a trigger under what
+ *   it fires on). Every table lands in `table/table.ts`, and anything else
+ *   referenced from more than one file lands in `_shared.ts` — co-location is
+ *   what keeps the cross-file import graph acyclic.
  * - **Cycles.** Two functions that call each other would import each other.
  *   `ObjectRef` already accepts `{name, guid}`, so a back edge degrades to a
  *   hoisted const holding that literal instead (KTD-8) and no circular import is
@@ -37,8 +39,12 @@ import {
   type StoredObject,
 } from "./kinds/index.js";
 
-/** The file cross-referenced objects and every table share. */
+/** The file cross-referenced non-table objects share. */
 const SHARED_FILE = "_shared.ts";
+
+/** The one file every table lands in, and the directory holding it. */
+const TABLE_DIR = "table";
+const TABLE_FILE = "table/table.ts";
 
 /** The workspace config's own file, and the binding the barrel imports from it. */
 const WORKSPACE_FILE = "workspace.ts";
@@ -335,7 +341,19 @@ function assignSymbols(list: readonly Candidate[]): string[] {
 
 /**
  * Choose a file for every candidate, then resolve the symbol/path each guid maps
- * to. Tables and multiply-referenced objects share `_shared.ts`.
+ * to.
+ *
+ * Two collapses, for different reasons. Every table goes in `table/table.ts`
+ * because nearly every statement family binds one and scattering them makes the
+ * import graph unreadable. Multiply-referenced non-tables go in `_shared.ts`
+ * because co-locating them is what keeps the cross-file graph acyclic — an edge
+ * inside one file is ordered, not imported, so it can never close a cycle.
+ *
+ * These used to be the same file, which meant a table referring to a shared
+ * object (or the reverse) was an intra-file edge and therefore free. Splitting
+ * them makes those edges real imports, and a cycle across the two now costs a
+ * degraded `{name, guid}` reference. The corpus says that is currently a
+ * non-event, and `npm run codegen:replay` reports the count so it stays one.
  */
 function place(refs: RefIndex, payload: Record<string, unknown>): Placement[] {
   const list = candidates(refs, payload);
@@ -353,18 +371,22 @@ function place(refs: RefIndex, payload: Record<string, unknown>): Placement[] {
 
   return list.map((candidate, i) => {
     const symbol = symbols[i]!;
-    // Tables are shared unconditionally: nearly every statement family binds one,
-    // so leaving them scattered makes the import graph unreadable even when a
-    // given table happens to be referenced once.
-    const shared = candidate.object.kind === "table" || (referrers.get(candidate.object.guid) ?? 0) > 1;
-    return {
-      object: candidate.object,
-      stored: candidate.stored,
-      symbol,
-      dir: shared ? "." : candidate.dir,
-      path: shared ? SHARED_FILE : `${candidate.dir}/${symbol}.ts`,
-    };
+    const [dir, path] = fileFor(candidate, symbol, referrers);
+    return { object: candidate.object, stored: candidate.stored, symbol, dir, path };
   });
+}
+
+/** The directory and path one candidate lands at, as `[dir, path]`. */
+function fileFor(
+  candidate: Candidate,
+  symbol: string,
+  referrers: ReadonlyMap<string, number>,
+): [dir: string, path: string] {
+  // Tables collapse before the shared check: they go to one file whether or not
+  // anything references them.
+  if (candidate.object.kind === "table") return [TABLE_DIR, TABLE_FILE];
+  if ((referrers.get(candidate.object.guid) ?? 0) > 1) return [".", SHARED_FILE];
+  return [candidate.dir, `${candidate.dir}/${symbol}.ts`];
 }
 
 /**
@@ -809,7 +831,13 @@ function readme(ctx: DecodeContext, placements: readonly Placement[]): string {
     const count = counts.get(decoder.name) ?? 0;
     if (count > 0) lines.push(`- ${count} × ${decoder.name}`);
   }
-  lines.push("", "Objects referenced from more than one file, and every table, live in `_shared.ts`.", "");
+  lines.push(
+    "",
+    "Every table lives in `table/table.ts`. Anything else referenced from more than " +
+      "one file lives in `_shared.ts`. A query sits under its API group, and a trigger " +
+      "under the object it fires on.",
+    "",
+  );
 
   const report = ctx.report.renderMarkdown();
   lines.push(report === "" ? "Everything in the source bundle round-tripped cleanly." : report);

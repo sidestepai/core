@@ -96,10 +96,8 @@ describe("symbol naming", () => {
     // A `users` table and a `users` function are both legal in Xano and would
     // otherwise produce one binding that shadows the other.
     const project = build({ tables: [table("users", guid(1))], functions: [fn("users", guid(2))] });
-    const shared = file(project, "_shared.ts");
-    const functions = file(project, "function/usersFunction.ts");
-    expect(shared).toContain("export const users =");
-    expect(functions).toContain("export const usersFunction =");
+    expect(file(project, "table/table.ts")).toContain("export const users =");
+    expect(file(project, "function/usersFunction.ts")).toContain("export const usersFunction =");
   });
 
   it("disambiguates same-kind names that sanitize to the same identifier", () => {
@@ -171,12 +169,30 @@ describe("relative import specifiers", () => {
 });
 
 describe("file layout", () => {
-  it("puts every table in _shared.ts, even a singly-referenced one", () => {
+  it("puts every table in table/table.ts, even a singly-referenced one", () => {
     // Nearly every statement family binds a table, so scattering them across
     // per-object files makes the import graph unreadable.
     const project = build({ tables: [table("users", guid(1))], functions: [fn("a", guid(2), [guid(1)])] });
-    expect(file(project, "_shared.ts")).toContain("export const users =");
+    expect(file(project, "table/table.ts")).toContain("export const users =");
     expect(project.files.map((f) => f.path)).not.toContain("table/users.ts");
+  });
+
+  it("keeps tables out of _shared.ts, which is now non-tables only", () => {
+    // The two used to be one file, which made every table↔shared edge intra-file
+    // and therefore free. Splitting them is what this assertion pins.
+    const project = build({
+      tables: [table("users", guid(1)), table("posts", guid(2))],
+      functions: [fn("a", guid(3), [guid(1)])],
+    });
+    const tables = file(project, "table/table.ts");
+    expect(tables).toContain("export const users =");
+    expect(tables).toContain("export const posts =");
+    expect(project.files.map((f) => f.path)).not.toContain("_shared.ts");
+  });
+
+  it("imports a table from one directory up", () => {
+    const project = build({ tables: [table("users", guid(1))], functions: [fn("a", guid(2), [guid(1)])] });
+    expect(file(project, "function/a.ts")).toContain('from "../table/table.js"');
   });
 
   it("hoists an object two files reference into _shared.ts and imports it from both", () => {
@@ -409,7 +425,7 @@ describe("factory emission", () => {
     // is a temporal-dead-zone crash at import time, not a type error — so it
     // would type-check, ship, and then explode on load.
     const project = build({ tables: [table("table", guid(1))] });
-    const shared = file(project, "_shared.ts");
+    const shared = file(project, "table/table.ts");
     expect(shared).toContain('import { f, table } from "@sidestep/core"');
     expect(shared).not.toMatch(/export const table = table\(/);
     expect(shared).toMatch(/export const tableTable = table\(/);
@@ -443,7 +459,7 @@ describe("reserved names never break the tree", () => {
   it("emits a parsing tree for a table named `new`", async () => {
     const project = build({ tables: [table("new", guid(1))] });
     await expectParses(project);
-    expect(file(project, "_shared.ts")).toContain("export const newTable =");
+    expect(file(project, "table/table.ts")).toContain("export const newTable =");
   });
 
   it("emits a parsing tree for a function named `default`", async () => {
@@ -478,7 +494,7 @@ describe("reserved names never break the tree", () => {
   it("still reserves the SDK factory names it imports", async () => {
     const project = build({ tables: [table("table", guid(1))], functions: [fn("query", guid(2))] });
     await expectParses(project);
-    expect(file(project, "_shared.ts")).toMatch(/export const tableTable = table\(/);
+    expect(file(project, "table/table.ts")).toMatch(/export const tableTable = table\(/);
     expect(file(project, "function/queryFunction.ts")).toContain("export const queryFunction =");
   });
 
