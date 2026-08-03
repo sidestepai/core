@@ -27,7 +27,7 @@
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { decodeBundle } from "../src/codegen/index.js";
-import { severityOf, type ReportEntry } from "../src/codegen/report.js";
+import { type ReportEntry } from "../src/codegen/report.js";
 
 function flag(name: string, fallback?: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
