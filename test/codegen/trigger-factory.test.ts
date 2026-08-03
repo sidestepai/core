@@ -23,6 +23,7 @@ import { Xano } from "../../src/workspace/xano.js";
 import { table } from "../../src/kinds/table.js";
 import { f } from "../../src/fields/catalog.js";
 import { s } from "../../src/statements/s.js";
+import type { TriggerInputObjType } from "../../src/kinds/trigger-inputs.js";
 import { c } from "../../src/values/value.js";
 import { mcpServer } from "../../src/kinds/mcp-server.js";
 import { agent } from "../../src/kinds/agent.js";
@@ -206,6 +207,47 @@ describe("trigger decode — the trigger condition", () => {
     expect(source).toContain("search:");
     expect(source).toContain('col("NEW.id")');
     expect(source).not.toContain("meta:");
+  });
+});
+
+describe("trigger decode — the realtime types keep the `satisfies` form", () => {
+  it("refuses a factory for exactly the three realtime obj_types, and no others", () => {
+    // The refusal is a design decision, not a gap: `realtimeChannelTrigger` binds
+    // a `RealtimeChannelDef` — a def handle carrying its server — and a stored
+    // trigger has only two guids with no way to know they agree, so there is no
+    // faithful inverse. `realtimeTrigger` is deprecated and withheld from the
+    // docs catalog.
+    //
+    // Pinned as a SET so a fourth realtime type added upstream fails here rather
+    // than silently inheriting the carve-out — and so a non-realtime type cannot
+    // drift into it, which is the direction that would quietly cost real objects
+    // their typing.
+    const withFactory = new Set(["database", "workspace", "error", "toolset"]);
+    const all: readonly TriggerInputObjType[] = [
+      "database",
+      "workspace",
+      "error",
+      "toolset",
+      "workspace_realtime_channel",
+      "realtime_server",
+      "channel",
+    ];
+    expect(all.filter((t) => !withFactory.has(t))).toEqual([
+      "workspace_realtime_channel",
+      "realtime_server",
+      "channel",
+    ]);
+  });
+
+  it("emits `satisfies TriggerDef` for a stored realtime channel trigger", () => {
+    // The one `satisfies` trigger left in the 25-trigger survey corpus.
+    const stored = {
+      ...loadFixture<Record<string, unknown>>("triggers/workspace-trigger.json"),
+      obj_type: "workspace_realtime_channel",
+      obj_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    };
+    const { factory } = decodeStored(stored);
+    expect(factory).toBeUndefined();
   });
 });
 

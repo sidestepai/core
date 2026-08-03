@@ -148,8 +148,8 @@ live environment and prints its URL. `sidestep init` → `sidestep deploy` → U
   ships a pulled workspace to a live ephemeral URL. Decoded objects are emitted
   as FACTORY calls (`table({...})`, `query({...})`, `defineFunction({...})`) —
   the same form you author by hand — so a pulled tree keeps column/input/agent
-  output-schema inference. Triggers no factory expresses (realtime, or with a
-  condition/history) stay `{...} satisfies TriggerDef`. Object guids are preserved
+  output-schema inference. Triggers no factory expresses (the realtime types, or
+  a non-default history) stay `{...} satisfies TriggerDef`. Object guids are preserved
   verbatim, so references stay consistent; a statement the catalog cannot model
   round-trips verbatim through `raw()` (`@sidestep/core/codegen`). An object
   ALREADY EMPTY upstream (an endpoint created but never filled in) decodes to a
