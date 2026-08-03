@@ -47,6 +47,21 @@ const STRIP_KEYS = new Set([
   // doesn't change the authored schema, so drop it from both sides — same as
   // the already-stripped `index`, whose gin entry `use_xdo` only gates.
   "use_xdo",
+  // A dead key, dropped for the same reason as `iterator` (see
+  // {@link returnWithoutIterator}) and traced the same way.
+  //
+  // Xano's frontend writes `context: {dbo:{id}, allow_notfound: true}` from ONE
+  // place — the auth scaffold generator that builds a signup/login query. No
+  // engine class reads it: the `mvp` get-by class consults `dbo`, `output`, and
+  // its args and nothing else, and the older non-MVP class reads a differently
+  // named `allow_null`. So the member cannot change what a query does.
+  //
+  // It is deliberately NOT modelled — an authoring surface for a key the engine
+  // ignores is the mistake this file already refuses to make elsewhere. But the
+  // exclusion was only half-done: the encoder correctly declined to write it
+  // while the comparison still demanded it, so a correct decision read as a
+  // round-trip failure and sent every scaffolded auth query to `raw()`.
+  "allow_notfound",
 ]);
 
 /**
@@ -461,7 +476,8 @@ export function unboundAuthTable(value: unknown): Record<string, unknown> | unde
  *
  * Modelling it instead would give the SDK an authoring surface for a key the
  * engine ignores — the same mistake `allow_notfound` is kept out of the SDK to
- * avoid.
+ * avoid. That one is stripped in {@link STRIP_KEYS} rather than here, because it
+ * sits on `context` directly rather than inside a return block.
  */
 export function returnWithoutIterator(value: unknown): Record<string, unknown> | undefined {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
