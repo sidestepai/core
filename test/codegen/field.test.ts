@@ -223,6 +223,48 @@ describe("decodeField — catalog coverage", () => {
   });
 
   /**
+   * A field's `list` block is its array length bounds, and the engine does not
+   * spell "unset" consistently: 8,814 fields in the sweep store `{min:"",max:""}`
+   * and two store `{min:{},max:{}}`. Both mean unbounded.
+   *
+   * Comparing against the first spelling alone emitted `list: {max: {}, min: {}}`
+   * into a real pulled tool — bytes no author would write, and ill-typed besides,
+   * since `FieldOptions.list` declares strings. So the tree did not compile.
+   */
+  const BLANK_LIST_BOUNDS: ReadonlyArray<readonly [label: string, bounds: unknown]> = [
+    ["empty strings (8,814 fields)", { min: "", max: "" }],
+    ["empty objects (2 fields)", { min: {}, max: {} }],
+    ["mixed spellings", { min: "", max: {} }],
+  ];
+
+  it.each(BLANK_LIST_BOUNDS)("elides an unbounded list spelled with %s", (_label, bounds) => {
+    const stored = { ...encodeField("x", "text", { array: true }, COLUMN_CONTEXT), list: bounds };
+    const ctx = new DecodeContext();
+    const source = printExpr(decodeField(ctx, refsFor(), stored as FieldXdo, "f").expr);
+    expect(source).not.toContain("rawField(");
+    expect(source).not.toContain("list:");
+    // The elision is only safe because `normalize` calls the two spellings equal,
+    // so the re-encode still verifies against the bytes that were pulled.
+    const back = evaluate(source);
+    expect(normalize(encodeField("x", back.type, back.options, COLUMN_CONTEXT))).toEqual(
+      normalize(stored),
+    );
+    expect(ctx.report.entries).toEqual([]);
+  });
+
+  it("keeps a list bound that is actually set", () => {
+    // The paired negative: the elision is about blankness, not about the key.
+    const stored = {
+      ...encodeField("x", "text", { array: true }, COLUMN_CONTEXT),
+      list: { min: "1", max: "" },
+    } as FieldXdo;
+    const source = printExpr(decodeField(new DecodeContext(), refsFor(), stored, "f").expr);
+    expect(source).toContain('min: "1"');
+    const back = evaluate(source);
+    expect(encodeField("x", back.type, back.options, COLUMN_CONTEXT)).toEqual(stored);
+  });
+
+  /**
    * The six field-flag combinations the 187-workspace sweep actually found, with
    * the row counts it measured. Together they are 1,782 of the 1,885 `rawField()`
    * envelopes sampled — C8, which the plan had recorded as the largest single

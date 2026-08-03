@@ -53,6 +53,13 @@ const REF_BLOCK_MARKER = "// References to objects declared below";
  * for the same reason. The TOTAL is the number that must not rise: it is the
  * count of references that ship as an opaque guid instead of a real binding.
  *
+ * What is counted is reference SITES, not const declarations. One const can stand
+ * in for a target referred to from six columns of one table, and splitting a file
+ * makes the SAME degraded references declare a const per file — so counting
+ * declarations reports a regression where nothing was lost. That is exactly what
+ * the table-per-file split did: 10 consts became 17 while the reference count
+ * held at 20.
+ *
  * Read off the emitted source rather than instrumented into the decoder, because
  * the printer is deterministic (see `src/codegen/print.ts`) and the artifact is
  * what actually ships. Nothing in `src/` changes to support this measurement.
@@ -75,10 +82,14 @@ function countDegradedRefs(files: readonly GeneratedFile[]): { inFile: number; c
     for (let i = start + 1; i < lines.length && lines[i] !== ""; i += 1) {
       // `<symbol>Ref`, or `<symbol>Ref_2` when that name was already taken. The
       // greedy `\w+` keeps a symbol's own `_2` suffix (`posts_2Ref` → `posts_2`).
-      const m = /^const (\w+)Ref(?:_\d+)? = \{$/.exec(lines[i]!);
+      const m = /^const ((\w+)Ref(?:_\d+)?) = \{$/.exec(lines[i]!);
       if (!m) continue;
-      if (declared.has(m[1]!)) inFile += 1;
-      else crossFile += 1;
+      // Uses of the const, which is what a reader actually meets — every match
+      // but the declaration itself. Const names are unique per file and word
+      // boundaries make the match exact.
+      const uses = [...file.contents.matchAll(new RegExp(`\\b${m[1]!}\\b`, "g"))].length - 1;
+      if (declared.has(m[2]!)) inFile += uses;
+      else crossFile += uses;
     }
   }
   return { inFile, crossFile };

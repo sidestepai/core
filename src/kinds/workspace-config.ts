@@ -3,6 +3,11 @@
  * an array). Emits the author-provided settings subset; the engine fills the
  * remaining server-managed fields on import (KTD-1). Authoring shape validated
  * against the Xano engine's persisted workspace shape.
+ *
+ * Two blocks — `preferences` and `settings` — merge over a named engine default
+ * rather than passing through, so an author can name one flag without restating
+ * the twenty members beside it and still send complete bytes. Codegen subtracts
+ * the same defaults on the way back out.
  */
 import type { StackItemXdo } from "../types/xdo.js";
 import { registerKind } from "./kind.js";
@@ -12,11 +17,23 @@ import type { MiddlewareAttach } from "./middleware-attach.js";
 import { buildWorkspaceHistory } from "./history.js";
 import type { WorkspaceHistoryDef, WorkspaceHistoryXdo } from "./history.js";
 
+/**
+ * The three preferences the workspace settings form persists.
+ *
+ * `sql_columns`/`sql_names`/`internal_docs` used to be declared here and are not
+ * keys the engine stores — a pulled workspace carries `allow_push`,
+ * `track_performance`, and `use_internal_docs`, so the generated
+ * `preferences: {...}` literal failed excess-property checking and the tree did
+ * not type-check. (The form also offers `use_marketplace`, which is browser
+ * local storage and never reaches the workspace object.)
+ */
 export interface WorkspacePreferences {
-  internal_docs?: boolean;
-  sql_columns?: boolean;
-  sql_names?: boolean;
+  /** Allow this workspace to be pushed to a linked git remote. Default `false`. */
+  allow_push?: boolean;
+  /** Collect per-request performance samples. Default `true`. */
   track_performance?: boolean;
+  /** Show the internal docs panel beside objects. Default `false`. */
+  use_internal_docs?: boolean;
 }
 
 /**
@@ -146,6 +163,11 @@ export interface WorkspaceConfigDef {
    * READER. Distinct from the built-in request-context vars (`sys.*`).
    */
   env?: Record<string, string>;
+  /**
+   * Workspace settings (AI provider config, agent visibility). Modeled as an
+   * opaque map — declare only the members you want to change; the rest are
+   * filled from the engine's own default scaffold on export.
+   */
   settings?: Record<string, unknown>;
   /**
    * Allow tables to carry custom SQL names distinct from their workspace names.
@@ -194,6 +216,89 @@ const DEFAULT_DOCUMENTATION: Record<string, unknown> = {
   require_token: false,
 };
 
+/**
+ * The engine's default preferences — what the settings form writes when nothing
+ * has been touched. 174 of the 177 workspaces in the sweep store exactly this.
+ *
+ * Merged under whatever the author declares, for the same reason
+ * {@link DEFAULT_DOCUMENTATION} is emitted whole: the round trip then matches a
+ * real export rather than the `{}` the SDK used to invent, and codegen can leave
+ * the block out of a generated tree entirely.
+ */
+export const DEFAULT_PREFERENCES: WorkspacePreferences = {
+  allow_push: false,
+  track_performance: true,
+  use_internal_docs: false,
+};
+
+/**
+ * The engine's default `settings` block — AI off, every provider unconfigured,
+ * the free provider selected.
+ *
+ * `settings` is otherwise opaque to this SDK (`Record<string, unknown>`), and it
+ * was encoded as `{}` when absent, which no real workspace stores. Naming the
+ * scaffold is what lets a pulled workspace that never touched AI settings omit
+ * the whole block instead of carrying twenty lines of empty strings — and what
+ * keeps the bytes a deploy sends complete rather than relying on the engine to
+ * fill them.
+ *
+ * An author may write just the members they care about — see
+ * {@link mergeOverDefaults} — so departing from one member does not mean
+ * spelling the other twenty.
+ */
+export const DEFAULT_SETTINGS: Record<string, unknown> = {
+  ai_enabled: false,
+  ai_settings: {
+    providers: {
+      google: { model: "", api_key: "" },
+      openai: { model: "", api_key: "" },
+      anthropic: { model: "", api_key: "" },
+      "azure-openai": { model: "", api_key: "", base_url: "", api_version: "" },
+    },
+    default_provider: "free",
+  },
+  hide_xano_agent: false,
+};
+
+/**
+ * The author's block laid over the engine's default one, member by member.
+ *
+ * Every workspace the engine has saved stores `preferences` and `settings`
+ * WHOLE, so an author who only wants `ai_enabled: true` would otherwise have to
+ * restate four provider configs to keep the bytes a deploy sends complete — and
+ * a pulled workspace would carry all twenty-odd lines back into its generated
+ * tree for the sake of one flag. Merging lets both sides name only the
+ * departure, and codegen subtracts the same defaults on the way back out.
+ *
+ * Recursive because the scaffold is: `ai_settings.providers.openai.api_key` is
+ * three levels down, and a shallow spread of `ai_settings` would drop the three
+ * providers the author did not mention. Arrays and scalars REPLACE — only plain
+ * objects merge — so a list is never half the author's and half the default's.
+ */
+export function mergeOverDefaults<T extends object>(defaults: T, authored: T | undefined): T {
+  return mergeOver(
+    defaults as Record<string, unknown>,
+    (authored ?? {}) as Record<string, unknown>,
+  ) as T;
+}
+
+function mergeOver(
+  base: Record<string, unknown>,
+  over: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(over)) {
+    const under = out[key];
+    out[key] =
+      isPlainRecord(under) && isPlainRecord(value) ? mergeOver(under, value) : structuredClone(value);
+  }
+  return out;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 export interface WorkspaceConfigXdo {
   name: string;
   description: string;
@@ -212,9 +317,13 @@ export interface WorkspaceConfigXdo {
   /**
    * The four blocks below are `?=`-optional in the engine's workspace schema and
    * are emitted **by presence only** — written when the author sets them, absent
-   * when they don't. Comparing against a default instead would make the lean
-   * shape Xano's own editor persists and the explicit shape an author asks for
-   * collapse to the same bytes, and only one of them would round-trip.
+   * when they don't. That is deliberate: omitting `datasources` leaves a tenant's
+   * datasources alone, where writing `[]` would clear them.
+   *
+   * Codegen going the OTHER way does compare against the default, because the
+   * engine materializes all four on save and carrying them into a pulled tree is
+   * ten lines nobody wrote — see `WORKSPACE_DEFAULTED_KEYS`, which verification
+   * reads too so the elision is an equivalence rather than a loss.
    */
   use_custom_names?: boolean;
   defaults?: WorkspaceDefaultsDef;
@@ -259,7 +368,7 @@ export function encodeWorkspaceConfig(def: WorkspaceConfigDef): WorkspaceConfigX
     description: def.description ?? "",
     canonical: def.canonical ?? "",
     use_xdo: def.use_xdo ?? false,
-    preferences: def.preferences ?? {},
+    preferences: mergeOverDefaults(DEFAULT_PREFERENCES, def.preferences),
     realtime: def.realtime ?? { ...LEGACY_REALTIME },
     documentation: def.documentation ?? { ...DEFAULT_DOCUMENTATION },
     swagger: def.swagger ?? false,
@@ -268,7 +377,7 @@ export function encodeWorkspaceConfig(def: WorkspaceConfigDef): WorkspaceConfigX
       : {}),
     ...(def.history !== undefined ? { history: buildWorkspaceHistory(def.history) } : {}),
     env: def.env ? encodeWorkspaceEnv(def.env) : [],
-    settings: def.settings ?? {},
+    settings: mergeOverDefaults(DEFAULT_SETTINGS, def.settings),
     // Presence-preserving: each key is written only when the author set it, and
     // each nested optional likewise, so a pulled workspace re-exports to its own
     // bytes whether or not the engine happened to store the `?=` default.

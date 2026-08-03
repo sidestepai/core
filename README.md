@@ -195,7 +195,7 @@ sidestep codegen ws.json my-app          # a bundle already on disk — offline,
 
 Inside, `xano/` is shaped the way the workspace is: one directory per kind, with each
 object under its parent — queries under the API group that owns them, triggers under
-what they fire on. Tables share `table/table.ts`, settings sit in `xano/workspace.ts`,
+what they fire on. Each table gets its own `table/<name>.ts`, settings sit in `xano/workspace.ts`,
 `_shared.ts` holds anything else referenced from more than one file, and `xano/README.md`
 lists anything that did not translate cleanly.
 Object identities (`guid`) are preserved, so cross-references stay intact. A statement

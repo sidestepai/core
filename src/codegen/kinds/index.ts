@@ -68,6 +68,8 @@ import type { Condition } from "../../statements/expression.js";
 import { rewriteTriggerInputRefs } from "./trigger-handle-refs.js";
 import { parsePathParams, unboundPathParams } from "../../kinds/path-params.js";
 import { ENGINE_HISTORY_LIMIT } from "../../validate/normalize.js";
+import { DEFAULT_PREFERENCES, DEFAULT_SETTINGS } from "../../kinds/workspace-config.js";
+import { isWorkspaceKeyAtDefault } from "../omissions.js";
 
 /** One `key: value` pair of a generated def literal. */
 export type DefEntry = readonly [string, Expr];
@@ -136,17 +138,26 @@ function plain(stored: StoredObject, storedKey: string, fallback: unknown, defKe
 }
 
 /**
- * Emit `key: <stored>` whenever the key is **present**, with no default to
- * compare against.
+ * Emit `key: <stored>` whenever it is present, unless it holds the value the
+ * engine writes for an untouched workspace ({@link isWorkspaceKeyAtDefault}).
  *
- * The inverse of a presence-preserving encoder. For a `?=`-optional block, "the
- * stored value equals the default" and "the key is absent" are different bytes,
- * and eliding on value would collapse them — so the lean shape Xano's editor
- * writes and the explicit shape an author asks for each round-trip to their own.
+ * The inverse of a presence-preserving encoder, which is what the `?=`-optional
+ * workspace blocks have: "the stored value equals the default" and "the key is
+ * absent" really are different bytes there, so a plain default comparison
+ * ({@link plain}) would let only one of the two spellings round-trip.
+ *
+ * Presence ALONE was the rule, and it emitted every one of those keys on every
+ * pull, because the engine materializes them all on save — all 177 workspaces in
+ * the sweep carry `defaults: {db_primary_key: "int"}` and `datasource_live:
+ * {color: "#008000", show_banner: false}`. Neither is a byte an author would type
+ * or a reader can act on, and dropping them is only safe because verification
+ * reads the same table (see `WORKSPACE_DEFAULTED_KEYS`) and treats the absence as
+ * equal rather than as a missing key.
  */
-function present(stored: StoredObject, storedKey: string, defKey = storedKey): DefEntry | null {
+function atDefault(stored: StoredObject, storedKey: string, defKey = storedKey): DefEntry | null {
   const value = stored[storedKey];
-  return value === undefined ? null : [defKey, lit(value)];
+  if (value === undefined || isWorkspaceKeyAtDefault(storedKey, value)) return null;
+  return [defKey, lit(value)];
 }
 
 /** `tag: [{tag}]` → `tags: ["…"]`, elided when empty. */
@@ -1015,7 +1026,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
         plain(a.stored, "description", ""),
         plain(a.stored, "canonical", ""),
         plain(a.stored, "use_xdo", false),
-        plain(a.stored, "preferences", {}),
+        minusDefaults(a.stored, "preferences", DEFAULT_PREFERENCES),
         // The legacy workspace-level realtime block and the documentation block
         // are carried verbatim — this SDK models neither's members, so they are
         // compared against the engine's empty default and emitted whole when they
@@ -1026,13 +1037,16 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
         workspaceMiddleware(a),
         workspaceHistory(a),
         workspaceEnv(a),
-        plain(a.stored, "settings", {}),
-        // `?=`-optional in the engine schema, so decoded by presence rather than
-        // by comparing against a default (see `present`).
-        present(a.stored, "use_custom_names"),
-        present(a.stored, "defaults"),
-        present(a.stored, "datasources"),
-        present(a.stored, "datasource_live"),
+        minusDefaults(a.stored, "settings", DEFAULT_SETTINGS),
+        // `?=`-optional in the engine schema and emitted BY PRESENCE, so the
+        // encoder cannot round-trip a default it never wrote. The engine
+        // materializes all four on save anyway, so a stored default is noise a
+        // reader would never have typed — `WORKSPACE_DEFAULTED_KEYS` names the
+        // defaults, and verification reads the same table so the drop is silent.
+        atDefault(a.stored, "use_custom_names"),
+        atDefault(a.stored, "defaults"),
+        atDefault(a.stored, "datasources"),
+        atDefault(a.stored, "datasource_live"),
       ]),
   },
 ];
@@ -1674,8 +1688,9 @@ const WORKSPACE_HISTORY_TYPES = [
  *
  * `buildWorkspaceHistory` writes every type wholesale, filling absent ones with
  * their engine default, so a type sitting at its default is safely omitted here.
- * Presence of the block itself is significant, though — the encoder emits the key
- * only when the author set one — so an all-default map still emits `history: {}`.
+ * An ALL-default map is then `history: {}`, which says nothing and which the
+ * engine stores on every workspace nobody has configured — so the block goes too,
+ * and `WORKSPACE_DEFAULTED_KEYS` tells verification the absence is expected.
  */
 function workspaceHistory(a: KindDecodeArgs): DefEntry | null {
   const block = a.stored.history as Record<string, unknown> | undefined;
@@ -1698,7 +1713,7 @@ function workspaceHistory(a: KindDecodeArgs): DefEntry | null {
     }
     if (scalar !== null) entries.push([type, lit(scalar)]);
   }
-  return ["history", obj(entries)];
+  return entries.length === 0 ? null : ["history", obj(entries)];
 }
 
 /** Per-host middleware phases the workspace tier stores as a flat 8-key map. */
@@ -1706,8 +1721,8 @@ const WORKSPACE_MIDDLEWARE_HOSTS = ["function", "query", "task", "tool"] as cons
 
 /**
  * The workspace tier's flat `{host}_{phase}` middleware map → the author's
- * nested per-host shape. Like history, the block's presence is significant, so an
- * all-empty map still emits `middleware: {}`.
+ * nested per-host shape. Like history, an all-empty map is dropped rather than
+ * emitted as `middleware: {}` — every workspace in the sweep stores one.
  */
 function workspaceMiddleware(a: KindDecodeArgs): DefEntry | null {
   const block = a.stored.middleware as Record<string, unknown> | undefined;
@@ -1722,7 +1737,50 @@ function workspaceMiddleware(a: KindDecodeArgs): DefEntry | null {
     }
     if (phases.length > 0) hosts.push([host, obj(phases)]);
   }
-  return ["middleware", obj(hosts)];
+  return hosts.length === 0 ? null : ["middleware", obj(hosts)];
+}
+
+/**
+ * A stored block minus the engine's default scaffold — the inverse of
+ * {@link mergeOverDefaults}, which the encoder applies on the way back out.
+ *
+ * Every saved workspace stores `settings` WHOLE, so carrying it verbatim put
+ * twenty-odd lines of empty provider config in every pulled tree, in service of
+ * (at most) one flag. Subtracting leaves `settings: {ai_enabled: true}`, and
+ * drops the key entirely for the 170 of 177 workspaces that never touched AI.
+ * `preferences` is the same story at a smaller scale: three lines, 174 of 177 of
+ * them at the default.
+ *
+ * A member the stored block OMITS cannot be expressed by subtraction — the merge
+ * would put the default back. No workspace in the corpus is shaped that way, and
+ * one that is fails the round trip loudly rather than deploying a member it never
+ * had.
+ */
+function minusDefaults(stored: StoredObject, key: string, defaults: object): DefEntry | null {
+  const value = stored[key];
+  if (value === undefined) return null;
+  const departure = subtractDefaults(value, defaults);
+  return departure === undefined ? null : [key, lit(departure)];
+}
+
+/**
+ * `value` with every member equal to its counterpart in `fallback` removed, or
+ * `undefined` when nothing is left. Plain objects recurse; anything else is kept
+ * whole or dropped whole, mirroring the merge's replace-don't-blend rule.
+ */
+function subtractDefaults(value: unknown, fallback: unknown): unknown {
+  if (deepEqual(value, fallback)) return undefined;
+  if (!isPlainRecord(value) || !isPlainRecord(fallback)) return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, member] of Object.entries(value)) {
+    const kept = Object.hasOwn(fallback, key) ? subtractDefaults(member, fallback[key]) : member;
+    if (kept !== undefined) out[key] = kept;
+  }
+  return Object.keys(out).length === 0 ? undefined : out;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 /**

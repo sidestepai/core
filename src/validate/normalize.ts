@@ -208,6 +208,30 @@ const DEFAULT_RETURN_BLOCKS: Readonly<Record<string, unknown>> = {
  * more information than {@link DEFAULT_CONTEXT_RETURN} does.
  */
 const MINIMAL_CONTEXT_RETURN = { type: "list" };
+
+/**
+ * Whether a FIELD's `list` block sets no length bounds at all.
+ *
+ * The block is `{min, max}` and its unset spelling is not stable: the corpus
+ * holds 8,814 fields storing `""` for both and two storing `{}` for both. They
+ * are the same field — nothing is bounded either way — so the SDK's own `""`
+ * spelling must compare equal to both, and an unbounded list must never keep the
+ * key just because the editor happened to serialize its empty control as `{}`.
+ *
+ * Deliberately narrow: only a block whose members are ALL blank, and only the two
+ * blank spellings the engine actually writes. A real bound (`{min:"1"}`) keeps
+ * the key and is still compared.
+ */
+export function hasNoListBounds(value: unknown): boolean {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length === 0) return false;
+  return entries.every(
+    ([member, bound]) =>
+      (member === "min" || member === "max") &&
+      (bound === "" || (typeof bound === "object" && bound !== null && isEmptyObject(bound))),
+  );
+}
 /**
  * Return-block paging members the engine declares `int`. A readback can carry
  * either serialization, and the number is the declared form.
@@ -905,6 +929,13 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
     // meaningful on a history block, and an empty `group` is a condition default
     // elsewhere. A block with anything authored inside it still compares.
     case "list":
+      // `list` names two unrelated things. On a FIELD it is the length bounds of
+      // an array column, and its unset spelling drifts: 8,814 fields in the sweep
+      // store `{min:"", max:""}` and two store `{min:{}, max:{}}`. Both mean "no
+      // bounds" — an unset bound is whatever the editor's empty control
+      // serialized to that day — so an unbounded list must not depend on which.
+      if (hasNoListBounds(v)) return true;
+    // falls through to the result-shape block of the same name
     case "single":
     case "stream":
     case "aggregate":

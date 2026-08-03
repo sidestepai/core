@@ -301,9 +301,9 @@ describe("uuid primary key — no `default` key persisted", () => {
     // No fallback: the column comes back as a readable catalog call, not a
     // descriptor literal or a rawField() passthrough.
     expect(project.report.renderCli()).toBe("");
-    const shared = project.files.find((x) => x.path === "table/table.ts")!.contents;
-    expect(shared).toContain("noDefault: true");
-    expect(shared).not.toContain("rawField");
+    const emitted = project.files.find((x) => x.path === "table/u.ts")!.contents;
+    expect(emitted).toContain("noDefault: true");
+    expect(emitted).not.toContain("rawField");
   });
 
   it("rejects `noDefault` together with `default`", () => {

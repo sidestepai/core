@@ -19,7 +19,12 @@
 import { normalize } from "../validate/normalize.js";
 import { diffKeyPaths } from "./prove-diff.js";
 import type { DecodeReport } from "./report.js";
-import { sectionOmission, workspaceKeyOmission, type OmissionReason } from "./omissions.js";
+import {
+  isWorkspaceKeyAtDefault,
+  sectionOmission,
+  workspaceKeyOmission,
+  type OmissionReason,
+} from "./omissions.js";
 import { unboundPathParams } from "../kinds/path-params.js";
 
 /** One object whose re-export does not match the bundle it was decoded from. */
@@ -177,6 +182,26 @@ function isEmpty(value: unknown): boolean {
 }
 
 /**
+ * Drop the presence-gated workspace keys sitting at the value the engine writes
+ * for an untouched workspace, on BOTH sides of the comparison.
+ *
+ * The generated tree deliberately does not carry them (see
+ * `WORKSPACE_DEFAULTED_KEYS`), and the encoder emits them only when an author
+ * asks — so absent here is not a loss and not an omission worth a report line.
+ * Applied to both sides rather than special-casing the generated one, so a tree
+ * that DOES carry an explicit default still compares equal to a bundle that
+ * stores it.
+ */
+function dropDefaultedWorkspaceKeys(section: unknown): unknown {
+  if (!isPlainObject(section)) return section;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(section)) {
+    if (!isWorkspaceKeyAtDefault(key, value)) out[key] = value;
+  }
+  return out;
+}
+
+/**
  * Compare a non-array section (`workspace`, `partial`) key by key.
  *
  * "`workspace:(section)` does not match the source bundle" was true but useless
@@ -191,6 +216,10 @@ function verifySection(
   mismatches: VerifyMismatch[],
   omissions: VerifyOmission[],
 ): void {
+  if (key === "workspace") {
+    before = dropDefaultedWorkspaceKeys(before);
+    after = dropDefaultedWorkspaceKeys(after);
+  }
   if (deepEqual(normalize(before), normalize(after))) return;
 
   // A scalar (`partial`) has no keys to report against — compare it whole.

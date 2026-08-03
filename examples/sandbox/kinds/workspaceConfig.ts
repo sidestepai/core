@@ -35,12 +35,19 @@ export const wsConfig = workspaceConfig({
     STRIPE_KEY: process.env.STRIPE_KEY ?? "",
     APP_BASE_URL: "https://my-app.example.com",
   },
-  // Defaults applied to newly created objects.
-  defaults: { db_primary_key: "int" },
+  // Editor preferences. Declare only what departs from the engine's defaults
+  // (`allow_push: false`, `track_performance: true`, `use_internal_docs: false`)
+  // — a value equal to the default is dropped when a workspace is pulled back.
+  preferences: { allow_push: true },
+  // Workspace settings, an opaque map merged over the engine's default scaffold:
+  // name the members you care about, not the four provider configs you don't.
+  settings: { ai_enabled: true },
+  // Defaults applied to newly created objects (engine default: `int`).
+  defaults: { db_primary_key: "uuid" },
   // Let tables carry SQL names distinct from their workspace names.
-  use_custom_names: false,
+  use_custom_names: true,
   // Non-live datasources. WHOLESALE: deploying replaces the tenant's list, so
   // declare every datasource you want to keep.
   datasources: [{ label: "test", color: "#fff3cd" }],
-  datasource_live: { color: "#008000", show_banner: false },
+  datasource_live: { color: "#fff3cd", show_banner: true },
 });

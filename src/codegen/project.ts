@@ -9,9 +9,9 @@
  *   happens once, up front, so every reference site agrees.
  * - **File layout.** One directory per kind, with an object nested under its
  *   parent where it has one (a query under its api group, a trigger under what
- *   it fires on). Every table lands in `table/table.ts`, and anything else
- *   referenced from more than one file lands in `_shared.ts` — co-location is
- *   what keeps the cross-file import graph acyclic.
+ *   it fires on) and one file per object named after it. Anything referenced
+ *   from more than one file lands in `_shared.ts` — co-location is what keeps
+ *   the cross-file import graph acyclic.
  * - **Cycles.** Two functions that call each other would import each other.
  *   `ObjectRef` already accepts `{name, guid}`, so a back edge degrades to a
  *   hoisted const holding that literal instead (KTD-8) and no circular import is
@@ -42,9 +42,25 @@ import {
 /** The file cross-referenced non-table objects share. */
 const SHARED_FILE = "_shared.ts";
 
-/** The one file every table lands in, and the directory holding it. */
+/**
+ * The directory tables land in, one file per table.
+ *
+ * They used to collapse into a single `table/table.ts` on the theory that
+ * co-locating them kept the import graph readable. It did the opposite at real
+ * scale: a workspace with sixty tables got one two-thousand-line file whose name
+ * said nothing, and every editor tab in a pulled tree read `table.ts`.
+ *
+ * Splitting costs no fidelity. Mutually-referencing tables are common — Xano
+ * writes a `tableref` on both sides of a relation — but such a pair was ALREADY
+ * a cycle *inside* the collapsed file, so the same edge degraded to the same
+ * hoisted `{name, guid}` const either way: the replay corpus holds at 20 degraded
+ * reference SITES across 177 workspaces, before and after. What rises is the
+ * number of hoisted CONSTS (10 → 17), because a target referred to from three
+ * files now declares one in each rather than sharing a single declaration. That
+ * is the number `npm run codegen:replay --refs` reports, and it is bytes, not
+ * lost references.
+ */
 const TABLE_DIR = "table";
-const TABLE_FILE = "table/table.ts";
 
 /**
  * Queries nest one level further than every other kind: `query/<api group>/`.
@@ -93,7 +109,8 @@ const PARENT_REF: Readonly<Record<string, { key: string; kind: string }>> = {
  * does not stutter (`chat/chat.ts`). And a container with nothing nested under
  * it needs no directory at all.
  *
- * `table` is deliberately absent: tables collapse into one file instead.
+ * `table` is deliberately absent: nothing nests under a table, so it needs no
+ * directory of its own beyond the flat `table/` one every table shares.
  */
 const CONTAINER_KINDS: ReadonlySet<string> = new Set(["api_group", "realtime_server", "channel"]);
 
@@ -419,17 +436,13 @@ function assignSymbols(list: readonly Candidate[]): string[] {
  * Choose a file for every candidate, then resolve the symbol/path each guid maps
  * to.
  *
- * Two collapses, for different reasons. Every table goes in `table/table.ts`
- * because nearly every statement family binds one and scattering them makes the
- * import graph unreadable. Multiply-referenced non-tables go in `_shared.ts`
- * because co-locating them is what keeps the cross-file graph acyclic — an edge
- * inside one file is ordered, not imported, so it can never close a cycle.
- *
- * These used to be the same file, which meant a table referring to a shared
- * object (or the reverse) was an intra-file edge and therefore free. Splitting
- * them makes those edges real imports, and a cycle across the two now costs a
- * degraded `{name, guid}` reference. The corpus says that is currently a
- * non-event, and `npm run codegen:replay` reports the count so it stays one.
+ * One collapse: multiply-referenced objects go in `_shared.ts`, because
+ * co-locating them is what keeps the cross-file graph acyclic — an edge inside
+ * one file is ordered, not imported, so it can never close a cycle. Tables and
+ * containers are exempt (see {@link fileFor}), which makes an edge into or out of
+ * them a real import that can close a cycle and cost a degraded `{name, guid}`
+ * reference. The corpus says that is currently a non-event, and
+ * `npm run codegen:replay` reports the count so it stays one.
  */
 function place(refs: RefIndex, payload: Record<string, unknown>): Placement[] {
   const list = candidates(refs, payload);
@@ -489,7 +502,7 @@ type DirResolver = (guid: string) => { dir: string; kind: string } | null;
  * object per file, and two placements landing on one path would silently merge
  * them — both bindings in one file, with the barrel none the wiser.
  */
-const COLLAPSED_FILES: ReadonlySet<string> = new Set([SHARED_FILE, TABLE_FILE, ORPHANED_QUERY_FILE]);
+const COLLAPSED_FILES: ReadonlySet<string> = new Set([SHARED_FILE, ORPHANED_QUERY_FILE]);
 
 /**
  * Give any two placements that claimed one path a path each.
@@ -532,8 +545,11 @@ function fileFor(
 ): { dir: string; path: string } {
   const kind = candidate.object.kind;
 
-  // Tables collapse whether or not anything references them.
-  if (kind === "table") return { dir: TABLE_DIR, path: TABLE_FILE };
+  // A table is exempt from the hoist for the same reason a container is: it is
+  // referenced by nearly everything in the workspace, so the hoist would sweep
+  // the whole `table/` directory into `_shared.ts` and undo the split. It keeps
+  // its own file, named after the table.
+  if (kind === "table") return { dir: TABLE_DIR, path: `${TABLE_DIR}/${toPathName(symbol)}.ts` };
 
   // A container is exempt from the hoist, because for it the hoist would be
   // actively wrong rather than merely unnecessary. Containers are referenced by
@@ -1057,9 +1073,9 @@ function readme(ctx: DecodeContext, placements: readonly Placement[]): string {
   }
   lines.push(
     "",
-    "Every table lives in `table/table.ts`. Anything else referenced from more than " +
-      "one file lives in `_shared.ts`. A query sits under its API group, and a trigger " +
-      "under the object it fires on.",
+    "Every table has its own file under `table/`. Anything else referenced from more " +
+      "than one file lives in `_shared.ts`. A query sits under its API group, and a " +
+      "trigger under the object it fires on.",
     "",
   );
 
