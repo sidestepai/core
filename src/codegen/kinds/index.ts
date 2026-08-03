@@ -31,7 +31,12 @@ import { resolveReference } from "../ref-index.js";
 import { decodeFieldMap, decodeResponse, deepEqual } from "../field.js";
 import { decodeStack } from "../statement.js";
 import { decodeCondition } from "../expression.js";
-import { isDefaultEnvelopeMember, isEmptyOutput, isBlankAgentSettings } from "../../validate/normalize.js";
+import {
+  isDefaultEnvelopeMember,
+  isEmptyOutput,
+  isBlankAgentSettings,
+  normalize,
+} from "../../validate/normalize.js";
 import type { ContainerPrefix } from "../../kinds/history.js";
 import { parsePathParams, unboundPathParams } from "../../kinds/path-params.js";
 import { ENGINE_HISTORY_LIMIT } from "../../validate/normalize.js";
@@ -1256,12 +1261,20 @@ function addonCardinality(block: unknown): { value: string; whole: boolean } | n
   if (block === null || typeof block !== "object") return null;
   const type = (block as { type?: unknown }).type;
   if (typeof type !== "string" || !LIFTABLE_CARDINALITY.has(type)) return null;
-  // A bare `{type}` is exactly what `buildContext` writes, so it can be dropped.
-  // The engine writes the full envelope, which has to ride through `context` —
-  // stating `cardinality` alongside it is still correct (an explicit `return`
-  // wins on encode, and `buildContext` only rejects a *conflicting* type), and
-  // it is what gives the generated addon its graft type.
-  return { value: type, whole: Object.keys(block as object).length === 1 };
+  // A bare `{type}` is exactly what `buildContext` writes. The engine writes the
+  // full four-branch envelope instead, but `normalize` reduces it to the live
+  // branch and drops that branch when it holds only editor defaults — so the two
+  // spellings are the same bytes far more often than the raw key count suggests.
+  // Asking `normalize` is what makes the drop safe rather than merely plausible:
+  // it is the same oracle that judges the round trip, so a block it calls equal
+  // to `{type}` cannot change the verdict when `cardinality` rebuilds it.
+  //
+  // A block carrying real configuration (a live sort, a group-by, paging on)
+  // survives normalization and rides through `context` as before, with
+  // `cardinality` stated alongside it — still correct, since an explicit `return`
+  // wins on encode and `buildContext` only rejects a *conflicting* type.
+  const reduced = normalize({ return: block }) as { return?: Record<string, unknown> };
+  return { value: type, whole: Object.keys(reduced.return ?? {}).length === 1 };
 }
 
 /** `[{sortBy, orderBy}]` → the authoring `[{sortBy, dir?}]` form (mirrors `db.query`'s). */
@@ -1315,24 +1328,40 @@ function addonEntries(a: KindDecodeArgs): DefEntry[] {
   const dboId = typeof dbo?.id === "string" ? dbo.id : "";
   const consumed = new Set<string>();
 
-  // The engine persists `{as, id}`; `buildContext` writes `{id}` alone. Both are
-  // the same bytes once `normalize` drops the empty alias, so bind on either —
-  // but a *populated* alias has no `table:` form and must ride through `context`,
-  // and an empty `{as:"", id:""}` binds nothing at all (`resolveRef` rejects a
+  // A binding is exactly `{id}` plus an optional alias, and both halves now have
+  // an authoring form (`table` / `tableAlias`) — so any binding naming a table
+  // lifts, whatever its alias. Requiring an EMPTY alias here (which matched what
+  // `buildContext` used to write) meant no engine-authored addon ever lifted:
+  // Xano's editor writes the alias on every addon it creates, so across a
+  // 177-workspace sweep all 187 bound addons carried one, and all 187 leaked the
+  // raw `dbo` blob instead of a `table:`.
+  //
+  // An empty `{as:"", id:""}` still binds nothing at all (`resolveRef` rejects a
   // target with neither name nor guid, so emitting `table:` would be a hard
-  // failure rather than a readability loss).
+  // failure rather than a readability loss) — `dboId !== ""` keeps it out.
   const onlyBindingKeys =
     dbo !== undefined && Object.keys(dbo).every((key) => key === "id" || key === "as");
-  const bindsTable = dboId !== "" && onlyBindingKeys && (dbo!.as ?? "") === "";
-  // An empty `{as:"", id:""}` is the engine's *unbound* binding — what an addon
+  const bindsTable = dboId !== "" && onlyBindingKeys;
+  // A binding naming no table is the engine's *unbound* state — what an addon
   // stores before a table is chosen, and what it falls back to when the table it
-  // referenced is deleted (the engine clears the id rather than leaving a
-  // tombstone, so those two are the same bytes). `table: null` says exactly that,
-  // and re-encodes to the same empty binding; the alternative was leaking the raw
-  // `context.dbo` blob, which documents nothing.
-  const unbound =
-    !bindsTable && onlyBindingKeys && dboId === "" && (dbo!.as ?? "") === "";
+  // referenced is deleted. `table: null` says exactly that, and re-encodes to the
+  // same empty id; the alternative was leaking the raw `context.dbo` blob, which
+  // documents nothing.
+  //
+  // The alias is NOT part of what makes it unbound: deleting a table clears the
+  // id and leaves the alias standing, so `{as:"ledger", id:""}` is just as unbound
+  // as `{as:"", id:""}` and is the commoner spelling of the two (11 of 15 in the
+  // sweep). Keying this on an empty alias sent all 11 to the passthrough — an
+  // equally broken addon, shipped with none of the diagnostic below.
+  const unbound = !bindsTable && onlyBindingKeys && dboId === "";
   if (bindsTable || unbound) consumed.add("dbo");
+  // The alias is never derived from the table it binds: the engine sanitizes
+  // non-identifier characters into it (a `quick-update` table aliased
+  // `quick_update`) and leaves it stale after a rename — or after the table is
+  // gone entirely — so it round-trips verbatim. Empty is the absent form, which
+  // `tableAlias` omits.
+  const tableAlias =
+    (bindsTable || unbound) && typeof dbo!.as === "string" && dbo!.as !== "" ? dbo!.as : null;
   if (unbound) {
     // A broken object, not a stylistic one — an unbound addon returns nothing
     // wherever it is attached. Reported so it is visible in the pull rather than
@@ -1383,6 +1412,7 @@ function addonEntries(a: KindDecodeArgs): DefEntry[] {
       : unbound
         ? (["table", lit(null)] as DefEntry)
         : null,
+    tableAlias ? (["tableAlias", lit(tableAlias)] as DefEntry) : null,
     inputs(a),
     where ? (["where", where.expr] as DefEntry) : null,
     sort ? (["sort", sort] as DefEntry) : null,

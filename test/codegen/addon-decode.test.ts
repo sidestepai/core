@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import "../../src/index.js";
 import { normalize } from "../../src/validate/normalize.js";
 import { decodeBundle } from "../../src/codegen/index.js";
+import type { DecodeReport } from "../../src/codegen/report.js";
 import { workspace } from "../../src/workspace/xano.js";
 import { addon } from "../../src/kinds/addon.js";
 import { table } from "../../src/kinds/table.js";
@@ -56,13 +57,18 @@ async function regenerate(source: Bundle, name: string): Promise<Bundle> {
   return mod.default.export();
 }
 
-/** Build a one-addon workspace and return both its bundle and the addon's source. */
-function build(def: Parameters<typeof addon>[0]): { bundle: Bundle; source: string } {
+/** Build a one-addon workspace and return its bundle, the addon's source, and the decode report. */
+function build(def: Parameters<typeof addon>[0]): {
+  bundle: Bundle;
+  source: string;
+  report: DecodeReport;
+} {
   const ws = workspace("w").registerTables([users]).registerAddons([addon(def)]);
   const bundle = ws.export();
-  const file = decodeBundle(bundle).files.find((x) => x.path.includes("addon"));
+  const decoded = decodeBundle(bundle);
+  const file = decoded.files.find((x) => x.path.includes("addon"));
   expect(file, "no generated addon file").toBeDefined();
-  return { bundle, source: file!.contents };
+  return { bundle, source: file!.contents, report: decoded.report };
 }
 
 afterAll(() => rmSync(OUT_ROOT, { recursive: true, force: true }));
@@ -116,17 +122,37 @@ describe("addon decode — authoring surfaces are lifted out of `context`", () =
 });
 
 describe("addon decode — surfaces that have no authoring form stay in `context`", () => {
-  it("keeps a populated `dbo.as` alias as a passthrough, since `table:` cannot express it", () => {
-    // `buildContext` writes `{id}` with no alias, so lifting an aliased binding
-    // to `table:` would silently drop the alias.
-    const { source } = build({
+  it("lifts a populated `dbo.as` alias to `tableAlias:` alongside `table:`", async () => {
+    // The alias has its own authoring surface, so an aliased binding lifts whole.
+    // This is the ordinary engine-authored shape — Xano writes an alias on every
+    // addon it creates — so a passthrough here would be the common case, not the
+    // exception.
+    const { bundle, source } = build({
       name: "aliased",
       context: { dbo: { as: "u", id: "a".repeat(32) } },
       output: ["id"],
     });
-    expect(source).toContain("context:");
-    expect(source).toContain('as: "u"');
-    expect(source).not.toContain("table: user");
+    expect(source).toContain("table: user");
+    expect(source).toContain('tableAlias: "u"');
+    expect(source).not.toContain("context:");
+    const again = await regenerate(bundle, "aliased");
+    expect(normalize(again.payload.addon)).toEqual(normalize(bundle.payload.addon));
+  });
+
+  it("keeps the alias when the bound table is gone, as `table: null` + `tableAlias`", async () => {
+    // Deleting a table clears the id and leaves the alias standing, so this is a
+    // real stored state and the commoner spelling of "unbound" — it must report
+    // as broken like `{as:"", id:""}` does, not slip through as a raw blob.
+    const { bundle, source, report } = build({
+      name: "orphaned",
+      context: { dbo: { as: "ledger", id: "" } },
+    });
+    expect(source).toContain("table: null");
+    expect(source).toContain('tableAlias: "ledger"');
+    expect(source).not.toContain("context:");
+    expect(report.entries.map((e) => e.detail).join("\n")).toContain("bound to no table");
+    const again = await regenerate(bundle, "orphaned");
+    expect(normalize(again.payload.addon)).toEqual(normalize(bundle.payload.addon));
   });
 
   it("reports an empty binding as `table: null` rather than a raw dbo blob", async () => {

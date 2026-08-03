@@ -122,6 +122,20 @@ export interface AddonDef<Graft = unknown> {
    * Omitting `table` entirely is a third, distinct state: no `dbo` is written.
    */
   table?: ObjectRef | null;
+  /**
+   * SQL alias for the bound table (`context.dbo.as`), used to qualify columns in
+   * `where`/`sort` (e.g. `col("merchant.id")`). Absent unless set.
+   *
+   * Same surface, and same reasoning, as a db statement's `tableAlias`: `as` is a
+   * SQL alias appended to the table's own derived name (`FROM users as u`), never
+   * a replacement for it, and it is per-object data rather than a function of the
+   * table — so it is authored, not derived. Xano's editor writes it on every addon
+   * it creates, usually restating the table name (a no-op the engine drops), but
+   * measurably not always: it sanitizes non-identifier characters (a `quick-update`
+   * table aliased `quick_update`) and it keeps a stale alias after the table is
+   * renamed. Deriving it would corrupt both.
+   */
+  tableAlias?: string;
   /** The addon's filter — the predicate binding it to the parent row, e.g. `expr(col("id"), "=", inp("user_id"))`. Same `where` surface as `s.db.query`; encodes `context.search`. */
   where?: DbWhere;
   /** Sort the returned rows (`[{ sortBy, dir }]`). Same surface as `s.db.query`; encodes `context.sort`. */
@@ -159,8 +173,20 @@ function buildContext(def: AddonDef): Record<string, unknown> {
   const ctx: Record<string, unknown> = { ...(def.context ?? {}) };
   if (def.table !== undefined && ctx.dbo === undefined) {
     // `null` writes the engine's own empty binding rather than a resolved guid —
-    // `resolveRef` would reject a target with neither a name nor a guid.
-    ctx.dbo = def.table === null ? { as: "", id: "" } : { id: resolveRef("dbo", def.table) };
+    // `resolveRef` would reject a target with neither a name nor a guid. The alias
+    // is independent of the id and survives on its own: when a bound table is
+    // deleted the engine clears the id and KEEPS the alias, so `{as:"ledger",
+    // id:""}` is a real stored state (11 addons in a 177-workspace sweep) and
+    // `table:null` + `tableAlias` is how it is represented.
+    ctx.dbo =
+      def.table === null
+        ? { as: def.tableAlias ?? "", id: "" }
+        : {
+            id: resolveRef("dbo", def.table),
+            // Absent unless authored — writing it unconditionally would change the
+            // bytes of every addon that omits it today.
+            ...(def.tableAlias !== undefined ? { as: def.tableAlias } : {}),
+          };
   }
   if (def.where !== undefined && ctx.search === undefined) {
     const search = encodeSearch(def.where);
