@@ -11,8 +11,9 @@
  *   land in `_shared.ts` — mirroring `examples/sandbox/`, and keeping the import
  *   graph shallow enough to read.
  * - **Cycles.** Two functions that call each other would import each other.
- *   `ObjectRef` already accepts `{name, guid}`, so a back edge degrades to that
- *   literal instead (KTD-8) and no circular import is ever emitted.
+ *   `ObjectRef` already accepts `{name, guid}`, so a back edge degrades to a
+ *   hoisted const holding that literal instead (KTD-8) and no circular import is
+ *   ever emitted.
  *
  * The reference graph those last two need is derived from the **stored** objects,
  * not from decoding them: any guid a decoder resolves appears as a string
@@ -26,7 +27,7 @@
  */
 import type { DecodeContext } from "./context.js";
 import { CORE_MODULE } from "./context.js";
-import { printExpr, printModule, type Expr, type Stmt } from "./print.js";
+import { lit, obj, printExpr, printModule, type Expr, type Stmt } from "./print.js";
 import type { GeneratedFile } from "./index.js";
 import type { IndexedObject, RefIndex } from "./ref-index.js";
 import {
@@ -428,6 +429,92 @@ function orderWithinFile(
   return { ordered, back };
 }
 
+/** One generated file, accumulated across every placement that lands in it. */
+interface FileState {
+  readonly imports: ReturnType<DecodeContext["beginFile"]>;
+  readonly body: Stmt[];
+  /** Hoisted `{name, guid}` consts, keyed by the guid each one stands for. */
+  readonly refs: Map<string, { symbol: string; name: string }>;
+}
+
+/**
+ * Names the hoisted consts a degraded reference points at, and hands out one per
+ * (file, target) pair.
+ *
+ * A reference that cannot become a symbol — a cycle back edge, or an object
+ * referring to itself — still has to say which object it means, and `ObjectRef`
+ * accepts `{name, guid}` for exactly that. Inline, though, that literal is 4 lines
+ * every time it appears, and the tables that trigger it tend to reference each
+ * other from several columns at once: one real workspace spent 24 lines saying
+ * "Bugs and issues" six times. Hoisting it to `const Bugs_and_issuesRef = {…}`
+ * names the thing once and leaves the reference sites as short as the resolved
+ * ones — the same bytes deploy either way, since only the guid is ever read.
+ *
+ * Names are handed out from a single pool seeded with every object symbol and
+ * every reserved word, so a hoisted const can never shadow a binding or an
+ * imported factory, in this file or any other.
+ */
+class RefConstNamer {
+  readonly #taken: Set<string>;
+
+  constructor(placements: readonly Placement[]) {
+    this.#taken = new Set([
+      ...RESERVED_SYMBOLS,
+      ...RESERVED_WORDS,
+      ...placements.map((placement) => placement.symbol),
+    ]);
+  }
+
+  /** The const `file` should use for `target`, declaring it on first use. */
+  declare(file: FileState, target: Placement): string {
+    const existing = file.refs.get(target.object.guid);
+    if (existing) return existing.symbol;
+    const base = `${target.symbol}Ref`;
+    let symbol = base;
+    for (let n = 2; this.#taken.has(symbol); n += 1) symbol = `${base}_${n}`;
+    this.#taken.add(symbol);
+    file.refs.set(target.object.guid, { symbol, name: target.object.name });
+    return symbol;
+  }
+}
+
+/**
+ * The hoisted ref consts as statements, at the head of the file body.
+ *
+ * Hoisted rather than emitted where they were first needed, because the whole
+ * point is that the binding they stand in for is NOT declared yet — a ref const
+ * next to its use site would hit the same temporal dead zone. They depend on
+ * nothing, so the top of the file is always safe.
+ */
+function refConstStatements(file: FileState): Stmt[] {
+  if (file.refs.size === 0) return [];
+  const out: Stmt[] = [
+    {
+      kind: "comment",
+      text:
+        "References to objects declared below (or in a file that imports this one) — " +
+        "a guid names the object, so no import is needed.",
+    },
+  ];
+  for (const [guid, { symbol, name }] of file.refs) {
+    out.push({
+      kind: "const",
+      name: symbol,
+      value: {
+        kind: "id",
+        text: printExpr(
+          obj([
+            ["name", lit(name)],
+            ["guid", lit(guid)],
+          ]),
+        ),
+      },
+    });
+  }
+  out.push({ kind: "blank" });
+  return out;
+}
+
 /** Decode every object in a bundle payload and assemble the generated tree. */
 export function assembleProject(
   ctx: DecodeContext,
@@ -460,13 +547,14 @@ export function assembleProject(
 
   // Several placements can share one file (`_shared.ts`), so a file's imports and
   // its declarations accumulate across placements and are printed once at the end.
-  const files = new Map<string, { imports: ReturnType<DecodeContext["beginFile"]>; body: Stmt[] }>();
+  const files = new Map<string, FileState>();
+  const refConsts = new RefConstNamer(placements);
 
   for (const placement of placements) {
     const decoder = KIND_DECODERS_BY_NAME.get(placement.object.kind)!;
     let file = files.get(placement.path);
     if (!file) {
-      file = { imports: ctx.beginFile(), body: [] };
+      file = { imports: ctx.beginFile(), body: [], refs: new Map() };
       files.set(placement.path, file);
     }
     ctx.imports = file.imports;
@@ -483,14 +571,19 @@ export function assembleProject(
             // Same file: reference the binding directly, no import — unless the
             // declaration order could not put it first, or it is this object.
             if (found.path === placement.path) {
-              if (found.symbol === placement.symbol) return null;
-              return sameFileBackEdges.has(`${placement.object.guid} ${target.guid}`)
-                ? null
-                : found.symbol;
+              if (
+                found.symbol === placement.symbol ||
+                sameFileBackEdges.has(`${placement.object.guid} ${target.guid}`)
+              ) {
+                return refConsts.declare(file!, found);
+              }
+              return found.symbol;
             }
             // The KTD-8 escape: importing this would close a cycle, so the
             // reference degrades to a `{name, guid}` literal instead.
-            if (backEdges.has(`${placement.path} ${target.guid}`)) return null;
+            if (backEdges.has(`${placement.path} ${target.guid}`)) {
+              return refConsts.declare(file!, found);
+            }
             file!.imports.use(specifierFrom(placement.dir, found.path), found.symbol);
             return found.symbol;
           },
@@ -532,7 +625,12 @@ export function assembleProject(
   for (const [path, file] of files) {
     out.push({
       path,
-      contents: printModule([...file.imports.toStatements(), { kind: "blank" }, ...file.body]),
+      contents: printModule([
+        ...file.imports.toStatements(),
+        { kind: "blank" },
+        ...refConstStatements(file),
+        ...file.body,
+      ]),
     });
   }
   // Sorted so the file list itself is deterministic, not merely each file's bytes.

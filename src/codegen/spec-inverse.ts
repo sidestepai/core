@@ -299,8 +299,16 @@ export function decodeFromSpec(ctx: DecodeContext, stored: StackItemXdo): Expr |
       }
 
       ctx.use(CORE_MODULE, "s");
+      // A spec whose envelope profile permits a `description` recovers it as an
+      // ordinary field, and the passthrough carries the SAME stored key — so both
+      // would print, and an object literal with two `description:` members is
+      // legal JavaScript that nothing downstream complains about. The round trip
+      // cannot see it either: the runtime merge above is `{...authored,
+      // ...annotations}`, where the duplicate collapses. So the earlier cell is
+      // dropped here, matching that merge's precedence exactly.
+      const annotated = new Set(passthrough.entries.map(([field]) => field));
       const cells: Array<readonly [string, Expr]> = [
-        ...candidate.map((e) => [e.field, e.expr] as const),
+        ...candidate.filter((e) => !annotated.has(e.field)).map((e) => [e.field, e.expr] as const),
         ...passthrough.entries,
       ];
       const args = cells.length > 0 ? [obj(cells)] : [];

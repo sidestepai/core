@@ -116,9 +116,17 @@ export function annotationCandidates(
     isPlainObject(lastRuntime) &&
     lastSource?.kind === "object"
   ) {
+    // A decoder that already emitted one of these (a `description` a special
+    // reads off the same stored key) would otherwise print it twice — legal
+    // JavaScript, invisible to the round trip, since the runtime merge below
+    // collapses the duplicate. Drop the earlier cell, matching that precedence.
+    const annotated = new Set(entries.map(([field]) => field));
     out.push({
       runtime: [...runtime.slice(0, -1), { ...lastRuntime, ...annotations }],
-      source: [...sourceArgs.slice(0, -1), obj([...lastSource.entries, ...entries])],
+      source: [
+        ...sourceArgs.slice(0, -1),
+        obj([...lastSource.entries.filter(([field]) => !annotated.has(field)), ...entries]),
+      ],
     });
   }
 

@@ -53,6 +53,7 @@ import {
   agentTrigger,
   errorTrigger,
   mcpServerTrigger,
+  realtimeTrigger,
   tableTrigger,
   workspaceTrigger,
 } from "../../src/kinds/trigger.js";
@@ -61,7 +62,7 @@ import { KIND_DECODERS } from "../../src/codegen/kinds/index.js";
 
 /**
  * Every root factory a decoded def can be wrapped in, taken from the decoder
- * table itself so a new kind cannot drift out of this scope. The five trigger
+ * table itself so a new kind cannot drift out of this scope. The trigger
  * factories are added by hand: a trigger picks its factory per object, so none of
  * them appears in a decoder's static `factory` field.
  */
@@ -77,6 +78,7 @@ const KIND_FACTORIES: Record<string, unknown> = {
   errorTrigger,
   mcpServerTrigger,
   agentTrigger,
+  realtimeTrigger,
 };
 
 /** Everything a generated file can import, as one evaluation scope. */

@@ -32,6 +32,7 @@ import {
   workspaceTrigger,
   errorTrigger,
   realtimeTrigger,
+  realtimeChannelTrigger,
   agentTrigger,
   mcpServerTrigger,
 } from "../../src/kinds/trigger.js";
@@ -291,16 +292,52 @@ describe("trigger decode — when the factory cannot express it", () => {
     expect(decodeStored(stored).factory).toBeUndefined();
   });
 
-  it("keeps the three realtime types on the satisfies form", () => {
+  it("keeps the handle-bound realtime types on the satisfies form", () => {
+    // A stored `channel` trigger carries two guids with no way to know they agree,
+    // so `realtimeChannelTrigger`'s `RealtimeChannelDef` argument has no inverse.
     const project = decodeBundle(
       new Xano()
-        .registerTriggers([realtimeTrigger({ name: "on_msg", actions: { message: true } })])
+        .registerTriggers([realtimeChannelTrigger({ name: "on_join", actions: { join: true } })])
         .export(),
     );
-    const src = sourceOf(project, "on_msg");
+    const src = sourceOf(project, "on_join");
     expect(src).toContain("satisfies TriggerDef");
     expect(src).toContain("objType:");
     expect(src).toContain("meta:");
+  });
+
+  it("takes the factory for the legacy realtime trigger, which binds numerically", () => {
+    // Deprecated, but it takes no handle at all — only the numeric `objId` that
+    // indexes the workspace's realtime channel list — so it inverts exactly.
+    const project = decodeBundle(
+      new Xano()
+        .registerTriggers([
+          realtimeTrigger({ name: "on_msg", objId: 7, actions: { message: true } }),
+        ])
+        .export(),
+    );
+    const src = sourceOf(project, "on_msg");
+    expect(src).toContain("realtimeTrigger({");
+    expect(src).toContain("objId: 7");
+    expect(src).toContain("message: true");
+    expect(src).not.toContain("satisfies TriggerDef");
+    expect(src).not.toContain("meta:");
+    // Its default response (echo `payload`) is the factory's, so it is elided
+    // rather than restated.
+    expect(src).not.toContain("response:");
+  });
+
+  it("carries a non-default response on the legacy realtime trigger", () => {
+    const project = decodeBundle(
+      new Xano()
+        .registerTriggers([
+          realtimeTrigger({ name: "on_msg_custom", response: () => c.text("ok") }),
+        ])
+        .export(),
+    );
+    const src = sourceOf(project, "on_msg_custom");
+    expect(src).toContain("realtimeTrigger({");
+    expect(src).toContain("response:");
   });
 });
 
@@ -353,7 +390,7 @@ describe("trigger decode — mixed forms in one tree", () => {
             actions: { insert: true },
             stack: () => [s.set_var("x", c.int(1))],
           }),
-          realtimeTrigger({ name: "fallback_form", actions: { join: true } }),
+          realtimeChannelTrigger({ name: "fallback_form", actions: { join: true } }),
         ])
         .export(),
     );

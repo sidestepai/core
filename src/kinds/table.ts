@@ -425,6 +425,47 @@ export function tableIndexes(def: Pick<TableDef, "index" | "system" | "useXdo">)
   return [...missing, ...declared];
 }
 
+/**
+ * The system-column names {@link tableColumns} auto-prepends. Exported so codegen
+ * can ask whether an already-complete schema makes that injection a no-op, rather
+ * than restating the two names it would have to keep in sync by hand.
+ */
+export const SYSTEM_COLUMN_NAMES: readonly string[] = systemColumns().map((col) => col.name);
+
+/**
+ * `index` with the entries {@link tableIndexes} would re-inject removed — or
+ * `null` when removing them would not round-trip.
+ *
+ * The inverse of the auto-prepend, for codegen: a decoded table already carries a
+ * COMPLETE index list, so it has to either suppress the injection (`system:false`,
+ * verbose) or drop what the injection puts back (quiet). Choosing the quiet form
+ * is only safe if it re-encodes identically, which this asks {@link tableIndexes}
+ * itself rather than assuming — a table whose stored set is reordered, partial, or
+ * carries a differently-named `primary(id)` gets `null` and keeps the verbose form.
+ */
+export function elideSystemIndexes(
+  index: readonly IndexDef[],
+  useXdo: boolean,
+): IndexDef[] | null {
+  const pending = new Map<string, number>();
+  for (const sys of systemIndexes(useXdo)) {
+    const signature = indexSignature(sys);
+    pending.set(signature, (pending.get(signature) ?? 0) + 1);
+  }
+  const kept = index.filter((entry) => {
+    const remaining = pending.get(indexSignature(entry)) ?? 0;
+    if (remaining === 0) return true;
+    pending.set(indexSignature(entry), remaining - 1);
+    return false;
+  });
+  if (kept.length === index.length) return null;
+  // Compared as ENCODED indexes so the check covers every key the authoring shape
+  // leaves optional (`name`, `lang`, a field's `op`) and the canonical ordering
+  // the injection imposes, not just the type/fields signature the dedup uses.
+  const encoded = (list: readonly IndexDef[]): string => JSON.stringify(list.map(encodeIndex));
+  return encoded(tableIndexes({ index: kept, useXdo })) === encoded(index) ? kept : null;
+}
+
 export function encodeIndex(def: IndexDef): IndexXdo {
   return {
     name: def.name ?? "",
