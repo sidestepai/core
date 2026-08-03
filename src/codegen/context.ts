@@ -8,7 +8,7 @@
  */
 import type { ImportStmt } from "./print.js";
 import { DecodeReport, type ReportCategory } from "./report.js";
-import { noteDecline, takePendingDecline } from "./prove-diff.js";
+import { noteDecline, takePendingDecline, type PendingDecline } from "./prove-diff.js";
 
 /** The browser-safe authoring entry generated files import from. */
 export const CORE_MODULE = "@sidestep/core";
@@ -164,12 +164,12 @@ export class DecodeContext {
    * several frames down inside a shared helper — has no context to reach. See
    * {@link noteDecline} for why there is exactly one store.
    */
-  declined(why: string): null {
-    return noteDecline(why);
+  declined(why: string, category?: PendingDecline["category"]): null {
+    return noteDecline(why, category);
   }
 
   /** Read and clear the pending decline note. */
-  takeDeclineNote(): string | undefined {
+  takeDeclineNote(): PendingDecline | undefined {
     return takePendingDecline();
   }
 

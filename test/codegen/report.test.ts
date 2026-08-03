@@ -264,6 +264,10 @@ describe("severity", () => {
     // "We chose not to carry this" is not "we don't know what this is".
     expect(severityOf("instance-owned")).toBe("notice");
     expect(severityOf("unsupported-section")).toBe("warning");
+    // The statement-level twin of `empty-source`: nothing was recovered because
+    // nothing was stored. `raw-fallback` keeps its warning for a real gap.
+    expect(severityOf("unconfigured-stub")).toBe("notice");
+    expect(severityOf("raw-fallback")).toBe("warning");
     // The narrowed original keeps its meaning, and its volume.
     expect(severityOf("unresolved-ref")).toBe("error");
   });

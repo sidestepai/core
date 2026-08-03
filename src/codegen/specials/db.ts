@@ -726,11 +726,14 @@ function sqlEntries(
   //    is a plain multi-member record. Closing it means a second fill shape for
   //    one row of a statement that has no SQL in it either way.
   if (context.code === undefined && Object.keys(context).length === 0) {
-    declineHere("raw SQL: context is empty — the statement was never configured");
-    return a.ctx.declined(
-      "the statement stores an entirely empty context — it was added to the stack and never " +
-        "configured, so there is no SQL and no connection to recover. `raw()` is what an " +
-        "unconfigured stub looks like",
+    // One writer, not two. `noteDecline` is first-writer-wins, so the second
+    // call this site used to make — carrying the better sentence — could never
+    // land, and every corpus row showed the terser guard label instead.
+    return declineHere(
+      "stores an entirely empty context — it was added to the stack and never configured, so " +
+        "there is no SQL and no connection to recover. `raw()` is what an unconfigured stub " +
+        "looks like",
+      "unconfigured-stub",
     );
   }
   if (typeof context.code !== "string") return declineHere("raw SQL: context.code is not a string");

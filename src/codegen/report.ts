@@ -109,6 +109,19 @@ export type ReportCategory =
    */
   | "empty-source"
   /**
+   * A statement that stores an entirely empty context — added to a stack and
+   * never configured. Emitted as `raw()`.
+   *
+   * Notice, and it is the statement-level twin of `empty-source`: the decode is
+   * faithful, and there is nothing to recover because there is nothing there.
+   * Filed as `raw-fallback` before, where six rows across the survey corpus
+   * claimed a decoder had failed to reproduce a statement whose entire content
+   * is `{}`. Reported at all for the same reason `empty-source` is — the output
+   * is indistinguishable from a decode failure, and without a line here the only
+   * way to tell them apart is to go read the workspace.
+   */
+  | "unconfigured-stub"
+  /**
    * The stored form was a superseded one and the tree emits the CURRENT form
    * instead. Not a failure and not a silent cleanup: the whole reason this has
    * its own category is that a modernization can change what a value evaluates
@@ -174,6 +187,7 @@ const CATEGORY_LABELS: ReadonlyArray<readonly [ReportCategory, string, ReportSev
   ["path-param-bound", "Unbound {param} segments given an input", "warning"],
   ["expected-omission", "Deliberately not carried into the tree", "notice"],
   ["empty-source", "Objects that were already empty in the source", "notice"],
+  ["unconfigured-stub", "Statements that were never configured", "notice"],
   ["unportable-id", "Internal ids that are not portable identity", "notice"],
   ["instance-owned", "Instance state, deliberately not carried as source", "notice"],
 ];
