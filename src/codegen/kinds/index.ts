@@ -1175,6 +1175,20 @@ function triggerFactoryArgs(
     return null;
   }
 
+  // A config-only factory has no `response` parameter, so a stored `result[]` on
+  // one of those types has nowhere to go. `hasResult` is false for all three, so
+  // this should not occur — but a trigger that stored one anyway would otherwise
+  // emit a `response:` argument the factory does not accept, and the generated
+  // file would fail to compile rather than merely losing the response.
+  if (
+    objType !== "toolset" &&
+    Array.isArray(a.stored.result) &&
+    a.stored.result.length > 0
+  ) {
+    triggerFallback(a, "stores a `result[]` on a config-only trigger type, which takes no `response`");
+    return null;
+  }
+
   const actions = triggerActions(a.stored, objType);
   const datasources = triggerDatasources(a.stored, objType);
   if (!triggerMetaMatches(a.stored, objType, actions, datasources)) {

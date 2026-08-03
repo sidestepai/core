@@ -226,6 +226,16 @@ describe("trigger decode — when the factory cannot express it", () => {
     expect(source).toContain("history:");
   });
 
+  it("falls back for a config-only trigger that stored a result", () => {
+    // `tableTrigger` has no `response` parameter. Emitting one would not merely
+    // lose the response — the generated file would not compile.
+    const stored = {
+      ...loadFixture<Record<string, unknown>>("triggers/db-trigger-guid-bound.json"),
+      result: [{ name: "echo", type: "value", value: { tag: "const", value: "x" } }],
+    };
+    expect(decodeStored(stored).factory).toBeUndefined();
+  });
+
   it("falls back for a toolset trigger bound by numeric id", () => {
     // Both toolset factories encode identically, so this is safe to deploy either
     // way — but the file would claim an agent trigger is an MCP-server one.
