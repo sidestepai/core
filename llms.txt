@@ -148,7 +148,7 @@ live environment and prints its URL. `sidestep init` → `sidestep deploy` → U
   `<server>/<channel>.ts` beside `<channel>/<message>.ts`, with a `trigger/`
   at each level). Anything holding children is a file named for ITSELF beside
   their folder, so no two tabs read alike and a childless container needs no
-  folder. Every table lives in `table/table.ts`, settings
+  folder. Every table has its own file under `table/`, settings
   in `xano/workspace.ts`, a `_shared.ts` for anything else referenced from more
   than one file, a barrel `xano/index.ts`, and `xano/README.md` carrying the
   decode report. Paths are LOWER CASE throughout (the HTTP verb is the one

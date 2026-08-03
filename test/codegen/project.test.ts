@@ -113,7 +113,7 @@ describe("symbol naming", () => {
     // A `users` table and a `users` function are both legal in Xano and would
     // otherwise produce one binding that shadows the other.
     const project = build({ tables: [table("users", guid(1))], functions: [fn("users", guid(2))] });
-    expect(file(project, "table/table.ts")).toContain("export const users =");
+    expect(file(project, "table/users.ts")).toContain("export const users =");
     expect(file(project, "function/usersfunction.ts")).toContain("export const usersFunction =");
   });
 
@@ -329,7 +329,7 @@ describe("query placement", () => {
         ])
         .export(),
     );
-    expect(file(project, "query/admin/posts_GET.ts")).toContain('from "../../table/table.js"');
+    expect(file(project, "query/admin/posts_GET.ts")).toContain('from "../../table/users.js"');
     expect(file(project, "query/admin/posts_GET.ts")).toContain('from "../admin.js"');
     expect(file(project, "index.ts")).toContain('from "./query/admin/posts_GET.js"');
   });
@@ -497,11 +497,11 @@ describe("relative import specifiers", () => {
   // depth combination the layout can produce is pinned.
   it.each([
     ["same directory", "function", "function/b.ts", "./b.js"],
-    ["root down one", ".", "table/table.ts", "./table/table.js"],
+    ["root down one", ".", "table/users.ts", "./table/users.js"],
     ["root to root", ".", "_shared.ts", "./_shared.js"],
     ["one deep up to root", "function", "_shared.ts", "../_shared.js"],
-    ["one deep to a sibling directory", "function", "table/table.ts", "../table/table.js"],
-    ["two deep to one deep", "query/admin", "table/table.ts", "../../table/table.js"],
+    ["one deep to a sibling directory", "function", "table/users.ts", "../table/users.js"],
+    ["two deep to one deep", "query/admin", "table/users.ts", "../../table/users.js"],
     ["two deep, same directory", "query/admin", "query/admin/posts_GET.ts", "./posts_GET.js"],
     ["two deep to a peer group", "query/admin", "query/public/posts_GET.ts", "../public/posts_GET.js"],
     ["two deep up to root", "query/admin", "_shared.ts", "../../_shared.js"],
@@ -513,7 +513,7 @@ describe("relative import specifiers", () => {
   it("always emits an explicitly relative specifier", () => {
     for (const [fromDir, toPath] of [
       [".", "_shared.ts"],
-      ["function", "table/table.ts"],
+      ["function", "table/users.ts"],
       ["query/admin", "query/admin/posts_GET.ts"],
     ] as const) {
       expect(specifierFrom(fromDir, toPath)).toMatch(/^\.{1,2}\//);
@@ -523,7 +523,7 @@ describe("relative import specifiers", () => {
   it("rewrites the extension at every depth", () => {
     for (const [fromDir, toPath] of [
       [".", "_shared.ts"],
-      ["function", "table/table.ts"],
+      ["function", "table/users.ts"],
       ["query/admin", "query/public/posts_GET.ts"],
     ] as const) {
       expect(specifierFrom(fromDir, toPath)).toMatch(/\.js$/);
@@ -532,30 +532,31 @@ describe("relative import specifiers", () => {
 });
 
 describe("file layout", () => {
-  it("puts every table in table/table.ts, even a singly-referenced one", () => {
-    // Nearly every statement family binds a table, so scattering them across
-    // per-object files makes the import graph unreadable.
-    const project = build({ tables: [table("users", guid(1))], functions: [fn("a", guid(2), [guid(1)])] });
-    expect(file(project, "table/table.ts")).toContain("export const users =");
-    expect(project.files.map((f) => f.path)).not.toContain("table/users.ts");
-  });
-
-  it("keeps tables out of _shared.ts, which is now non-tables only", () => {
-    // The two used to be one file, which made every table↔shared edge intra-file
-    // and therefore free. Splitting them is what this assertion pins.
+  it("gives every table its own file, named after the table", () => {
     const project = build({
-      tables: [table("users", guid(1)), table("posts", guid(2))],
+      tables: [table("users", guid(1)), table("Blog Posts", guid(2))],
       functions: [fn("a", guid(3), [guid(1)])],
     });
-    const tables = file(project, "table/table.ts");
-    expect(tables).toContain("export const users =");
-    expect(tables).toContain("export const posts =");
+    expect(file(project, "table/users.ts")).toContain("export const users =");
+    // Paths lower-case; the binding keeps the object's own casing.
+    expect(file(project, "table/blog_posts.ts")).toContain("export const Blog_Posts =");
+    expect(project.files.map((f) => f.path)).not.toContain("table/table.ts");
+  });
+
+  it("keeps a multiply-referenced table in its own file rather than hoisting it to _shared.ts", () => {
+    // The hoist exists to break cross-file cycles, but a table is referenced by
+    // nearly everything in a workspace — applying it would empty `table/` out.
+    const project = build({
+      tables: [table("users", guid(1))],
+      functions: [fn("a", guid(2), [guid(1)]), fn("b", guid(3), [guid(1)])],
+    });
+    expect(file(project, "table/users.ts")).toContain("export const users =");
     expect(project.files.map((f) => f.path)).not.toContain("_shared.ts");
   });
 
   it("imports a table from one directory up", () => {
     const project = build({ tables: [table("users", guid(1))], functions: [fn("a", guid(2), [guid(1)])] });
-    expect(file(project, "function/a.ts")).toContain('from "../table/table.js"');
+    expect(file(project, "function/a.ts")).toContain('from "../table/users.js"');
   });
 
   it("hoists an object two files reference into _shared.ts and imports it from both", () => {
@@ -788,10 +789,10 @@ describe("factory emission", () => {
     // is a temporal-dead-zone crash at import time, not a type error — so it
     // would type-check, ship, and then explode on load.
     const project = build({ tables: [table("table", guid(1))] });
-    const shared = file(project, "table/table.ts");
-    expect(shared).toContain('import { f, table } from "@sidestep/core"');
-    expect(shared).not.toMatch(/export const table = table\(/);
-    expect(shared).toMatch(/export const tableTable = table\(/);
+    const emitted = file(project, "table/tabletable.ts");
+    expect(emitted).toContain('import { f, table } from "@sidestep/core"');
+    expect(emitted).not.toMatch(/export const table = table\(/);
+    expect(emitted).toMatch(/export const tableTable = table\(/);
   });
 });
 
@@ -822,7 +823,7 @@ describe("reserved names never break the tree", () => {
   it("emits a parsing tree for a table named `new`", async () => {
     const project = build({ tables: [table("new", guid(1))] });
     await expectParses(project);
-    expect(file(project, "table/table.ts")).toContain("export const newTable =");
+    expect(file(project, "table/newtable.ts")).toContain("export const newTable =");
   });
 
   it("emits a parsing tree for a function named `default`", async () => {
@@ -857,7 +858,7 @@ describe("reserved names never break the tree", () => {
   it("still reserves the SDK factory names it imports", async () => {
     const project = build({ tables: [table("table", guid(1))], functions: [fn("query", guid(2))] });
     await expectParses(project);
-    expect(file(project, "table/table.ts")).toMatch(/export const tableTable = table\(/);
+    expect(file(project, "table/tabletable.ts")).toMatch(/export const tableTable = table\(/);
     expect(file(project, "function/queryfunction.ts")).toContain("export const queryFunction =");
   });
 
