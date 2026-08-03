@@ -108,6 +108,19 @@ const SEARCH_OPS = new Set<string>([
   "includes", "not includes", "overlaps", "not overlaps", "search",
 ]);
 
+/**
+ * Whether an operator is one `cmp()` accepts — the guard below, as a predicate.
+ *
+ * Exported so the DECODER can decline a stored comparison the encoder would
+ * refuse, instead of emitting a `cmp()` call that throws the moment the
+ * generated tree is loaded. A blank `op` is what the editor stores for a filter
+ * row that was added and never configured, and one of them made a whole
+ * workspace's pull unexportable. One list, both directions.
+ */
+export function isSearchOp(op: unknown): op is SearchOp {
+  return typeof op === "string" && SEARCH_OPS.has(op);
+}
+
 /** A comparison over the full {@link SearchOp} set, with an optional `ignore_empty`. */
 export interface SearchComparison {
   left: Value;

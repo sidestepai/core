@@ -122,6 +122,11 @@ export const input = {
    * makes the engine expand rather than nest, so it is forced and cannot be
    * unset — a dblink that does not merge is not a dblink.
    *
+   * `customize` overrides individual expanded columns — `{ email: { required:
+   * true, methods: ["lower"] } }` — where `hidden` drops them wholesale. Both
+   * are read per column by the engine's expansion, and a column named in
+   * `customize` with `hidden: true` is dropped exactly as the outer list does it.
+   *
    * Input-only: `excludedTypesForDatabase` rules it out as a column, and a
    * column linking a whole table would be a foreign key — use
    * {@link f.tableRef} for that.

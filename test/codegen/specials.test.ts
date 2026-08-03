@@ -115,10 +115,26 @@ describe("variables", () => {
     expect(normalize(encodeStatement(evaluate(source)))).toEqual(normalize(STORED_EMPTY_SET_VAR));
   });
 
-  it("still declines an empty update_var context, which has lost its target name", () => {
+  it("recovers an empty update_var context, taking BOTH members from the fill", () => {
+    // `update_var` carries its target variable inside `context`, so an empty one
+    // has to take the name and the value from the same fill or neither. Every
+    // member is a scalar (`{name, value, tag?=const, filters[]}`), so the
+    // engine's optional pass materializes all of them — and the editor saves
+    // this state: its context form declares no required validator.
     const ctx = new DecodeContext();
-    const stored = { ...STORED_EMPTY_SET_VAR, name: "mvp:update_var" } as unknown as StackItemXdo;
-    expect(printExpr(decodeStatement(ctx, EMPTY_REFS, stored, {}))).toContain("raw(");
+    // The real stored shape, from the workspace that carries one: `as` is blank
+    // (an update names its target in `context`, not on the envelope).
+    const stored = {
+      ...STORED_EMPTY_SET_VAR,
+      as: "",
+      name: "mvp:update_var",
+    } as unknown as StackItemXdo;
+    const source = printExpr(decodeStatement(ctx, EMPTY_REFS, stored, {}));
+    expect(source).toBe('s.update_var("", c.text(""))');
+    expect(ctx.report.entries).toEqual([]);
+    // Byte-exact against the sparse spelling it came from, which is the only
+    // reason recovering it is safe.
+    expect(normalize(encodeStatement(evaluate(source)))).toEqual(normalize(stored));
   });
 });
 
@@ -225,6 +241,31 @@ describe("expression algebra", () => {
       const entry = ctx.report.entries.find((e) => e.category === "ambiguous-condition");
       expect(entry?.detail).toContain("mixes AND and OR");
       expect(entry?.detail).toContain("left to right");
+    });
+
+    it("declines a comparison whose operator no authoring form accepts", () => {
+      // A filter row added and never configured stores `op: ""`. Emitting
+      // `cmp(…, "", …)` for it produced a tree that THREW the moment it was
+      // loaded, so one unconfigured row failed a whole workspace's verification.
+      // Declining hands the caller its own exact fallback instead.
+      const stored = structuredClone(
+        encodeStatement(
+          s.conditional({
+            when: expr(ref("a"), "=", c.int(1)),
+            then: [s.set_var("hit", c.bool(true))],
+          }),
+        ),
+      ) as StackItemXdo;
+      const nodes = (stored.context as { expr: { expression: Array<{ statement: { op: string } }> } })
+        .expr.expression;
+      nodes[0]!.statement.op = "";
+
+      const ctx = new DecodeContext();
+      const source = printExpr(decodeStatement(ctx, EMPTY_REFS, stored));
+      expect(source).toContain("raw(");
+      expect(source).not.toContain('cmp(');
+      // Still byte-exact — `raw()` is what fidelity looks like here.
+      expect(normalize(encodeStatement(evaluate(source)))).toEqual(normalize(stored));
     });
 
     it("declines an `or` flag on the FIRST sibling, which joins to nothing", () => {

@@ -20,6 +20,7 @@ import { normalize } from "../validate/normalize.js";
 import { diffKeyPaths } from "./prove-diff.js";
 import type { DecodeReport } from "./report.js";
 import { sectionOmission, workspaceKeyOmission, type OmissionReason } from "./omissions.js";
+import { unboundPathParams } from "../kinds/path-params.js";
 
 /** One object whose re-export does not match the bundle it was decoded from. */
 export interface VerifyMismatch {
@@ -247,6 +248,46 @@ function verifySection(
 }
 
 /**
+ * The regenerated object with codegen's synthesized path-param inputs removed,
+ * so the one difference the decoder DELIBERATELY introduces is not also counted
+ * as a round-trip failure.
+ *
+ * Xano serves an endpoint whose `{param}` binds to no input — the segment is
+ * inert route text — but SideStep refuses to author one, so `pathAwareInputs`
+ * declares an `input.text()` for it and reports `path-param-bound`. That is a
+ * warning the user is meant to act on; re-reporting it here as an error made the
+ * sweep's most severe category (30 rows across 6 workspaces) consist entirely of
+ * a thing already reported, which is invariant 8 — an omission and a mismatch
+ * must never both fire for one thing.
+ *
+ * Scoped exactly: only entries whose names the SOURCE object's own path leaves
+ * unbound are dropped, using the same {@link unboundPathParams} rule that added
+ * them. Any other difference — including a different field for one of those very
+ * names — still fails, because the entry is removed rather than excused.
+ */
+function withoutSynthesizedPathParams(source: unknown, regenerated: unknown): unknown {
+  if (source === null || typeof source !== "object" || Array.isArray(source)) return regenerated;
+  if (regenerated === null || typeof regenerated !== "object" || Array.isArray(regenerated)) {
+    return regenerated;
+  }
+  const from = source as { name?: unknown; input?: unknown };
+  if (typeof from.name !== "string" || !from.name.includes("{")) return regenerated;
+  const synthesized = new Set(unboundPathParams(from.name, from.input));
+  if (synthesized.size === 0) return regenerated;
+  const into = regenerated as { input?: unknown };
+  if (!Array.isArray(into.input)) return regenerated;
+  const kept = into.input.filter(
+    (entry) =>
+      !(
+        entry !== null &&
+        typeof entry === "object" &&
+        synthesized.has((entry as { name?: unknown }).name as string)
+      ),
+  );
+  return kept.length === into.input.length ? regenerated : { ...into, input: kept };
+}
+
+/**
  * Compare a regenerated bundle against its source, per object.
  *
  * Reported per object rather than as one payload-wide diff: a whole-bundle
@@ -288,8 +329,9 @@ export function verifyBundles(source: unknown, regenerated: unknown): VerifyResu
         mismatches.push({ payloadKey: key, name: entry.name, detail: "missing from the generated tree", paths: [] });
         continue;
       }
-      if (!deepEqual(normalize(entry.value), normalize(counterpart.value))) {
-        const paths = mismatchPaths(entry.value, counterpart.value);
+      const regenerated = withoutSynthesizedPathParams(entry.value, counterpart.value);
+      if (!deepEqual(normalize(entry.value), normalize(regenerated))) {
+        const paths = mismatchPaths(entry.value, regenerated);
         mismatches.push({
           payloadKey: key,
           name: entry.name,

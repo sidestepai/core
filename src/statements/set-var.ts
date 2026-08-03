@@ -10,28 +10,35 @@
  *   lean `output:{filters:[]}` envelope.
  */
 import type { Statement } from "./statement.js";
-import { registerStatement } from "./statement.js";
+import { registerStatement, annotate } from "./statement.js";
+import type { StatementAnnotations } from "./statement.js";
 import type { Value } from "../values/value.js";
 
 export const SET_VAR = "mvp:set_var";
 export const UPDATE_VAR = "mvp:update_var";
 
 /** Assign `value` to stack variable `as` (`var $as { value = ... }`). */
-export function setVar(as: string, value: Value): Statement {
-  return {
-    name: SET_VAR,
-    as,
-    context: { value: value.value, tag: value.tag, filters: value.filters },
-  };
+export function setVar(as: string, value: Value, a?: StatementAnnotations): Statement {
+  return annotate(
+    {
+      name: SET_VAR,
+      as,
+      context: { value: value.value, tag: value.tag, filters: value.filters },
+    },
+    a,
+  );
 }
 
 /** Reassign existing stack variable `name` to `value` (`update $name { value = ... }`). */
-export function updateVar(name: string, value: Value): Statement {
-  return {
-    name: UPDATE_VAR,
-    context: { name, value: value.value, tag: value.tag, filters: value.filters },
-    output: { filters: [] },
-  };
+export function updateVar(name: string, value: Value, a?: StatementAnnotations): Statement {
+  return annotate(
+    {
+      name: UPDATE_VAR,
+      context: { name, value: value.value, tag: value.tag, filters: value.filters },
+      output: { filters: [] },
+    },
+    a,
+  );
 }
 
 registerStatement(SET_VAR, setVar);

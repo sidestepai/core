@@ -18,7 +18,8 @@
  * normalizes each to `{ run: [] }`).
  */
 import type { Statement } from "../statement.js";
-import { encodeStatement, registerStatement } from "../statement.js";
+import type { StatementAnnotations } from "../statement.js";
+import { encodeStatement, registerStatement, annotate } from "../statement.js";
 import type { Value } from "../../values/value.js";
 
 function valueFields(v: Value): { value: string; tag: string; filters: unknown[] } {
@@ -29,7 +30,7 @@ function run(body: Statement[]): unknown[] {
   return body.map(encodeStatement);
 }
 
-export interface SwitchCaseArgs {
+export interface SwitchCaseArgs extends StatementAnnotations {
   /** The literal this case matches against the switch subject. */
   when: Value;
   /** Statements run when this case matches. */
@@ -48,10 +49,10 @@ export function switchCase(args: SwitchCaseArgs): Statement {
     context.break = args.break;
   }
   context.if = { run: run(args.body) };
-  return { name: "mvp:switch_case", context, input: [] };
+  return annotate({ name: "mvp:switch_case", context, input: [] }, args);
 }
 
-export interface SwitchArgs {
+export interface SwitchArgs extends StatementAnnotations {
   /** The subject value being matched. */
   on: Value;
   /** Ordered `case` clauses. */
@@ -62,7 +63,7 @@ export interface SwitchArgs {
 
 /** `switch (on) { case … default … }` — multi-way branch. */
 export function switchStatement(args: SwitchArgs): Statement {
-  return {
+  return annotate({
     name: "mvp:switch",
     context: {
       value: valueFields(args.on),
@@ -70,10 +71,10 @@ export function switchStatement(args: SwitchArgs): Statement {
       else: { run: run(args.default ?? []) },
     },
     input: [],
-  };
+  }, args);
 }
 
-export interface TryCatchArgs {
+export interface TryCatchArgs extends StatementAnnotations {
   /** The protected block (engine `if`). */
   try: Statement[];
   /** Error-handler block (engine `else`). */
@@ -84,7 +85,7 @@ export interface TryCatchArgs {
 
 /** `try_catch { try … catch … finally … }` — error handling block. */
 export function tryCatch(args: TryCatchArgs): Statement {
-  return {
+  return annotate({
     name: "mvp:try_catch",
     context: {
       if: { run: run(args.try) },
@@ -92,7 +93,7 @@ export function tryCatch(args: TryCatchArgs): Statement {
       then: { run: run(args.finally ?? []) },
     },
     input: [],
-  };
+  }, args);
 }
 
 registerStatement("mvp:switch", switchStatement);

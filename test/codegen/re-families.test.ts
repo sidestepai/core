@@ -9,8 +9,8 @@
  * winner and canonicalize the other away.
  *
  *   • `create_image` (26 statements) carries an `input[]` its declared context
- *     schema has no slot for. The engine keeps it verbatim, so dropping it would
- *     discard a stored binding.
+ *     schema has no slot for. The engine keeps it verbatim — but it never READS
+ *     it, so it is exhaust and the normalizer elides it on both sides.
  *   • `create_auth` (25) stores its four named entries in two orders. Both mint
  *     a token, and each order comes back exactly as sent.
  *   • `precondition` (6) stores `error` as a bare string where the schema
@@ -23,7 +23,7 @@ import { expr } from "../../src/statements/expression.js";
 import { encodeStatement } from "../../src/statements/statement.js";
 import type { StackItemXdo } from "../../src/types/xdo.js";
 import { normalize } from "../../src/validate/normalize.js";
-import { c, ref } from "../../src/values/value.js";
+import { c, inp, ref } from "../../src/values/value.js";
 import { DecodeContext } from "../../src/codegen/context.js";
 import { printExpr } from "../../src/codegen/print.js";
 import { RefIndex } from "../../src/codegen/ref-index.js";
@@ -41,7 +41,7 @@ function entry(name: string, value: string, tag: string): Record<string, unknown
   return { name, value, tag, filters: [], ignore: false, expand: false, children: [] };
 }
 
-describe("create_image carries an input[] its schema does not declare", () => {
+describe("create_image carries an input[] the engine cannot read", () => {
   const stored = {
     as: "image",
     name: "mvp:create_image",
@@ -54,12 +54,40 @@ describe("create_image carries an input[] its schema does not declare", () => {
     settings_registry: null,
   } as unknown as StackItemXdo;
 
-  it("decodes to the real statement, with the stored entries spread over it", () => {
+  it("decodes to the real statement, dropping the unreadable entries", () => {
+    // The engine class declares no input schema (empty, in every version), the
+    // stack runner hands `process` an empty array when the schema is empty, and
+    // that `process` reads only `context`. The editor offers no control for it
+    // either. So the entries cannot change what the statement does, and carrying
+    // them meant an envelope spread in the source for bytes nothing reads.
     const source = decode(stored);
     expect(source).toContain("s.storage.create_image(");
-    expect(source).toContain("input:");
-    expect(source).toContain('tag: "auth"');
+    expect(source).not.toContain("input:");
+    expect(source).not.toContain('tag: "auth"');
     expect(source).not.toContain("raw(");
+    expect(source).not.toContain("...");
+  });
+
+  it("still round-trips, because the normalizer elides it on BOTH sides", () => {
+    const rebuilt = encodeStatement(
+      s.storage.create_image({ as: "image", value: inp("content") }),
+    ) as StackItemXdo;
+    expect(normalize(rebuilt)).toEqual(normalize(stored));
+  });
+
+  it("keeps an input the engine DOES read, as a real argument", () => {
+    // The paired positive. `set_data_source` and `create_attachment` also store
+    // inputs upstream's schema omits, but their engine classes declare AND read
+    // them — so they are modelled, not discarded.
+    const source = decode({
+      as: "",
+      name: "mvp:set_data_source",
+      input: [entry("workspace_id", "5", "const:int")],
+      context: { tag: "const", value: "alt", filters: [] },
+    } as unknown as StackItemXdo);
+    expect(source).toContain("workspace_id:");
+    expect(source).not.toContain("raw(");
+    expect(source).not.toContain("...");
   });
 
   it("never lets the passthrough mask a statement's OWN input entries", () => {

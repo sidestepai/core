@@ -11,9 +11,13 @@ import type { TableDef } from "../kinds/table.js";
 
 /**
  * An auth-table reference: the auth `table()` def (marked `table({ auth: true })`),
- * its bare name, a raw numeric `dbo.id` escape hatch, or `false`/omitted for no auth.
+ * its bare name, a raw numeric `dbo.id` escape hatch, or `false`/`null`/omitted
+ * for no auth.
+ *
+ * `false` and `null` are ONE state, not two: the engine gates on `!empty($auth)`,
+ * so every falsy spelling means the endpoint is public.
  */
-export type AuthRef = false | TableDef | string | number;
+export type AuthRef = false | null | TableDef | string | number;
 
 /**
  * Resolve an {@link AuthRef} to what the engine stores: `false` (no auth), a raw
@@ -26,7 +30,7 @@ export function resolveAuthRef(
   host: string,
   auth: AuthRef | undefined,
 ): false | number | string {
-  if (auth === undefined || auth === false) return false;
+  if (auth === undefined || auth === false || auth === null) return false;
   // Guard the retired boolean shorthand for untyped (JS) callers — `true` isn't
   // in the param's type, so the cast is what lets the comparison narrow.
   if ((auth as unknown) === true) {
@@ -47,13 +51,16 @@ export function resolveAuthRef(
     }
     return auth;
   }
-  // A `TableDef` handle carries its `auth` flag — reject a non-auth table at the
-  // source, with its name. (A bare-name string has no flag to inspect here.)
-  if (typeof auth === "object" && auth.auth !== true) {
-    throw new Error(
-      `${hostLabel} "${host}": table "${auth.name}" is not an auth table. ` +
-        `Mark it with \`table({ auth: true })\`, or pass a different table.`,
-    );
-  }
+  // A table's own `auth` flag is deliberately NOT enforced here. It looked like
+  // the obvious guard, and it is an invented one: the engine gates a request by
+  // comparing the TOKEN's `dbo` against the endpoint's configured `dbo` by name,
+  // and mints a token for any table by name — neither side reads the table's
+  // flag, which is an editor concern (which tables the auth picker offers).
+  //
+  // A real workspace holds a query whose auth points at a table stored
+  // `auth: false`; throwing here made a faithful pull of it unloadable, which is
+  // the SDK being stricter than the platform it authors for. The workspace
+  // export warns about the combination instead, where a name is available and
+  // nothing is blocked.
   return resolveRef("dbo", auth);
 }

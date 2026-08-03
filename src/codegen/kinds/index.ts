@@ -31,9 +31,15 @@ import { resolveReference } from "../ref-index.js";
 import { decodeFieldMap, decodeResponse, deepEqual } from "../field.js";
 import { decodeStack } from "../statement.js";
 import { decodeCondition } from "../expression.js";
-import { isDefaultEnvelopeMember, isEmptyOutput, isBlankAgentSettings } from "../../validate/normalize.js";
+import {
+  isDefaultEnvelopeMember,
+  isEmptyOutput,
+  isBlankAgentSettings,
+  normalize,
+} from "../../validate/normalize.js";
 import type { ContainerPrefix } from "../../kinds/history.js";
-import { parsePathParams } from "../../kinds/path-params.js";
+import { parsePathParams, unboundPathParams } from "../../kinds/path-params.js";
+import { ENGINE_HISTORY_LIMIT } from "../../validate/normalize.js";
 
 /** One `key: value` pair of a generated def literal. */
 export type DefEntry = readonly [string, Expr];
@@ -121,10 +127,16 @@ function historyScalar(block: unknown): boolean | number | "all" | null | undefi
   // and a block toggled back to inherit keeps whatever it last held.
   if (value.inherit === true) return null;
   if (value.inherit !== false) return undefined;
-  if (value.enabled === false) return value.limit === 100 ? false : undefined;
-  if (value.limit === -1) return "all";
-  if (value.limit === 100) return true;
-  return typeof value.limit === "number" && value.limit >= 0 ? value.limit : undefined;
+  // An ABSENT limit IS the engine default: every limit read in the engine's
+  // history resolver is `?? 100`, at every tier, and the corpus holds the two
+  // spellings side by side on the same key. `normalize` fills it in from the
+  // same constant, so the scalar this recovers and the bytes the comparison
+  // accepts cannot disagree.
+  const limit = value.limit ?? ENGINE_HISTORY_LIMIT;
+  if (value.enabled === false) return limit === ENGINE_HISTORY_LIMIT ? false : undefined;
+  if (limit === -1) return "all";
+  if (limit === ENGINE_HISTORY_LIMIT) return true;
+  return typeof limit === "number" && limit >= 0 ? limit : undefined;
 }
 
 /**
@@ -284,9 +296,8 @@ function pathAwareInputs(args: KindDecodeArgs): DefEntry | null {
     name?: unknown;
   }>;
   const name = typeof args.stored.name === "string" ? args.stored.name : "";
-  let params: string[] = [];
   try {
-    params = parsePathParams("path", name);
+    parsePathParams("path", name);
   } catch (error) {
     args.ctx.problem(
       "path-param-bound",
@@ -296,8 +307,9 @@ function pathAwareInputs(args: KindDecodeArgs): DefEntry | null {
     );
     return inputs(args);
   }
-  const bound = new Set(stored.map((field) => field.name));
-  const missing = params.filter((param) => !bound.has(param));
+  // Which params are synthesized comes from the shared rule, so the verifier
+  // forgives exactly the inputs this adds and no others.
+  const missing = unboundPathParams(name, stored);
   if (missing.length === 0) return inputs(args);
 
   args.ctx.problem(
@@ -538,8 +550,9 @@ function views(args: KindDecodeArgs): DefEntry | null {
 const EMPTY_EXTERNAL = { source: "", id: "" };
 
 /**
- * Function/query `cache` default. A function's is hard-coded by the encoder, so
- * only a query can author it.
+ * The `cache` default both a function and a query carry. Authorable on both —
+ * the engine reads a function's block through the same runtime path, and the
+ * encoder hard-coding it meant a pulled function silently lost real caching.
  */
 const DEFAULT_CACHE = {
   active: false,
@@ -598,6 +611,9 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
         plain(a.stored, "description", ""),
         plain(a.stored, "docs", ""),
         plain((a.stored.workspace ?? {}) as StoredObject, "id", 0, "workspace"),
+        // Same block, same default, same engine read as a query's — a function
+        // with caching switched on used to re-export with it OFF.
+        plain(a.stored, "cache", DEFAULT_CACHE),
         history(a),
         middleware(a),
         tags(a.stored),
@@ -1245,12 +1261,20 @@ function addonCardinality(block: unknown): { value: string; whole: boolean } | n
   if (block === null || typeof block !== "object") return null;
   const type = (block as { type?: unknown }).type;
   if (typeof type !== "string" || !LIFTABLE_CARDINALITY.has(type)) return null;
-  // A bare `{type}` is exactly what `buildContext` writes, so it can be dropped.
-  // The engine writes the full envelope, which has to ride through `context` —
-  // stating `cardinality` alongside it is still correct (an explicit `return`
-  // wins on encode, and `buildContext` only rejects a *conflicting* type), and
-  // it is what gives the generated addon its graft type.
-  return { value: type, whole: Object.keys(block as object).length === 1 };
+  // A bare `{type}` is exactly what `buildContext` writes. The engine writes the
+  // full four-branch envelope instead, but `normalize` reduces it to the live
+  // branch and drops that branch when it holds only editor defaults — so the two
+  // spellings are the same bytes far more often than the raw key count suggests.
+  // Asking `normalize` is what makes the drop safe rather than merely plausible:
+  // it is the same oracle that judges the round trip, so a block it calls equal
+  // to `{type}` cannot change the verdict when `cardinality` rebuilds it.
+  //
+  // A block carrying real configuration (a live sort, a group-by, paging on)
+  // survives normalization and rides through `context` as before, with
+  // `cardinality` stated alongside it — still correct, since an explicit `return`
+  // wins on encode and `buildContext` only rejects a *conflicting* type.
+  const reduced = normalize({ return: block }) as { return?: Record<string, unknown> };
+  return { value: type, whole: Object.keys(reduced.return ?? {}).length === 1 };
 }
 
 /** `[{sortBy, orderBy}]` → the authoring `[{sortBy, dir?}]` form (mirrors `db.query`'s). */
@@ -1304,24 +1328,40 @@ function addonEntries(a: KindDecodeArgs): DefEntry[] {
   const dboId = typeof dbo?.id === "string" ? dbo.id : "";
   const consumed = new Set<string>();
 
-  // The engine persists `{as, id}`; `buildContext` writes `{id}` alone. Both are
-  // the same bytes once `normalize` drops the empty alias, so bind on either —
-  // but a *populated* alias has no `table:` form and must ride through `context`,
-  // and an empty `{as:"", id:""}` binds nothing at all (`resolveRef` rejects a
+  // A binding is exactly `{id}` plus an optional alias, and both halves now have
+  // an authoring form (`table` / `tableAlias`) — so any binding naming a table
+  // lifts, whatever its alias. Requiring an EMPTY alias here (which matched what
+  // `buildContext` used to write) meant no engine-authored addon ever lifted:
+  // Xano's editor writes the alias on every addon it creates, so across a
+  // 177-workspace sweep all 187 bound addons carried one, and all 187 leaked the
+  // raw `dbo` blob instead of a `table:`.
+  //
+  // An empty `{as:"", id:""}` still binds nothing at all (`resolveRef` rejects a
   // target with neither name nor guid, so emitting `table:` would be a hard
-  // failure rather than a readability loss).
+  // failure rather than a readability loss) — `dboId !== ""` keeps it out.
   const onlyBindingKeys =
     dbo !== undefined && Object.keys(dbo).every((key) => key === "id" || key === "as");
-  const bindsTable = dboId !== "" && onlyBindingKeys && (dbo!.as ?? "") === "";
-  // An empty `{as:"", id:""}` is the engine's *unbound* binding — what an addon
+  const bindsTable = dboId !== "" && onlyBindingKeys;
+  // A binding naming no table is the engine's *unbound* state — what an addon
   // stores before a table is chosen, and what it falls back to when the table it
-  // referenced is deleted (the engine clears the id rather than leaving a
-  // tombstone, so those two are the same bytes). `table: null` says exactly that,
-  // and re-encodes to the same empty binding; the alternative was leaking the raw
-  // `context.dbo` blob, which documents nothing.
-  const unbound =
-    !bindsTable && onlyBindingKeys && dboId === "" && (dbo!.as ?? "") === "";
+  // referenced is deleted. `table: null` says exactly that, and re-encodes to the
+  // same empty id; the alternative was leaking the raw `context.dbo` blob, which
+  // documents nothing.
+  //
+  // The alias is NOT part of what makes it unbound: deleting a table clears the
+  // id and leaves the alias standing, so `{as:"ledger", id:""}` is just as unbound
+  // as `{as:"", id:""}` and is the commoner spelling of the two (11 of 15 in the
+  // sweep). Keying this on an empty alias sent all 11 to the passthrough — an
+  // equally broken addon, shipped with none of the diagnostic below.
+  const unbound = !bindsTable && onlyBindingKeys && dboId === "";
   if (bindsTable || unbound) consumed.add("dbo");
+  // The alias is never derived from the table it binds: the engine sanitizes
+  // non-identifier characters into it (a `quick-update` table aliased
+  // `quick_update`) and leaves it stale after a rename — or after the table is
+  // gone entirely — so it round-trips verbatim. Empty is the absent form, which
+  // `tableAlias` omits.
+  const tableAlias =
+    (bindsTable || unbound) && typeof dbo!.as === "string" && dbo!.as !== "" ? dbo!.as : null;
   if (unbound) {
     // A broken object, not a stylistic one — an unbound addon returns nothing
     // wherever it is attached. Reported so it is visible in the pull rather than
@@ -1372,6 +1412,7 @@ function addonEntries(a: KindDecodeArgs): DefEntry[] {
       : unbound
         ? (["table", lit(null)] as DefEntry)
         : null,
+    tableAlias ? (["tableAlias", lit(tableAlias)] as DefEntry) : null,
     inputs(a),
     where ? (["where", where.expr] as DefEntry) : null,
     sort ? (["sort", sort] as DefEntry) : null,

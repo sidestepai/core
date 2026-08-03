@@ -26,6 +26,38 @@ export type AsShapeBrand<As extends string, Shape> = {
   readonly __shape: Shape;
 };
 
+/**
+ * The two envelope members every stack item carries, whatever it does.
+ *
+ * They are editor affordances rather than statement arguments — `disabled` is
+ * how a step is commented out (it stays in the stack; the run engine skips it),
+ * and `description` is the note shown on the step. `encodeStatement` writes both
+ * for every statement, so every factory accepts them: the generated ones as two
+ * more optional fields on their argument object, the positional specials as a
+ * trailing options argument.
+ *
+ * Both are elided at their defaults on both sides of a round trip, so setting one
+ * to `false`/`""` is the same bytes as omitting it.
+ */
+export interface StatementAnnotations {
+  /** Leave the step in the stack but skip it at runtime — Xano's "disable step". */
+  disabled?: boolean;
+  /** Free-text note on the step, shown in the editor beside it. */
+  description?: string;
+}
+
+/**
+ * Apply {@link StatementAnnotations} to a built statement.
+ *
+ * Only members that were actually authored are copied, so a factory's own
+ * `description` (a few statements route one) is not clobbered by an absent key.
+ */
+export function annotate<T extends Statement>(stmt: T, a?: StatementAnnotations): T {
+  if (a?.disabled !== undefined) stmt.disabled = a.disabled;
+  if (a?.description !== undefined) stmt.description = a.description;
+  return stmt;
+}
+
 /** What a statement factory returns before base-envelope encoding. */
 export interface Statement {
   name: string;

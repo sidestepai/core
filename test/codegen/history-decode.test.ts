@@ -73,6 +73,16 @@ describe("history decode — an inheriting block is the default, not an unauthor
     expect(source).toContain('history: "all"');
   });
 
+  it("recovers a CUSTOMIZED block that omits its limit, which is the default", () => {
+    // The same generational gap one line down from the inheriting case above,
+    // and the one that made a real API group unauthorable: `inherit: false` with
+    // no `query_limit`. The engine reads every tier's limit as `?? 100`, so this
+    // is history-off, spelled `false` — not a block with no scalar form.
+    const project = decodeWithHistory("app", { inherit: false, query_enabled: false });
+    expect(historyProblems(project)).toEqual([]);
+    expect(project.files.map((f) => f.contents).join("\n")).toContain("history: false");
+  });
+
   it("reports engine-recorded run telemetry as an omission, not a mismatch", () => {
     // A stored ARRAY is not a settings block — it is the engine's own record of
     // past runs. Declining to write it into a committed source tree is correct,

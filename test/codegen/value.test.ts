@@ -307,6 +307,33 @@ describe("decodeValue — reporting and imports", () => {
     expect(ctx.report.entries[0]!.detail).toContain("response");
   });
 
+  it("names a blank value box as the cause, not the tag", () => {
+    // `{value:"", tag:"const:int"}` is the editor's empty number box, and it is
+    // NOT `c.int(0)` — the stored bytes differ. Every blank tag in the survey
+    // corpus reaches this, so the message has to say "blank" rather than imply
+    // the SDK cannot express integer constants at all.
+    const ctx = new DecodeContext();
+    roundTrip({ value: "", tag: "const:int", filters: [] }, ctx);
+    expect(ctx.report.entries).toHaveLength(1);
+    const detail = String(ctx.report.entries[0]!.detail);
+    expect(detail).toContain("a blank const:int");
+    expect(detail).not.toContain("no idiomatic form");
+  });
+
+  it("quotes the value a constructor cannot reproduce exactly", () => {
+    // A decimal's trailing zeros survive no number literal, so the row is named
+    // by its value rather than filed under its tag.
+    const ctx = new DecodeContext();
+    roundTrip({ value: "10.00", tag: "const:decimal", filters: [] }, ctx);
+    expect(String(ctx.report.entries[0]!.detail)).toContain('"10.00"');
+  });
+
+  it("still calls an unrecognized tag unknown", () => {
+    const ctx = new DecodeContext();
+    roundTrip({ value: "x", tag: "const:nope", filters: [] } as never, ctx);
+    expect(String(ctx.report.entries[0]!.detail)).toContain("unknown tag const:nope");
+  });
+
   it("reports nothing for values it decodes cleanly", () => {
     const ctx = new DecodeContext();
     roundTrip(withFilters(ref("a"), fl.trim()), ctx);

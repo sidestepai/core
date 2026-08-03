@@ -46,7 +46,19 @@ const setVar: SpecialDecoder = (a) => {
 
 /** `update $name { value }` — reassignment of an existing stack variable. */
 const updateVar: SpecialDecoder = (a) => {
-  const context = (a.stored.context ?? {}) as Record<string, unknown>;
+  const stored = (a.stored.context ?? {}) as Record<string, unknown>;
+  // An empty context is the blank scaffold the engine's optional pass fills in —
+  // the same state `set_var` recovers one line up, and `update_var` was already
+  // in the fill table. What blocked it was reading the NAME off the raw context:
+  // this statement carries its target inside `context`, so an empty one has to
+  // take BOTH members from the fill or neither. Every member is a scalar
+  // (`{name, value, tag?=const, filters[]}`), so the pass materializes all of
+  // them, and the editor saves this state — its context form carries no required
+  // validator, only the output-variable field does.
+  const context = (toValue(stored) ? stored : (filledContext(a.stored) ?? stored)) as Record<
+    string,
+    unknown
+  >;
   const value = toValue(context);
   const name = context.name;
   if (!value) return declineHere("update_var: context is not a tagged value");

@@ -88,7 +88,8 @@ export interface QueryDef<
    * alone and would diverge from the pinned identity. A raw numeric `dbo.id` is
    * an escape hatch that wins when given. Xano supports any number of auth
    * tables, so name the one this endpoint authenticates against; `export()`
-   * rejects a reference that isn't a registered auth table. Once set, read the
+   * rejects a reference to a table it cannot find (and warns when the table is
+   * not marked `auth: true`, which the engine allows). Once set, read the
    * authenticated record inside the stack with the `auth("path")` value ref.
    *
    * Unlike `apiGroup`, the numeric escape hatch lives in this same field rather
@@ -96,7 +97,7 @@ export interface QueryDef<
    * consumer (the `apiGroup` handle also feeds `getPath()`'s `canonical`, which
    * is why *it* needs the symbolic ref and the raw id to coexist as two fields).
    */
-  auth?: false | TableDef | string | number;
+  auth?: false | null | TableDef | string | number;
   description?: string;
   docs?: string;
   responseType?: "standard" | "stream";
@@ -222,7 +223,14 @@ export interface QueryXdo {
   market_item: { id: number; version: number; guid: string };
 }
 
-function defaultCache(override?: Partial<CacheXdo>): CacheXdo {
+/**
+ * The engine's `cache` block, with an author's overrides applied.
+ *
+ * Exported because a FUNCTION carries the same block and the engine reads it the
+ * same way (`convertFunctionToConfig` passes it straight into the runtime
+ * config) — two copies of a nine-key default would drift silently.
+ */
+export function defaultCache(override?: Partial<CacheXdo>): CacheXdo {
   return {
     active: false,
     ttl: 3600,

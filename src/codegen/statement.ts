@@ -22,6 +22,7 @@ import type { RefIndex, ResolveOptions } from "./ref-index.js";
 import { decodeFromSpec, SPECS_BY_NAME } from "./spec-inverse.js";
 import { SPECIAL_DECODERS } from "./specials/index.js";
 import { withDeclineContext } from "./prove-diff.js";
+import { hasUnreadableInput } from "../validate/normalize.js";
 
 /** Decode one stored statement to a source expression. */
 export function decodeStatement(
@@ -30,6 +31,21 @@ export function decodeStatement(
   stored: StackItemXdo,
   resolve: ResolveOptions = {},
 ): Expr {
+  // Discarding stored bytes is never silent, even when the discard is provably
+  // safe. This one is: the statement's `input[]` cannot reach the engine (see
+  // {@link hasUnreadableInput}), so it is dropped rather than carried — but a
+  // reader comparing the tree against the workspace should be told, not left to
+  // notice the entries are gone.
+  const droppedInput = (stored as { input?: unknown }).input;
+  if (hasUnreadableInput(stored.name) && Array.isArray(droppedInput) && droppedInput.length > 0) {
+    ctx.problem(
+      "expected-omission",
+      `${stored.name} carries ${droppedInput.length} stored \`input[]\` ` +
+        `${droppedInput.length === 1 ? "entry" : "entries"}, which this statement has no way to ` +
+        "read — it declares no input schema, the engine hands it none, and its editor panel " +
+        "offers no control that could set one. Not carried into the tree",
+    );
+  }
   // Guards inside the arms below report against this name (see `declineHere`).
   return withDeclineContext(stored.name, () => dispatch(ctx, refs, stored, resolve));
 }

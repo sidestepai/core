@@ -21,6 +21,7 @@ import { CORE_MODULE, type DecodeContext } from "./context.js";
 import { arr, call, lit, obj, type Expr } from "./print.js";
 import { decodeValue } from "./value.js";
 import { isBlankGroupStatement } from "../validate/normalize.js";
+import { isSearchOp } from "../statements/expression.js";
 
 /** The narrow operators `expr()` accepts; anything else needs `cmp()`. */
 const NARROW_OPS = new Set(["=", "!=", ">", "<", ">=", "<="]);
@@ -80,6 +81,12 @@ function decodeStatementNode(ctx: DecodeContext, node: ExprNode): DecodedConditi
   const statement = (node as { statement?: { op?: unknown; left?: unknown; right?: unknown } })
     .statement;
   if (!statement || typeof statement.op !== "string") return null;
+  // An operator no authoring form accepts — a blank one is what the editor
+  // stores for a filter row added and never configured. Emitting `cmp(…, "", …)`
+  // for it produced a tree that threw on load, so the whole workspace failed to
+  // verify over one unconfigured row; declining hands the caller its own exact
+  // fallback (`raw()`, or a reported view) instead.
+  if (!isSearchOp(statement.op)) return null;
 
   const left = toValue(statement.left);
   const right = toValue(statement.right);

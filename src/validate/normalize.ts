@@ -99,7 +99,7 @@ function isEmptyObject(v: unknown): boolean {
  * fields, 45% of a cluster the plan had classified as a field-authoring design
  * question rather than a canonicalization gap.
  */
-function isEmptyCustomize(v: unknown): boolean {
+export function isEmptyCustomize(v: unknown): boolean {
   return v === "" || isEmptyObject(v) || isEmptyArray(v);
 }
 function isEmptyArray(v: unknown): boolean {
@@ -213,6 +213,42 @@ const PAGING_INT_KEYS = new Set(["page", "per_page", "offset"]);
  * has to LEAD with `field_name`/`field_value` — so a blanket sort would quietly
  * corrupt them.
  */
+/**
+ * Statements whose stored `input[]` the engine CANNOT read, so its entries are
+ * editor exhaust rather than configuration.
+ *
+ * `mvp:create_image` is the only member, and it qualifies three times over: its
+ * engine class declares no input schema at all (an empty one, in every version of
+ * the class including the first); the stack runner only parses `input[]` when the
+ * schema is non-empty and otherwise hands `process` an empty array; and that
+ * `process` never reads its args, taking everything from `context`. The editor
+ * agrees — the statement's panel has four controls (access, value, filename,
+ * return-as) and no way to attach an input at all.
+ *
+ * What is actually stored is one `{tag:"auth", name:"id"}` route, on 26 statements
+ * that all sit in a scaffolded `upload/image` endpoint, against 9 hand-made ones
+ * that carry none — the present-and-absent-side-by-side pattern every other rule
+ * here rests on. Dropping it on BOTH sides is what lets those decode as an
+ * ordinary `s.storage.create_image(...)` instead of a raw envelope spread.
+ *
+ * An allowlist, and it must stay one: `mvp:set_data_source` and
+ * `mvp:create_attachment` also store inputs upstream's schema omits, but their
+ * engine classes DO declare and read them (`workspace_id`, `type`), so those are
+ * modelled as arguments instead of discarded.
+ */
+const UNREADABLE_INPUT = new Set(["mvp:create_image"]);
+
+/**
+ * True when this statement's stored `input[]` is unreadable exhaust.
+ *
+ * Exported so the decoder keys its discard on the SAME list this normalizer
+ * elides by — a second list would be a second thing to forget, and the two
+ * disagreeing would mean emitting source that cannot round-trip.
+ */
+export function hasUnreadableInput(name: unknown): boolean {
+  return typeof name === "string" && UNREADABLE_INPUT.has(name);
+}
+
 const NAME_KEYED_INPUT = new Set([
   "mvp:create_auth",
   "mvp:api_request",
@@ -442,7 +478,8 @@ export function returnWithoutIterator(value: unknown): Record<string, unknown> |
       "iterator" in (v as Record<string, unknown>)
     ) {
       found = true;
-      const { iterator: _dropped, ...rest } = v as Record<string, unknown>;
+      const rest = { ...(v as Record<string, unknown>) };
+      delete rest.iterator;
       out[k] = rest;
       continue;
     }
@@ -1042,6 +1079,29 @@ export function isEmptyOutput(v: unknown): boolean {
   return noItems && o.customize !== true;
 }
 
+/**
+ * A customized `history` block with its absent limit filled in at the engine's
+ * default, or `undefined` when there is nothing to fill.
+ *
+ * Handles both shapes: the object tier's `{inherit, enabled, limit}` and a
+ * container's `{inherit, <prefix>_enabled, <prefix>_limit}`. An INHERITING block
+ * is left alone — it is dropped wholesale elsewhere, because an inherited
+ * setting makes its own members inert.
+ */
+function historyWithDefaultLimit(v: unknown): Record<string, unknown> | undefined {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return undefined;
+  const block = v as Record<string, unknown>;
+  if (block.inherit !== false) return undefined;
+  const enabledKey = Object.keys(block).find((key) => key === "enabled" || key.endsWith("_enabled"));
+  if (enabledKey === undefined) return undefined;
+  const limitKey = enabledKey === "enabled" ? "limit" : `${enabledKey.slice(0, -"_enabled".length)}_limit`;
+  if (Object.hasOwn(block, limitKey)) return undefined;
+  return { ...block, [limitKey]: ENGINE_HISTORY_LIMIT };
+}
+
+/** The limit every tier of the engine's history resolver falls back to. */
+export const ENGINE_HISTORY_LIMIT = 100;
+
 /** An `@` target naming a table by local row id (`dbo=14`) rather than by guid. */
 const LOCAL_DBO_REF = /^dbo=\d+$/;
 
@@ -1122,7 +1182,10 @@ export function clearLocalDboRefs<T>(value: T, cleared?: Set<string>): T {
  * workspace that stored `{}` re-exports as the EXPLICIT form — the bytes change,
  * deliberately, and the live probe is what licenses changing them at all.
  */
-const EMPTY_CONTEXT_FILL: ReadonlyMap<string, { tag?: string; named: boolean }> = new Map([
+const EMPTY_CONTEXT_FILL: ReadonlyMap<
+  string,
+  { tag?: string; named: boolean; extra?: Readonly<Record<string, unknown>> }
+> = new Map([
   // Its name rides the envelope `as`, so the context is the value alone.
   ["mvp:set_var", { tag: "const", named: false }],
   // Standalone classes, each declaring its own default tag.
@@ -1176,6 +1239,27 @@ const EMPTY_CONTEXT_FILL: ReadonlyMap<string, { tag?: string; named: boolean }> 
   ["mvp:text_iends_with", { tag: "const", named: true }],
   ["mvp:text_contains", { tag: "const", named: true }],
   ["mvp:text_icontains", { tag: "const", named: true }],
+  // The file-resource family and `debug_log`: the context IS the value, like
+  // `set_var`, but the file resources declare a sibling SCALAR (`access`) that
+  // the same optional pass materializes alongside it — so the fill carries it.
+  // The nested `filename` is NOT filled: a nested object defaults to the literal
+  // string `"{}"` and materializes nothing.
+  //
+  // `extra` is exactly where the `array_pop` note above applies. `create_attachment`
+  // ALSO declares `include_meta?=false`, and filling it failed the round trip —
+  // the SDK's spec models no such field, so the encoder never writes it and the
+  // fill demanded a member the recovered record could not produce. The fill has
+  // to equal what the ENCODER writes, not everything the engine would supply.
+  // (A workspace that stores a real `include_meta` still degrades to `raw()`,
+  // which is the correct handling for an unmodelled member.)
+  //
+  // Read off each statement class's own schema, and the default tag is NOT
+  // uniform across them — the file resources declare `tag?=input` while
+  // `debug_log` declares `tag?=const`, the same split `die`/`setheader` have.
+  ["mvp:create_image", { tag: "input", named: false, extra: { access: "public" } }],
+  ["mvp:create_audio", { tag: "input", named: false, extra: { access: "public" } }],
+  ["mvp:create_attachment", { tag: "input", named: false, extra: { access: "public" } }],
+  ["mvp:debug_log", { tag: "const", named: false }],
 ]);
 
 /**
@@ -1263,7 +1347,11 @@ export function filledContext(stored: unknown): Record<string, unknown> | null {
     if (!empty) return null;
     // No tag means no operand — the fill is the name alone.
     if (whole.tag === undefined) return { name: "" };
-    return whole.named ? { name: "", ...blankValue(whole.tag) } : blankValue(whole.tag);
+    return {
+      ...(whole.named ? { name: "" } : {}),
+      ...blankValue(whole.tag),
+      ...(whole.extra ?? {}),
+    };
   }
 
   const loop = LOOP_EMPTY_ITERAND.get(name);
@@ -1315,6 +1403,9 @@ export function normalize<T>(value: T): T {
     // licence to sort `input[]` anywhere else, where order IS meaningful (a row
     // write's columns, a lookup's leading field_name/field_value).
     const sortsInput = NAME_KEYED_INPUT.has((value as { name?: unknown }).name as string);
+    // …and a statement whose `input[]` the engine cannot reach at all drops it
+    // outright, on both sides (see {@link UNREADABLE_INPUT}).
+    const dropsInput = UNREADABLE_INPUT.has((value as { name?: unknown }).name as string);
     // A sparse context — empty, or missing a loop's iterand — is one spelling of
     // the members the engine's optional-schema pass supplies. Substitute them so
     // that spelling compares equal to the explicit one (see {@link filledContext}).
@@ -1390,6 +1481,27 @@ export function normalize<T>(value: T): T {
       // selected items / customization (the `output:[]` array on query/function
       // envelopes is unaffected and falls through to normal handling).
       if (k === "output" && isEmptyOutput(v)) continue;
+      // A CUSTOMIZED history block whose limit member is absent: materialize it
+      // at the engine's default, so the older save and the current one are one
+      // state. Evidenced twice, which is what invariant 2 asks for — every limit
+      // read in the engine's resolver is `?? 100`, at every tier (object,
+      // api-group, toolset, channel, server, branch, workspace), and the corpus
+      // holds both spellings side by side on the SAME key (69 api groups store
+      // `query_limit: 100`, 9 omit it). The editor renders the absent form as
+      // 100 and writes it back on the next save, which is the generational gap
+      // that produced both.
+      //
+      // Only the LIMIT converges. An absent `*_enabled` is left alone: its
+      // default varies by object type (`function`/`middleware`/`trigger` are
+      // off, the rest on), so one rule here would have to re-derive the type,
+      // and a wrong guess would change what the engine records.
+      if (k === "history") {
+        const filled = historyWithDefaultLimit(v);
+        if (filled !== undefined) {
+          out[k] = normalize(filled);
+          continue;
+        }
+      }
       // `customize` empty form is a serialization-generation artifact: the corpus
       // emits `{}` on some fields and `""` on others within the *same* table, with
       // no authoring distinction. Canonicalize both empties to the CURRENT form
@@ -1424,6 +1536,7 @@ export function normalize<T>(value: T): T {
       //
       // Scoped to `context` deliberately. A blanket array→object coercion would
       // corrupt every genuinely-empty list in the envelope.
+      if (dropsInput && k === "input") continue;
       if (sortsInput && k === "input" && Array.isArray(v)) {
         out[k] = [...v]
           .sort((a, b) =>

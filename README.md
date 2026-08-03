@@ -1317,10 +1317,19 @@ statement takes one typed args object; control-flow specials (`s.set_var`, `s.co
 `s.for`, `s.foreach`, `s.while`, `s.group`, `s.switch`, `s.try_catch`, `s.return`, …) keep
 their authored signatures.
 
-**Every statement can carry `description` and `disabled`.** Spread them over any statement:
-`{ ...s.set_var("x", c.int(1)), disabled: true }`. `disabled: true` is Xano's commented-out
-state — the step stays in the stack and the run engine skips it, so a pull of a workspace with
-disabled steps keeps them as readable source instead of opaque blobs. Both default to absent.
+**Every statement can carry `description` and `disabled`.** They annotate the stack item rather
+than argue the statement, so they are ordinary optional arguments on all of them — inline on the
+object-arg factories, and a trailing options object on the positional specials:
+
+```ts
+s.db.add({ table: users, data: [...], disabled: true, description: "backfill, off for now" })
+s.set_var("draft", c.int(1), { disabled: true })
+```
+
+`disabled: true` is Xano's commented-out state — the step stays in the stack and the run engine
+skips it, so a pull of a workspace with disabled steps keeps them as readable source instead of
+opaque blobs. `description` is the note shown beside the step in the editor. Both default to
+absent, and both round-trip.
 
 The **call family** (`s.function.run`, `s.api.call`, `s.task.call`, `s.tool.call`, …)
 invokes another workspace object — pass the target's def handle (or name) and SideStep
@@ -1418,7 +1427,9 @@ stack) — Xano executes it straight off its `context`. Use `addon({ table, wher
 output })`: the `table` handle auto-fills the `context.dbo` binding, `where` (the
 same `expr(...)` surface as `s.db.query`) is the predicate binding the addon to
 the parent row, and `output` names the columns it returns. `sort` orders the
-result. `cardinality` shapes it — `"single"` (one object), `"list"` (array, the
+result. `tableAlias` sets that binding's SQL alias (`context.dbo.as`) — the name
+`where`/`sort` qualify columns with (`col("merchant.id")`); absent unless set, and
+never derived from the table, since Xano sanitizes it and keeps it after a rename. `cardinality` shapes it — `"single"` (one object), `"list"` (array, the
 default), `"count"` (a number), `"exists"` (a boolean), or `"aggregate"` (grouped
 rows; pass typed `group`/`eval` `{ name, as, filters? }` columns and the graft is an
 array keyed by those aliases). Register it with `.registerAddons([...])`:

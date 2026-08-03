@@ -9,6 +9,7 @@ import type { Statement } from "../statements/statement.js";
 import type { ResponseDef } from "../responses/response.js";
 import type { MiddlewareAttach } from "../kinds/middleware-attach.js";
 import type { HistoryInput } from "../kinds/history.js";
+import type { CacheXdo } from "../types/xdo.js";
 
 export type { ResponseDef };
 
@@ -62,6 +63,16 @@ export interface FunctionDef<
   history?: HistoryInput;
   /** Workspace tags (stored `tag: [{tag}]`), e.g. `["xano:quick-start"]`. */
   tags?: string[];
+  /**
+   * Response caching, in the same block a query carries — the engine reads a
+   * function's `cache` through the same path (`convertFunctionToConfig` hands it
+   * straight to the runtime config). Omit for the engine's default (inactive).
+   *
+   * Modelled because it was NOT authorable and the encoder hard-coded the
+   * default: a pulled function with caching switched on re-exported with it OFF,
+   * so a redeploy silently turned real caching off. See {@link QueryDef.cache}.
+   */
+  cache?: Partial<CacheXdo>;
 }
 
 /**

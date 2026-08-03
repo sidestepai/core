@@ -20,6 +20,8 @@ import type { Statement, AsShapeBrand } from "../statement.js";
 import type { Value } from "../../values/value.js";
 import { generated } from "../generated/factories.generated.js";
 import type { OutputAuthored } from "../schema-dsl/interpret.js";
+import { annotate } from "../statement.js";
+import type { StatementAnnotations } from "../statement.js";
 import {
   type HttpMethod,
   type HttpRequestFields,
@@ -59,7 +61,7 @@ export interface ApiRequestResult {
 
 // ── api.request ──────────────────────────────────────────────────────────────
 
-export interface ApiRequestArgs extends HttpRequestFields {
+export interface ApiRequestArgs extends HttpRequestFields, StatementAnnotations {
   /** Capture the response (`{request, response}`) into this stack variable. */
   as?: string;
   /** Request URL. */
@@ -89,6 +91,7 @@ export function apiRequest<const As extends string = "">(
     as: a.as,
     url: coerceText(a.url),
     ...coerceHttpFields(a),
+    disabled: a.disabled,
     description: a.description,
     output: a.output,
   }) as Statement & AsShapeBrand<As, ApiRequestResult>;
@@ -96,7 +99,7 @@ export function apiRequest<const As extends string = "">(
 
 // ── stream.from_request ──────────────────────────────────────────────────────
 
-export interface StreamFromRequestArgs extends HttpRequestFields {
+export interface StreamFromRequestArgs extends HttpRequestFields, StatementAnnotations {
   /** Capture the streaming response into this stack variable. */
   as?: string;
   /** Request URL. */
@@ -109,16 +112,16 @@ export interface StreamFromRequestArgs extends HttpRequestFields {
  */
 export function streamFromRequest(a: StreamFromRequestArgs = {}): Statement {
   assertSslConsistency("stream.from_request", a);
-  return generated.stream.from_request({
+  return annotate(generated.stream.from_request({
     as: a.as,
     url: coerceText(a.url),
     ...coerceHttpFields(a),
-  });
+  }), a);
 }
 
 // ── webflow.request ──────────────────────────────────────────────────────────
 
-export interface WebflowRequestArgs extends HttpRequestFields {
+export interface WebflowRequestArgs extends HttpRequestFields, StatementAnnotations {
   /** Capture the response into this stack variable. */
   as?: string;
   /** Request path (relative to the Webflow API host). */
@@ -137,12 +140,14 @@ export function webflowRequest<const As extends string = "">(
     as: a.as,
     path: coerceText(a.path),
     ...coerceHttpFields(a),
+    disabled: a.disabled,
+    description: a.description,
   }) as Statement & AsShapeBrand<As, ApiRequestResult>;
 }
 
 // ── api.microservice ─────────────────────────────────────────────────────────
 
-export interface MicroserviceArgs {
+export interface MicroserviceArgs extends StatementAnnotations {
   /** Capture the response into this stack variable. */
   as?: string;
   /** Target microservice host. */
@@ -178,5 +183,7 @@ export function microservice<const As extends string = "">(
     headers: coerceArray(a.headers)!,
     timeout: coerceInt(a.timeout)!,
     follow_location: coerceBool(a.follow_location)!,
+    disabled: a.disabled,
+    description: a.description,
   }) as Statement & AsShapeBrand<As, ApiRequestResult>;
 }

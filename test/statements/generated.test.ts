@@ -241,13 +241,24 @@ describe("generated envelope authoring — description + output (U2)", () => {
     expect(encoded.output).toEqual({ items: [], filters: [], customize: false });
   });
 
-  it("ignores a description on a lean statement whose envelope has none", () => {
-    // math_add has no `description` envelope flag; the reserved key is inert.
+  it("honours a description on a lean statement, whose envelope profile has none", () => {
+    // The envelope profile decides whether an EMPTY description is emitted by
+    // default — a byte detail pinned per statement from its golden. It does not
+    // decide whether one can be authored: `description` annotates the stack item,
+    // `encodeStatement` writes the member for every statement, and the editor
+    // offers the note on all of them. Two real `mvp:array_push` statements in a
+    // 177-workspace sweep carry a non-empty one, so dropping it here discarded
+    // authored data that the engine does store on lean statements.
     const mathAddFactory = getStatementFactory("mvp:math_add");
     const encoded = encodeStatement(
-      mathAddFactory({ name: "x1", value: c.int(1), description: "ignored" } as never),
+      mathAddFactory({ name: "x1", value: c.int(1), description: "why this step" }),
     );
-    // encodeStatement fills the uniform envelope default; the authored value is dropped.
+    expect(encoded.description).toBe("why this step");
+  });
+
+  it("still defaults to the empty description when none is authored", () => {
+    const mathAddFactory = getStatementFactory("mvp:math_add");
+    const encoded = encodeStatement(mathAddFactory({ name: "x1", value: c.int(1) }));
     expect(encoded.description).toBe("");
   });
 });

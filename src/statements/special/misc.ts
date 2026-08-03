@@ -28,6 +28,8 @@ import { encodeStatement, registerStatement } from "../statement.js";
 import type { Value } from "../../values/value.js";
 import { resolveRef } from "../../refs/guid.js";
 import type { ObjectRef } from "../../refs/guid.js";
+import { annotate } from "../statement.js";
+import type { StatementAnnotations } from "../statement.js";
 
 function vf(v: Value): { value: string; tag: string; filters: unknown[] } {
   return { value: v.value, tag: v.tag, filters: v.filters };
@@ -40,7 +42,7 @@ function vf(v: Value): { value: string; tag: string; filters: unknown[] } {
 //   array_map   → { output_type:"value", collection:<source>, transform_value?:<map> }
 //   array_union → { left:<source>, right?:<other>, transform_value?:<map> }
 
-export interface ArrayMapArgs {
+export interface ArrayMapArgs extends StatementAnnotations {
   /** The source array → stored `collection`. */
   source: Value;
   as?: string;
@@ -59,10 +61,10 @@ export interface ArrayMapArgs {
 export function arrayMap(a: ArrayMapArgs): Statement {
   const context: Record<string, unknown> = { output_type: "value", collection: vf(a.source) };
   if (a.transform) context.transform_value = vf(a.transform);
-  return { name: "mvp:array_map", context, as: a.as ?? "", input: [] };
+  return annotate({ name: "mvp:array_map", context, as: a.as ?? "", input: [] }, a);
 }
 
-export interface ArrayUnionArgs {
+export interface ArrayUnionArgs extends StatementAnnotations {
   /** The base array → stored `left`. */
   source: Value;
   /** The array to union in → stored `right`. */
@@ -82,24 +84,28 @@ export function arrayUnion(a: ArrayUnionArgs): Statement {
   const context: Record<string, unknown> = { left: vf(a.source) };
   if (a.with) context.right = vf(a.with);
   if (a.transform) context.transform_value = vf(a.transform);
-  return { name: "mvp:array_union", context, as: a.as ?? "", input: [] };
+  return annotate({ name: "mvp:array_union", context, as: a.as ?? "", input: [] }, a);
 }
 
 // --- comment / placeholder -------------------------------------------------
 
-/** `comment` — a no-op annotation node (`mvp:comment`). Text rides the `description`. */
-export function comment(text = ""): Statement {
-  return { name: "mvp:comment", description: text, context: {}, input: [] };
+/**
+ * `comment` — a no-op annotation node (`mvp:comment`). The text IS this
+ * statement's `description`, so `text` and `a.description` set the same member
+ * and an explicit `a.description` wins; `a.disabled` applies as it does anywhere.
+ */
+export function comment(text = "", a?: StatementAnnotations): Statement {
+  return annotate({ name: "mvp:comment", description: text, context: {}, input: [] }, a);
 }
 
 /** `placeholder <name>` — an unconfigured statement slot (`mvp:placeholder`). */
-export function placeholder(name: string): Statement {
-  return { name: "mvp:placeholder", context: { name }, input: [] };
+export function placeholder(name: string, a?: StatementAnnotations): Statement {
+  return annotate({ name: "mvp:placeholder", context: { name }, input: [] }, a);
 }
 
 // --- raw input / post-process ---------------------------------------------
 
-export interface GetRawInputArgs {
+export interface GetRawInputArgs extends StatementAnnotations {
   as?: string;
   /** Body decoding (`json`, `raw`, …). */
   encoding?: Value;
@@ -115,7 +121,7 @@ export interface GetRawInputArgs {
  * authored, matching what Xano's editor stores.
  */
 export function getRawInput(a: GetRawInputArgs = {}): Statement {
-  return {
+  return annotate({
     name: "mvp:get_input",
     context: {},
     as: a.as ?? "",
@@ -128,7 +134,7 @@ export function getRawInput(a: GetRawInputArgs = {}): Statement {
         ? []
         : [{ name: "exclude_middleware_modification", ...vf(a.excludeMiddleware) }]),
     ],
-  };
+  }, a);
 }
 
 /**
@@ -136,13 +142,16 @@ export function getRawInput(a: GetRawInputArgs = {}): Statement {
  * A pure block statement (engine schema `args: []`): no `as`, just the `run`
  * stack. Byte-verified (parser-minimal) against the engine's persisted shape.
  */
-export function postProcess(body: Statement[]): Statement {
-  return { name: "mvp:post_process", context: { run: body.map(encodeStatement) }, input: [] };
+export function postProcess(body: Statement[], a?: StatementAnnotations): Statement {
+  return annotate(
+    { name: "mvp:post_process", context: { run: body.map(encodeStatement) }, input: [] },
+    a,
+  );
 }
 
 // --- realtime event (declarative) ------------------------------------------
 
-export interface RealtimeEventArgs {
+export interface RealtimeEventArgs extends StatementAnnotations {
   /** The channel to publish on. */
   channel: Value;
   /** The event payload. */
@@ -171,11 +180,11 @@ export interface RealtimeEventArgs {
 export function realtimeEvent(a: RealtimeEventArgs): Statement {
   const auth: Record<string, unknown> = { row_id: vf(a.authId) };
   if (a.authTable !== undefined) auth.dbo_id = resolveRef("dbo", a.authTable);
-  return {
+  return annotate({
     name: "mvp:realtime_event",
     context: { channel: vf(a.channel), data: vf(a.data), auth },
     input: [],
-  };
+  }, a);
 }
 
 // --- realtime publish (declarative) ----------------------------------------
@@ -189,7 +198,7 @@ export function realtimeEvent(a: RealtimeEventArgs): Statement {
  */
 export type RealtimePublishServer = string | { name: string } | Value;
 
-export interface RealtimePublishArgs {
+export interface RealtimePublishArgs extends StatementAnnotations {
   /**
    * The owning realtime server, by name. Required: a channel path is unique only
    * within its server, so the path alone cannot be addressed.
@@ -274,7 +283,7 @@ export function realtimePublish(a: RealtimePublishArgs): Statement {
   if (a.authTable !== undefined) auth.dbo_id = resolveRef("dbo", a.authTable);
   if (a.authId !== undefined) auth.row_id = vf(a.authId);
   if (Object.keys(auth).length > 0) context.auth = auth;
-  return { name: "mvp:realtime_publish", context, input: [] };
+  return annotate({ name: "mvp:realtime_publish", context, input: [] }, a);
 }
 
 /** Coerce the `server` argument to its stored value form — always the server's NAME. */
@@ -295,7 +304,7 @@ function publishServerValue(server: RealtimePublishServer): { value: string; tag
 
 // --- auth token (declarative) ----------------------------------------------
 
-export interface CreateAuthTokenArgs<As extends string = string> {
+export interface CreateAuthTokenArgs<As extends string = string> extends StatementAnnotations {
   /**
    * The auth table the token authenticates against.
    *
@@ -324,7 +333,7 @@ export interface CreateAuthTokenArgs<As extends string = string> {
 export function createAuthToken<const As extends string = "">(
   a: CreateAuthTokenArgs<As>,
 ): Statement & AsShapeBrand<As, string> {
-  return {
+  return annotate({
     name: "mvp:create_auth",
     context: {},
     as: a.as ?? "",
@@ -343,7 +352,7 @@ export function createAuthToken<const As extends string = "">(
       ...(a.extras === undefined ? [] : [{ name: "extras", ...vf(a.extras) }]),
       ...(a.expiration === undefined ? [] : [{ name: "expiration", ...vf(a.expiration) }]),
     ],
-  } as unknown as Statement & AsShapeBrand<As, string>;
+  } as unknown as Statement & AsShapeBrand<As, string>, a);
 }
 
 // --- security.create_guid ---------------------------------------------------
@@ -360,19 +369,19 @@ export function createAuthToken<const As extends string = "">(
  * Branded `AsShapeBrand<As, string>` so a `ref("<as>")` traces to `string`.
  */
 export function createGuid<const As extends string = "">(
-  a: { as?: As } = {},
+  a: { as?: As } & StatementAnnotations = {},
 ): Statement & AsShapeBrand<As, string> {
-  return {
+  return annotate({
     name: "mvp:guid",
     context: {},
     as: a.as ?? "",
     input: [],
-  } as unknown as Statement & AsShapeBrand<As, string>;
+  }, a) as unknown as Statement & AsShapeBrand<As, string>;
 }
 
 // --- expect.to_throw (structural) ------------------------------------------
 
-export interface ExpectToThrowArgs {
+export interface ExpectToThrowArgs extends StatementAnnotations {
   /** The statements expected to raise. */
   body: Statement[];
   /** Optional expected exception matcher. */
@@ -383,7 +392,7 @@ export interface ExpectToThrowArgs {
 export function expectToThrow(a: ExpectToThrowArgs): Statement {
   const context: Record<string, unknown> = { run: a.body.map(encodeStatement) };
   if (a.exception) context.exception = vf(a.exception);
-  return { name: "mvp:test_expect_to_throw", context, input: [] };
+  return annotate({ name: "mvp:test_expect_to_throw", context, input: [] }, a);
 }
 
 registerStatement("mvp:array_map", arrayMap);

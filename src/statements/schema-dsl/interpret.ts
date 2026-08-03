@@ -26,7 +26,7 @@
  * logged, never guessed.
  */
 import type { Statement } from "../statement.js";
-import { registerStatement } from "../statement.js";
+import { registerStatement, annotate } from "../statement.js";
 import type { Value } from "../../values/value.js";
 import { leanInput } from "../lean-input.js";
 import { isIgnored } from "../../values/ignored.js";
@@ -112,15 +112,15 @@ export interface OutputAuthored {
 
 /**
  * Authored inputs for a spec-driven statement, keyed by field name. Besides the
- * spec's rule fields, two reserved envelope keys are honored when the spec's
- * envelope permits them: `description` (a per-statement description string, the
- * frontend "Settings" tab) and `output` (an {@link OutputAuthored} shaping the
- * result envelope). No engine statement routes a rule field named `description`
- * or `output`, so these names are unambiguous.
+ * spec's rule fields, three reserved envelope keys are honored: `disabled` and
+ * `description` ({@link StatementAnnotations} — accepted on every statement) and
+ * `output` (an {@link OutputAuthored} shaping the result envelope, only where the
+ * statement carries one). No engine statement routes a rule field by any of those
+ * three names, so they are unambiguous.
  */
 export type Authored = Record<
   string,
-  string | Value | Condition | OutputAuthored | undefined
+  string | boolean | Value | Condition | OutputAuthored | undefined
 >;
 
 function valueFields(v: Value): { value: string; tag: string; filters: unknown[] } {
@@ -225,11 +225,15 @@ export function encodeFromSpec(spec: StatementSpec, authored: Authored): Stateme
   const stmt: Statement = { name: spec.name, context, input };
   if (as !== undefined) stmt.as = as;
   else if (env?.emitAs) stmt.as = "";
-  if (env?.description) {
-    // Reserved envelope key: an authored per-statement description, else "".
-    const d = authored.description;
-    stmt.description = typeof d === "string" ? d : "";
-  }
+  // The envelope profile decides whether a description is emitted at its empty
+  // DEFAULT (a byte detail pinned from each statement's golden); an AUTHORED one
+  // is honoured on every statement, profile or not, because `encodeStatement`
+  // writes the member unconditionally. `annotate` applies `disabled` the same way.
+  if (env?.description) stmt.description = "";
+  annotate(stmt, {
+    disabled: typeof authored.disabled === "boolean" ? authored.disabled : undefined,
+    description: typeof authored.description === "string" ? authored.description : undefined,
+  });
   if (env?.settingsRegistry) stmt.settings_registry = [];
   if (spec.output) {
     const base = env?.richOutput ? { customize: false, filters: [], items: [] } : { filters: [] };

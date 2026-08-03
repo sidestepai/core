@@ -29,7 +29,7 @@ import type { FieldRule, StatementSpec } from "./interpret.js";
  *   Both query surfaces also lost `base_url` and `expression`.
  *
  *   Four independent sources agree on the corrected shapes, which is why these
- *   are safe to assert: the engine's own statement classes (`getInputSchema`);
+ *   are safe to assert: the engine's own declared schema for each statement;
  *   the stored bytes of every affected statement in a 187-workspace sweep; the
  *   editor, whose shared query component carries a per-platform POSITIONAL index
  *   map that is uniformly one lower for Elasticsearch than OpenSearch — exactly
@@ -64,12 +64,43 @@ export function applySpecOverrides(spec: StatementSpec): void {
       if (rule) rule.optional = true;
     }
   }
+  const missing = UNDECLARED_INPUT[spec.name];
+  if (missing && !spec.rules.some((r) => r.field === missing)) {
+    spec.rules.push({
+      field: missing,
+      type: "value",
+      optional: true,
+      route: { kind: "input", name: missing },
+    });
+  }
 }
+
+/**
+ * Statement inputs the engine READS that upstream's schema never declares.
+ *
+ * Both are ordinary optional inputs in the engine's declared schema for these
+ * statements, and both are read at runtime: `set_data_source` takes
+ * `workspace_id` as the workspace to switch to, and `create_attachment` takes
+ * `type` and honours it when it is one of `image`/`video`/`audio`. Upstream's
+ * schema YAML lists neither, so the generated factories had no way to author them
+ * and a stored one had nowhere to go.
+ *
+ * They are asserted rather than dropped BECAUSE they are live. The two instances
+ * in the survey corpus happen to be inert at their stored values — PHP reads
+ * `workspace_id: 0` as falsy, so it behaves exactly like absent, and `type: ""`
+ * is not in the allowed list — but that is a fact about those two values, not
+ * about the fields. A real `workspace_id` or `type: "image"` changes what the
+ * statement does, so discarding the surface would lose a live one.
+ */
+const UNDECLARED_INPUT: Readonly<Record<string, string>> = {
+  "mvp:set_data_source": "workspace_id",
+  "mvp:create_attachment": "type",
+};
 
 /**
  * The stored `input[]` order and membership per statement.
  *
- * Membership comes from each engine class's `getInputSchema`. ORDER comes from
+ * Membership comes from the engine's declared schema per statement. ORDER comes from
  * the EDITOR, which is what actually writes the bytes: its shared query
  * component carries a per-platform positional index map, and the two disagree —
  * the engine declares `expression`/`sort` mid-schema while the editor stores

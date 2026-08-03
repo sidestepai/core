@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   encodeQuery,
   queryKind,
@@ -96,11 +96,22 @@ describe("query kind", () => {
     }
   });
 
-  it("rejects a non-auth table def at the source, naming the table", () => {
+  it("accepts a table the engine accepts, flag or no flag", () => {
+    // The engine compares the TOKEN's `dbo` to the endpoint's configured `dbo`
+    // by name and mints a token for any table by name — neither side reads the
+    // table's own `auth` flag, which is an editor concern. A real workspace
+    // ships this combination, and refusing it made that pull unloadable.
     const posts = table({ name: "posts", schema: { body: f.text() } }); // no auth: true
-    expect(() => encodeQuery({ name: "x", verb: "POST", auth: posts })).toThrow(
-      /table "posts" is not an auth table/,
+    expect(encodeQuery({ name: "x", verb: "POST", auth: posts }).auth).toBe(
+      encodeQuery({ name: "x", verb: "POST", auth: "posts" }).auth,
     );
+  });
+
+  it("treats `null` auth as `false` — the engine's one falsy state", () => {
+    // The engine gates on `!empty($auth)`, so every falsy spelling is public.
+    expect(encodeQuery({ name: "x", verb: "POST", auth: null }).auth).toBe(false);
+    expect(encodeQuery({ name: "x", verb: "POST", auth: false }).auth).toBe(false);
+    expect(encodeQuery({ name: "x", verb: "POST" }).auth).toBe(false);
   });
 
   it("requires name and verb", () => {
@@ -198,12 +209,21 @@ describe("query + api_group on Xano", () => {
     expect(q.find((x) => x.name === "byName").auth).toBe(userGuid);
   });
 
-  it("export rejects an `auth` name that resolves to a non-auth table", () => {
+  it("export WARNS about an `auth` table with no auth flag, and still exports", () => {
+    // The engine allows it (see the encode-side test), so blocking the export
+    // would block a real workspace's round trip. The unusual combination is
+    // still worth saying out loud, where the table's name is available.
     const posts = table({ name: "posts", schema: { body: f.text() } });
-    const x = new Xano()
-      .registerTables([posts])
-      .registerQueries([{ name: "create_post", verb: "POST", auth: "posts" }]);
-    expect(() => x.export()).toThrow(/references table "posts", which is not an auth table/);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const x = new Xano()
+        .registerTables([posts])
+        .registerQueries([{ name: "create_post", verb: "POST", auth: "posts" }]);
+      expect(() => x.export()).not.toThrow();
+      expect(warn.mock.calls.flat().join(" ")).toMatch(/not marked `table\(\{ auth: true \}\)`/);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("export rejects an `auth` name that matches no registered table (typo)", () => {

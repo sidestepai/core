@@ -327,6 +327,45 @@ describe("verifyBundles", () => {
     );
     expect(result.ok).toBe(true);
   });
+
+  it("forgives the path-param input codegen deliberately synthesizes", () => {
+    // Xano serves an endpoint whose `{param}` binds to no input; SideStep
+    // refuses to author one, so codegen declares it and reports
+    // `path-param-bound`. Failing the round trip for the same thing double-
+    // reports it — and it was 30 of the 30 verify-mismatch rows on a full sweep.
+    const source = { name: "test/{abc}", input: [] };
+    const regenerated = { name: "test/{abc}", input: [{ name: "abc", type: "text" }] };
+    const result = verifyBundles(
+      bundle([], { query: [source] }),
+      bundle([], { query: [regenerated] }),
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("still fails when a path-param input was bound upstream and came back different", () => {
+    // Only params the SOURCE leaves unbound are forgiven. One the source
+    // declares is ordinary data, and a changed one is a real loss.
+    const source = { name: "test/{abc}", input: [{ name: "abc", type: "int" }] };
+    const regenerated = { name: "test/{abc}", input: [{ name: "abc", type: "text" }] };
+    const result = verifyBundles(
+      bundle([], { query: [source] }),
+      bundle([], { query: [regenerated] }),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.mismatches[0]).toMatchObject({ payloadKey: "query", name: "test/{abc}" });
+  });
+
+  it("still fails when the regenerated object differs beyond the synthesized input", () => {
+    const source = { name: "test/{abc}", input: [], description: "hi" };
+    const regenerated = {
+      name: "test/{abc}",
+      input: [{ name: "abc", type: "text" }],
+      description: "",
+    };
+    expect(verifyBundles(bundle([], { query: [source] }), bundle([], { query: [regenerated] })).ok).toBe(
+      false,
+    );
+  });
 });
 
 describe("reportMismatches", () => {

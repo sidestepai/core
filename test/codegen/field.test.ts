@@ -340,11 +340,14 @@ describe("decodeField — inputs", () => {
       },
     };
     const ctx = new DecodeContext();
-    const decoded = decodeField(ctx, refsFor(), stored as never, "input");
+    const refs = refsFor({ dbo: [{ name: "users", guid }] });
+    const decoded = decodeField(ctx, refs, stored as never, "input");
     const source = printExpr(decoded.expr);
-    expect(source).toContain("rawField(");
-    // Reset to the unbound spelling, not carried.
-    expect(source).toContain('"dbo="');
+    // Reset to the unbound spelling, not carried — on the READABLE path, which
+    // is where a customized dblink lands now.
+    expect(source).toContain("input.dbLink(");
+    // The `@` target survives as the colon shorthand, pointing at nothing.
+    expect(source).toContain('"@:dbo="');
     expect(source).not.toContain("dbo=14");
     // Warned about by name — a cleared reference is a real loss, not a passthrough.
     const detail = ctx.report.entries.map((e) => String(e.detail)).join(" | ");
@@ -364,9 +367,56 @@ describe("decodeField — inputs", () => {
       },
     };
     const ctx = new DecodeContext();
-    const decoded = decodeField(ctx, refsFor(), stored as never, "input");
+    const refs = refsFor({ dbo: [{ name: "users", guid }] });
+    const decoded = decodeField(ctx, refs, stored as never, "input");
     expect(printExpr(decoded.expr)).toContain(target);
     expect(ctx.report.entries.some((e) => e.category === "unresolved-ref")).toBe(false);
+  });
+
+  it("recovers a per-column customize map as a readable dbLink call", () => {
+    // Xano's own CRUD scaffold writes this: one dblink input whose expansion is
+    // customized per column. It was the largest `rawField()` cluster in the
+    // sweep — 77 fields — until `customize` became an authorable option.
+    const guid = "9f3c81a04be27d6510aa4c8831ef25b7";
+    const refs = refsFor({ dbo: [{ name: "users", guid }] });
+    const source = identity(
+      "users__",
+      input.dbLink(
+        { name: "users", guid },
+        {
+          hidden: ["created_at"],
+          customize: {
+            first_name: { required: true, methods: ["lower", "trim"] },
+            bio: { default: "n/a" },
+            secret: { hidden: true },
+            address: { customize: { zip: { required: true } } },
+          },
+        },
+      ),
+      "input",
+      refs,
+    );
+    expect(source).toContain("input.dbLink(");
+    expect(source).toContain("customize");
+    expect(source).not.toContain("rawField(");
+  });
+
+  it("carries a customize node with an unmodelled member verbatim", () => {
+    // Every node in the survey corpus holds the same five keys. A sixth is a
+    // shape this has never seen, so it must not be encoded as though the extra
+    // member were absent — that would be a silent rewrite of stored bytes.
+    const guid = "9f3c81a04be27d6510aa4c8831ef25b7";
+    const stored = {
+      ...encodeField("users__", `${guid}_mvpschema`, { merge: true }, INPUT_CONTEXT),
+      customize: {
+        bio: { hidden: false, default: "", required: false, customize: {}, methods: [], sensitive: true },
+      },
+    };
+    const ctx = new DecodeContext();
+    const refs = refsFor({ dbo: [{ name: "users", guid }] });
+    const source = printExpr(decodeField(ctx, refs, stored as never, "input").expr);
+    expect(source).toContain("rawField(");
+    expect(source).toContain("sensitive");
   });
 
   it("keeps the database link off the column surface", () => {

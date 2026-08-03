@@ -148,6 +148,19 @@ describe("U8 kinds on Xano", () => {
   });
 });
 
+describe("workspace name", () => {
+  it("accepts the empty name a real workspace stores", () => {
+    // One workspace on the survey instance stores `name: ""` — the engine allows
+    // it — and refusing that spelling made a faithful pull of it impossible to
+    // export at all. The SDK follows the engine's rule, not a stricter one.
+    expect(encodeWorkspaceConfig({ name: "" }).name).toBe("");
+  });
+
+  it("still refuses a MISSING name, which is an authoring mistake", () => {
+    expect(() => encodeWorkspaceConfig({} as never)).toThrow(/`name` is required/);
+  });
+});
+
 describe("workspace-tier middleware", () => {
   it("omits the middleware key when the author sets none", () => {
     const w = encodeWorkspaceConfig({ name: "b12" });

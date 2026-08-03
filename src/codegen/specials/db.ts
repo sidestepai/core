@@ -710,11 +710,20 @@ function sqlEntries(
 ): { entries: Array<[string, Expr]>; runtime: Record<string, unknown> } | null {
   // An UNCONFIGURED statement — the engine writes `context: {}` for one that was
   // dropped into a stack and never filled in, and all 6 in the survey corpus are
-  // that, not a malformed `code`. Left as `raw()` deliberately: five of the six
-  // are external-engine variants whose `connection_string_flex` is a nested
-  // object, and the optional-schema pass does not materialize those (see the
-  // note by {@link filledContext}), so there is no connection string to recover
-  // and the factory could not be called at all. The message says which it is.
+  // that, not a malformed `code`. Left as `raw()` deliberately, and the two
+  // halves have DIFFERENT reasons — read them before re-opening this:
+  //
+  //  - The five external-engine variants declare `connection_string_flex` as a
+  //    NESTED object, and the optional-schema pass defaults a nested member to
+  //    the literal string `"{}"` rather than materializing it (see the note by
+  //    {@link filledContext}). There is nothing to recover, full stop.
+  //  - `mvp:dbo_direct_query` is different: its context is `{code, response_type
+  //    ?=list, parser?=prepared, arg[]?=[]}` — every member a scalar or a list,
+  //    so the engine DOES supply them all and the state is in principle
+  //    recoverable. What stops it is shape, not evidence: {@link
+  //    EMPTY_CONTEXT_FILL} fills a context that IS a tagged value, and this one
+  //    is a plain multi-member record. Closing it means a second fill shape for
+  //    one row of a statement that has no SQL in it either way.
   if (context.code === undefined && Object.keys(context).length === 0) {
     declineHere("raw SQL: context is empty — the statement was never configured");
     return a.ctx.declined(

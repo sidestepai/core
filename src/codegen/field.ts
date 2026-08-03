@@ -8,23 +8,24 @@
  * shape, the decoder drops to the descriptor literal (`{type, options}`), which
  * is still a legal `FieldDescriptor` and still round-trips.
  *
- * A handful of stored keys are fixed by `encodeField` and have no authoring
- * surface at all (`merge`, `hidden`, `override`, `customize`, `market_item`,
- * `is_settings_registry`). A field carrying a non-default value for one of those
- * cannot round-trip through any authored form, so it is reported by name rather
- * than quietly emitted as something close.
+ * A couple of stored keys are fixed by `encodeField` and have no authoring
+ * surface at all (`override`, `is_settings_registry`). A field carrying a
+ * non-default value for one of those cannot round-trip through any authored
+ * form, so it is reported by name rather than quietly emitted as something
+ * close. `merge`, `hidden`, and `customize` used to sit in that set and are
+ * authorable options now — each move turned a large `rawField()` cluster in the
+ * sweep into readable catalog calls.
  */
 import type { FieldXdo, MethodXdo, ResultItemXdo, TaggedValue } from "../types/xdo.js";
-import type { FieldOptions, MethodSpec, NestedField } from "../fields/field.js";
+import type { FieldCustomization, FieldOptions, MethodSpec, NestedField } from "../fields/field.js";
 import { COLUMN_CONTEXT, INPUT_CONTEXT, encodeField } from "../fields/field.js";
-import type { FieldContext } from "../fields/field.js";
 import { f } from "../fields/catalog.js";
 import type { FieldDescriptor } from "../fields/catalog.js";
 import { input } from "../inputs/input.js";
 import { CODEGEN_MODULE, CORE_MODULE, type DecodeContext } from "./context.js";
 import { call, lit, obj, type Expr } from "./print.js";
 import { resolveReference, type RefIndex, type ResolveOptions } from "./ref-index.js";
-import { clearLocalDboRefs, normalize, isDeadResultItem } from "../validate/normalize.js";
+import { clearLocalDboRefs, normalize, isDeadResultItem, isEmptyCustomize } from "../validate/normalize.js";
 import { decodeValue } from "./value.js";
 
 /** Which authoring catalog to emit against: table columns (`f`) or inputs (`input`). */
@@ -134,25 +135,24 @@ function deepEqual(a: unknown, b: unknown): boolean {
 /**
  * Stored keys with no authoring surface that this field sets to a non-default.
  *
- * `customize` and `market_item` come from the {@link FieldContext} rather than a
- * constant, so they are checked against the context in force.
- *
  * The comparison runs under `normalize` — the round-trip contract's own
  * comparator — not raw equality, so a legacy `customize:""` counts as the empty
  * customization it is rather than as an unrepresentable shape. Comparing raw
  * made this function contradict the oracle the decode is proven against: the
  * catalog call it refused reproduces the field exactly under the only
  * comparison anyone actually runs.
+ *
+ * `customize` used to sit here too. It is an authorable option now
+ * ({@link FieldOptions.customize}), which is what lets Xano's own CRUD scaffold
+ * — a dblink input with per-column overrides — come back as a readable
+ * `input.dbLink` call instead of a `rawField()` envelope.
  */
-function unrepresentableKeys(stored: FieldXdo, context: FieldContext): string[] {
+function unrepresentableKeys(stored: FieldXdo): string[] {
   const record = stored as unknown as Record<string, unknown>;
   // `_xsid` and `market_item` are omitted deliberately: `normalize` strips both,
   // so a stored value there does not break the round trip and reporting it would
   // be noise on every pulled object.
-  const fixed: Array<readonly [string, unknown]> = [
-    ...ENCODER_FIXED,
-    ["customize", context.customize],
-  ];
+  const fixed: Array<readonly [string, unknown]> = [...ENCODER_FIXED];
   // Each side is normalized as a one-key OBJECT, not as a bare value: the rules
   // that canonicalize the empty `customize` forms (and that drop a member
   // sitting at its engine default) are keyed off the member NAME, so they only
@@ -203,6 +203,46 @@ function recoverMethods(stored: readonly MethodXdo[]): MethodSpec[] | null {
     // like a number) falls back to the explicit form rather than drifting.
     const shorthand = colonForm(method.name, args);
     out.push(shorthand ?? { name: method.name, arg: [...args] });
+  }
+  return out;
+}
+
+/**
+ * Recover a stored `customize` map into authoring form: `null` when the map is
+ * one of the empty spellings (nothing to author), `undefined` when a node holds
+ * something no {@link FieldCustomization} can express.
+ *
+ * The tri-state is what keeps the two outcomes apart at the call site: an empty
+ * map is the ordinary case on every field in a workspace, while an unexpressible
+ * node has to take the whole field to a verbatim form rather than silently
+ * dropping the member.
+ */
+function recoverCustomize(
+  stored: unknown,
+): Readonly<Record<string, FieldCustomization>> | null | undefined {
+  if (isEmptyCustomize(stored)) return null;
+  if (stored === null || typeof stored !== "object" || Array.isArray(stored)) return undefined;
+  const out: Record<string, FieldCustomization> = {};
+  for (const [name, value] of Object.entries(stored as Record<string, unknown>)) {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
+    const node = value as Record<string, unknown>;
+    // Every stored node carries exactly these five keys; a sixth is a shape this
+    // has never seen and must not be encoded as though the extra were absent.
+    const known = new Set(["hidden", "default", "methods", "required", "customize"]);
+    if (Object.keys(node).some((key) => !known.has(key))) return undefined;
+    const methods = recoverMethods((node.methods ?? []) as MethodXdo[]);
+    if (methods === null) return undefined;
+    const nested = recoverCustomize(node.customize);
+    if (nested === undefined) return undefined;
+    const recovered: FieldCustomization = {};
+    if (node.hidden === true) recovered.hidden = true;
+    if (node.required === true) recovered.required = true;
+    if (node.default !== undefined && node.default !== "") {
+      recovered.default = node.default as FieldCustomization["default"];
+    }
+    if (methods.length > 0) recovered.methods = methods;
+    if (nested !== null) recovered.customize = nested;
+    out[name] = recovered;
   }
   return out;
 }
@@ -261,6 +301,10 @@ function recoverOptions(
   const methods = recoverMethods(stored.methods ?? []);
   if (methods === null) return null;
   if (methods.length > 0) options.methods = methods;
+
+  const customize = recoverCustomize(stored.customize);
+  if (customize === undefined) return null;
+  if (customize !== null) options.customize = customize;
 
   const children: NestedField[] = [];
   for (const child of storedChildren(stored)) {
@@ -356,32 +400,36 @@ export function decodeField(
   resolve: ResolveOptions = {},
 ): DecodedField {
   const context = surface === "input" ? INPUT_CONTEXT : COLUMN_CONTEXT;
+
+  // The one thing never carried through as stored: a table reference inside
+  // `customize` that names its target by local row id. Done FIRST so every path
+  // below — catalog call, descriptor literal, `rawField()` — decodes the same
+  // unbound field, and reported once because it is a change to the pulled tree
+  // rather than a passthrough.
+  const { field: stored_, unbound } = unbindLocalCustomizeRefs(stored);
+  if (unbound.length > 0) {
+    ctx.problem(
+      "unresolved-ref",
+      `field "${stored.name}" references ${unbound.join(", ")} inside \`customize\` by LOCAL row id rather than by guid — ` +
+        `an internal id is not portable identity, so it is recovered as unbound (\`dbo=\`). ` +
+        `A re-deploy will not re-link it, including back into the workspace it came from`,
+    );
+  }
+  stored = stored_;
   const options = recoverOptions(stored, context.includeDescription);
 
-  // Keys no authoring option can reach — `merge`, `customize`, … — would be
-  // silently rewritten by any `f.*`/`input.*`/descriptor form. `rawField()`
-  // carries the whole envelope instead, so this degrades readability without
-  // losing data.
-  const missing = unrepresentableKeys(stored, context);
+  // Keys no authoring option can reach — `override`, `is_settings_registry` —
+  // would be silently rewritten by any `f.*`/`input.*`/descriptor form.
+  // `rawField()` carries the whole envelope instead, so this degrades
+  // readability without losing data.
+  const missing = unrepresentableKeys(stored);
   if (missing.length > 0) {
     ctx.use(CODEGEN_MODULE, "rawField");
     ctx.problem(
       "value-fallback",
       `field "${stored.name}" stores ${missing.join(", ")} in a shape no authoring surface can produce; emitted verbatim via rawField()`,
     );
-    // The one thing NOT carried verbatim: a table reference inside `customize`
-    // that names its target by local row id. Reported separately because it is a
-    // change to the pulled tree, not a passthrough.
-    const { field, unbound } = unbindLocalCustomizeRefs(stored);
-    if (unbound.length > 0) {
-      ctx.problem(
-        "unresolved-ref",
-        `field "${stored.name}" references ${unbound.join(", ")} inside \`customize\` by LOCAL row id rather than by guid — ` +
-          `an internal id is not portable identity, so it is recovered as unbound (\`dbo=\`). ` +
-          `A re-deploy will not re-link it, including back into the workspace it came from`,
-      );
-    }
-    return { idiomatic: false, expr: call("rawField", lit(field)) };
+    return { idiomatic: false, expr: call("rawField", lit(stored)) };
   }
 
   /**
