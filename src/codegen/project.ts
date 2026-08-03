@@ -55,6 +55,41 @@ const QUERY_DIR = "query";
 const API_GROUP_FILE = "api_group.ts";
 const ORPHANED_QUERY_FILE = "query/orphaned.ts";
 
+/**
+ * The stored reference naming a kind's parent, and the kind that reference must
+ * resolve to before it counts.
+ *
+ * Every one of these is stored the same way — `{ id: <guid> }` under a named key
+ * — so one shape reads all of them. Requiring the resolved KIND to match is what
+ * keeps a stale or reused guid from nesting an object under something unrelated.
+ *
+ * Realtime is the only three-level hierarchy in a workspace: a message belongs to
+ * a channel, which belongs to a server. Resolution is therefore recursive, and a
+ * message ends up beside its channel, inside its server.
+ */
+const PARENT_REF: Readonly<Record<string, { key: string; kind: string }>> = {
+  query: { key: "app", kind: "api_group" },
+  channel: { key: "server", kind: "realtime_server" },
+  message: { key: "channel", kind: "channel" },
+};
+
+/**
+ * Kinds that OWN a directory named after themselves, holding their own
+ * definition under a fixed file name plus everything nested beneath them.
+ *
+ * The alternative — one file among its siblings — cannot express a hierarchy: a
+ * channel has messages and triggers of its own, so it needs somewhere to put
+ * them. `table` is deliberately absent; tables collapse into one file instead.
+ */
+const CONTAINER_FILE: Readonly<Record<string, string>> = {
+  api_group: API_GROUP_FILE,
+  realtime_server: "realtime_server.ts",
+  channel: "realtime_channel.ts",
+};
+
+/** Where a trigger's own files go inside its parent's directory. */
+const TRIGGER_SUBDIR = "trigger";
+
 /** The workspace config's own file, and the binding the barrel imports from it. */
 const WORKSPACE_FILE = "workspace.ts";
 const WORKSPACE_SYMBOL = "workspaceSettings";
@@ -400,126 +435,168 @@ function place(refs: RefIndex, payload: Record<string, unknown>): Placement[] {
     }
   }
 
-  // Guid → assigned symbol, for the placements that name a DIRECTORY rather than
-  // just a file: a query's folder is its api group's symbol, so the parent's
-  // symbol has to be settled before any child's path can be built.
-  const symbolFor = new Map<string, string>();
-  for (const [i, candidate] of list.entries()) symbolFor.set(candidate.object.guid, symbols[i]!);
+  // Guid → (candidate, symbol), so a child can resolve its parent's directory.
+  // A parent's symbol has to be settled before any child's path can be built,
+  // and a realtime message is three levels down, so this is a graph walk rather
+  // than one pass: `dirs` memoises it and doubles as the recursion guard.
+  const byGuid = new Map<string, { candidate: Candidate; symbol: string }>();
+  for (const [i, candidate] of list.entries()) {
+    byGuid.set(candidate.object.guid, { candidate, symbol: symbols[i]! });
+  }
+  const dirs = new Map<string, string>();
+  const resolveDir: DirResolver = (guid) => {
+    const found = byGuid.get(guid);
+    if (!found) return null;
+    const cached = dirs.get(guid);
+    if (cached !== undefined) return { dir: cached, kind: found.candidate.object.kind };
+    // Claim the slot before recursing. Stored parent links should form a tree,
+    // but they are engine data: a cycle would otherwise recurse until the stack
+    // gives out, and the kind's own directory is a correct answer either way.
+    dirs.set(guid, found.candidate.dir);
+    const dir = dirOf(found.candidate, found.symbol, resolveDir);
+    dirs.set(guid, dir);
+    return { dir, kind: found.candidate.object.kind };
+  };
 
-  return list.map((candidate, i) => {
+  const placements = list.map((candidate, i) => {
     const symbol = symbols[i]!;
-    const [dir, path] = fileFor(candidate, symbol, referrers, refs, symbolFor);
-    return { object: candidate.object, stored: candidate.stored, symbol, dir, path };
+    const dir = resolveDir(candidate.object.guid)!.dir;
+    return {
+      object: candidate.object,
+      stored: candidate.stored,
+      symbol,
+      ...fileFor(candidate, symbol, referrers, dir),
+    };
+  });
+  return disambiguatePaths(placements);
+}
+
+/** Resolve a guid to where that object's files live, and what kind it is. */
+type DirResolver = (guid: string) => { dir: string; kind: string } | null;
+
+/**
+ * The paths that legitimately hold more than one object. Everything else is one
+ * object per file, and two placements landing on one path would silently merge
+ * them — both bindings in one file, with the barrel none the wiser.
+ */
+const COLLAPSED_FILES: ReadonlySet<string> = new Set([SHARED_FILE, TABLE_FILE, ORPHANED_QUERY_FILE]);
+
+/**
+ * Give any two placements that claimed one path a path each.
+ *
+ * Symbols are globally unique, so an object file cannot collide with another
+ * object file. What CAN collide is an object against a container's fixed
+ * definition file: a realtime message named `realtime_channel`, or a verbless
+ * query named `api_group`, sanitizes to exactly the name its own folder already
+ * uses. Rare, but the failure is silent rather than loud, which is the kind
+ * worth spending ten lines on.
+ */
+function disambiguatePaths(placements: readonly Placement[]): Placement[] {
+  const taken = new Set<string>();
+  return placements.map((placement) => {
+    if (COLLAPSED_FILES.has(placement.path)) return placement;
+    const folded = placement.path.toLowerCase();
+    if (!taken.has(folded)) {
+      taken.add(folded);
+      return placement;
+    }
+    const base = placement.path.replace(/\.ts$/, "");
+    let path = placement.path;
+    for (let n = 2; taken.has(path.toLowerCase()); n += 1) path = `${base}_${n}.ts`;
+    taken.add(path.toLowerCase());
+    return { ...placement, path };
   });
 }
 
-/** The directory and path one candidate lands at, as `[dir, path]`. */
+/**
+ * The file one candidate lands in, given the directory already resolved for it.
+ *
+ * Returns only `dir`/`path` overrides — a table and a hoisted object move to a
+ * file outside their own directory, so both fields travel together.
+ */
 function fileFor(
   candidate: Candidate,
   symbol: string,
   referrers: ReadonlyMap<string, number>,
-  refs: RefIndex,
-  symbolFor: ReadonlyMap<string, string>,
-): [dir: string, path: string] {
+  dir: string,
+): { dir: string; path: string } {
   const kind = candidate.object.kind;
 
-  // Two kinds collapse or nest BEFORE the shared check, because for them the
-  // hoist would be wrong rather than merely unnecessary:
-  //
-  // - A table goes in one file whether or not anything references it.
-  // - An api group is referenced by every query it holds, so the hoist would
-  //   catch essentially all of them and empty out the very folders the queries
-  //   are being nested into. Its folder IS its identity here.
-  if (kind === "table") return [TABLE_DIR, TABLE_FILE];
-  if (kind === "api_group") {
-    // `candidate.dir` is `query` for this kind — a group's folder sits among the
-    // queries it holds, not in a directory of its own.
-    const dir = `${candidate.dir}/${toPathName(symbol)}`;
-    return [dir, `${dir}/${API_GROUP_FILE}`];
-  }
+  // Tables collapse whether or not anything references them.
+  if (kind === "table") return { dir: TABLE_DIR, path: TABLE_FILE };
+
+  // A container is exempt from the hoist, because for it the hoist would be
+  // actively wrong rather than merely unnecessary. Containers are referenced by
+  // everything they hold — every query names its api group, every channel names
+  // its server — so the hoist would catch nearly all of them and empty out the
+  // very folders their children are nesting into.
+  const containerFile = CONTAINER_FILE[kind];
+  if (containerFile !== undefined) return { dir, path: `${dir}/${containerFile}` };
 
   // Past here the hoist wins over nesting: a multiply-referenced object is in
   // `_shared.ts` for a cycle reason, which outranks reading nicely.
-  if ((referrers.get(candidate.object.guid) ?? 0) > 1) return [".", SHARED_FILE];
+  if ((referrers.get(candidate.object.guid) ?? 0) > 1) return { dir: ".", path: SHARED_FILE };
+
+  // A query with no resolvable group has no folder to sit in, and there may be
+  // many of them, so they share a file rather than scattering.
+  if (kind === "query" && dir === QUERY_DIR) return { dir: QUERY_DIR, path: ORPHANED_QUERY_FILE };
+
+  // The verb is the one upper-case thing in any path: an HTTP method, not a
+  // word, and what separates two queries sharing a name.
+  const verb = kind === "query" ? candidate.stored.verb : undefined;
+  const suffix = typeof verb === "string" && verb !== "" ? `_${verb.toUpperCase()}` : "";
+  return { dir, path: `${dir}/${toPathName(symbol)}${suffix}.ts` };
+}
+
+/**
+ * The directory a candidate belongs in, resolving its parent chain.
+ *
+ * Three shapes, all falling back to the kind's own directory when nothing
+ * resolves — which is a home, not a failure. There is simply no parent to nest
+ * under, and the flat kind directory is where such an object belongs.
+ *
+ * - A CONTAINER (api group, realtime server, realtime channel) gets a directory
+ *   named after itself, inside its own parent's. That is what makes the realtime
+ *   hierarchy work: `realtime_server/<server>/<channel>/`.
+ * - A CHILD (query, realtime message) sits directly in its parent's directory,
+ *   beside the parent's own definition file.
+ * - A TRIGGER sits in a `trigger/` subdirectory of whatever it fires on, found
+ *   by resolving `obj_id` rather than by switching on the trigger's `obj_type`.
+ *   The decoder already works this way — `obj_type: "toolset"` covers both mcp
+ *   servers and agents, and only the bound object's kind separates them — so a
+ *   static type→directory table would restate that and misfile any type Xano
+ *   adds later.
+ */
+function dirOf(candidate: Candidate, symbol: string, resolveDir: DirResolver): string {
+  const kind = candidate.object.kind;
 
   if (kind === "trigger") {
-    const dir = triggerDir(candidate, refs);
-    return [dir, `${dir}/${toPathName(symbol)}.ts`];
+    const objId = candidate.stored.obj_id;
+    const parent = typeof objId === "string" && objId !== "" ? resolveDir(objId) : null;
+    return parent === null ? candidate.dir : `${parent.dir}/${TRIGGER_SUBDIR}`;
   }
-  if (kind === "query") return queryFile(candidate, symbol, refs, symbolFor);
-  return [candidate.dir, `${candidate.dir}/${toPathName(symbol)}.ts`];
+
+  const parentDir = parentDirOf(candidate, resolveDir);
+  if (CONTAINER_FILE[kind] !== undefined) {
+    return `${parentDir ?? candidate.dir}/${toPathName(symbol)}`;
+  }
+  return parentDir ?? candidate.dir;
 }
 
 /**
- * A query's file: `query/<api group>/<name>_<VERB>.ts`.
- *
- * The group is the primary organising unit in Xano and the only thing that makes
- * two queries named `posts` distinguishable, so it names the directory. The verb
- * goes in the filename because `GET /posts` and `POST /posts` are different
- * objects with the same name — one of them used to be `posts_2.ts`, which said
- * nothing.
- *
- * The directory takes the group's ASSIGNED SYMBOL rather than its raw Xano name:
- * `assignSymbols` has already stripped path-hostile characters and separated
- * names that differ only by case, and a directory needs both of those for the
- * same reason a file does — macOS and Windows fold `Admin/` onto `admin/`.
- *
- * Everything that is not in a resolvable group collects in one `query/orphaned.ts`
- * — an absent `app`, the `0` sentinel, the numeric-id escape hatch, and a guid
- * pointing outside the bundle all mean the same thing here: no folder to sit in.
+ * The directory of the object a candidate hangs off, or null when it hangs off
+ * nothing — no `PARENT_REF` for the kind, an absent or non-guid reference, or a
+ * guid that resolves to nothing or to a DIFFERENT kind than the reference is
+ * declared to point at. That last check is what stops a stale or reused guid
+ * from filing an object under something unrelated.
  */
-function queryFile(
-  candidate: Candidate,
-  symbol: string,
-  refs: RefIndex,
-  symbolFor: ReadonlyMap<string, string>,
-): [dir: string, path: string] {
-  const groupSymbol = apiGroupSymbol(candidate, refs, symbolFor);
-  if (groupSymbol === null) return [QUERY_DIR, ORPHANED_QUERY_FILE];
-  const dir = `${QUERY_DIR}/${toPathName(groupSymbol)}`;
-  // The verb is the one upper-case thing in any path: it is an HTTP method, not
-  // a word, and it is what separates two queries sharing a name.
-  const verb = candidate.stored.verb;
-  const suffix = typeof verb === "string" && verb !== "" ? `_${verb.toUpperCase()}` : "";
-  return [dir, `${dir}/${toPathName(symbol)}${suffix}.ts`];
-}
-
-/** The symbol of the api group a query belongs to, or null when it has none. */
-function apiGroupSymbol(
-  candidate: Candidate,
-  refs: RefIndex,
-  symbolFor: ReadonlyMap<string, string>,
-): string | null {
-  const id = (candidate.stored.app as { id?: unknown } | undefined)?.id;
+function parentDirOf(candidate: Candidate, resolveDir: DirResolver): string | null {
+  const ref = PARENT_REF[candidate.object.kind];
+  if (ref === undefined) return null;
+  const id = (candidate.stored[ref.key] as { id?: unknown } | undefined)?.id;
   if (typeof id !== "string" || id === "") return null;
-  const group = refs.lookup(id);
-  if (!group || group.kind !== "api_group") return null;
-  return symbolFor.get(group.guid) ?? null;
-}
-
-/**
- * The directory a trigger belongs in: `<parent kind>/trigger`, or the kind's own
- * `trigger/` when there is no parent to nest under.
- *
- * Keyed on what `obj_id` RESOLVES to, not on the trigger's own `obj_type`. The
- * decoder already works this way — `obj_type: "toolset"` is one type covering
- * both mcp servers and agents, and only the bound object's kind separates them
- * (see `TOOLSET_TRIGGERS`). A static `obj_type → directory` table would have to
- * restate that, would need an entry per type, and would silently misfile any
- * type Xano adds later.
- *
- * Falls back to the flat `trigger/` for the types that have no guid parent at
- * all — workspace and error triggers — for the numeric `obj_id` escape hatch,
- * and for a guid that resolves to nothing or to a kind this SDK does not place.
- * Those are homes, not failures: there is no parent directory to sit under.
- */
-function triggerDir(candidate: Candidate, refs: RefIndex): string {
-  const objId = candidate.stored.obj_id;
-  if (typeof objId !== "string" || objId === "") return candidate.dir;
-  const parent = refs.lookup(objId);
-  if (!parent) return candidate.dir;
-  const decoder = KIND_DECODERS_BY_NAME.get(parent.kind);
-  return decoder ? `${decoder.dir}/${candidate.dir}` : candidate.dir;
+  const parent = resolveDir(id);
+  return parent && parent.kind === ref.kind ? parent.dir : null;
 }
 
 /**

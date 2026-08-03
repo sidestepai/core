@@ -558,9 +558,16 @@ xano/
 ├── query/        public/api_group.ts export const publicApi = apiGroup({...})
 │                 public/posts_GET.ts export const posts = query({...})
 ├── agent/        assistant.ts        export const assistant = agent({...})
+├── realtime_server/ chat/realtime_server.ts        export const chat = realtimeServer({...})
+│                 chat/room/realtime_channel.ts     export const room = realtimeChannel({...})
+│                 chat/room/send.ts                 export const send = realtimeMessage({...})
 ├── workspace.ts                      export const workspaceSettings = workspaceConfig({...})
 └── index.ts      workspace("my-app").registerTables([...]).registerFunctions([...])…
 ```
+
+Objects nest under whatever owns them. Realtime is the deepest, being the only
+three-level hierarchy in a workspace — server, then channel, then message — and a
+trigger sits in a `trigger/` folder at whichever level it fires on.
 
 Paths are lower case throughout — an HTTP verb is the one exception, because it is
 the method rather than a word. Bindings keep the object's own casing, so a file name

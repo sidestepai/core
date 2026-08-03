@@ -23,12 +23,17 @@ import { agent } from "../../src/kinds/agent.js";
 import { mcpServer } from "../../src/kinds/mcp-server.js";
 import { apiGroup } from "../../src/kinds/api-group.js";
 import { query } from "../../src/kinds/query.js";
+import { realtimeServer } from "../../src/kinds/realtime-server.js";
+import { realtimeChannel } from "../../src/kinds/realtime-channel.js";
+import { realtimeMessage } from "../../src/kinds/realtime-message.js";
 import {
   tableTrigger,
   agentTrigger,
   mcpServerTrigger,
   workspaceTrigger,
   errorTrigger,
+  realtimeServerTrigger,
+  realtimeChannelTrigger,
 } from "../../src/kinds/trigger.js";
 import "../../src/index.js"; // register kinds
 import { f } from "../../src/fields/catalog.js";
@@ -323,6 +328,95 @@ describe("query placement", () => {
     expect(file(project, "query/admin/posts_GET.ts")).toContain('from "../../table/table.js"');
     expect(file(project, "query/admin/posts_GET.ts")).toContain('from "./api_group.js"');
     expect(file(project, "index.ts")).toContain('from "./query/admin/posts_GET.js"');
+  });
+});
+
+describe("realtime hierarchy placement", () => {
+  function pathsOf(build: (x: Xano) => Xano): string[] {
+    return decodeBundle(build(new Xano()).export()).files.map((f) => f.path);
+  }
+
+  const chat = realtimeServer({ name: "chat", guid: guid(1) });
+  const room = realtimeChannel({ name: "room", server: chat, guid: guid(2) });
+
+  it("nests server → channel → message, three levels deep", () => {
+    const paths = pathsOf((x) =>
+      x
+        .registerRealtimeServers([chat])
+        .registerRealtimeChannels([room])
+        .registerRealtimeMessages([realtimeMessage({ name: "ping", channel: room, guid: guid(3) })]),
+    );
+    expect(paths).toContain("realtime_server/chat/realtime_server.ts");
+    expect(paths).toContain("realtime_server/chat/room/realtime_channel.ts");
+    expect(paths).toContain("realtime_server/chat/room/ping.ts");
+  });
+
+  it("nests a trigger under the level it fires on", () => {
+    const paths = pathsOf((x) =>
+      x
+        .registerRealtimeServers([chat])
+        .registerRealtimeChannels([room])
+        .registerTriggers([
+          realtimeServerTrigger({ name: "on_connect", realtimeServer: chat }),
+          realtimeChannelTrigger({ name: "on_join", channel: room }),
+        ]),
+    );
+    expect(paths).toContain("realtime_server/chat/trigger/on_connect.ts");
+    expect(paths).toContain("realtime_server/chat/room/trigger/on_join.ts");
+  });
+
+  it("keeps a server and channel out of _shared.ts however often they are referenced", () => {
+    // A container is referenced by everything it holds — that is its normal
+    // state, not a signal to hoist it. Hoisting would empty the folder its
+    // children nest into.
+    const paths = pathsOf((x) =>
+      x
+        .registerRealtimeServers([chat])
+        .registerRealtimeChannels([room])
+        .registerRealtimeMessages([
+          realtimeMessage({ name: "a", channel: room, guid: guid(3) }),
+          realtimeMessage({ name: "b", channel: room, guid: guid(4) }),
+        ])
+        .registerTriggers([realtimeChannelTrigger({ name: "on_join", channel: room })]),
+    );
+    expect(paths).not.toContain("_shared.ts");
+    expect(paths).toContain("realtime_server/chat/room/realtime_channel.ts");
+  });
+
+  it("leaves an orphaned channel and message in their own kind directories", () => {
+    // No parent to nest under is a home, not a failure. An orphaned channel is
+    // still a container, so it keeps a folder for the messages it holds.
+    // Bound by NAME to objects this bundle does not hold: the reference mints a
+    // derived guid that resolves to nothing, which is what a pulled workspace
+    // looks like when its parent lives outside the export.
+    const loose = realtimeChannel({ name: "loose", server: "gone", guid: guid(5) });
+    const paths = pathsOf((x) =>
+      x
+        .registerRealtimeChannels([loose])
+        .registerRealtimeMessages([
+          realtimeMessage({ name: "orphan", channel: "missing", server: "gone", guid: guid(6) }),
+        ]),
+    );
+    expect(paths).toContain("realtime_channel/loose/realtime_channel.ts");
+    expect(paths).toContain("realtime_message/orphan.ts");
+  });
+
+  it("does not merge a message that collides with its channel's own definition file", () => {
+    // A message named `realtime_channel` sanitizes to exactly the file its
+    // folder already uses. Symbols stay unique, so nothing warns — the two would
+    // simply land in one file, with both bindings in it.
+    const project = decodeBundle(
+      new Xano()
+        .registerRealtimeServers([chat])
+        .registerRealtimeChannels([room])
+        .registerRealtimeMessages([realtimeMessage({ name: "realtime channel", channel: room, guid: guid(3) })])
+        .export(),
+    );
+    const inFolder = project.files.filter((f) => f.path.startsWith("realtime_server/chat/room/"));
+    expect(new Set(inFolder.map((f) => f.path)).size).toBe(inFolder.length);
+    for (const generated of inFolder) {
+      expect([...generated.contents.matchAll(/export const \w+ =/g)]).toHaveLength(1);
+    }
   });
 });
 

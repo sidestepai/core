@@ -129,8 +129,12 @@ describe("realtime decoders — parent references", () => {
           realtimeMessage({ name: "send", channel: other }),
         ]),
     );
-    const messages = project.files.filter((f) => f.path.includes("realtime_message/"));
+    // Each message sits in ITS OWN channel's directory — the hierarchy is what
+    // separates them, so neither channel's folder ends up holding both.
+    const messages = project.files.filter((f) => /\/send(_\d+)?\.ts$/.test(f.path));
     expect(messages.length).toBe(2);
+    const folders = messages.map((f) => f.path.split("/").slice(0, -1).join("/"));
+    expect(folders).toEqual(["realtime_server/chat/lobby", "realtime_server/chat/rooms"]);
     const guids = messages.map((f) => /guid: "([0-9a-f]{32})"/.exec(f.contents)?.[1]);
     expect(guids[0]).not.toBe(guids[1]);
   });
@@ -202,12 +206,36 @@ describe("realtime decoders — sandbox coverage", () => {
     expect(registered).toEqual(["lobby", "rooms_room_id"]);
   });
 
-  it("places a multiply-referenced channel in _shared.ts rather than dropping it", () => {
+  it("keeps a multiply-referenced channel and its server placed rather than dropping them", () => {
     // The room channel is referenced by two messages and a channel trigger. A
     // regression here is silent: the object simply stops being emitted.
+    //
+    // Both are CONTAINERS, so neither is hoisted into `_shared.ts` — being
+    // referenced by everything you hold is the normal state for a container, and
+    // hoisting one would empty the folder its children nest into.
     const project = decodeBundle(sandbox.export());
-    const shared = project.files.find((f) => f.path === "_shared.ts")!.contents;
-    expect(shared).toContain("export const rooms_room_id =");
-    expect(shared).toContain("export const ex_kind_chat_server =");
+    const server = project.files.find(
+      (f) => f.path === "realtime_server/ex_kind_chat_server/realtime_server.ts",
+    );
+    const channel = project.files.find(
+      (f) => f.path === "realtime_server/ex_kind_chat_server/rooms_room_id/realtime_channel.ts",
+    );
+    expect(server?.contents).toContain("export const ex_kind_chat_server =");
+    expect(channel?.contents).toContain("export const rooms_room_id =");
+    const shared = project.files.find((f) => f.path === "_shared.ts")?.contents ?? "";
+    expect(shared).not.toContain("export const rooms_room_id =");
+  });
+
+  it("nests the whole realtime hierarchy under its server", () => {
+    // server → channel → message, plus a trigger at each level it can fire on.
+    // Realtime is the only three-level hierarchy in a workspace, and this is the
+    // shape that expresses it.
+    const paths = decodeBundle(sandbox.export()).files.map((f) => f.path);
+    const root = "realtime_server/ex_kind_chat_server";
+    expect(paths).toContain(`${root}/realtime_server.ts`);
+    expect(paths).toContain(`${root}/trigger/ex_kind_trigger_on_chat_connect.ts`);
+    expect(paths).toContain(`${root}/rooms_room_id/realtime_channel.ts`);
+    expect(paths).toContain(`${root}/rooms_room_id/send.ts`);
+    expect(paths).toContain(`${root}/rooms_room_id/trigger/ex_kind_trigger_on_room_join.ts`);
   });
 });
