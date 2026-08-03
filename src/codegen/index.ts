@@ -23,7 +23,7 @@ export { RefIndex, resolveReference } from "./ref-index.js";
 export type { IndexedObject, ResolveOptions } from "./ref-index.js";
 export { assembleProject, toSymbol } from "./project.js";
 export type { ReportCategory, ReportEntry, ReportGroup, ReportSummary } from "./report.js";
-export { printExpr, printModule, id, lit, call, obj, arr } from "./print.js";
+export { printExpr, printModule, id, lit, call, obj, arr, arrow } from "./print.js";
 export type { Expr, Stmt, ImportStmt } from "./print.js";
 
 /** One file in the generated tree, at a path relative to the output directory. */
