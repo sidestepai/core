@@ -592,6 +592,10 @@ tableTrigger({
   name: "on-user-insert",
   table: users,
   actions: { insert: true },
+  // Optional row filter, evaluated by the DATABASE before the stack runs — so it
+  // names the SQL pseudo-tables with col(), NOT the t handle. Rejected with
+  // `truncate`; insert cannot read OLD.*, delete cannot read NEW.*.
+  search: cmp(col("NEW.email"), "!=", c.text("")),
   stack: (t) => [
     // t.new("email") is typed to the row; t.action is the op; t.old is null (insert-only).
     s.db.add({ table: auditLog, row: { email: t.new("email"), event: t.action } }),
