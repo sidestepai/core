@@ -13,7 +13,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { writeFileSync, readFileSync, existsSync, rmSync, mkdtempSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import "../../src/index.js"; // load every kind + statement registration
 import { run } from "../../src/emit/cli.js";
 import { isMissingDependencyError } from "../../src/emit/codegen-command.js";
@@ -109,6 +109,41 @@ describe("codegen <bundle.json> <path> — the offline form", () => {
     expect(readFileSync(join(dir, "out", "xano", "function", "signup.ts"), "utf8")).toContain(
       's.set_var("total", c.int(0))',
     );
+  });
+
+  it("leaves no files from a previous release's layout behind", async () => {
+    // Every generated path moved when the tree was reorganised. An in-place
+    // overwrite would leave the old files inside the root tsconfig's `include`,
+    // importing a `_shared.js` that no longer exists — a build break in a
+    // directory the user never edited. The refresh clears xano/ first, which is
+    // what makes changing layout safe at all.
+    writeFileSync(join(dir, "ws.json"), JSON.stringify(sampleBundle()));
+    await run(["codegen", "ws.json", "out", "--no-install"]);
+
+    // Plant a tree shaped like the one a previous release wrote.
+    const legacy = [join("functions", "signup.ts"), join("queries", "list.ts"), "_shared.ts"];
+    for (const rel of legacy) {
+      const path = join(dir, "out", "xano", rel);
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, "export const stale = 1;\n");
+    }
+
+    await run(["codegen", "ws.json", "out", "--no-install"]);
+
+    for (const rel of legacy) {
+      expect(existsSync(join(dir, "out", "xano", rel)), `${rel} survived the refresh`).toBe(false);
+    }
+    expect(existsSync(join(dir, "out", "xano", "function", "signup.ts"))).toBe(true);
+  });
+
+  it("preserves xano.lock across a refresh, since it pins object identities", async () => {
+    writeFileSync(join(dir, "ws.json"), JSON.stringify(sampleBundle()));
+    await run(["codegen", "ws.json", "out", "--no-install"]);
+    writeFileSync(join(dir, "out", "xano", "xano.lock"), '{"pinned":true}\n');
+
+    await run(["codegen", "ws.json", "out", "--no-install"]);
+
+    expect(readFileSync(join(dir, "out", "xano", "xano.lock"), "utf8")).toContain('"pinned"');
   });
 
   it("touches no network at all", async () => {

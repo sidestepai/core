@@ -9,11 +9,15 @@
  * command and not the other.
  *
  * The one asymmetry is `regenerable`. A codegen project's `xano/` is
- * machine-written and disposable, which earns it two behaviours `init` must not
- * have: a re-run refreshes that directory without demanding `--force`, and a
- * `--force` full scaffold clears it first so files from a previous tree cannot
- * survive as orphans (they would still sit inside the root tsconfig's `include`
- * and break `npm run build`).
+ * machine-written and disposable, which earns it a behaviour `init` must not
+ * have: a re-run refreshes that directory without demanding `--force`.
+ *
+ * EVERY regenerable write clears `xano/` first — the no-`--force` refresh and
+ * the `--force` full scaffold alike — keeping only `xano.lock`. That is not an
+ * optimisation but the correctness property that lets file layout change at all:
+ * an in-place overwrite would leave a previous tree's files behind, still inside
+ * the root tsconfig's `include`, importing symbols the new barrel no longer
+ * exports, and `npm run build` would fail on orphans nobody edited.
  *
  * Node-only (node:fs + child_process + a readline prompt); imported lazily by
  * the command modules so the browser-safe authoring bundle never pulls it in.

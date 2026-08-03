@@ -193,9 +193,11 @@ sidestep ephemeral codegen pr-42 my-app  # a named ephemeral (tenant first, path
 sidestep codegen ws.json my-app          # a bundle already on disk — offline, no login
 ```
 
-Inside, `xano/` is shaped like a hand-written backend: per-kind directories, a
-`_shared.ts` for tables and anything referenced from more than one file, a barrel
-`xano/index.ts`, and `xano/README.md` listing anything that did not translate cleanly.
+Inside, `xano/` is shaped the way the workspace is: one directory per kind, with each
+object under its parent — queries under the API group that owns them, triggers under
+what they fire on. Tables share `table/table.ts`, settings sit in `xano/workspace.ts`,
+`_shared.ts` holds anything else referenced from more than one file, and `xano/README.md`
+lists anything that did not translate cleanly.
 Object identities (`guid`) are preserved, so cross-references stay intact. A statement
 this SDK does not model yet round-trips verbatim rather than breaking the pull.
 
@@ -244,7 +246,7 @@ was machine-written.
 > Regenerating rewrites it (a directory that isn't a previous pull still needs `--force`),
 > it carries schema only — no table rows — and deploying it is a *full replace* of the
 > target. Pull from your real workspace, edit, and `deploy` to a disposable ephemeral or
-> sandbox. Workspace env var **values** ride inline in `xano/index.ts` (that is what a
+> sandbox. Workspace env var **values** ride inline in `xano/workspace.ts` (that is what a
 > deploy sends), so treat a pulled tree as secret-bearing before you commit it.
 
 ---
@@ -550,12 +552,18 @@ auto-discovery magic (deliberately):
 
 ```
 xano/
-├── functions/   get-user.ts        export default defineFunction({...})
-├── tables/      user.ts            export default table({...})
-├── triggers/    on-insert.ts       export default tableTrigger({...})
-├── ai/          assistant.ts       export default agent({...}) / mcpServer({...})
+├── function/    get-user.ts        export const getUser = defineFunction({...})
+├── table/       table.ts           export const user = table({...})
+│   └── trigger/ on-insert.ts       export const onInsert = tableTrigger({...})
+├── query/       public/apiGroup.ts export const publicApi = apiGroup({...})
+│               public/posts_GET.ts export const posts = query({...})
+├── agent/       assistant.ts       export const assistant = agent({...})
+├── workspace.ts                    export const workspaceSettings = workspaceConfig({...})
 └── index.ts     workspace("my-app").registerTables([...]).registerFunctions([...])…
 ```
+
+That is the shape `sidestep codegen` writes. Hand-authored projects are free to use
+any other — only `index.ts` registering the objects matters.
 
 `workspace("my-app")` is the natural entry point — sugar for
 `new Xano().registerWorkspace({ name: "my-app" })`, returning the same chainable registry.
