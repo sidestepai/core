@@ -22,6 +22,13 @@
  * A kind with no `factory` falls back to `… satisfies <defType>`. That is the
  * escape hatch for kinds whose factory takes a *different* shape than the def it
  * returns and cannot be inverted faithfully.
+ *
+ * The choice is not always the same for every object of a kind. A trigger's
+ * factory depends on its `obj_type` (and, for `toolset`, on what the bound guid
+ * points at), and some stored shapes have no faithful factory form at all. Such a
+ * kind returns a {@link DecodedDef} from `decode` — its entries plus the factory
+ * THAT object is wrapped in — and `undefined` there means the object takes the
+ * `satisfies` fallback while its siblings still get their factory.
  */
 import type { DecodeContext } from "../context.js";
 import { CORE_MODULE } from "../context.js";
@@ -55,6 +62,19 @@ export interface KindDecodeArgs {
   readonly resolve: ResolveOptions;
 }
 
+/**
+ * A decoded def when the kind picks its factory per object rather than per kind.
+ *
+ * Returned from `decode` instead of a bare entry list. `factory: undefined` is
+ * the deliberate fallback signal, not a missing value — the emitter wraps the
+ * entries in `satisfies <defType>` and the object still round-trips.
+ */
+export interface DecodedDef {
+  readonly entries: readonly DefEntry[];
+  /** The factory THIS object is wrapped in; `undefined` → `satisfies`. */
+  readonly factory?: string;
+}
+
 /** A registered kind decoder. */
 export interface KindDecoder {
   /** Kind name, matching the encode-side registry. */
@@ -68,12 +88,17 @@ export interface KindDecoder {
   /** The exported def type, imported `type`-only when there is no {@link factory}. */
   readonly defType: string;
   /**
-   * The exported factory the def literal is wrapped in, imported as a value.
-   * Omitted for kinds that still fall back to `satisfies` (see the module header).
+   * The exported factory EVERY object of this kind is wrapped in, imported as a
+   * value. Omitted both by kinds that always fall back to `satisfies` and by
+   * kinds that choose per object — those return the name from `decode` instead
+   * (see the module header).
    */
   readonly factory?: string;
-  /** Build the def literal's entries. */
-  decode(args: KindDecodeArgs): DefEntry[];
+  /**
+   * Build the def literal's entries. Returning a bare list takes the kind-wide
+   * {@link KindDecoder.factory}; returning a {@link DecodedDef} chooses per object.
+   */
+  decode(args: KindDecodeArgs): DefEntry[] | DecodedDef;
 }
 
 // --- shared inverses ---------------------------------------------------------
@@ -1627,9 +1652,22 @@ export const KIND_DECODERS_BY_NAME: ReadonlyMap<string, KindDecoder> = new Map(
   KIND_DECODERS.map((decoder) => [decoder.name, decoder]),
 );
 
-/** Decode one stored object into its def literal expression. */
-export function decodeObject(decoder: KindDecoder, args: KindDecodeArgs): Expr {
-  return obj(decoder.decode(args));
+/**
+ * Decode one stored object into its def literal expression and the factory that
+ * literal is wrapped in.
+ *
+ * The factory is resolved HERE rather than by the caller because for a per-object
+ * kind it is a by-product of decoding — the trigger decoder cannot know whether a
+ * factory form round-trips until it has built the arguments and checked them.
+ */
+export function decodeObject(
+  decoder: KindDecoder,
+  args: KindDecodeArgs,
+): { readonly expr: Expr; readonly factory?: string } {
+  const decoded = decoder.decode(args);
+  return Array.isArray(decoded)
+    ? { expr: obj(decoded), factory: decoder.factory }
+    : { expr: obj(decoded.entries), factory: decoded.factory };
 }
 
 /** Re-exported for project assembly, which builds the barrel's register calls. */

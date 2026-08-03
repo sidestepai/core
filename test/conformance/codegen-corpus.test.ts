@@ -209,7 +209,9 @@ describe("codegen corpus — whole kind objects", () => {
       const stored = loadFixture<Record<string, unknown>>(fixture);
       const decoder = KIND_DECODERS_BY_NAME.get(kind)!;
       const ctx = new DecodeContext();
-      const source = printExpr(decodeKindObject(decoder, { ctx, refs: NO_REFS, stored, resolve: {} }));
+      const source = printExpr(
+        decodeKindObject(decoder, { ctx, refs: NO_REFS, stored, resolve: {} }).expr,
+      );
       const reencoded = reencode(kind, evaluate(source), stored);
       expect(normalize(reencoded), `source: ${source}`).toEqual(normalize(stored));
     });

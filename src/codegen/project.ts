@@ -470,10 +470,8 @@ export function assembleProject(
       files.set(placement.path, file);
     }
     ctx.imports = file.imports;
-    if (decoder.factory) file.imports.use(CORE_MODULE, decoder.factory);
-    else file.imports.useType(CORE_MODULE, decoder.defType);
 
-    const expr = ctx.inObject(`${decoder.name}:${placement.object.name}`, () =>
+    const { expr, factory } = ctx.inObject(`${decoder.name}:${placement.object.name}`, () =>
       decodeObject(decoder, {
         ctx,
         refs,
@@ -500,6 +498,12 @@ export function assembleProject(
       }),
     );
 
+    // Registered AFTER decoding: a per-object kind does not know which of the two
+    // symbols it needs until its arguments are built and checked. Imports are
+    // accumulated and printed once at the end, so ordering here is free.
+    if (factory) file.imports.use(CORE_MODULE, factory);
+    else file.imports.useType(CORE_MODULE, decoder.defType);
+
     if (file.body.length > 0) file.body.push({ kind: "blank" });
     file.body.push(
       {
@@ -516,8 +520,8 @@ export function assembleProject(
         // which still checks the literal without widening it.
         value: {
           kind: "id",
-          text: decoder.factory
-            ? `${decoder.factory}(${printExpr(expr)})`
+          text: factory
+            ? `${factory}(${printExpr(expr)})`
             : `${printExpr(expr)} satisfies ${decoder.defType}`,
         },
       },
@@ -561,15 +565,15 @@ function barrel(
 
   if (workspaceStored.name !== undefined) {
     const decoder = KIND_DECODERS_BY_NAME.get("workspace")!;
-    if (decoder.factory) imports.use(CORE_MODULE, decoder.factory);
-    else imports.useType(CORE_MODULE, decoder.defType);
-    const expr = ctx.inObject("workspace", () =>
+    const { expr, factory } = ctx.inObject("workspace", () =>
       decodeObject(decoder, { ctx, refs, stored: workspaceStored, resolve: {} }),
     );
+    if (factory) imports.use(CORE_MODULE, factory);
+    else imports.useType(CORE_MODULE, decoder.defType);
     const literal = indent(printExpr(expr));
     lines.push(
       `  .registerWorkspace(${
-        decoder.factory ? `${decoder.factory}(${literal})` : `${literal} satisfies ${decoder.defType}`
+        factory ? `${factory}(${literal})` : `${literal} satisfies ${decoder.defType}`
       })`,
     );
   }
