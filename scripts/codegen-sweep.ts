@@ -295,17 +295,20 @@ async function sweepWorkspace(
     }
 
     const index = fileIndex(project);
-    const byCategory: Record<string, number> = {};
+
+    // The CSV lists every SITE; the counts describe what a USER is shown. Those
+    // are deliberately different now that the report coalesces some categories
+    // per object: one workspace carries 48 blank bindings that the CLI prints as
+    // 5 lines, and a maintainer chasing them still wants all 48 rows to grep.
+    //
+    // So the rows come from the raw entry log and the totals come from
+    // `summarize()` — the same computation the CLI and the generated README
+    // read. Counting rows for both is what made this tool report 172 problems
+    // against the CLI's 125 on the same instance, which is exactly the
+    // disagreement `summarize()` exists to make impossible.
     for (const e of project.report.entries as readonly ReportEntry[]) {
-      // Severity comes from the report's own catalog rather than a list kept
-      // here — a second list is a second thing to forget to update, and this
-      // tool's whole job is to be trusted about what counts as a problem.
-      const severity = severityOf(e.category);
-      if (severity === "notice") result.informational++;
-      else result.problems++;
-      byCategory[e.category] = (byCategory[e.category] ?? 0) + 1;
       emit(
-        severity,
+        severityOf(e.category),
         e.category,
         e.object,
         e.path ?? "",
@@ -313,6 +316,12 @@ async function sweepWorkspace(
         e.detail,
       );
     }
+
+    const byCategory: Record<string, number> = {};
+    const summary = project.report.summarize();
+    for (const group of summary.byCategory) byCategory[group.category] = group.count;
+    result.informational += summary.bySeverity.notice;
+    result.problems += summary.bySeverity.error + summary.bySeverity.warning;
     result.byCategory = byCategory;
     if (result.problems > 0 || result.verified === false) result.status = "problems";
     writeFileSync(join(dir, ".sweep-done.json"), JSON.stringify(result, null, 2), "utf8");
