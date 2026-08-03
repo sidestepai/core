@@ -20,7 +20,11 @@ import { normalize } from "../../validate/normalize.js";
 import { CORE_MODULE, type DecodeContext } from "../context.js";
 import { call, spread, type Expr } from "../print.js";
 import { deepEqual } from "../field.js";
-import { applyPassthrough, envelopePassthrough } from "../envelope-passthrough.js";
+import {
+  annotationCandidates,
+  applyUndeclaredInput,
+  envelopePassthrough,
+} from "../envelope-passthrough.js";
 import { declineHere, recordProveAbort, recordProveDecline } from "../prove-diff.js";
 import type { RefIndex, ResolveOptions } from "../ref-index.js";
 
@@ -67,35 +71,54 @@ export function prove(
   const factory = leafOf(path);
   if (!factory) return declineHere(`${path}: no such factory on \`s\``);
 
-  // `description` and `disabled` are authored in the editor but are not arguments
-  // to any hand-written factory, so they are overridden on the result and spread
-  // over the emitted call. See {@link envelopePassthrough}.
+  // `description`/`disabled` are arguments to every factory now, so they are
+  // passed IN rather than patched on afterwards — each candidate below is a way
+  // of passing them, and only one that reproduces the stored bytes is emitted.
   const passthrough = envelopePassthrough(stored);
+  const candidates = annotationCandidates(
+    runtime,
+    sourceArgs,
+    passthrough.annotations,
+    passthrough.entries,
+  );
 
-  let encoded: StackItemXdo;
-  let entries: ReadonlyArray<readonly [string, Expr]> = passthrough.entries;
-  try {
-    const applied = applyPassthrough(factory(...runtime), passthrough);
-    entries = applied.entries;
-    encoded = encodeStatement(applied.statement);
-  } catch (error) {
-    recordProveAbort("special", stored.name, `factory threw: ${String(error)}`);
+  let lastError: unknown;
+  let lastEncoded: StackItemXdo | undefined;
+  for (const candidate of candidates) {
+    let encoded: StackItemXdo;
+    let entries: ReadonlyArray<readonly [string, Expr]>;
+    try {
+      const applied = applyUndeclaredInput(factory(...candidate.runtime), passthrough);
+      entries = applied.entries;
+      encoded = encodeStatement(applied.statement);
+    } catch (error) {
+      lastError = error;
+      continue;
+    }
+    if (!deepEqual(normalize(encoded), normalize(stored))) {
+      lastEncoded = encoded;
+      continue;
+    }
+    ctx.use(CORE_MODULE, "s");
+    const expression = call(`s.${path}`, ...candidate.source);
+    return entries.length > 0 ? spread(expression, entries) : expression;
+  }
+
+  if (lastEncoded === undefined && lastError !== undefined) {
+    recordProveAbort("special", stored.name, `factory threw: ${String(lastError)}`);
     // The authoring surface rejected the recovered arguments. That message is
     // written for a human and names the exact conflict, so it beats "could not
     // reproduce" by a wide margin — carried through to the fallback report.
     return ctx.declined(
       `the recovered arguments were rejected by the authoring surface — ${
-        error instanceof Error ? error.message : String(error)
+        lastError instanceof Error ? lastError.message : String(lastError)
       }`,
     );
   }
-  if (!deepEqual(normalize(encoded), normalize(stored))) {
-    recordProveDecline("special", stored.name, normalize(encoded), normalize(stored));
-    return null;
+  if (lastEncoded !== undefined) {
+    recordProveDecline("special", stored.name, normalize(lastEncoded), normalize(stored));
   }
-  ctx.use(CORE_MODULE, "s");
-  const expression = call(`s.${path}`, ...sourceArgs);
-  return entries.length > 0 ? spread(expression, entries) : expression;
+  return null;
 }
 
 // Re-exported so a decoder imports its guard recorder from the same place it

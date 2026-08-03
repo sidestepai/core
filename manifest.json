@@ -2704,6 +2704,11 @@
           "name": "value",
           "type": "value",
           "optional": false
+        },
+        {
+          "name": "workspace_id",
+          "type": "value",
+          "optional": true
         }
       ]
     },
@@ -4334,6 +4339,11 @@
         },
         {
           "name": "filename",
+          "type": "value",
+          "optional": true
+        },
+        {
+          "name": "type",
           "type": "value",
           "optional": true
         }

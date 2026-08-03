@@ -147,7 +147,17 @@ import { measureCommittedLlms } from "../../scripts/measure-llms.js";
 // signature alone would pick wrong half the time; the doc has to say which one
 // to author and that the other exists only for round-tripping a pulled
 // workspace. Both entries were compressed twice before raising this.
-const CEILING_TOKENS = 31_600;
+// Raised from 31.5k for the addon `tableAlias` surface and the universal
+// statement annotations (`disabled`/`description`). The annotations entry is the
+// first to document a surface carried by ALL ~215 statements at once, and it
+// earns the space on the READING side rather than the authoring one: authoring is
+// now covered structurally (both members are in every factory's argument type, so
+// autocomplete surfaces them), but an agent reading a PULLED workspace meets a
+// bare `disabled: true` with no signature to consult, and the half that is not
+// inferable from the name is that the step is still THERE — present in the stack,
+// skipped at runtime, not deleted. Reading it as "removed" silently changes what a
+// regenerated workspace does. Compressed twice before raising.
+const CEILING_TOKENS = 31_700;
 
 describe("llms.txt token budget", () => {
   it("stays under the bloat-tripwire ceiling", () => {

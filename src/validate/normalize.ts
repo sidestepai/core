@@ -213,6 +213,42 @@ const PAGING_INT_KEYS = new Set(["page", "per_page", "offset"]);
  * has to LEAD with `field_name`/`field_value` — so a blanket sort would quietly
  * corrupt them.
  */
+/**
+ * Statements whose stored `input[]` the engine CANNOT read, so its entries are
+ * editor exhaust rather than configuration.
+ *
+ * `mvp:create_image` is the only member, and it qualifies three times over: its
+ * engine class declares no input schema at all (an empty one, in every version of
+ * the class including the first); the stack runner only parses `input[]` when the
+ * schema is non-empty and otherwise hands `process` an empty array; and that
+ * `process` never reads its args, taking everything from `context`. The editor
+ * agrees — the statement's panel has four controls (access, value, filename,
+ * return-as) and no way to attach an input at all.
+ *
+ * What is actually stored is one `{tag:"auth", name:"id"}` route, on 26 statements
+ * that all sit in a scaffolded `upload/image` endpoint, against 9 hand-made ones
+ * that carry none — the present-and-absent-side-by-side pattern every other rule
+ * here rests on. Dropping it on BOTH sides is what lets those decode as an
+ * ordinary `s.storage.create_image(...)` instead of a raw envelope spread.
+ *
+ * An allowlist, and it must stay one: `mvp:set_data_source` and
+ * `mvp:create_attachment` also store inputs upstream's schema omits, but their
+ * engine classes DO declare and read them (`workspace_id`, `type`), so those are
+ * modelled as arguments instead of discarded.
+ */
+const UNREADABLE_INPUT = new Set(["mvp:create_image"]);
+
+/**
+ * True when this statement's stored `input[]` is unreadable exhaust.
+ *
+ * Exported so the decoder keys its discard on the SAME list this normalizer
+ * elides by — a second list would be a second thing to forget, and the two
+ * disagreeing would mean emitting source that cannot round-trip.
+ */
+export function hasUnreadableInput(name: unknown): boolean {
+  return typeof name === "string" && UNREADABLE_INPUT.has(name);
+}
+
 const NAME_KEYED_INPUT = new Set([
   "mvp:create_auth",
   "mvp:api_request",
@@ -1367,6 +1403,9 @@ export function normalize<T>(value: T): T {
     // licence to sort `input[]` anywhere else, where order IS meaningful (a row
     // write's columns, a lookup's leading field_name/field_value).
     const sortsInput = NAME_KEYED_INPUT.has((value as { name?: unknown }).name as string);
+    // …and a statement whose `input[]` the engine cannot reach at all drops it
+    // outright, on both sides (see {@link UNREADABLE_INPUT}).
+    const dropsInput = UNREADABLE_INPUT.has((value as { name?: unknown }).name as string);
     // A sparse context — empty, or missing a loop's iterand — is one spelling of
     // the members the engine's optional-schema pass supplies. Substitute them so
     // that spelling compares equal to the explicit one (see {@link filledContext}).
@@ -1497,6 +1536,7 @@ export function normalize<T>(value: T): T {
       //
       // Scoped to `context` deliberately. A blanket array→object coercion would
       // corrupt every genuinely-empty list in the envelope.
+      if (dropsInput && k === "input") continue;
       if (sortsInput && k === "input" && Array.isArray(v)) {
         out[k] = [...v]
           .sort((a, b) =>

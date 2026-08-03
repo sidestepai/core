@@ -23,9 +23,12 @@ import { parseYaml } from "../src/statements/schema-dsl/parse.ts";
 import { schemaToSpec } from "../src/statements/schema-dsl/generate.ts";
 import { applySpecOverrides } from "../src/statements/schema-dsl/overrides.ts";
 import type { EnvelopeProfile, StatementSpec } from "../src/statements/schema-dsl/interpret.ts";
+import { GENERATED_SPECS as COMMITTED_SPECS } from "../src/statements/generated/specs.generated.ts";
 
 const SCHEMA_DIR = process.env.XANO_SCHEMA_DIR ?? "";
 const FIXTURE_DIR = process.env.XANO_FIXTURE_DIR ?? "";
+/** Allow this run's fixtures to REMOVE a committed envelope profile (see main). */
+const REPIN = process.argv.includes("--repin");
 const OUT_SPECS = join(import.meta.dirname, "../src/statements/generated/specs.generated.ts");
 const OUT_FACTORIES = join(import.meta.dirname, "../src/statements/generated/factories.generated.ts");
 const OUT_PENDING = join(import.meta.dirname, "../src/statements/generated/PENDING.md");
@@ -149,10 +152,12 @@ function argSignature(spec: StatementSpec): { type: string; allOptional: boolean
     const optional = r.optional || r.default !== undefined;
     return `${r.field}${optional ? "?" : ""}: ${TS_TYPE[r.type]}`;
   });
-  // Reserved envelope authoring keys (always optional): a per-statement
-  // `description` when the envelope emits one, and `output` shaping when the
-  // statement carries an output envelope. See interpret.ts encodeFromSpec.
-  if (spec.envelope?.description) fields.push("description?: string");
+  // Reserved envelope authoring keys (always optional). `disabled` and
+  // `description` are on EVERY statement — they annotate the stack item rather
+  // than argue the statement, and `encodeStatement` writes both unconditionally,
+  // so gating them on the envelope profile only hid them from autocomplete.
+  // `output` shaping is per-statement, and stays gated. See encodeFromSpec.
+  fields.push("disabled?: boolean", "description?: string");
   if (spec.output) fields.push("output?: OutputAuthored");
   const allOptional = spec.rules.every((r) => r.optional || r.default !== undefined);
   return { type: fields.length ? `{ ${fields.join("; ")} }` : "Record<string, never>", allOptional };
@@ -250,6 +255,27 @@ function main(): void {
     process.exit(1);
   }
   const fixtureProfiles = buildFixtureProfileIndex(FIXTURE_DIR);
+  // Envelope profiles are pinned from goldens, and a partial or absent fixture
+  // dir would silently UNPIN them — rewriting `output`/`envelope` for statements
+  // whose bytes never changed, purely because this run saw fewer fixtures than
+  // the one that committed them. So the profiles already committed are the floor:
+  // a fixture may confirm or add one, and only `--repin` (a run the author knows
+  // is fixture-complete) is allowed to remove one. That keeps a signature-only
+  // change like adding an envelope field regenerable without an engine checkout.
+  //
+  // Carrying a profile forward is NOT proof, so `proven` is captured from this
+  // run's fixtures alone — PENDING.md keeps reporting which statements still
+  // have no vendored golden, which is the whole point of that list.
+  const proven = new Set(fixtureProfiles.keys());
+  if (!REPIN) {
+    for (const spec of COMMITTED_SPECS) {
+      if (fixtureProfiles.has(spec.name)) continue;
+      fixtureProfiles.set(spec.name, {
+        hasOutput: spec.output === true,
+        envelope: { ...(spec.envelope ?? {}) },
+      });
+    }
+  }
 
   const specs: StatementSpec[] = [];
   const entries: FactoryEntry[] = [];
@@ -277,8 +303,11 @@ function main(): void {
         delete profile.envelope.emitAs;
       }
       if (!isLeanEnvelope(profile.envelope)) spec.envelope = profile.envelope;
-    } else {
-      unproven.push(spec.name); // no fixture → lean envelope assumed, byte-fidelity unverified
+    }
+    // Keyed on this run's fixtures, not on whether a profile was found — a
+    // carried-forward profile leaves the statement exactly as unverified as it was.
+    if (!proven.has(spec.name)) {
+      unproven.push(spec.name); // no fixture → byte-fidelity unverified
     }
     specs.push(spec);
   }
@@ -324,10 +353,18 @@ ${unproven.sort().map((n) => `- \`${n}\``).join("\n") || "_(none)_"}
 
 ${skipped.map((s) => `- \`${s.file}\` — ${s.reason}`).join("\n")}
 `;
-  writeFileSync(OUT_PENDING, pending);
+  // PENDING.md is a report on FIXTURE coverage, so a run with no fixture dir has
+  // nothing to say about it — rewriting it from an empty index would report every
+  // statement as newly unproven, which is a statement about this run's inputs and
+  // not about the catalog. Left as committed instead.
+  const haveFixtures = existsSync(FIXTURE_DIR);
+  if (haveFixtures) writeFileSync(OUT_PENDING, pending);
 
   console.log(
-    `codegen: ${specs.length} specs (${provenCount} fixture-proven, ${unproven.length} unproven), ${skipped.length} deferred.`,
+    haveFixtures
+      ? `codegen: ${specs.length} specs (${provenCount} fixture-proven, ${unproven.length} unproven), ${skipped.length} deferred.`
+      : `codegen: ${specs.length} specs, ${skipped.length} deferred. No XANO_FIXTURE_DIR — envelope profiles carried ` +
+        `forward from the committed specs and PENDING.md left untouched (pass --repin with a complete fixture dir to re-pin).`,
   );
 }
 

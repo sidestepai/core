@@ -8,7 +8,8 @@
  * - `foreach_break` / `foreach_continue` / `foreach_remove`: empty `context`.
  */
 import type { Statement } from "../statement.js";
-import { registerStatement } from "../statement.js";
+import { registerStatement, annotate } from "../statement.js";
+import type { StatementAnnotations } from "../statement.js";
 import type { Value } from "../../values/value.js";
 
 /** Accept either a bare `Value` or the object form `{ value }` for ergonomics. */
@@ -25,33 +26,33 @@ function valueContext(arg: ValueArg) {
 }
 
 /** `return <value>` — terminate and return a value. */
-export function returnValue(value: ValueArg): Statement {
-  return { name: "mvp:return", context: valueContext(value) };
+export function returnValue(value: ValueArg, a?: StatementAnnotations): Statement {
+  return annotate({ name: "mvp:return", context: valueContext(value) }, a);
 }
 
 /** `die <value>` — terminate with an error value. */
-export function die(value: ValueArg): Statement {
-  return { name: "mvp:die", context: valueContext(value) };
+export function die(value: ValueArg, a?: StatementAnnotations): Statement {
+  return annotate({ name: "mvp:die", context: valueContext(value) }, a);
 }
 
 /** `debug_log <value>` — emit a debug log entry. */
-export function debugLog(value: ValueArg): Statement {
-  return { name: "mvp:debug_log", context: valueContext(value) };
+export function debugLog(value: ValueArg, a?: StatementAnnotations): Statement {
+  return annotate({ name: "mvp:debug_log", context: valueContext(value) }, a);
 }
 
 /** `foreach_break` — break out of the enclosing loop. */
-export function foreachBreak(): Statement {
-  return { name: "mvp:foreach_break", context: {} };
+export function foreachBreak(a?: StatementAnnotations): Statement {
+  return annotate({ name: "mvp:foreach_break", context: {} }, a);
 }
 
 /** `foreach_continue` — continue the enclosing loop. */
-export function foreachContinue(): Statement {
-  return { name: "mvp:foreach_continue", context: {} };
+export function foreachContinue(a?: StatementAnnotations): Statement {
+  return annotate({ name: "mvp:foreach_continue", context: {} }, a);
 }
 
 /** `foreach_remove` — remove the current item from the iterated collection. */
-export function foreachRemove(): Statement {
-  return { name: "mvp:foreach_remove", context: {} };
+export function foreachRemove(a?: StatementAnnotations): Statement {
+  return annotate({ name: "mvp:foreach_remove", context: {} }, a);
 }
 
 registerStatement("mvp:return", returnValue);

@@ -13,6 +13,7 @@
  * valid values (and the status each yields) are discoverable at the call site.
  */
 import type { Statement } from "../statement.js";
+import type { StatementAnnotations } from "../statement.js";
 import type { Value } from "../../values/value.js";
 import type { Condition } from "../conditional.js";
 import { generated } from "../generated/factories.generated.js";
@@ -40,7 +41,7 @@ export type PreconditionErrorType =
   | "badrequest"
   | "inputerror";
 
-export interface PreconditionArgs {
+export interface PreconditionArgs extends StatementAnnotations {
   /** The condition that must hold. When it evaluates falsy, the error is raised. */
   expr?: Condition;
   /**
@@ -81,7 +82,7 @@ export function precondition(a: PreconditionArgs = {}): Statement {
   return generated.precondition(a as Parameters<typeof generated.precondition>[0]);
 }
 
-export interface ThrowArgs {
+export interface ThrowArgs extends StatementAnnotations {
   /** Optional error name/code. */
   name?: string;
   /** The error value/message. */

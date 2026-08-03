@@ -20,7 +20,8 @@
  */
 import type { ConditionalContext, ConditionalElifContext } from "../types/xdo.js";
 import type { Statement } from "./statement.js";
-import { encodeStatement, registerStatement } from "./statement.js";
+import type { StatementAnnotations } from "./statement.js";
+import { encodeStatement, registerStatement, annotate } from "./statement.js";
 import { encodeComparison, type Condition } from "./expression.js";
 
 export {
@@ -42,7 +43,7 @@ export const CONDITIONAL = "mvp:conditional";
 export const CONDITIONAL_ELIF = "mvp:conditional_elif";
 
 /** One `else if (when) { then }` branch of a {@link conditional}'s elif stack. */
-export interface ConditionalElifArgs {
+export interface ConditionalElifArgs extends StatementAnnotations {
   when: Condition;
   then: Statement[];
 }
@@ -57,10 +58,10 @@ export function conditionalElif(args: ConditionalElifArgs): Statement {
     expr: encodeComparison(args.when),
     if: { run: args.then.map(encodeStatement) },
   };
-  return { name: CONDITIONAL_ELIF, context, input: [] };
+  return annotate({ name: CONDITIONAL_ELIF, context, input: [] }, args);
 }
 
-export interface ConditionalArgs {
+export interface ConditionalArgs extends StatementAnnotations {
   when: Condition;
   then: Statement[];
   /** Ordered `else if` branches, each `{ when, then }`. */
@@ -76,7 +77,7 @@ export function conditional(args: ConditionalArgs): Statement {
     elif: { run: (args.elif ?? []).map((e) => encodeStatement(conditionalElif(e))) },
     else: { run: (args.else ?? []).map(encodeStatement) },
   };
-  return { name: CONDITIONAL, context, input: [] };
+  return annotate({ name: CONDITIONAL, context, input: [] }, args);
 }
 
 registerStatement(CONDITIONAL, conditional);

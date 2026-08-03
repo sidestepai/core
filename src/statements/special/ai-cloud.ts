@@ -22,6 +22,8 @@ import type { ObjectRef } from "../../refs/guid.js";
 import type { AgentResultOf } from "../../kinds/agent.js";
 import { encodeAsyncRuntime } from "./async-runtime.js";
 import type { AsyncRuntime } from "./async-runtime.js";
+import { annotate } from "../statement.js";
+import type { StatementAnnotations } from "../statement.js";
 
 function vf(v: Value): { value: string; tag: string; filters: unknown[] } {
   return { value: v.value, tag: v.tag, filters: v.filters };
@@ -62,7 +64,7 @@ export interface AgentRunResult<R = string> {
   totalUsage?: Record<string, unknown>;
 }
 
-export interface AiAgentRunArgs<As extends string = "", A extends ObjectRef = ObjectRef, R = AgentResultOf<A>> {
+export interface AiAgentRunArgs<As extends string = "", A extends ObjectRef = ObjectRef, R = AgentResultOf<A>> extends StatementAnnotations {
   /** The target agent (toolset of type agent — def handle or name). */
   agent: A;
   /** The stack variable this run binds. Captured literally so `InferResponse` can trace a `ref` back to the typed {@link AgentRunResult}. */
@@ -135,10 +137,10 @@ export function aiAgentRun<
   };
   const runtime = encodeAsyncRuntime(a.runtime);
   if (runtime) stmt.runtime = runtime;
-  return stmt as unknown as Statement & AsShapeBrand<As, AgentRunResult<R>>;
+  return annotate(stmt as unknown as Statement & AsShapeBrand<As, AgentRunResult<R>>, a);
 }
 
-export interface CloudJobArgs {
+export interface CloudJobArgs extends StatementAnnotations {
   as?: string;
   image?: Value;
   command?: Value;
@@ -165,10 +167,10 @@ export function cloudJob(a: CloudJobArgs): Statement {
   if (a.secret) input.push({ name: "secret", ...vf(a.secret) });
   if (a.template) input.push({ name: "template", ...vf(a.template) });
   if (a.await) input.push({ name: "await", ...vf(a.await) });
-  return { name: "mvp:cloud_job", context: {}, as: a.as ?? "", input };
+  return annotate({ name: "mvp:cloud_job", context: {}, as: a.as ?? "", input }, a);
 }
 
-export interface CloudJobAwaitArgs {
+export interface CloudJobAwaitArgs extends StatementAnnotations {
   as?: string;
   /** Job ids to await. */
   ids: Value;
@@ -181,7 +183,7 @@ export interface CloudJobAwaitArgs {
  * `ids`/`timeout` are `input[]` entries with empty context (per the engine's cloud-job-await format).
  */
 export function cloudJobAwait(a: CloudJobAwaitArgs): Statement {
-  return {
+  return annotate({
     name: "mvp:cloud_job_await",
     context: {},
     as: a.as ?? "",
@@ -189,10 +191,10 @@ export function cloudJobAwait(a: CloudJobAwaitArgs): Statement {
       { name: "ids", ...vf(a.ids) },
       { name: "timeout", ...vf(a.timeout) },
     ],
-  };
+  }, a);
 }
 
-export interface CloudJobStatusArgs {
+export interface CloudJobStatusArgs extends StatementAnnotations {
   as?: string;
   /** The job id to query. */
   id: Value;
@@ -203,12 +205,12 @@ export interface CloudJobStatusArgs {
  * `id` is an `input[]` entry with empty context (per the engine's cloud-job-status format).
  */
 export function cloudJobStatus(a: CloudJobStatusArgs): Statement {
-  return {
+  return annotate({
     name: "mvp:cloud_job_status",
     context: {},
     as: a.as ?? "",
     input: [{ name: "id", ...vf(a.id) }],
-  };
+  }, a);
 }
 
 registerStatement("mvp:call_agent", aiAgentRun);

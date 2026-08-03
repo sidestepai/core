@@ -32,7 +32,7 @@ import { ignored as ignoredValue } from "../values/ignored.js";
 import { CORE_MODULE, type DecodeContext } from "./context.js";
 import { call, lit, obj, spread, type Expr } from "./print.js";
 import { deepEqual } from "./field.js";
-import { applyPassthrough, envelopePassthrough } from "./envelope-passthrough.js";
+import { applyUndeclaredInput, envelopePassthrough } from "./envelope-passthrough.js";
 import { declineHere, recordProveAbort, recordProveDecline } from "./prove-diff.js";
 import { decodeCondition } from "./expression.js";
 import { decodeValue } from "./value.js";
@@ -256,23 +256,14 @@ export function decodeFromSpec(ctx: DecodeContext, stored: StackItemXdo): Expr |
   if (lean.length < recovered.length) candidates.push(lean);
   candidates.push(recovered);
 
-  // Envelope members no spec ROUTES have to be overridden on the built statement
-  // and spread over the emitted call instead.
-  //
-  // `disabled` is always in this position: every statement carries it and no spec
-  // routes it as a rule field. `description` is only sometimes — the interpreter
-  // routes it where the spec's envelope permits it (which reads better, as a
-  // member of the args object), and those specs already emitted it as an envelope
-  // entry above. Every OTHER spec stored a description it could not re-author, so
-  // an annotated `precondition`, `send_email`, `setheader`, or `template_string`
-  // degraded to `raw()` purely for carrying a comment.
+  // `disabled` and `description` annotate the stack item; every generated factory
+  // takes both as members of the args object it already receives, so they join
+  // that object rather than being patched onto the result and spread over the
+  // call. (They used to be: `disabled` always, since no spec routes it as a rule
+  // field, and `description` for every spec whose envelope profile did not permit
+  // one — so an annotated `precondition`, `send_email`, `setheader`, or
+  // `template_string` degraded to a spread purely for carrying a comment.)
   const passthrough = envelopePassthrough(stored);
-  const routesDescription = spec.envelope?.description === true;
-  const overrides = { ...passthrough.overrides };
-  if (routesDescription) delete overrides.description;
-  const spreadEntries = passthrough.entries.filter(
-    ([name]) => !(routesDescription && name === "description"),
-  );
 
   for (const sPath of SPATHS_BY_NAME.get(stored.name) ?? []) {
     const factory = leafOf(sPath);
@@ -282,12 +273,13 @@ export function decodeFromSpec(ctx: DecodeContext, stored: StackItemXdo): Expr |
       for (const entry of candidate) authored[entry.field] = entry.runtime;
 
       let encoded: StackItemXdo;
-      let entries = spreadEntries;
+      let entries: ReadonlyArray<readonly [string, Expr]>;
       try {
-        const applied = applyPassthrough(factory(authored), passthrough, overrides);
-        entries = applied.entries.filter(
-          ([name]) => !(routesDescription && name === "description"),
+        const applied = applyUndeclaredInput(
+          factory({ ...authored, ...passthrough.annotations }),
+          passthrough,
         );
+        entries = applied.entries;
         encoded = encodeStatement(applied.statement);
       } catch (error) {
         recordProveAbort(`spec:${sPath}`, stored.name, `factory threw: ${String(error)}`);
@@ -307,7 +299,11 @@ export function decodeFromSpec(ctx: DecodeContext, stored: StackItemXdo): Expr |
       }
 
       ctx.use(CORE_MODULE, "s");
-      const args = candidate.length > 0 ? [obj(candidate.map((e) => [e.field, e.expr]))] : [];
+      const cells: Array<readonly [string, Expr]> = [
+        ...candidate.map((e) => [e.field, e.expr] as const),
+        ...passthrough.entries,
+      ];
+      const args = cells.length > 0 ? [obj(cells)] : [];
       const expression = call(`s.${sPath}`, ...args);
       return entries.length > 0 ? spread(expression, entries) : expression;
     }

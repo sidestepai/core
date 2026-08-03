@@ -90,7 +90,7 @@ export type {
   SearchGroup,
   SearchNode,
 } from "./statements/special/db-search.js";
-export type { Statement } from "./statements/statement.js";
+export type { Statement, StatementAnnotations } from "./statements/statement.js";
 
 // Hand-authored control-flow / terminal specials (U10)
 export {
@@ -226,6 +226,7 @@ export { s } from "./statements/s.js";
 // Statement registry escape hatch — invoke any registered statement by name with
 // a raw authored record (for statements without a typed factory yet).
 export {
+  annotate,
   encodeStatement,
   getStatementFactory,
   isRegisteredStatement,

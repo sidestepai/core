@@ -40,7 +40,8 @@
  *     @TODOs below — do not vendor/capture until the identity model exists.
  */
 import type { Statement } from "../statement.js";
-import { registerStatement } from "../statement.js";
+import type { StatementAnnotations } from "../statement.js";
+import { registerStatement, annotate } from "../statement.js";
 import type { Value } from "../../values/value.js";
 import { resolveRef } from "../../refs/guid.js";
 import type { ObjectRef } from "../../refs/guid.js";
@@ -84,7 +85,7 @@ function fnId(fn: FnRef): string {
   return fn === null ? "" : resolveRef("function", fn);
 }
 
-export interface FunctionRunArgs {
+export interface FunctionRunArgs extends StatementAnnotations {
   /** The target function (def handle or name), or `null` when unbound. */
   fn: FnRef;
   /** Capture the result into this stack variable. */
@@ -101,16 +102,16 @@ export interface FunctionRunArgs {
 
 /** `function.run <fn>` — run another function inline. */
 export function functionRun(args: FunctionRunArgs): Statement {
-  return {
+  return annotate({
     name: "mvp:function",
     context: { function: { id: fnId(args.fn) } },
     as: args.as,
     input: encodeCallInput(args.input),
     runtime: encodeAsyncRuntime(args.runtime),
-  };
+  }, args);
 }
 
-export interface FunctionCallArgs {
+export interface FunctionCallArgs extends StatementAnnotations {
   fn: ObjectRef;
   as?: string;
   input?: CallInput;
@@ -118,15 +119,15 @@ export interface FunctionCallArgs {
 
 /** `function.call <fn>` — invoke a function as a workspace run. */
 export function functionCall(args: FunctionCallArgs): Statement {
-  return {
+  return annotate({
     name: "mvp:workspace_run_function",
     context: { id: resolveRef("function", args.fn) },
     as: args.as,
     input: encodeCallInput(args.input),
-  };
+  }, args);
 }
 
-export interface ApiCallArgs {
+export interface ApiCallArgs extends StatementAnnotations {
   /** The target API endpoint (a `query` object). */
   api: ObjectRef;
   as?: string;
@@ -155,15 +156,15 @@ export function apiCall(args: ApiCallArgs): Statement {
     context.token = vf(args.auth.token);
     if (args.auth.ignoreExpiration) context.token_ignore_expiration = true;
   }
-  return {
+  return annotate({
     name: "mvp:workspace_run_endpoint",
     context,
     as: args.as,
     input: encodeCallInput(args.input),
-  };
+  }, args);
 }
 
-export interface TaskCallArgs {
+export interface TaskCallArgs extends StatementAnnotations {
   /** The target background task. */
   task: ObjectRef;
   as?: string;
@@ -171,15 +172,15 @@ export interface TaskCallArgs {
 
 /** `task.call <task>` — invoke a task as a workspace run (no input). */
 export function taskCall(args: TaskCallArgs): Statement {
-  return {
+  return annotate({
     name: "mvp:workspace_run_task",
     context: { id: resolveRef("task", args.task) },
     as: args.as,
     input: [],
-  };
+  }, args);
 }
 
-export interface ToolCallArgs {
+export interface ToolCallArgs extends StatementAnnotations {
   tool: ObjectRef;
   as?: string;
   input?: CallInput;
@@ -187,15 +188,15 @@ export interface ToolCallArgs {
 
 /** `tool.call <tool>` — invoke a tool as a workspace run. */
 export function toolCall(args: ToolCallArgs): Statement {
-  return {
+  return annotate({
     name: "mvp:workspace_run_tool",
     context: { id: resolveRef("tool", args.tool) },
     as: args.as,
     input: encodeCallInput(args.input),
-  };
+  }, args);
 }
 
-export interface TriggerCallArgs {
+export interface TriggerCallArgs extends StatementAnnotations {
   trigger: ObjectRef;
   as?: string;
   input?: CallInput;
@@ -203,15 +204,15 @@ export interface TriggerCallArgs {
 
 /** `trigger.call <trigger>` — invoke a trigger as a workspace run. */
 export function triggerCall(args: TriggerCallArgs): Statement {
-  return {
+  return annotate({
     name: "mvp:workspace_run_trigger",
     context: { id: resolveRef("trigger", args.trigger) },
     as: args.as,
     input: encodeCallInput(args.input),
-  };
+  }, args);
 }
 
-export interface MiddlewareCallArgs {
+export interface MiddlewareCallArgs extends StatementAnnotations {
   middleware: ObjectRef;
   as?: string;
   input?: CallInput;
@@ -219,15 +220,15 @@ export interface MiddlewareCallArgs {
 
 /** `middleware.call <middleware>` — invoke middleware as a workspace run. */
 export function middlewareCall(args: MiddlewareCallArgs): Statement {
-  return {
+  return annotate({
     name: "mvp:workspace_run_middleware",
     context: { id: resolveRef("middleware", args.middleware) },
     as: args.as,
     input: encodeCallInput(args.input),
-  };
+  }, args);
 }
 
-export interface AddonCallArgs {
+export interface AddonCallArgs extends StatementAnnotations {
   addon: ObjectRef;
   as?: string;
   input?: CallInput;
@@ -235,12 +236,12 @@ export interface AddonCallArgs {
 
 /** `addon.call <addon>` — invoke an addon as a workspace run. */
 export function addonCall(args: AddonCallArgs): Statement {
-  return {
+  return annotate({
     name: "mvp:workspace_run_addon",
     context: { id: resolveRef("addon", args.addon) },
     as: args.as,
     input: encodeCallInput(args.input),
-  };
+  }, args);
 }
 
 // ---------------------------------------------------------------------------
@@ -251,7 +252,7 @@ export function addonCall(args: AddonCallArgs): Statement {
 // call one — `mvp:function` has a single surface and the default payload above.
 // ---------------------------------------------------------------------------
 
-export interface ActionCallArgs {
+export interface ActionCallArgs extends StatementAnnotations {
   /** The action's name. */
   action: ObjectRef;
   /** The action package identifier. */
@@ -271,13 +272,13 @@ export interface ActionCallArgs {
  *   `convertBlockToInput` (may be the rich form). No golden.
  */
 export function actionCall(args: ActionCallArgs): Statement {
-  return {
+  return annotate({
     name: "mvp:action",
     context: { run_version: { id: resolveRef("function", args.action) } },
     as: args.as,
     input: encodeCallInput(args.input),
     settings_registry: [],
-  };
+  }, args);
 }
 
 /**
@@ -292,7 +293,7 @@ export function actionCall(args: ActionCallArgs): Statement {
  *   exists. No golden.
  */
 export function actionPackageCall(args: ActionCallArgs): Statement {
-  return {
+  return annotate({
     name: "mvp:action_package",
     context: {
       action: { trace_id: "" },
@@ -302,10 +303,10 @@ export function actionPackageCall(args: ActionCallArgs): Statement {
     as: args.as,
     input: encodeCallInput(args.input),
     settings_registry: [],
-  };
+  }, args);
 }
 
-export interface WorkflowTestCallArgs {
+export interface WorkflowTestCallArgs extends StatementAnnotations {
   /** The target workflow test. */
   workflowTest: ObjectRef;
   as?: string;
@@ -319,7 +320,7 @@ export interface WorkflowTestCallArgs {
  * `context.{datasource, id}` — `datasource` is ALWAYS present (default `""`).
  */
 export function workflowTestCall(args: WorkflowTestCallArgs): Statement {
-  return {
+  return annotate({
     name: "mvp:workspace_run_workflow_test",
     context: {
       datasource: args.datasource ?? "",
@@ -327,7 +328,7 @@ export function workflowTestCall(args: WorkflowTestCallArgs): Statement {
     },
     as: args.as,
     input: [],
-  };
+  }, args);
 }
 
 registerStatement("mvp:function", functionRun);
