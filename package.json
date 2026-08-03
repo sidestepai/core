@@ -60,6 +60,7 @@
     "codegen:methods": "tsx scripts/codegen-field-methods.ts",
     "codegen:sweep": "tsx scripts/codegen-sweep.ts",
     "codegen:replay": "tsx scripts/codegen-replay.ts",
+    "codegen:imports": "tsx scripts/codegen-imports.ts",
     "manifest": "tsx scripts/manifest.ts",
     "measure:llms": "tsx scripts/measure-llms.ts",
     "typecheck": "tsc --noEmit",

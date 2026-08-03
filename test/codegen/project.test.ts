@@ -139,6 +139,86 @@ describe("symbol naming", () => {
   });
 });
 
+describe("every generated import resolves", () => {
+  /**
+   * The check a bundle round trip cannot make.
+   *
+   * A wrong relative specifier is invisible to the decoder AND to a re-export
+   * diff — both compare bundles, and neither ever loads the tree. It surfaces
+   * as `ERR_MODULE_NOT_FOUND` at import time, in the user's project, after
+   * install. Now that the tree nests two levels deep, that is the failure this
+   * layout is most likely to produce.
+   */
+  function unresolvable(project: GeneratedProject): string[] {
+    const present = new Set(project.files.map((f) => f.path));
+    const out: string[] = [];
+    for (const generated of project.files) {
+      if (!generated.path.endsWith(".ts")) continue;
+      for (const m of generated.contents.matchAll(/^import(?: type)? \{[^}]*\} from "(\.[^"]*)";$/gm)) {
+        const segments = generated.path.split("/").slice(0, -1);
+        for (const part of m[1]!.split("/")) {
+          if (part === ".") continue;
+          else if (part === "..") segments.pop();
+          else segments.push(part);
+        }
+        const target = segments.join("/").replace(/\.js$/, ".ts");
+        if (!present.has(target)) out.push(`${generated.path} → ${m[1]} (no ${target})`);
+      }
+    }
+    return out;
+  }
+
+  it("resolves every specifier in the sandbox tree", () => {
+    // The sandbox is the richest workspace on hand — every kind, api groups,
+    // triggers, tables, cross-file references — so it exercises each depth
+    // combination the layout can produce.
+    const project = decodeBundle(sandbox.export() as { payload: Record<string, unknown> });
+    expect(unresolvable(project)).toEqual([]);
+  });
+
+  it("resolves every specifier across nesting, hoisting, and the table file", () => {
+    const users = defineTable({ name: "users", guid: guid(1), schema: { title: f.text() } });
+    const admin = apiGroup({ name: "admin", guid: guid(2) });
+    const project = decodeBundle(
+      new Xano()
+        .registerTables([users])
+        .registerApiGroups([admin])
+        .registerQueries([
+          query({
+            name: "posts",
+            verb: "GET",
+            apiGroup: admin,
+            guid: guid(3),
+            stack: [s.db.query({ table: users, as: "rows" })],
+          }),
+        ])
+        .registerFunctions([fn("helper", guid(4)), fn("a", guid(5), [guid(4)]), fn("b", guid(6), [guid(4)])])
+        .registerTriggers([tableTrigger({ name: "on_insert", table: users, actions: { insert: true } })])
+        .export(),
+    );
+    expect(unresolvable(project)).toEqual([]);
+  });
+
+  it("would catch a specifier that points at nothing", () => {
+    // A guard that cannot fail is not a guard. Corrupt one specifier and the
+    // check must name it.
+    const project = decodeBundle(
+      new Xano()
+        .registerFunctions([fn("helper", guid(1)), fn("a", guid(2), [guid(1)])])
+        .export(),
+    );
+    const corrupted: GeneratedProject = {
+      ...project,
+      files: project.files.map((generated) =>
+        generated.path === "function/a.ts"
+          ? { ...generated, contents: generated.contents.replace('from "./helper.js"', 'from "./gone.js"') }
+          : generated,
+      ),
+    };
+    expect(unresolvable(corrupted)).toHaveLength(1);
+  });
+});
+
 describe("query placement", () => {
   function pathsOf(build: (x: Xano) => Xano): string[] {
     return decodeBundle(build(new Xano()).export()).files.map((f) => f.path);
