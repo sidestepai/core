@@ -16,9 +16,19 @@ import { describe, it, expect } from "vitest";
 import { decodeBundle } from "../../src/codegen/index.js";
 import { toSymbol, specifierFrom } from "../../src/codegen/project.js";
 import type { GeneratedProject } from "../../src/codegen/index.js";
-import { workspace } from "../../src/workspace/xano.js";
+import { workspace, Xano } from "../../src/workspace/xano.js";
 import { defineFunction } from "../../src/function/define.js";
 import { table as defineTable } from "../../src/kinds/table.js";
+import { agent } from "../../src/kinds/agent.js";
+import { mcpServer } from "../../src/kinds/mcp-server.js";
+import {
+  tableTrigger,
+  agentTrigger,
+  mcpServerTrigger,
+  workspaceTrigger,
+  errorTrigger,
+} from "../../src/kinds/trigger.js";
+import "../../src/index.js"; // register kinds
 import { f } from "../../src/fields/catalog.js";
 import { s } from "../../src/statements/s.js";
 import type { FunctionDef } from "../../src/function/define.js";
@@ -124,6 +134,72 @@ describe("symbol naming", () => {
   it("assembles the same bundle to byte-identical files twice", () => {
     const defs = () => ({ tables: [table("users", guid(1))], functions: [fn("a", guid(2), [guid(1)])] });
     expect(build(defs()).files).toEqual(build(defs()).files);
+  });
+});
+
+describe("trigger placement", () => {
+  /** Paths in the generated tree, for asserting where a trigger landed. */
+  function pathsOf(build: (x: Xano) => Xano): string[] {
+    return decodeBundle(build(new Xano()).export()).files.map((f) => f.path);
+  }
+
+  it("puts a database trigger under the table directory", () => {
+    const users = defineTable({ name: "users", guid: guid(1), schema: { title: f.text() } });
+    const paths = pathsOf((x) =>
+      x
+        .registerTables([users])
+        .registerTriggers([tableTrigger({ name: "on_insert", table: users, actions: { insert: true } })]),
+    );
+    expect(paths).toContain("table/trigger/on_insert.ts");
+  });
+
+  it("separates an agent trigger from an mcp-server trigger by the bound object's kind", () => {
+    // Both store `obj_type: "toolset"` — only what `obj_id` resolves to tells
+    // them apart, which is exactly why placement resolves rather than switching.
+    const assistant = agent({ name: "assistant", guid: guid(2), llm: { type: "xano-free" } });
+    const books = mcpServer({ name: "books", guid: guid(3) });
+    const paths = pathsOf((x) =>
+      x
+        .registerAgents([assistant])
+        .registerMcpServers([books])
+        .registerTriggers([
+          agentTrigger({ name: "on_agent", agent: assistant }),
+          mcpServerTrigger({ name: "on_mcp", mcpServer: books }),
+        ]),
+    );
+    expect(paths).toContain("agent/trigger/on_agent.ts");
+    expect(paths).toContain("mcpServer/trigger/on_mcp.ts");
+  });
+
+  it("leaves a parentless trigger in the flat trigger directory", () => {
+    // Workspace and error triggers bind nothing — there is no parent directory
+    // for them to sit under, so the kind's own folder is the right home.
+    const paths = pathsOf((x) =>
+      x.registerTriggers([
+        workspaceTrigger({ name: "on_branch_live", actions: { branch_live: true } }),
+        errorTrigger({ name: "on_error" }),
+      ]),
+    );
+    expect(paths).toContain("trigger/on_branch_live.ts");
+    expect(paths).toContain("trigger/on_error.ts");
+  });
+
+  it("leaves a numeric-objId trigger flat rather than guessing a parent", () => {
+    // `objId` is the documented escape hatch: a number indexes the engine's own
+    // list and names no guid, so there is nothing to resolve.
+    const paths = pathsOf((x) =>
+      x.registerTriggers([tableTrigger({ name: "by_number", objId: 1, actions: { insert: true } })]),
+    );
+    expect(paths).toContain("trigger/by_number.ts");
+  });
+
+  it("leaves a trigger flat when its parent guid resolves to nothing", () => {
+    const paths = pathsOf((x) =>
+      x.registerTriggers([
+        tableTrigger({ name: "dangling", table: { name: "gone", guid: guid(9) }, actions: { insert: true } }),
+      ]),
+    );
+    expect(paths).toContain("trigger/dangling.ts");
   });
 });
 

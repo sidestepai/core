@@ -371,7 +371,7 @@ function place(refs: RefIndex, payload: Record<string, unknown>): Placement[] {
 
   return list.map((candidate, i) => {
     const symbol = symbols[i]!;
-    const [dir, path] = fileFor(candidate, symbol, referrers);
+    const [dir, path] = fileFor(candidate, symbol, referrers, refs);
     return { object: candidate.object, stored: candidate.stored, symbol, dir, path };
   });
 }
@@ -381,12 +381,44 @@ function fileFor(
   candidate: Candidate,
   symbol: string,
   referrers: ReadonlyMap<string, number>,
+  refs: RefIndex,
 ): [dir: string, path: string] {
   // Tables collapse before the shared check: they go to one file whether or not
   // anything references them.
   if (candidate.object.kind === "table") return [TABLE_DIR, TABLE_FILE];
+  // The hoist wins over nesting: a multiply-referenced object is in `_shared.ts`
+  // for a cycle reason, which outranks reading nicely.
   if ((referrers.get(candidate.object.guid) ?? 0) > 1) return [".", SHARED_FILE];
+  if (candidate.object.kind === "trigger") {
+    const dir = triggerDir(candidate, refs);
+    return [dir, `${dir}/${symbol}.ts`];
+  }
   return [candidate.dir, `${candidate.dir}/${symbol}.ts`];
+}
+
+/**
+ * The directory a trigger belongs in: `<parent kind>/trigger`, or the kind's own
+ * `trigger/` when there is no parent to nest under.
+ *
+ * Keyed on what `obj_id` RESOLVES to, not on the trigger's own `obj_type`. The
+ * decoder already works this way — `obj_type: "toolset"` is one type covering
+ * both mcp servers and agents, and only the bound object's kind separates them
+ * (see `TOOLSET_TRIGGERS`). A static `obj_type → directory` table would have to
+ * restate that, would need an entry per type, and would silently misfile any
+ * type Xano adds later.
+ *
+ * Falls back to the flat `trigger/` for the types that have no guid parent at
+ * all — workspace and error triggers — for the numeric `obj_id` escape hatch,
+ * and for a guid that resolves to nothing or to a kind this SDK does not place.
+ * Those are homes, not failures: there is no parent directory to sit under.
+ */
+function triggerDir(candidate: Candidate, refs: RefIndex): string {
+  const objId = candidate.stored.obj_id;
+  if (typeof objId !== "string" || objId === "") return candidate.dir;
+  const parent = refs.lookup(objId);
+  if (!parent) return candidate.dir;
+  const decoder = KIND_DECODERS_BY_NAME.get(parent.kind);
+  return decoder ? `${decoder.dir}/${candidate.dir}` : candidate.dir;
 }
 
 /**
