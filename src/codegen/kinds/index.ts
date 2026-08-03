@@ -60,6 +60,7 @@ import {
   workspaceTrigger,
 } from "../../kinds/trigger.js";
 import type { TriggerInputObjType } from "../../kinds/trigger-inputs.js";
+import type { Condition } from "../../statements/expression.js";
 import { rewriteTriggerInputRefs } from "./trigger-handle-refs.js";
 import { parsePathParams, unboundPathParams } from "../../kinds/path-params.js";
 import { ENGINE_HISTORY_LIMIT } from "../../validate/normalize.js";
@@ -1191,12 +1192,23 @@ function triggerFactoryArgs(
 
   const actions = triggerActions(a.stored, objType);
   const datasources = triggerDatasources(a.stored, objType);
-  if (!triggerMetaMatches(a.stored, objType, actions, datasources)) {
+
+  // A trigger condition, inverted through the shared condition decoder. Declining
+  // is a real outcome — an expression this decoder cannot invert would otherwise
+  // become a trigger with NO filter, which fires for every row instead of the few
+  // the source intended. That is a widening, so it falls back rather than degrades.
+  const search = triggerSearch(a, objType);
+  if (search === "undecodable") {
     triggerFallback(
       a,
-      "stores `meta` the factory does not synthesize (most often a trigger condition, " +
-        "`meta.database.search.expression`, which `tableTrigger` has no argument for)",
+      "stores a trigger condition (`meta.database.search.expression`) this decoder " +
+        "cannot invert; a factory call would drop it and fire for every row",
     );
+    return null;
+  }
+
+  if (!triggerMetaMatches(a.stored, objType, actions, datasources, search?.runtime)) {
+    triggerFallback(a, "stores `meta` the factory does not synthesize");
     return null;
   }
 
@@ -1207,6 +1219,7 @@ function triggerFactoryArgs(
     triggerBinding(a, objType, bindingArg),
     actions ? (["actions", lit(actions)] as DefEntry) : null,
     datasources.length > 0 ? (["datasources", lit(datasources)] as DefEntry) : null,
+    search ? (["search", search.expr] as DefEntry) : null,
     tags(a.stored),
     ...triggerBody(a, objType),
   ]);
@@ -1289,6 +1302,27 @@ function triggerActions(
   return Object.keys(out).length > 0 ? out : null;
 }
 
+/**
+ * Stored `meta.database.search` → the `search` argument.
+ *
+ * Returns `null` when there is no condition, the decoded pair when there is one,
+ * and the sentinel `"undecodable"` when a condition is present but this decoder
+ * cannot invert it — three outcomes the caller has to tell apart, because the
+ * middle and the last differ by whether the generated trigger fires for the right
+ * rows. Speculated so a decline records the reason rather than throwing.
+ */
+function triggerSearch(
+  a: KindDecodeArgs,
+  objType: string,
+): { expr: Expr; runtime: unknown } | null | "undecodable" {
+  if (objType !== "database") return null;
+  const meta = a.stored.meta as { database?: { search?: unknown } } | undefined;
+  const block = meta?.database?.search as { expression?: unknown } | undefined;
+  if (!Array.isArray(block?.expression) || block.expression.length === 0) return null;
+  const decoded = a.ctx.speculate(() => decodeCondition(a.ctx, block));
+  return decoded ?? "undecodable";
+}
+
 /** Stored `meta.database.datasource` (`[{tag}]`) → the `datasources` argument. */
 function triggerDatasources(stored: StoredObject, objType: string): string[] {
   if (objType !== "database") return [];
@@ -1318,10 +1352,19 @@ function triggerMetaMatches(
   objType: string,
   actions: Record<string, boolean> | null,
   datasources: readonly string[],
+  search: unknown,
 ): boolean {
   const probe =
     objType === "database"
-      ? tableTrigger({ name: "probe", actions: actions ?? {}, datasources: [...datasources] })
+      ? tableTrigger({
+          name: "probe",
+          actions: actions ?? {},
+          datasources: [...datasources],
+          // The decoded condition's RUNTIME form, so the probe encodes the real
+          // argument rather than a stand-in — this is what makes the comparison
+          // cover the condition too instead of quietly excluding it.
+          ...(search === undefined || search === null ? {} : { search: search as Condition }),
+        })
       : objType === "workspace"
         ? workspaceTrigger({ name: "probe", actions: actions ?? {} })
         : objType === "toolset"

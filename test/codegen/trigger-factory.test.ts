@@ -195,21 +195,26 @@ describe("trigger decode — the toolset pair", () => {
   });
 });
 
-describe("trigger decode — when the factory cannot express it", () => {
-  it("falls back for a trigger condition `tableTrigger` has no argument for", () => {
-    // The one stored shape a database trigger can carry that no factory argument
-    // reaches. Emitting `tableTrigger({…})` here would drop the condition and
-    // widen the trigger to every row.
+describe("trigger decode — the trigger condition", () => {
+  it("emits a stored condition as the `search` argument, not a meta block", () => {
+    // `table-trigger.json` is the engine fixture carrying a real custom filter.
+    // Dropping it would widen the trigger from a few rows to every row, so this
+    // is the assertion that the condition survives the factory form intact.
     const stored = loadFixture<Record<string, unknown>>("triggers/table-trigger.json");
     const { factory, source } = decodeStored(stored);
-    expect(factory).toBeUndefined();
-    // The condition survives verbatim in the fallback form — which is the point.
-    expect(source).toContain("meta:");
-    expect(source).toContain("NEW.id");
+    expect(factory).toBe("tableTrigger");
+    expect(source).toContain("search:");
+    expect(source).toContain('col("NEW.id")');
+    expect(source).not.toContain("meta:");
   });
+});
 
+describe("trigger decode — when the factory cannot express it", () => {
   it("reports the fallback rather than degrading silently", () => {
-    const stored = loadFixture<Record<string, unknown>>("triggers/table-trigger.json");
+    const stored = {
+      ...loadFixture<Record<string, unknown>>("triggers/workspace-trigger.json"),
+      history: { inherit: false, enabled: true, limit: 50 },
+    };
     const { ctx } = decodeStored(stored);
     const entries = ctx.report.summarize().byCategory.flatMap((g) => g.entries);
     expect(JSON.stringify(entries)).toContain("satisfies TriggerDef");
