@@ -68,6 +68,22 @@ function file(project: GeneratedProject, path: string): string {
   return found!.contents;
 }
 
+/**
+ * Every binding the tree exports for a decoded OBJECT.
+ *
+ * `workspace.ts` is excluded: its `workspaceSettings` is the workspace config,
+ * which is not a placed object, takes a reserved name no object can collide
+ * with, and is registered through `registerWorkspace(x)` rather than one of the
+ * array registrars. Counting it would make every symbol assertion here about
+ * assembly's own file rather than about the objects.
+ */
+function objectSymbols(project: GeneratedProject): string[] {
+  return project.files
+    .filter((f) => f.path.endsWith(".ts") && f.path !== "index.ts" && f.path !== "workspace.ts")
+    .flatMap((f) => [...f.contents.matchAll(/export const (\w+) =/g)].map((m) => m[1]!))
+    .sort();
+}
+
 describe("symbol naming", () => {
   it("turns a name that is not an identifier into one", () => {
     expect(toSymbol("My Table-2")).toBe("My_Table_2");
@@ -81,7 +97,7 @@ describe("symbol naming", () => {
     // otherwise produce one binding that shadows the other.
     const project = build({ tables: [table("users", guid(1))], functions: [fn("users", guid(2))] });
     const shared = file(project, "_shared.ts");
-    const functions = file(project, "functions/usersFunction.ts");
+    const functions = file(project, "function/usersFunction.ts");
     expect(shared).toContain("export const users =");
     expect(functions).toContain("export const usersFunction =");
   });
@@ -90,9 +106,7 @@ describe("symbol naming", () => {
     const project = build({
       functions: [fn("my fn", guid(1)), fn("my-fn", guid(2)), fn("my_fn", guid(3))],
     });
-    const symbols = project.files
-      .flatMap((f) => [...f.contents.matchAll(/export const (\w+) =/g)].map((m) => m[1]!))
-      .sort();
+    const symbols = objectSymbols(project);
     expect(new Set(symbols).size).toBe(symbols.length);
     expect(symbols).toEqual(["my_fn", "my_fn_2", "my_fn_3"]);
   });
@@ -122,7 +136,7 @@ describe("relative import specifiers", () => {
   // depth combination the layout can produce is pinned.
   it.each([
     ["same directory", "function", "function/b.ts", "./b.js"],
-    ["root down one", ".", "table/table.js", "./table/table.js"],
+    ["root down one", ".", "table/table.ts", "./table/table.js"],
     ["root to root", ".", "_shared.ts", "./_shared.js"],
     ["one deep up to root", "function", "_shared.ts", "../_shared.js"],
     ["one deep to a sibling directory", "function", "table/table.ts", "../table/table.js"],
@@ -162,7 +176,7 @@ describe("file layout", () => {
     // per-object files makes the import graph unreadable.
     const project = build({ tables: [table("users", guid(1))], functions: [fn("a", guid(2), [guid(1)])] });
     expect(file(project, "_shared.ts")).toContain("export const users =");
-    expect(project.files.map((f) => f.path)).not.toContain("tables/users.ts");
+    expect(project.files.map((f) => f.path)).not.toContain("table/users.ts");
   });
 
   it("hoists an object two files reference into _shared.ts and imports it from both", () => {
@@ -170,7 +184,7 @@ describe("file layout", () => {
       functions: [fn("helper", guid(1)), fn("a", guid(2), [guid(1)]), fn("b", guid(3), [guid(1)])],
     });
     expect(file(project, "_shared.ts")).toContain("export const helper =");
-    for (const path of ["functions/a.ts", "functions/b.ts"]) {
+    for (const path of ["function/a.ts", "function/b.ts"]) {
       expect(file(project, path)).toContain('from "../_shared.js"');
       expect(file(project, path)).toContain("helper");
     }
@@ -178,14 +192,14 @@ describe("file layout", () => {
 
   it("leaves a singly-referenced object in its own kind directory", () => {
     const project = build({ functions: [fn("helper", guid(1)), fn("a", guid(2), [guid(1)])] });
-    expect(file(project, "functions/a.ts")).toContain('from "./helper.js"');
+    expect(file(project, "function/a.ts")).toContain('from "./helper.js"');
   });
 
   it("imports only what a file actually uses", () => {
     const project = build({
       functions: [fn("helper", guid(1)), fn("a", guid(2), [guid(1)]), fn("b", guid(3))],
     });
-    expect(file(project, "functions/b.ts")).not.toContain("helper");
+    expect(file(project, "function/b.ts")).not.toContain("helper");
   });
 });
 
@@ -196,8 +210,8 @@ describe("reference cycles", () => {
     const project = build({
       functions: [fn("a", guid(1), [guid(2)]), fn("b", guid(2), [guid(1)])],
     });
-    const a = file(project, "functions/a.ts");
-    const b = file(project, "functions/b.ts");
+    const a = file(project, "function/a.ts");
+    const b = file(project, "function/b.ts");
     const imports = [a, b].filter((source) => /^import .* from "\.\//m.test(source));
     expect(imports).toHaveLength(1);
     // The degraded edge references its target by name and guid instead.
@@ -292,10 +306,7 @@ describe("generated tree contents", () => {
       .flatMap((m) => m[1]!.split(",").map((s) => s.trim()))
       .filter(Boolean);
     expect(new Set(registered).size).toBe(registered.length);
-    const exported = project.files
-      .filter((f) => f.path.endsWith(".ts") && f.path !== "index.ts")
-      .flatMap((f) => [...f.contents.matchAll(/export const (\w+) =/g)].map((m) => m[1]!));
-    expect(registered.sort()).toEqual(exported.sort());
+    expect(registered.sort()).toEqual(objectSymbols(project));
   });
 
   it("states the disposable / full-replace / schema-only warnings unconditionally", () => {
@@ -344,7 +355,7 @@ describe("empty source objects", () => {
     // Reporting must not turn into skipping: the object still exists upstream,
     // and a tree missing it would not round-trip.
     const project = build({ functions: [fn("empty", guid(1))] });
-    const generated = file(project, "functions/empty.ts");
+    const generated = file(project, "function/empty.ts");
     expect(generated).toContain("defineFunction({");
     expect(generated).toContain('name: "empty"');
     expect(generated).not.toContain("stack:");
@@ -366,7 +377,7 @@ describe("empty source objects", () => {
 describe("factory emission", () => {
   it("wraps each def in its factory rather than a `satisfies` annotation", () => {
     const project = build({ functions: [fn("a", guid(1), [guid(2)]), fn("b", guid(2), [guid(1)])] });
-    const generated = file(project, "functions/a.ts");
+    const generated = file(project, "function/a.ts");
     expect(generated).toContain("defineFunction({");
     expect(generated).not.toContain("satisfies");
     // Value import, not a type-only one — an `import type` would be erased and
@@ -375,11 +386,22 @@ describe("factory emission", () => {
     expect(generated).not.toContain("import type { FunctionDef }");
   });
 
-  it("registers the workspace through its factory in the barrel", () => {
+  it("wraps the workspace config in its factory, in its own file", () => {
+    // The config used to be inlined into the barrel's registry chain; it now
+    // has `workspace.ts` to itself, and the barrel only names the binding.
     const project = build({ tables: [table("t", guid(1))] });
+    const settings = file(project, "workspace.ts");
+    expect(settings).toContain("export const workspaceSettings = workspaceConfig({");
+    expect(settings).not.toContain("satisfies");
     const barrel = file(project, "index.ts");
-    expect(barrel).toContain(".registerWorkspace(workspaceConfig({");
-    expect(barrel).not.toContain("satisfies");
+    expect(barrel).toContain(".registerWorkspace(workspaceSettings)");
+    expect(barrel).toContain('from "./workspace.js"');
+  });
+
+  it("emits no workspace.ts when the bundle carries no workspace object", () => {
+    const project = decodeBundle({ payload: { dbo: [] } });
+    expect(project.files.map((f) => f.path)).not.toContain("workspace.ts");
+    expect(file(project, "index.ts")).not.toContain("registerWorkspace");
   });
 
   it("never lets an object symbol shadow a factory it imports", () => {
@@ -427,7 +449,7 @@ describe("reserved names never break the tree", () => {
   it("emits a parsing tree for a function named `default`", async () => {
     const project = build({ functions: [fn("default", guid(1))] });
     await expectParses(project);
-    expect(file(project, "functions/defaultFunction.ts")).toContain("export const defaultFunction =");
+    expect(file(project, "function/defaultFunction.ts")).toContain("export const defaultFunction =");
   });
 
   it("emits a valid identifier for every reserved word used as a name", async () => {
@@ -446,9 +468,7 @@ describe("reserved names never break the tree", () => {
       functions: words.map((word, i) => fn(word, guid(i + 1))),
     });
     await expectParses(project);
-    const symbols = project.files
-      .flatMap((generated) => [...generated.contents.matchAll(/export const (\w+) =/g)].map((m) => m[1]!))
-      .filter((symbol) => symbol !== "default");
+    const symbols = objectSymbols(project).filter((symbol) => symbol !== "default");
     expect(symbols).toHaveLength(words.length);
     for (const symbol of symbols) expect(words).not.toContain(symbol);
     // Still unique — the postfix must not collapse two words onto one symbol.
@@ -459,15 +479,13 @@ describe("reserved names never break the tree", () => {
     const project = build({ tables: [table("table", guid(1))], functions: [fn("query", guid(2))] });
     await expectParses(project);
     expect(file(project, "_shared.ts")).toMatch(/export const tableTable = table\(/);
-    expect(file(project, "functions/queryFunction.ts")).toContain("export const queryFunction =");
+    expect(file(project, "function/queryFunction.ts")).toContain("export const queryFunction =");
   });
 
   it("keeps a reserved name unique when two same-kind objects share it", async () => {
     const project = build({ functions: [fn("new", guid(1)), fn("new", guid(2))] });
     await expectParses(project);
-    const symbols = project.files
-      .flatMap((generated) => [...generated.contents.matchAll(/export const (\w+) =/g)].map((m) => m[1]!))
-      .sort();
+    const symbols = objectSymbols(project);
     // The ordinal builds on the disambiguated symbol, not the bare reserved word.
     expect(symbols).toEqual(["newFunction", "newFunction_2"]);
   });
@@ -475,9 +493,7 @@ describe("reserved names never break the tree", () => {
   it("resolves a reserved name that also collides across kinds", async () => {
     const project = build({ tables: [table("new", guid(1))], functions: [fn("new", guid(2))] });
     await expectParses(project);
-    const symbols = project.files
-      .flatMap((generated) => [...generated.contents.matchAll(/export const (\w+) =/g)].map((m) => m[1]!))
-      .sort();
+    const symbols = objectSymbols(project);
     expect(symbols).toEqual(["newFunction", "newTable"]);
   });
 

@@ -99,17 +99,14 @@ describe("kind decoders — every object round-trips, per kind", () => {
   it("emits no `guid:` on workspace-config — the one KTD-7 exemption", () => {
     // Every other kind states its guid explicitly; `WorkspaceConfigDef` declares
     // no such field, so emitting one would not even type-check.
-    const barrel = project.files.find((f) => f.path === "index.ts")!.contents;
-    const registration = barrel.slice(barrel.indexOf(".registerWorkspace("));
-    // Bound the slice at the NEXT chained registrar, not at a marker inside the
-    // call — keying on `satisfies` silently widened this to the whole barrel the
-    // moment the emitter switched to `workspaceConfig(...)`.
-    const nextCall = registration.indexOf("\n  .register", 1);
-    const literal = nextCall === -1 ? registration : registration.slice(0, nextCall);
+    // The config has `workspace.ts` to itself, so the whole file is the literal
+    // — no slicing out of the barrel's method chain.
+    const literal = project.files.find((f) => f.path === "workspace.ts")!.contents;
     expect(literal).toContain("workspaceConfig({");
     // Match the def's OWN keys by indentation — a nested `{name, guid}`
     // middleware reference legitimately carries a guid and must not trip this.
-    expect(literal.split("\n").filter((line) => /^ {4}guid:/.test(line))).toEqual([]);
+    // Two spaces now, not four: a top-level const, no longer indented into a chain.
+    expect(literal.split("\n").filter((line) => /^ {2}guid:/.test(line))).toEqual([]);
   });
 
   it("routes the two kinds sharing payload key `toolset` to their own registrars", () => {

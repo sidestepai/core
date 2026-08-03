@@ -129,7 +129,7 @@ describe("realtime decoders — parent references", () => {
           realtimeMessage({ name: "send", channel: other }),
         ]),
     );
-    const messages = project.files.filter((f) => f.path.includes("realtimeMessages/"));
+    const messages = project.files.filter((f) => f.path.includes("realtimeMessage/"));
     expect(messages.length).toBe(2);
     const guids = messages.map((f) => /guid: "([0-9a-f]{32})"/.exec(f.contents)?.[1]);
     expect(guids[0]).not.toBe(guids[1]);

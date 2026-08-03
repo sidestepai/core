@@ -106,7 +106,7 @@ describe("codegen <bundle.json> <path> — the offline form", () => {
     expect(JSON.parse(readFileSync(join(dir, "out", "tsconfig.json"), "utf8")).include).toContain(
       "xano",
     );
-    expect(readFileSync(join(dir, "out", "xano", "functions", "signup.ts"), "utf8")).toContain(
+    expect(readFileSync(join(dir, "out", "xano", "function", "signup.ts"), "utf8")).toContain(
       's.set_var("total", c.int(0))',
     );
   });

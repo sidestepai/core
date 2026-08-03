@@ -40,6 +40,10 @@ import {
 /** The file cross-referenced objects and every table share. */
 const SHARED_FILE = "_shared.ts";
 
+/** The workspace config's own file, and the binding the barrel imports from it. */
+const WORKSPACE_FILE = "workspace.ts";
+const WORKSPACE_SYMBOL = "workspaceSettings";
+
 /** One object placed in the generated tree. */
 interface Placement {
   readonly object: IndexedObject;
@@ -82,6 +86,10 @@ const RESERVED_SYMBOLS: readonly string[] = [
   "realtimeChannel",
   "realtimeMessage",
   "workspace",
+  // The barrel's import of `workspace.ts`. An object taking this name would make
+  // the barrel import two different bindings under one identifier — a syntax
+  // error in the one file that has to load for anything to deploy.
+  WORKSPACE_SYMBOL,
   // value helpers emitted inside def literals
   "s",
   "c",
@@ -650,44 +658,90 @@ export function assembleProject(
   // Sorted so the file list itself is deterministic, not merely each file's bytes.
   out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 
-  out.push({ path: "index.ts", contents: barrel(ctx, refs, payload, placements) });
+  const settings = workspaceFile(ctx, refs, payload);
+  if (settings) out.push({ path: WORKSPACE_FILE, contents: settings.contents });
+  out.push({ path: "index.ts", contents: barrel(ctx, payload, placements, settings) });
   out.push({ path: "README.md", contents: readme(ctx, placements) });
   out.push({ path: "tsconfig.json", contents: tsconfig() });
   return out;
 }
 
-/** The barrel: registers every decoded object under its `register*` bucket. */
-function barrel(
+/** The decoded workspace config, as its own file. */
+interface WorkspaceFile {
+  readonly contents: string;
+  /** Binding the barrel imports and passes to `registerWorkspace`. */
+  readonly symbol: string;
+}
+
+/**
+ * Decode the workspace config into `workspace.ts`.
+ *
+ * It used to be inlined into the barrel's registry chain, which buried the one
+ * object a reader most often wants to find under every other object's
+ * registration — and a workspace config is not small: it carries the env var
+ * list and the four-host middleware map. Its own file also means the barrel is
+ * purely a registry again.
+ *
+ * Returns null when the payload carries no workspace object, in which case no
+ * file is emitted and the barrel registers nothing.
+ */
+function workspaceFile(
   ctx: DecodeContext,
   refs: RefIndex,
   payload: Record<string, unknown>,
+): WorkspaceFile | null {
+  // `payload.env` is hoisted out of the workspace object at export time; fold it
+  // back in so the workspace decoder sees the shape its encoder produced.
+  const stored: StoredObject = {
+    ...((payload.workspace ?? {}) as StoredObject),
+    ...(Array.isArray(payload.env) && payload.env.length > 0 ? { env: payload.env } : {}),
+  };
+  if (stored.name === undefined) return null;
+
+  const imports = ctx.beginFile();
+  const decoder = KIND_DECODERS_BY_NAME.get("workspace")!;
+  const { expr, factory } = ctx.inObject("workspace", () =>
+    decodeObject(decoder, { ctx, refs, stored, resolve: {} }),
+  );
+  if (factory) imports.use(CORE_MODULE, factory);
+  else imports.useType(CORE_MODULE, decoder.defType);
+
+  const literal = printExpr(expr);
+  return {
+    symbol: WORKSPACE_SYMBOL,
+    contents: printModule([
+      { kind: "comment", text: "Workspace settings — generated from a Xano bundle." },
+      ...imports.toStatements(),
+      { kind: "blank" },
+      {
+        kind: "const",
+        name: WORKSPACE_SYMBOL,
+        exported: true,
+        value: {
+          kind: "id",
+          text: factory ? `${factory}(${literal})` : `${literal} satisfies ${decoder.defType}`,
+        } as Expr,
+      },
+    ]),
+  };
+}
+
+/** The barrel: registers every decoded object under its `register*` bucket. */
+function barrel(
+  ctx: DecodeContext,
+  payload: Record<string, unknown>,
   placements: readonly Placement[],
+  settings: WorkspaceFile | null,
 ): string {
   const imports = ctx.beginFile();
   imports.use(CORE_MODULE, "workspace");
 
-  // `payload.env` is hoisted out of the workspace object at export time; fold it
-  // back in so the workspace decoder sees the shape its encoder produced.
-  const workspaceStored: StoredObject = {
-    ...((payload.workspace ?? {}) as StoredObject),
-    ...(Array.isArray(payload.env) && payload.env.length > 0 ? { env: payload.env } : {}),
-  };
-  const workspaceName = String(workspaceStored.name ?? "workspace");
+  const workspaceName = String((payload.workspace as StoredObject | undefined)?.name ?? "workspace");
   const lines: string[] = [`workspace(${JSON.stringify(workspaceName)})`];
 
-  if (workspaceStored.name !== undefined) {
-    const decoder = KIND_DECODERS_BY_NAME.get("workspace")!;
-    const { expr, factory } = ctx.inObject("workspace", () =>
-      decodeObject(decoder, { ctx, refs, stored: workspaceStored, resolve: {} }),
-    );
-    if (factory) imports.use(CORE_MODULE, factory);
-    else imports.useType(CORE_MODULE, decoder.defType);
-    const literal = indent(printExpr(expr));
-    lines.push(
-      `  .registerWorkspace(${
-        factory ? `${factory}(${literal})` : `${literal} satisfies ${decoder.defType}`
-      })`,
-    );
+  if (settings) {
+    imports.use(specifierFrom(".", WORKSPACE_FILE), settings.symbol);
+    lines.push(`  .registerWorkspace(${settings.symbol})`);
   }
 
   for (const decoder of KIND_DECODERS) {
@@ -760,9 +814,4 @@ function readme(ctx: DecodeContext, placements: readonly Placement[]): string {
   const report = ctx.report.renderMarkdown();
   lines.push(report === "" ? "Everything in the source bundle round-tripped cleanly." : report);
   return `${lines.join("\n").replace(/\n+$/, "")}\n`;
-}
-
-/** Re-indent a rendered expression to sit inside the barrel's method chain. */
-function indent(source: string): string {
-  return source.split("\n").join("\n  ");
 }

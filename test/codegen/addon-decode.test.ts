@@ -314,7 +314,7 @@ describe("unbound addon attachment", () => {
   }
 
   it("keeps the enclosing query readable instead of aborting it to raw()", () => {
-    const file = decodeBundle(queryWithAttachment("")).files.find((x) => x.path.includes("queries"));
+    const file = decodeBundle(queryWithAttachment("")).files.find((x) => x.path.includes("query/"));
     expect(file!.contents).toContain("addon: null");
     expect(file!.contents).not.toContain("raw(");
   });
@@ -322,7 +322,7 @@ describe("unbound addon attachment", () => {
   it("reads a numeric `0` as the same absence, not as an identity", () => {
     // The other stored spelling of "no target". A numeric id that is NOT the
     // sentinel still declines — nothing here reads identity out of a number.
-    const file = decodeBundle(queryWithAttachment(0)).files.find((x) => x.path.includes("queries"));
+    const file = decodeBundle(queryWithAttachment(0)).files.find((x) => x.path.includes("query/"));
     expect(file!.contents).toContain("addon: null");
     expect(file!.contents).not.toContain("raw(");
   });
@@ -354,7 +354,7 @@ describe("unbound addon attachment", () => {
   it("still resolves an attachment that names a real addon", () => {
     // The paired negative: `null` appears only for a genuinely blank id.
     const bound = queryWithAttachment(deriveGuid("addon", "extra"));
-    const file = decodeBundle(bound).files.find((x) => x.path.includes("queries"));
+    const file = decodeBundle(bound).files.find((x) => x.path.includes("query/"));
     expect(file!.contents).not.toContain("addon: null");
   });
 });

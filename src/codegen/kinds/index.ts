@@ -671,7 +671,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "table",
     payloadKey: "dbo",
-    dir: "tables",
+    dir: "table",
     register: "registerTables",
     defType: "TableDef",
     factory: "table",
@@ -699,7 +699,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "function",
     payloadKey: "function",
-    dir: "functions",
+    dir: "function",
     register: "registerFunctions",
     defType: "FunctionDef",
     factory: "defineFunction",
@@ -723,7 +723,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "query",
     payloadKey: "query",
-    dir: "queries",
+    dir: "query",
     register: "registerQueries",
     defType: "QueryDef",
     factory: "query",
@@ -752,7 +752,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "api_group",
     payloadKey: "app",
-    dir: "apiGroups",
+    dir: "apiGroup",
     register: "registerApiGroups",
     defType: "ApiGroupDef",
     factory: "apiGroup",
@@ -774,7 +774,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "microservice",
     payloadKey: "microservice",
-    dir: "microservices",
+    dir: "microservice",
     register: "registerMicroservices",
     defType: "MicroserviceDef",
     factory: "microservice",
@@ -811,7 +811,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "realtime_server",
     payloadKey: "realtime_server",
-    dir: "realtimeServers",
+    dir: "realtimeServer",
     register: "registerRealtimeServers",
     defType: "RealtimeServerDef",
     factory: "realtimeServer",
@@ -830,7 +830,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "channel",
     payloadKey: "channel",
-    dir: "realtimeChannels",
+    dir: "realtimeChannel",
     register: "registerRealtimeChannels",
     defType: "RealtimeChannelDef",
     factory: "realtimeChannel",
@@ -861,7 +861,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "message",
     payloadKey: "message",
-    dir: "realtimeMessages",
+    dir: "realtimeMessage",
     register: "registerRealtimeMessages",
     defType: "RealtimeMessageDef",
     factory: "realtimeMessage",
@@ -890,7 +890,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "trigger",
     payloadKey: "trigger",
-    dir: "triggers",
+    dir: "trigger",
     register: "registerTriggers",
     defType: "TriggerDef",
     decode: (a) => decodeTrigger(a),
@@ -898,7 +898,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "task",
     payloadKey: "task",
-    dir: "tasks",
+    dir: "task",
     register: "registerTasks",
     defType: "TaskDef",
     factory: "task",
@@ -940,7 +940,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "addon",
     payloadKey: "addon",
-    dir: "addons",
+    dir: "addon",
     register: "registerAddons",
     defType: "AddonDef",
     factory: "addon",
@@ -949,7 +949,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "tool",
     payloadKey: "tool",
-    dir: "ai",
+    dir: "tool",
     register: "registerTools",
     defType: "ToolDef",
     factory: "tool",
@@ -972,7 +972,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "mcp_server",
     payloadKey: "toolset",
-    dir: "ai",
+    dir: "mcpServer",
     register: "registerMcpServers",
     defType: "McpServerDef",
     factory: "mcpServer",
@@ -987,7 +987,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "agent",
     payloadKey: "toolset",
-    dir: "ai",
+    dir: "agent",
     register: "registerAgents",
     defType: "AgentDef",
     factory: "agent",
