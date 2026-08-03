@@ -1035,10 +1035,15 @@ const dbQuery: SpecialDecoder = (a) => {
 
   // Same story as `search`/`eval` above, and it bit harder: the engine writes all
   // five `simpleExternal` facets at an empty `input` default on a query that binds
-  // none of them. Read as authored, they became five bound paging Values — and
-  // since the engine honors `external` over `simpleExternal`, the SDK forbids
-  // authoring both, so the recovered call did not merely mismatch, it THREW.
+  // none of them. Read as authored, they became five bound paging Values on a
+  // query that binds nothing, so the recovered call did not match the stored one.
   // Measured: 70 of 230 fallen-back queries stored exactly this pair.
+  //
+  // It used to THROW rather than mismatch, because the encoder forbade authoring
+  // `external` alongside them. That precondition was wrong — the engine branches
+  // on the RESOLVED `external` and falls back to `simpleExternal` when it comes
+  // back empty, so the two are a chain rather than a conflict — and it is gone.
+  // The unauthored-default filter below is still load-bearing on its own.
   const simple = isUnauthored("simpleExternal", context.simpleExternal)
     ? {}
     : (context.simpleExternal as Record<string, unknown>);
