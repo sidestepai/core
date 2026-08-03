@@ -252,10 +252,35 @@ describe("db.query (mvp:dbo_view) emit shape", () => {
     expect(enc.context).not.toHaveProperty("simpleExternal");
   });
 
-  it("rejects external combined with an input-bound paging field (mutual exclusion)", () => {
-    expect(() =>
-      dbQuery({ table: note, paging: { page: inp("page") }, external: { value: inp("x") } }),
-    ).toThrow(/mutually exclusive/);
+  it("emits BOTH blocks for external plus an input-bound paging field", () => {
+    // These are a runtime fallback chain, not an either/or. The engine branches
+    // on `!empty($external)` — the RESOLVED value — and reads `simpleExternal`
+    // whenever the blob comes back empty, so a blob fed from an optional input
+    // with per-field paging behind it is a working configuration.
+    //
+    // This used to throw. The belief behind it was that the engine "honors
+    // external and ignores simpleExternal" unconditionally; it does not, and
+    // three real queries in the survey corpus could not be pulled because of it.
+    const enc = encodeStatement(
+      dbQuery({
+        table: note,
+        paging: { page: inp("page"), per_page: inp("per_page") },
+        external: { value: inp("filters") },
+      }),
+    );
+    const context = enc.context as { external: unknown; simpleExternal: Record<string, unknown> };
+    expect(context.external).toBeDefined();
+    // The second half of the same bug: this branch used to drop the binds even
+    // once the throw was gone, because it never wrote the block at all.
+    expect(context.simpleExternal).toEqual({
+      page: { value: "page", tag: "input", filters: [] },
+      per_page: { value: "per_page", tag: "input", filters: [] },
+    });
+    // The gate stays forced on, which is what BOTH paths need.
+    expect(
+      (enc.context as { return: { list: { paging: { enabled: boolean } } } }).return.list.paging
+        .enabled,
+    ).toBe(true);
   });
 
   it("output columns ride the statement output envelope, not context.output", () => {

@@ -192,7 +192,22 @@ export function withDeclineContext<T>(name: unknown, body: () => T): T {
  * every path out of a statement decode, which is what stops it outliving the
  * statement it describes.
  */
-let pendingNote: string | undefined;
+let pendingNote: PendingDecline | undefined;
+
+/**
+ * A decline note, plus the category the resulting report line should carry.
+ *
+ * Almost every decline is a fidelity gap and takes the default `raw-fallback`.
+ * The exception is a statement that stores nothing at all: `raw()` is not a
+ * failure to recover it, because there is nothing there to recover. Carrying the
+ * category on the note is what lets the dispatch file the right line without
+ * pattern-matching the prose — prose that exists to be read by a human and is
+ * reworded whenever it reads badly.
+ */
+export interface PendingDecline {
+  readonly why: string;
+  readonly category?: "unconfigured-stub";
+}
 
 /**
  * Record why this decode declined. **First writer wins**, and that direction is
@@ -205,13 +220,13 @@ let pendingNote: string | undefined;
  * Safe because the note's lifetime is one statement: the dispatch takes it on
  * every path out, so "first" never reaches back into a previous statement.
  */
-export function noteDecline(why: string): null {
-  pendingNote ??= why;
+export function noteDecline(why: string, category?: PendingDecline["category"]): null {
+  pendingNote ??= category === undefined ? { why } : { why, category };
   return null;
 }
 
 /** Read and clear the pending decline note. */
-export function takePendingDecline(): string | undefined {
+export function takePendingDecline(): PendingDecline | undefined {
   const note = pendingNote;
   pendingNote = undefined;
   return note;
@@ -245,8 +260,8 @@ export function takePendingDecline(): string | undefined {
  * reason to a statement that decoded, so the call sits at the site that actually
  * abandons the statement, not at every `return null`.
  */
-export function declineHere(where: string): null {
-  noteDecline(where);
+export function declineHere(where: string, category?: PendingDecline["category"]): null {
+  noteDecline(where, category);
   const file = sink();
   if (file === undefined || file === "") return null;
   appendFileSync(

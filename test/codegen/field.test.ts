@@ -353,7 +353,7 @@ describe("decodeField — inputs", () => {
     const detail = ctx.report.entries.map((e) => String(e.detail)).join(" | ");
     expect(detail).toContain("dbo=14");
     expect(detail).toContain("LOCAL row id");
-    expect(ctx.report.entries.some((e) => e.category === "unresolved-ref")).toBe(true);
+    expect(ctx.report.entries.some((e) => e.category === "unportable-id")).toBe(true);
   });
 
   it("leaves a guid-form customize reference alone", () => {
@@ -370,7 +370,7 @@ describe("decodeField — inputs", () => {
     const refs = refsFor({ dbo: [{ name: "users", guid }] });
     const decoded = decodeField(ctx, refs, stored as never, "input");
     expect(printExpr(decoded.expr)).toContain(target);
-    expect(ctx.report.entries.some((e) => e.category === "unresolved-ref")).toBe(false);
+    expect(ctx.report.entries.some((e) => e.category === "unportable-id")).toBe(false);
   });
 
   it("recovers a per-column customize map as a readable dbLink call", () => {

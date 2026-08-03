@@ -1156,12 +1156,15 @@ function triggerDefEntries(a: KindDecodeArgs): DefEntry[] {
  * Two things can force the fallback, and both are checked against the ENCODER
  * rather than against a hand-maintained list of known-bad shapes:
  *
- * - **`meta` the factory does not synthesize.** A trigger condition
- *   (`meta.database.search.expression`) is real, editable Xano state, and
- *   `tableTrigger` has no `search` argument for it. Rather than enumerate that,
- *   {@link triggerMetaMatches} builds the meta the factory WOULD produce from the
- *   derived arguments and compares. Give `tableTrigger` a `search` argument later
- *   and this widens on its own, with no second place to update.
+ * - **`meta` the factory does not synthesize.** Rather than enumerate the shapes
+ *   a factory cannot express, {@link triggerMetaMatches} builds the meta the
+ *   factory WOULD produce from the derived arguments and compares.
+ *
+ *   That design has since paid for itself: the trigger condition
+ *   (`meta.database.search.expression`) was the example this comment used to
+ *   name as unreachable, and `tableTrigger` grew a `search` argument in 4.1.21.
+ *   The decoder widened on its own — no second place to update, and the
+ *   fallback narrowed without anyone editing it.
  * - **`history`.** `TriggerDef` carries it; no trigger factory's `CommonArgs`
  *   accepts it. A non-default history therefore has nowhere to go.
  */

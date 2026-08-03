@@ -564,7 +564,7 @@ describe("call family", () => {
     const source = printExpr(decodeStatement(ctx, EMPTY_REFS, stored, {}));
 
     expect(source).toContain("20c63dfc-dfcf-420e-8435-8212d1a8305d");
-    expect(ctx.report.entries.filter((e) => e.category === "unresolved-ref")).toEqual([]);
+    expect(ctx.report.entries.filter((e) => e.category === "blank-binding")).toEqual([]);
     // The bytes are unchanged by the fix — only the report is.
     expect(normalize(encodeStatement(evaluate(source)))).toEqual(normalize(stored));
   });
@@ -901,6 +901,44 @@ describe("database family", () => {
     }
   });
 
+  it("reports a never-configured raw-SQL statement as a stub, not as a decode failure", () => {
+    // Dragged onto a stack and never touched. There is no SQL, no connection and
+    // no arguments to recover because none was ever stored — so `raw()` is the
+    // faithful output, not a decoder giving up. Six rows in the survey corpus
+    // were claiming the opposite.
+    for (const name of [
+      "mvp:dbo_direct_query",
+      "mvp:dbo_external_mysql_query",
+      "mvp:dbo_external_mssql_query",
+      "mvp:dbo_external_oracle_query",
+      "mvp:dbo_external_postgres_query",
+    ]) {
+      const ctx = new DecodeContext();
+      const source = printExpr(decodeStatement(ctx, DB_REFS, { name, context: {} } as never));
+      expect(source).toContain("raw(");
+      expect(ctx.report.entries.map((e) => e.category)).toEqual(["unconfigured-stub"]);
+      // The sentence a reader gets is the one written for them. It used to lose
+      // a first-writer-wins race with the terser guard label and never shipped.
+      expect(ctx.report.entries[0]!.detail).toContain("never configured");
+      expect(ctx.report.entries[0]!.detail).toContain("unconfigured stub");
+      expect(ctx.report.entries[0]!.detail).not.toContain("could not reproduce");
+    }
+  });
+
+  it("still calls a PARTIALLY configured statement a fallback", () => {
+    // The load-bearing negative: an empty context is the only trigger. A
+    // statement with something in it that the decoder could not spell is a real
+    // fidelity gap and keeps its warning.
+    const ctx = new DecodeContext();
+    printExpr(
+      decodeStatement(ctx, DB_REFS, {
+        name: "mvp:dbo_direct_query",
+        context: { code: 42 },
+      } as never),
+    );
+    expect(ctx.report.entries.map((e) => e.category)).toEqual(["raw-fallback"]);
+  });
+
   it("round-trips a transaction, decoding its nested stack through the full dispatch", () => {
     const source = dbRoundTrip(
       s.db.transaction({
@@ -981,7 +1019,7 @@ describe("db family — an unbound table", () => {
     const source = printExpr(decodeStatement(ctx, DB_REFS, stored));
     expect(source).toContain("table: null");
 
-    const unresolved = ctx.report.entries.filter((e) => e.category === "unresolved-ref");
+    const unresolved = ctx.report.entries.filter((e) => e.category === "blank-binding");
     expect(unresolved).toHaveLength(1);
     // One cause, named without a hedge. This flow pulls whole workspaces, so a
     // blank reference cannot be a live target that merely sat outside a scoped
@@ -1001,7 +1039,7 @@ describe("db family — an unbound table", () => {
         encodeStatement(s.db.get({ table: USERS, fieldValue: inp("id"), as: "user" })),
       ),
     );
-    expect(ctx.report.entries.filter((e) => e.category === "unresolved-ref")).toEqual([]);
+    expect(ctx.report.entries.filter((e) => e.category === "blank-binding")).toEqual([]);
   });
 
   it("treats a zero numeric id as unbound, like a blank guid", () => {
@@ -1714,7 +1752,7 @@ describe("miscellaneous specials", () => {
     // table's symbol would write the table's real guid instead and break that.
     expect(source).toContain('guid: "users"');
     expect(source).not.toContain("s.raw");
-    expect(ctx.report.entries.map((e) => e.category)).toEqual(["unresolved-ref"]);
+    expect(ctx.report.entries.map((e) => e.category)).toEqual(["name-bound-ref"]);
     expect(ctx.report.entries[0]!.detail).toContain("by guid only");
     // The load-bearing negative: not the old `guid users is not present in this
     // bundle`, which called the value a guid on no evidence.

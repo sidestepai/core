@@ -37,9 +37,18 @@ describe("f.* field-type catalog — authoring→stored type mapping", () => {
   });
 
   it("validates positional payloads", () => {
-    expect(() => f.enum([])).toThrow(/at least one value/);
     expect(() => f.vector(0)).toThrow(/integer >= 1/);
     expect(() => f.int({ format: "markdown" })).toThrow(/format.*only valid on text/);
+  });
+
+  it("accepts an enum with no values, because the engine stores one", () => {
+    // An enum column added in the editor and not yet given its options. One
+    // table in the survey corpus has exactly this, and refusing it made the SDK
+    // stricter than the engine — the column came back as a descriptor literal
+    // with a warning saying the constructor threw.
+    expect(f.enum([]).options).toMatchObject({ values: [] });
+    // The paired positive: a populated enum is unchanged.
+    expect(f.enum(["a", "b"]).options).toMatchObject({ values: ["a", "b"] });
   });
 
   it("guards `default` to types the engine actually persists it on", () => {

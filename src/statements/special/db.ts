@@ -1523,8 +1523,13 @@ export interface DbExternalPermissions {
  * The classic single-blob external override (`context.external`). Its resolved
  * `value` is a whole faceted-filter object (`{search, sort, page, per_page}`),
  * typically fed from one request input; `permissions` gates which of those
- * sub-keys the engine honors. Mutually exclusive with input-bound `paging`
- * fields — the engine consults `simpleExternal` only when `external` is empty.
+ * sub-keys the engine honors.
+ *
+ * Combines with input-bound `paging` as a **fallback chain**: the engine uses
+ * this blob when it resolves to something non-empty, and falls back to the
+ * per-field `paging` binds when it does not. Supplying both is a working
+ * configuration — an optional whole-config override in front of per-field
+ * defaults — not a conflict.
  */
 export interface DbExternal {
   /** The whole external config as one tagged {@link Value} (e.g. `inp("filters")`). */
@@ -1845,19 +1850,25 @@ export function dbQuery<
   // ride `context.simpleExternal` on top of the static block (which is the gate).
   const simpleExternal = encodeSimpleExternal(args.paging);
   if (args.external !== undefined) {
-    // The engine consults `simpleExternal` only when `external` is empty, so
-    // authoring both silently drops the per-field binds. Fail at the source.
-    if (simpleExternal) {
-      throw new Error(
-        "db.query: `external` (classic blob) and input-bound `paging` fields (a Value " +
-          "page/per_page/offset/search/sort → simpleExternal) are mutually exclusive — the " +
-          "engine honors `external` and ignores simpleExternal. Use one or the other.",
-      );
-    }
+    // `external` and `simpleExternal` are a runtime FALLBACK CHAIN, not a static
+    // either/or. The engine branches on `!empty($external)` — the *resolved*
+    // value, after the tagged value is evaluated — and reads `simpleExternal`
+    // whenever that comes back empty. So a blob fed from an optional request
+    // input, with per-field paging behind it, is a working configuration and one
+    // the editor lets you build.
+    //
+    // This used to throw on the pair, on the belief that the engine "honors
+    // `external` and ignores simpleExternal" unconditionally. It does not, and
+    // the cost of the mistake was three real queries in the survey corpus that
+    // could not be pulled at all — each of them authored on both sides.
+    // `simpleExternal` is written in this branch too now; omitting it was the
+    // second half of the same bug.
+    //
     // `external`'s page/per_page are gated by static `paging.enabled` just like
     // simpleExternal — force it on so a self-contained blob isn't silently no-op'd.
     context.return = encodeReturn(returnType, args.sort, args.paging, true, args.distinct, args.aggregate, primaryAlias);
     context.external = encodeExternal(args.external);
+    if (simpleExternal) context.simpleExternal = simpleExternal;
   } else {
     context.return = encodeReturn(returnType, args.sort, args.paging, false, args.distinct, args.aggregate, primaryAlias);
     if (simpleExternal) context.simpleExternal = simpleExternal;

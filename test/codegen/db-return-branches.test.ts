@@ -205,7 +205,7 @@ describe("a db.query join to an unbound table", () => {
     expect(source).toContain("userJoin");
     // Reported, not emitted quietly: a lost binding presented as a deliberate
     // `null` would hide a real defect in the pulled workspace.
-    expect(ctx.report.entries.some((e) => e.category === "unresolved-ref")).toBe(true);
+    expect(ctx.report.entries.some((e) => e.category === "blank-binding")).toBe(true);
   });
 
   it("decodes through `prove`, so the emitted form reproduces the stored bytes", () => {
@@ -230,6 +230,6 @@ describe("a db.query join to an unbound table", () => {
     expect(source).not.toContain("table: null");
     // Alias equals the table name, so it is left to default.
     expect(source).not.toContain(`as: "${post.name}"`);
-    expect(ctx.report.entries.some((e) => e.category === "unresolved-ref")).toBe(false);
+    expect(ctx.report.entries.some((e) => e.category === "blank-binding")).toBe(false);
   });
 });

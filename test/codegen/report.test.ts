@@ -7,6 +7,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { DecodeReport, severityOf } from "../../src/codegen/report.js";
+import { UNSUPPORTED_SECTIONS, omissionSeverity } from "../../src/codegen/omissions.js";
 import { CODEGEN_MODULE, CORE_MODULE, DecodeContext, ImportCollector } from "../../src/codegen/context.js";
 
 /** Pull every `<category>=<count>` pair out of a rendered surface. */
@@ -70,6 +71,64 @@ describe("DecodeReport", () => {
     const fromSummary = Object.fromEntries(
       report.summarize().byCategory.map((g) => [g.category, g.count]),
     );
+    expect(counts(report.renderMarkdown())).toEqual(fromSummary);
+    expect(counts(report.renderCli())).toEqual(fromSummary);
+  });
+
+  it("coalesces blank bindings to one entry per object, naming the subjects it saw", () => {
+    // One workspace in the survey corpus carries 48 of these. The count is a
+    // property of how big the object is, not of how much went wrong, so the
+    // per-site entry is the wrong unit — but the warning still has to land.
+    const report = new DecodeReport();
+    report.add({ category: "blank-binding", object: "query:orders", path: "stack[0]", detail: "a", subject: "db.query" });
+    report.add({ category: "blank-binding", object: "query:orders", path: "stack[1]", detail: "b", subject: "db.get" });
+    report.add({ category: "blank-binding", object: "query:orders", path: "stack[2]", detail: "c", subject: "db.get" });
+
+    const group = report.summarize().byCategory.find((g) => g.category === "blank-binding")!;
+    expect(group.count).toBe(1);
+    // Distinct subjects, de-duplicated, in first-seen order — and the real count.
+    expect(group.entries[0]!.detail).toContain("db.query, db.get");
+    expect(group.entries[0]!.detail).toContain("3 references");
+    // The path named a single site, and this entry no longer stands for one.
+    expect(group.entries[0]!.path).toBeUndefined();
+  });
+
+  it("leaves a lone blank binding exactly as recorded", () => {
+    // Coalescing one entry into a summary of one entry would lose its `path`
+    // and reword its detail for no gain.
+    const report = new DecodeReport();
+    const only = { category: "blank-binding", object: "query:a", path: "stack[0]", detail: "d", subject: "db.query" } as const;
+    report.add({ ...only });
+    const group = report.summarize().byCategory.find((g) => g.category === "blank-binding")!;
+    expect(group.entries).toEqual([only]);
+  });
+
+  it("separates objects, and leaves every raw entry intact for tooling", () => {
+    const report = new DecodeReport();
+    report.add({ category: "blank-binding", object: "query:a", detail: "x", subject: "db.get" });
+    report.add({ category: "blank-binding", object: "query:a", detail: "y", subject: "db.add" });
+    report.add({ category: "blank-binding", object: "query:b", detail: "z", subject: "db.del" });
+
+    const group = report.summarize().byCategory.find((g) => g.category === "blank-binding")!;
+    expect(group.entries.map((e) => e.object)).toEqual(["query:a", "query:b"]);
+    // `entries` is the raw log — the sweep CSV reads it and wants every site.
+    expect(report.entries).toHaveLength(3);
+    // …and the summary total counts what a reader sees, not what was recorded.
+    expect(report.summarize().total).toBe(2);
+  });
+
+  it("keeps the coalesced count consistent across all three sinks", () => {
+    // The drift this whole module exists to prevent, applied to the new path:
+    // a README saying 2 while the CLI says 3 because only one of them coalesced.
+    const report = new DecodeReport();
+    report.add({ category: "blank-binding", object: "query:a", detail: "x", subject: "db.get" });
+    report.add({ category: "blank-binding", object: "query:a", detail: "y", subject: "db.add" });
+    report.add({ category: "raw-fallback", object: "query:a", detail: "z" });
+
+    const fromSummary = Object.fromEntries(
+      report.summarize().byCategory.map((g) => [g.category, g.count]),
+    );
+    expect(fromSummary).toEqual({ "blank-binding": 1, "raw-fallback": 1 });
     expect(counts(report.renderMarkdown())).toEqual(fromSummary);
     expect(counts(report.renderCli())).toEqual(fromSummary);
   });
@@ -191,6 +250,46 @@ describe("severity", () => {
     expect(severityOf("modernized")).toBe("warning");
     expect(severityOf("expected-omission")).toBe("notice");
     expect(severityOf("empty-source")).toBe("notice");
+  });
+
+  it("keeps the three causes split out of `unresolved-ref` at the severity each earns", () => {
+    // These used to share `unresolved-ref`'s error severity, which claimed the
+    // generated tree did not reproduce its source. All three round-trip exactly.
+    // A blank binding and a name-spelled reference still want a human glance —
+    // something is wrong upstream — so they are warnings, not notices. An
+    // internal row id is a notice: faithful, and nothing anyone can act on.
+    expect(severityOf("blank-binding")).toBe("warning");
+    expect(severityOf("name-bound-ref")).toBe("warning");
+    expect(severityOf("unportable-id")).toBe("notice");
+    // "We chose not to carry this" is not "we don't know what this is".
+    expect(severityOf("instance-owned")).toBe("notice");
+    expect(severityOf("unsupported-section")).toBe("warning");
+    // The statement-level twin of `empty-source`: nothing was recovered because
+    // nothing was stored. `raw-fallback` keeps its warning for a real gap.
+    expect(severityOf("unconfigured-stub")).toBe("notice");
+    expect(severityOf("raw-fallback")).toBe("warning");
+    // The narrowed original keeps its meaning, and its volume.
+    expect(severityOf("unresolved-ref")).toBe("error");
+  });
+
+  it("warns only for the sections that are genuinely a gap in the pull", () => {
+    // Pinned by section name, not just by reason, because the drift this guards
+    // is a policy entry tagged `unmodeled` out of habit when its own detail line
+    // says the instance owns it — which is exactly what `market_item`,
+    // `run_install`, and `action_package_install` were doing.
+    const bySection = Object.fromEntries(
+      Object.entries(UNSUPPORTED_SECTIONS).map(([k, p]) => [k, omissionSeverity(p.reason)]),
+    );
+    expect(bySection).toEqual({
+      vault: "notice",
+      branch: "notice",
+      market_item: "notice",
+      run_install: "notice",
+      action_package_install: "notice",
+      knowledge: "warning",
+      workflow_test: "warning",
+      service: "warning",
+    });
   });
 
   it("counts by severity, and carries it on every group", () => {

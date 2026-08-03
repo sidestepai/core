@@ -114,15 +114,26 @@ function dispatch(
     typeof name === "string" && (SPECIAL_DECODERS.has(name) || SPECS_BY_NAME.has(name));
   // A decoder that knew exactly why it could not spell this says so here, rather
   // than leaving "could not reproduce" as the only clue (see `declined`).
-  const why = ctx.takeDeclineNote();
-  ctx.problem(
-    "raw-fallback",
-    modelled
-      ? `${label} is modelled, but its decoder could not reproduce the stored statement` +
-        (why ? `: ${why}. Emitted` : "; emitted") +
-        " verbatim via raw()"
-      : `${label} has no decoder; emitted verbatim via raw()`,
-  );
+  const note = ctx.takeDeclineNote();
+  const why = note?.why;
+  // A statement that stores NOTHING is not a decoder that failed — there is no
+  // SQL, no connection, no arguments, because it was dragged onto a stack and
+  // never configured. `raw()` is what an unconfigured stub looks like. The
+  // decline carries that verdict, so this line neither infers it from prose nor
+  // says "could not reproduce" about a statement with nothing in it to
+  // reproduce. Six such rows in the survey corpus read as fidelity gaps.
+  if (note?.category === "unconfigured-stub") {
+    ctx.problem("unconfigured-stub", `${label} ${why}`);
+  } else {
+    ctx.problem(
+      "raw-fallback",
+      modelled
+        ? `${label} is modelled, but its decoder could not reproduce the stored statement` +
+          (why ? `: ${why}. Emitted` : "; emitted") +
+          " verbatim via raw()"
+        : `${label} has no decoder; emitted verbatim via raw()`,
+    );
+  }
   ctx.use(CODEGEN_MODULE, "raw");
   return call("raw", lit(stored));
 }

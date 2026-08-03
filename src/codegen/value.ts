@@ -19,7 +19,7 @@
 import type { FilterXdo, TaggedValue } from "../types/xdo.js";
 import { TAGS } from "../types/xdo.js";
 import { auth, c, caught, col, env, inp, out, ref, setting, withFilters } from "../values/value.js";
-import type { Value } from "../values/value.js";
+import type { BlankTag, Value } from "../values/value.js";
 import { FILTER_NAMES, fl } from "../values/generated/filters.generated.js";
 import { obj as objValue } from "../values/obj.js";
 import { parseObjExpr } from "./obj-expr.js";
@@ -109,6 +109,16 @@ function splitSlashRegex(value: string): { body: string; flags: string } | null 
 }
 
 /**
+ * True for a tag whose blank form `c.blank` spells.
+ *
+ * Tested against the constructor's own accepted set rather than a list repeated
+ * here, so the decoder cannot offer a spelling the authoring surface rejects.
+ */
+function isBlankTag(tag: string): tag is BlankTag {
+  return tag.startsWith("const") && tag !== "const" && tag !== "const:obj";
+}
+
+/**
  * Decode the un-filtered base of a value.
  *
  * `regexPiped` says the first filter in the chain treats this value as a regex
@@ -119,6 +129,20 @@ function decodeBase(v: TaggedValue, regexPiped: boolean): Candidate | null {
   const bare = { value: v.value, tag: v.tag, filters: [] };
   const propose = (expr: Expr, built: Value | null, ...symbols: string[]): Candidate | null =>
     built && sameValue(built, bare) ? { expr, value: built, symbols } : null;
+
+  // The editor's unconfigured value box, taken before the per-tag arms because
+  // several of them would otherwise coerce it into something it is not:
+  // `Number("")` is 0, so a blank `const:int` would propose `c.int(0)` and only
+  // the byte comparison inside `propose` would catch it. Naming the state up
+  // front is clearer than relying on that, and it is what `c.blank` spells.
+  //
+  // `const` and `const:obj` are absent from `BlankTag` because their blanks
+  // already round-trip exactly (`c.text("")`, `c.obj(null)`), so they fall
+  // through to the arms below unchanged.
+  const blankTag = v.value === "" && isBlankTag(v.tag) ? v.tag : null;
+  if (blankTag) {
+    return propose(call("c.blank", lit(blankTag)), attempt(() => c.blank(blankTag)), "c");
+  }
 
   switch (v.tag) {
     case "const": {
@@ -142,7 +166,15 @@ function decodeBase(v: TaggedValue, regexPiped: boolean): Candidate | null {
     }
     case "const:decimal": {
       const n = Number(v.value);
-      return Number.isFinite(n) ? propose(call("c.decimal", lit(n)), c.decimal(n), "c") : null;
+      if (!Number.isFinite(n)) return null;
+      const asNumber = propose(call("c.decimal", lit(n)), c.decimal(n), "c");
+      if (asNumber) return asNumber;
+      // The number form did not reproduce the stored bytes, which for a decimal
+      // means a spelling no numeric literal carries — `"10.00"` stringifies as
+      // `"10"`. The engine stores decimals as strings, so passing the stored
+      // string through is exact. Tried second so the readable form stays the
+      // default and this is reserved for what it cannot express.
+      return propose(call("c.decimal", lit(v.value)), c.decimal(v.value), "c");
     }
     case "const:bool": {
       const b = v.value === "true";
@@ -348,11 +380,15 @@ export function decodeValue(ctx: DecodeContext, v: TaggedValue): Expr {
  * Why a stored value had no readable form — the cause, not just the tag.
  *
  * "tag const:int has no idiomatic form" reads as though the SDK cannot express
- * integer constants, which it plainly can; every such row in the survey corpus
- * is the editor's EMPTY value box, and one is a decimal whose trailing zeros
- * (`"10.00"`) no number literal reproduces. Naming that is what lets the
- * category be clustered instead of merely counted — the same move that turned
- * the `rawField()` and `raw()` piles into named decisions.
+ * integer constants, which it plainly can. Naming the real cause is what lets
+ * the category be clustered instead of merely counted — the same move that
+ * turned the `rawField()` and `raw()` piles into named decisions.
+ *
+ * The two causes that used to dominate this function are gone: a blank constant
+ * is `c.blank(tag)` now and a `"10.00"` decimal is `c.decimal("10.00")`, so
+ * neither reaches a fallback at all. What remains for a blank value is a blank
+ * REFERENCE — an `input`/`var`/`response` naming nothing — which is an unbound
+ * binding rather than an empty value box, and must not borrow that wording.
  */
 function describeFallback(v: TaggedValue): string {
   if (!(TAGS as readonly string[]).includes(v.tag)) {
@@ -360,8 +396,9 @@ function describeFallback(v: TaggedValue): string {
   }
   if (v.value === "") {
     return (
-      `a blank ${v.tag} — the editor's unconfigured value box, which is not the same stored value as ` +
-      `a zero or an empty collection. Carried verbatim so it keeps meaning exactly what it stores`
+      `a blank ${v.tag} — a reference that names nothing, so there is no target to resolve and no ` +
+      `\`${v.tag}\` constructor call that would mean this. Carried verbatim so it keeps meaning ` +
+      `exactly what it stores; bind it upstream to give it one`
     );
   }
   return `tag ${v.tag} stores ${JSON.stringify(v.value)}, which no \`c.*\` constructor reproduces exactly; emitted verbatim`;

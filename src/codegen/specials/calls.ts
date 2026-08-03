@@ -120,8 +120,9 @@ function callDecoder(shape: CallShape): SpecialDecoder {
       // Reported, not emitted quietly: presenting a lost binding as a
       // deliberate `null` would hide it. See {@link blankRefDetail}.
       a.ctx.problem(
-        "unresolved-ref",
+        "blank-binding",
         blankRefDetail(`${shape.path} has a blank ${shape.arg} reference`, shape.arg),
+        shape.path,
       );
     }
     const target = unbound

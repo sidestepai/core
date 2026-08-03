@@ -15,7 +15,7 @@ import { DecodeReport } from "./report.js";
 import { RefIndex } from "./ref-index.js";
 import { assembleProject } from "./project.js";
 import { PAYLOAD_ARRAY_KEYS } from "../workspace/export.js";
-import { UNSUPPORTED_SECTIONS } from "./omissions.js";
+import { omissionSeverity, UNSUPPORTED_SECTIONS } from "./omissions.js";
 
 export { DecodeContext, ImportCollector, CORE_MODULE, CODEGEN_MODULE } from "./context.js";
 export { DecodeReport } from "./report.js";
@@ -65,8 +65,11 @@ export function decodeBundle(bundle: { payload: Record<string, unknown> }): Gene
   for (const [section, policy] of Object.entries(UNSUPPORTED_SECTIONS)) {
     const entries = payload[section];
     if (Array.isArray(entries) && entries.length > 0) {
+      // Severity comes from the policy's own reason, so the list that decides
+      // what is omitted is the list that decides how loudly to say so. Only an
+      // `unmodeled` section is a gap in the pull; the rest are correct absences.
       ctx.problem(
-        "unsupported-section",
+        omissionSeverity(policy.reason) === "warning" ? "unsupported-section" : "instance-owned",
         `payload.${section} has ${entries.length} ${
           entries.length === 1 ? "entry that is" : "entries that are"
         } not carried into the generated tree — ${policy.detail}`,

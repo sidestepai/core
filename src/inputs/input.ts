@@ -160,12 +160,15 @@ export const input = {
   vector: f.vector,
   /** Table-reference input — see {@link f.tableRef}; pass the table handle or bare name. */
   tableRef: f.tableRef,
-  /** Enum input; `values` is required and must be non-empty. */
+  /**
+   * Enum input. `values` may be empty, mirroring {@link f.enum} — the two
+   * surfaces describe the same engine type, and one accepting what the other
+   * rejects is how they start disagreeing about what a workspace can hold.
+   */
   enum<const V extends ReadonlyArray<string | number>, const O extends ConstInputOpts<never> = Record<string, never>>(
     values: V,
     options: O = {} as O,
   ): InputDescriptor & TypeBrand<V[number], O> {
-    if (!values?.length) throw new Error("input.enum: at least one value is required.");
     return { type: "enum", options: { ...options, values: [...values] } } as InputDescriptor &
       TypeBrand<V[number], O>;
   },

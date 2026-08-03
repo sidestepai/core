@@ -418,6 +418,30 @@ describe("validate normalizer — per-statement context defaults", () => {
     expect(normalize(switched)).toEqual(normalize({ return: { type: "single" } }));
   });
 
+  it("sheds `allow_notfound`, the other key the engine stores and never reads", () => {
+    // Xano's frontend writes this from ONE place — the auth scaffold generator
+    // that builds a signup/login query. No engine class reads it: the `mvp`
+    // get-by class consults `dbo`, `output` and its args, and the older non-MVP
+    // class reads a differently named `allow_null`.
+    //
+    // The SDK deliberately does not model it, for the same reason it does not
+    // model `iterator`. But the exclusion was half-done: the encoder declined to
+    // write it while the comparison still demanded it, so the correct decision
+    // read as a round-trip failure and sent scaffolded auth queries to `raw()`.
+    // (`dbo.id` is a stripped server column in its own right, so the sibling
+    // here is one that survives normalization — otherwise this would pass for
+    // the wrong reason.)
+    const stored = { by: "email", allow_notfound: true };
+    expect(normalize(stored)).toEqual({ by: "email" });
+    // The point of the rule: equal to the same statement with the key absent —
+    // which is what the SDK writes — in either stored spelling.
+    expect(normalize(stored)).toEqual(normalize({ by: "email" }));
+    expect(normalize({ by: "email", allow_notfound: false })).toEqual(normalize({ by: "email" }));
+    // Load-bearing negative: only the dead key goes. Nothing else on the
+    // context is touched, including a similarly-named member that IS read.
+    expect(normalize({ allow_null: true, allow_notfound: true })).toEqual({ allow_null: true });
+  });
+
   it("sheds the inert `iterator` from the LIVE result block, not just the dead ones", () => {
     // `iterator` sits INSIDE the live branch, so the dead-sibling rule above
     // never reaches it. Streaming is selected by `return.type` alone — the

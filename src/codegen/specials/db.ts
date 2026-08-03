@@ -116,7 +116,7 @@ function tableArg(a: SpecialArgs, guid: string): TableArg {
  * deleted table's alias frequently outlives it (`{as: "user", id: ""}`).
  */
 function unboundTableArg(a: SpecialArgs, what: string): TableArg {
-  a.ctx.problem("unresolved-ref", blankRefDetail(`${what} has a blank table reference`, "table"));
+  a.ctx.problem("blank-binding", blankRefDetail(`${what} has a blank table reference`, "table"), what);
   return { expr: lit(null), runtime: null };
 }
 
@@ -327,8 +327,9 @@ function decodeAddonSpec(
   // real lost binding as a deliberate one.
   if (unbound) {
     a.ctx.problem(
-      "unresolved-ref",
+      "blank-binding",
       blankRefDetail(`addon attachment "${alias}" has a blank addon reference`, "addon"),
+      `addon "${alias}"`,
     );
   }
   const entries: Array<[string, Expr]> = [
@@ -725,11 +726,14 @@ function sqlEntries(
   //    is a plain multi-member record. Closing it means a second fill shape for
   //    one row of a statement that has no SQL in it either way.
   if (context.code === undefined && Object.keys(context).length === 0) {
-    declineHere("raw SQL: context is empty — the statement was never configured");
-    return a.ctx.declined(
-      "the statement stores an entirely empty context — it was added to the stack and never " +
-        "configured, so there is no SQL and no connection to recover. `raw()` is what an " +
-        "unconfigured stub looks like",
+    // One writer, not two. `noteDecline` is first-writer-wins, so the second
+    // call this site used to make — carrying the better sentence — could never
+    // land, and every corpus row showed the terser guard label instead.
+    return declineHere(
+      "stores an entirely empty context — it was added to the stack and never configured, so " +
+        "there is no SQL and no connection to recover. `raw()` is what an unconfigured stub " +
+        "looks like",
+      "unconfigured-stub",
     );
   }
   if (typeof context.code !== "string") return declineHere("raw SQL: context.code is not a string");
@@ -1031,10 +1035,15 @@ const dbQuery: SpecialDecoder = (a) => {
 
   // Same story as `search`/`eval` above, and it bit harder: the engine writes all
   // five `simpleExternal` facets at an empty `input` default on a query that binds
-  // none of them. Read as authored, they became five bound paging Values — and
-  // since the engine honors `external` over `simpleExternal`, the SDK forbids
-  // authoring both, so the recovered call did not merely mismatch, it THREW.
+  // none of them. Read as authored, they became five bound paging Values on a
+  // query that binds nothing, so the recovered call did not match the stored one.
   // Measured: 70 of 230 fallen-back queries stored exactly this pair.
+  //
+  // It used to THROW rather than mismatch, because the encoder forbade authoring
+  // `external` alongside them. That precondition was wrong — the engine branches
+  // on the RESOLVED `external` and falls back to `simpleExternal` when it comes
+  // back empty, so the two are a chain rather than a conflict — and it is gone.
+  // The unauthored-default filter below is still load-bearing on its own.
   const simple = isUnauthored("simpleExternal", context.simpleExternal)
     ? {}
     : (context.simpleExternal as Record<string, unknown>);

@@ -27,7 +27,7 @@
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { decodeBundle } from "../src/codegen/index.js";
-import { severityOf, type ReportEntry } from "../src/codegen/report.js";
+import { type ReportEntry } from "../src/codegen/report.js";
 
 function flag(name: string, fallback?: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -42,6 +42,9 @@ const counts = new Map<string, number>();
 const rows: Array<ReportEntry & { workspace: string }> = [];
 let workspaces = 0;
 let failed = 0;
+/** Workspaces carrying at least one entry a user is asked to act on. */
+let workspacesWithProblems = 0;
+const bySeverity = { error: 0, warning: 0, notice: 0 };
 
 for (const entry of readdirSync(dir).sort()) {
   let bundle: { payload: Record<string, unknown> };
@@ -60,14 +63,25 @@ for (const entry of readdirSync(dir).sort()) {
     console.error(`  ${entry}: decode threw — ${String(e)}`);
     continue;
   }
-  for (const e of report.entries) {
-    if (severityOf(e.category) === "info") continue;
-    counts.set(e.category, (counts.get(e.category) ?? 0) + 1);
-    rows.push({ workspace: entry, ...e });
-    if (e.category === showCategory) {
-      console.error(`  ${entry} ${e.object} ${e.path ?? ""} — ${e.detail}`);
+  // Counted from `summarize()`, not from the raw entry log, because that is what
+  // a user is shown — it applies the report's own per-object coalescing, so a
+  // number here cannot claim a workspace is noisier than its CLI output is.
+  // (The old `severityOf(...) === "info"` guard never fired: `info` is not one
+  // of the three severities, so every entry fell through it.)
+  const summary = report.summarize();
+  for (const group of summary.byCategory) {
+    counts.set(group.category, (counts.get(group.category) ?? 0) + group.count);
+    for (const e of group.entries) {
+      rows.push({ workspace: entry, ...e });
+      if (group.category === showCategory) {
+        console.error(`  ${entry} ${e.object} ${e.path ?? ""} — ${e.detail}`);
+      }
     }
   }
+  for (const severity of ["error", "warning", "notice"] as const) {
+    bySeverity[severity] += summary.bySeverity[severity];
+  }
+  if (summary.bySeverity.error + summary.bySeverity.warning > 0) workspacesWithProblems++;
 }
 
 const total = [...counts.values()].reduce((a, b) => a + b, 0);
@@ -75,7 +89,14 @@ for (const [category, n] of [...counts].sort((a, b) => b[1] - a[1])) {
   console.log(String(n).padStart(6), category);
 }
 console.log(String(total).padStart(6), "TOTAL");
-console.log(`\n${workspaces} workspaces replayed, ${failed} threw`);
+console.log(
+  `\n${String(bySeverity.error + bySeverity.warning).padStart(6)} ERROR+WARN ` +
+    `(${bySeverity.error} error, ${bySeverity.warning} warning), ${bySeverity.notice} notice`,
+);
+console.log(
+  `\n${workspaces} workspaces replayed, ${failed} threw, ` +
+    `${workspacesWithProblems} carry at least one error or warning`,
+);
 
 if (jsonOut) {
   writeFileSync(jsonOut, rows.map((r) => JSON.stringify(r)).join("\n") + "\n");

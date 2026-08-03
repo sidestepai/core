@@ -8,7 +8,7 @@
  */
 import type { ImportStmt } from "./print.js";
 import { DecodeReport, type ReportCategory } from "./report.js";
-import { noteDecline, takePendingDecline } from "./prove-diff.js";
+import { noteDecline, takePendingDecline, type PendingDecline } from "./prove-diff.js";
 
 /** The browser-safe authoring entry generated files import from. */
 export const CORE_MODULE = "@sidestep/core";
@@ -164,22 +164,28 @@ export class DecodeContext {
    * several frames down inside a shared helper — has no context to reach. See
    * {@link noteDecline} for why there is exactly one store.
    */
-  declined(why: string): null {
-    return noteDecline(why);
+  declined(why: string, category?: PendingDecline["category"]): null {
+    return noteDecline(why, category);
   }
 
   /** Read and clear the pending decline note. */
-  takeDeclineNote(): string | undefined {
+  takeDeclineNote(): PendingDecline | undefined {
     return takePendingDecline();
   }
 
-  /** Record a problem at the current object/path scope. */
-  problem(category: ReportCategory, detail: string): void {
+  /**
+   * Record a problem at the current object/path scope.
+   *
+   * `subject` names what the entry is about in a word or two, for the categories
+   * the report coalesces per object. Optional everywhere else and ignored there.
+   */
+  problem(category: ReportCategory, detail: string, subject?: string): void {
     this.report.add({
       category,
       object: this.#object,
       ...(this.#path.length > 0 ? { path: this.#path.join(".") } : {}),
       detail,
+      ...(subject !== undefined ? { subject } : {}),
     });
   }
 }

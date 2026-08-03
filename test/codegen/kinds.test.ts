@@ -217,11 +217,37 @@ describe("decodeBundle reporting", () => {
   const EMPTY_WORKSPACE = { name: "ws", description: "", canonical: "" };
 
   it("reports a non-empty payload section this SDK models no kind for", () => {
+    // `knowledge` is a first-class engine object type SideStep declines to model.
+    // The tree really is missing something a reader would expect, so it warns.
     const report = decodeBundle({
-      payload: { workspace: EMPTY_WORKSPACE, vault: [{ name: "secret" }] },
+      payload: { workspace: EMPTY_WORKSPACE, knowledge: [{ name: "kb" }] },
     }).report;
     const entries = report.summarize().byCategory.find((g) => g.category === "unsupported-section");
-    expect(entries?.entries.map((e) => e.detail).join()).toContain("payload.vault");
+    expect(entries?.entries.map((e) => e.detail).join()).toContain("payload.knowledge");
+  });
+
+  it("separates instance state from a gap in the pull", () => {
+    // A vault secret must never be committed to a source tree, and install
+    // history is a record of what was done TO the workspace rather than what it
+    // is. Neither is missing from the tree — both are correctly absent — so
+    // reporting them at the same volume as `knowledge` made 49 rows across the
+    // survey corpus read as failures. Still reported; just not as gaps.
+    const report = decodeBundle({
+      payload: {
+        workspace: EMPTY_WORKSPACE,
+        vault: [{ name: "secret" }],
+        run_install: [{ name: "r" }],
+        action_package_install: [{ name: "a" }],
+      },
+    }).report;
+    const summary = report.summarize();
+    const owned = summary.byCategory.find((g) => g.category === "instance-owned");
+    expect(owned?.count).toBe(3);
+    expect(owned?.severity).toBe("notice");
+    expect(owned?.entries.map((e) => e.detail).join()).toContain("payload.vault");
+    // The load-bearing negative: nothing lands in the warning bucket.
+    expect(summary.byCategory.some((g) => g.category === "unsupported-section")).toBe(false);
+    expect(summary.bySeverity.warning).toBe(0);
   });
 
   it("reports a payload key it has never seen, rather than proceeding as if complete", () => {

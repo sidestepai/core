@@ -191,7 +191,19 @@ export function resolveReference(
 ): Expr {
   const target = index.lookup(guid);
   if (!target) {
-    ctx.problem("unresolved-ref", `guid ${guid} is not present in this bundle`);
+    // `0` is not a guid that happens to be missing — it is an internal row id
+    // standing where portable identity belongs, which no bundle could ever
+    // contain. Splitting it out is what lets the genuinely-unresolvable case
+    // keep error severity: 219 of the 220 misses in the survey corpus are this
+    // one, and folding them together made a category that never meant what it
+    // said. See `unportable-id` in the report module.
+    ctx.problem(
+      guid === "0" ? "unportable-id" : "unresolved-ref",
+      guid === "0"
+        ? "a reference stored as `guid 0` — an internal row id rather than portable identity, so it " +
+            "cannot resolve to an object in any bundle and is carried verbatim"
+        : `guid ${guid} is not present in this bundle`,
+    );
     return options.unresolved === "object-ref"
       ? obj([
           ["name", lit("")],

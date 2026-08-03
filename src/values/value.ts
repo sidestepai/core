@@ -183,6 +183,20 @@ const REGEX_PATTERN_FILTERS = new Set([
   "regex_get_first_match",
 ]);
 
+/**
+ * Tags {@link c.blank} can spell — the constant tags with no exact blank form of
+ * their own.
+ *
+ * Derived by exclusion from {@link TAGS} rather than listed, so a constant tag
+ * added to the catalog is blank-spellable without a second edit here. The two
+ * carve-outs are the tags that already round-trip a blank exactly: `const` via
+ * `c.text("")`, and `const:obj` via `c.obj(null)`.
+ *
+ * Reference tags are excluded by construction: a blank `var`/`input`/`col` is an
+ * unbound reference, not an empty value, and the two want different fixes.
+ */
+export type BlankTag = Exclude<Extract<Tag, `const${string}`>, "const" | "const:obj">;
+
 /** Constant constructors. Values always serialize as strings (per fixture). */
 export const c = {
   /** Plain string constant → `tag:"const"`. */
@@ -193,9 +207,37 @@ export const c = {
   int(n: number): Value {
     return val(String(n), "const:int");
   },
-  /** Decimal constant → `tag:"const:decimal"`. */
-  decimal(n: number): Value {
+  /**
+   * Decimal constant → `tag:"const:decimal"`.
+   *
+   * Pass a **string** to preserve a stored spelling a number literal cannot
+   * reproduce — `c.decimal("10.00")` keeps its trailing zeros, where
+   * `c.decimal(10)` writes `"10"`. The engine stores decimals as strings either
+   * way, so this is exactness rather than a workaround; prefer the number form
+   * whenever it reproduces the value you want.
+   */
+  decimal(n: number | string): Value {
     return val(String(n), "const:decimal");
+  },
+  /**
+   * The editor's **unconfigured value box** — a value cell added and never
+   * filled in, stored as `{value: "", tag}`.
+   *
+   * This is not a zero, an empty string, or an empty collection. The engine
+   * reads `""` and `"0"` differently, so `c.blank("const:int")` and `c.int(0)`
+   * are different stored values and the SDK will not canonicalize one into the
+   * other. It exists because 13 real values in the survey corpus are in this
+   * state and had no authoring form, so a pull emitted them as annotated
+   * literals with a warning attached — describing a workspace that was fine.
+   *
+   * Constant tags only. A blank `var` or `input` is an unbound REFERENCE, which
+   * is a different defect with a different fix, and is deliberately not
+   * spellable here. `const` and `const:obj` are excluded too: they already have
+   * exact blank forms in `c.text("")` and `c.obj(null)`, and a second spelling
+   * for the same bytes is how two constructors start disagreeing.
+   */
+  blank(tag: BlankTag): Value {
+    return val("", tag);
   },
   /** Boolean constant → `"true"`/`"false"` with `tag:"const:bool"`. */
   bool(b: boolean): Value {

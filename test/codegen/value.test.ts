@@ -295,6 +295,73 @@ describe("decodeValue — regex values (issue #128 guard)", () => {
   });
 });
 
+describe("c.blank — the editor's unconfigured value box", () => {
+  // 13 of the 16 `value-fallback` rows in the survey corpus were this: a value
+  // cell added in the editor and never filled in. The decode was already exact,
+  // but there was no constructor that meant "blank", so it came back as an
+  // annotated literal with a warning attached to a state nothing was wrong with.
+
+  it("round-trips every blank const tag through a typed call", () => {
+    for (const tag of ["const:int", "const:decimal", "const:array", "const:expr", "const:expr2", "const:bool", "const:null", "const:epochms"] as const) {
+      const ctx = new DecodeContext();
+      const source = roundTrip({ value: "", tag, filters: [] }, ctx);
+      expect(source).toBe(`c.blank("${tag}")`);
+      // The whole point: no warning, because nothing went wrong.
+      expect(ctx.report.entries).toEqual([]);
+    }
+  });
+
+  it("is NOT a zero, an empty string, or an empty collection", () => {
+    // The load-bearing negative. Canonicalizing a blank into `c.int(0)` would be
+    // readable and would silently re-point 13 real values at a different stored
+    // value — the engine reads `""` and `"0"` differently.
+    expect(c.blank("const:int")).not.toEqual(c.int(0));
+    expect(c.blank("const:decimal")).not.toEqual(c.decimal(0));
+    expect(c.blank("const:array")).not.toEqual(c.array([]));
+    expect(c.blank("const:null")).not.toEqual(c.null());
+    expect(c.blank("const:bool")).not.toEqual(c.bool(false));
+    // …and each keeps its own tag rather than collapsing to a bare `const`.
+    expect(c.blank("const:int")).not.toEqual(c.text(""));
+  });
+
+  it("leaves the tags that already have an exact blank form alone", () => {
+    // `const` blank is `c.text("")` and `const:obj` blank is `c.obj(null)`, both
+    // of which predate this and both of which are exact. A second spelling for
+    // the same bytes is how two constructors start disagreeing.
+    expect(roundTrip({ value: "", tag: "const", filters: [] })).toBe('c.text("")');
+    expect(roundTrip({ value: "", tag: "const:obj", filters: [] })).toBe("c.obj(null)");
+  });
+
+  it("still falls back for a blank tag that is a reference, not a value box", () => {
+    // A blank `var`/`input` is an unbound REFERENCE, which is a different defect
+    // with a different fix. `c.blank` is deliberately not a way to spell it.
+    const ctx = new DecodeContext();
+    roundTrip({ value: "", tag: "response", filters: [] }, ctx);
+    expect(ctx.report.entries.map((e) => e.category)).toEqual(["value-fallback"]);
+  });
+});
+
+describe("c.decimal — stored precision", () => {
+  it("preserves trailing zeros when given a string", () => {
+    // A stored `"10.00"` is one row in the survey corpus and no number literal
+    // reproduces it: `c.decimal(10)` writes `"10"`. The engine stores decimals as
+    // strings, so passing the string through is exact rather than a workaround.
+    expect(roundTrip({ value: "10.00", tag: "const:decimal", filters: [] })).toBe(
+      'c.decimal("10.00")',
+    );
+    expect(roundTrip({ value: "0.500", tag: "const:decimal", filters: [] })).toBe(
+      'c.decimal("0.500")',
+    );
+  });
+
+  it("still emits the number form when a number reproduces the bytes", () => {
+    // The paired negative: the readable spelling stays the default, and the
+    // string form is reserved for what it cannot express.
+    expect(roundTrip({ value: "1.5", tag: "const:decimal", filters: [] })).toBe("c.decimal(1.5)");
+    expect(roundTrip({ value: "10", tag: "const:decimal", filters: [] })).toBe("c.decimal(10)");
+  });
+});
+
 describe("decodeValue — reporting and imports", () => {
   it("reports exactly one entry for a value it could not express", () => {
     // `response` is an engine-side tag with no authoring constructor — the
@@ -307,25 +374,27 @@ describe("decodeValue — reporting and imports", () => {
     expect(ctx.report.entries[0]!.detail).toContain("response");
   });
 
-  it("names a blank value box as the cause, not the tag", () => {
-    // `{value:"", tag:"const:int"}` is the editor's empty number box, and it is
-    // NOT `c.int(0)` — the stored bytes differ. Every blank tag in the survey
-    // corpus reaches this, so the message has to say "blank" rather than imply
-    // the SDK cannot express integer constants at all.
+  it("calls a blank REFERENCE an unbound binding, not an empty value box", () => {
+    // The two used to share one sentence, because a blank constant was also a
+    // fallback. It is `c.blank(tag)` now, so the only blanks that reach here are
+    // references naming nothing — where "the editor's unconfigured value box"
+    // would be describing the wrong defect and pointing at the wrong fix.
     const ctx = new DecodeContext();
-    roundTrip({ value: "", tag: "const:int", filters: [] }, ctx);
+    roundTrip({ value: "", tag: "response", filters: [] }, ctx);
     expect(ctx.report.entries).toHaveLength(1);
     const detail = String(ctx.report.entries[0]!.detail);
-    expect(detail).toContain("a blank const:int");
+    expect(detail).toContain("a blank response");
+    expect(detail).toContain("names nothing");
+    expect(detail).not.toContain("value box");
     expect(detail).not.toContain("no idiomatic form");
   });
 
   it("quotes the value a constructor cannot reproduce exactly", () => {
-    // A decimal's trailing zeros survive no number literal, so the row is named
-    // by its value rather than filed under its tag.
+    // The decimal that used to prove this decodes now, so the case is carried by
+    // a tag with no constructor at all — the shape the message still has to fit.
     const ctx = new DecodeContext();
-    roundTrip({ value: "10.00", tag: "const:decimal", filters: [] }, ctx);
-    expect(String(ctx.report.entries[0]!.detail)).toContain('"10.00"');
+    roundTrip({ value: "body.id", tag: "response", filters: [] }, ctx);
+    expect(String(ctx.report.entries[0]!.detail)).toContain('"body.id"');
   });
 
   it("still calls an unrecognized tag unknown", () => {
