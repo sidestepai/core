@@ -75,8 +75,24 @@ export type ReportCategory =
    * nothing here can tell them apart.
    */
   | "name-bound-ref"
-  /** A non-empty payload section this SDK models no kind for. */
+  /**
+   * A non-empty payload section this SDK models no kind for, or a payload key it
+   * has never seen. Warning: a real Xano object type is absent from the tree, so
+   * the pull is incomplete and the reader should know it.
+   */
   | "unsupported-section"
+  /**
+   * A payload section deliberately not carried into the tree because it belongs
+   * to the instance, not the workspace — vault secrets, install history,
+   * marketplace provenance, the current-branch pointer.
+   *
+   * Notice, and the split from `unsupported-section` is the point. "We chose not
+   * to carry this" and "we don't know what this is" are different sentences, and
+   * folding them together made 49 vault-and-history rows across the survey
+   * corpus read as gaps in the pull. Codegen is not a backup tool; these are
+   * recoverable only from the live workspace, and that is by design.
+   */
+  | "instance-owned"
   /** Runtime verification found a re-export that does not match the source bundle. */
   | "verify-mismatch"
   /**
@@ -159,6 +175,7 @@ const CATEGORY_LABELS: ReadonlyArray<readonly [ReportCategory, string, ReportSev
   ["expected-omission", "Deliberately not carried into the tree", "notice"],
   ["empty-source", "Objects that were already empty in the source", "notice"],
   ["unportable-id", "Internal ids that are not portable identity", "notice"],
+  ["instance-owned", "Instance state, deliberately not carried as source", "notice"],
 ];
 
 /**

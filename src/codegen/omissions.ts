@@ -30,8 +30,32 @@ export type OmissionReason =
   | "server-managed"
   /** Carried elsewhere in the bundle, where the import actually reads it. */
   | "relocated"
+  /**
+   * Instance history or provenance rather than workspace source — an install
+   * run, a marketplace record. There is nothing to model: it describes what was
+   * done TO the workspace, not what the workspace IS.
+   *
+   * Split out of `unmodeled` because the two answer different questions. This
+   * one says "correctly absent"; `unmodeled` says "a real object type is missing
+   * from your tree". Only the second is worth a warning.
+   */
+  | "instance-owned"
   /** A first-class Xano object type this SDK models no kind for. */
   | "unmodeled";
+
+/**
+ * How loudly a section's omission should be reported.
+ *
+ * Derived from the reason rather than listed a second time, so a policy and its
+ * severity cannot drift apart. Only `unmodeled` warns: a Xano object type this
+ * SDK has no kind for really is missing from the generated tree, and a reader
+ * should know their pull is incomplete. Everything else is a deliberate,
+ * correct absence — a secret that must never be committed, an instance-assigned
+ * identity, history that is not source — where there is nothing to decide.
+ */
+export function omissionSeverity(reason: OmissionReason): "warning" | "notice" {
+  return reason === "unmodeled" ? "warning" : "notice";
+}
 
 /** A deliberately-omitted payload section or workspace key. */
 export interface OmissionPolicy {
@@ -81,10 +105,13 @@ export const UNSUPPORTED_SECTIONS: Readonly<Record<string, OmissionPolicy>> = {
     reason: "unmodeled",
     detail: "knowledge objects are not authored in TypeScript by this SDK",
   },
-  market_item: { reason: "unmodeled", detail: "marketplace provenance is owned by the instance" },
-  run_install: { reason: "unmodeled", detail: "install runs are instance history, not workspace source" },
+  // These three were tagged `unmodeled`, which their own detail lines contradict:
+  // none of them is an object type the SDK failed to model. They are records of
+  // what was done to the workspace, owned by the instance that did it.
+  market_item: { reason: "instance-owned", detail: "marketplace provenance is owned by the instance" },
+  run_install: { reason: "instance-owned", detail: "install runs are instance history, not workspace source" },
   action_package_install: {
-    reason: "unmodeled",
+    reason: "instance-owned",
     detail: "action-package installs are owned by the instance",
   },
   workflow_test: { reason: "unmodeled", detail: "workflow tests are not modeled by this SDK" },

@@ -7,6 +7,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { DecodeReport, severityOf } from "../../src/codegen/report.js";
+import { UNSUPPORTED_SECTIONS, omissionSeverity } from "../../src/codegen/omissions.js";
 import { CODEGEN_MODULE, CORE_MODULE, DecodeContext, ImportCollector } from "../../src/codegen/context.js";
 
 /** Pull every `<category>=<count>` pair out of a rendered surface. */
@@ -260,8 +261,31 @@ describe("severity", () => {
     expect(severityOf("blank-binding")).toBe("warning");
     expect(severityOf("name-bound-ref")).toBe("warning");
     expect(severityOf("unportable-id")).toBe("notice");
+    // "We chose not to carry this" is not "we don't know what this is".
+    expect(severityOf("instance-owned")).toBe("notice");
+    expect(severityOf("unsupported-section")).toBe("warning");
     // The narrowed original keeps its meaning, and its volume.
     expect(severityOf("unresolved-ref")).toBe("error");
+  });
+
+  it("warns only for the sections that are genuinely a gap in the pull", () => {
+    // Pinned by section name, not just by reason, because the drift this guards
+    // is a policy entry tagged `unmodeled` out of habit when its own detail line
+    // says the instance owns it — which is exactly what `market_item`,
+    // `run_install`, and `action_package_install` were doing.
+    const bySection = Object.fromEntries(
+      Object.entries(UNSUPPORTED_SECTIONS).map(([k, p]) => [k, omissionSeverity(p.reason)]),
+    );
+    expect(bySection).toEqual({
+      vault: "notice",
+      branch: "notice",
+      market_item: "notice",
+      run_install: "notice",
+      action_package_install: "notice",
+      knowledge: "warning",
+      workflow_test: "warning",
+      service: "warning",
+    });
   });
 
   it("counts by severity, and carries it on every group", () => {

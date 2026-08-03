@@ -395,7 +395,7 @@ describe("codegen corpus — bundles the fixtures cannot cover", () => {
     // The supported half still comes out…
     expect(project.files.some((file) => file.path.endsWith("fn.ts"))).toBe(true);
     // …and the rest is named, not dropped in silence.
-    const unsupported = project.report.entries.filter((e) => e.category === "unsupported-section");
+    const unsupported = project.report.entries.filter((e) => e.category === "instance-owned");
     expect(unsupported.map((e) => e.detail).join()).toContain("payload.vault");
   });
 });
