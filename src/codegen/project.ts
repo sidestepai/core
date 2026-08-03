@@ -46,6 +46,15 @@ const SHARED_FILE = "_shared.ts";
 const TABLE_DIR = "table";
 const TABLE_FILE = "table/table.ts";
 
+/**
+ * Queries nest one level further than every other kind: `query/<api group>/`.
+ * A group's own definition sits in that folder under a fixed name, and queries
+ * with no resolvable group collect in one file beside the group folders.
+ */
+const QUERY_DIR = "query";
+const API_GROUP_FILE = "apiGroup.ts";
+const ORPHANED_QUERY_FILE = "query/orphaned.ts";
+
 /** The workspace config's own file, and the binding the barrel imports from it. */
 const WORKSPACE_FILE = "workspace.ts";
 const WORKSPACE_SYMBOL = "workspaceSettings";
@@ -369,9 +378,15 @@ function place(refs: RefIndex, payload: Record<string, unknown>): Placement[] {
     }
   }
 
+  // Guid → assigned symbol, for the placements that name a DIRECTORY rather than
+  // just a file: a query's folder is its api group's symbol, so the parent's
+  // symbol has to be settled before any child's path can be built.
+  const symbolFor = new Map<string, string>();
+  for (const [i, candidate] of list.entries()) symbolFor.set(candidate.object.guid, symbols[i]!);
+
   return list.map((candidate, i) => {
     const symbol = symbols[i]!;
-    const [dir, path] = fileFor(candidate, symbol, referrers, refs);
+    const [dir, path] = fileFor(candidate, symbol, referrers, refs, symbolFor);
     return { object: candidate.object, stored: candidate.stored, symbol, dir, path };
   });
 }
@@ -382,18 +397,80 @@ function fileFor(
   symbol: string,
   referrers: ReadonlyMap<string, number>,
   refs: RefIndex,
+  symbolFor: ReadonlyMap<string, string>,
 ): [dir: string, path: string] {
-  // Tables collapse before the shared check: they go to one file whether or not
-  // anything references them.
-  if (candidate.object.kind === "table") return [TABLE_DIR, TABLE_FILE];
-  // The hoist wins over nesting: a multiply-referenced object is in `_shared.ts`
-  // for a cycle reason, which outranks reading nicely.
+  const kind = candidate.object.kind;
+
+  // Two kinds collapse or nest BEFORE the shared check, because for them the
+  // hoist would be wrong rather than merely unnecessary:
+  //
+  // - A table goes in one file whether or not anything references it.
+  // - An api group is referenced by every query it holds, so the hoist would
+  //   catch essentially all of them and empty out the very folders the queries
+  //   are being nested into. Its folder IS its identity here.
+  if (kind === "table") return [TABLE_DIR, TABLE_FILE];
+  if (kind === "api_group") {
+    // `candidate.dir` is `query` for this kind — a group's folder sits among the
+    // queries it holds, not in a directory of its own.
+    const dir = `${candidate.dir}/${symbol}`;
+    return [dir, `${dir}/${API_GROUP_FILE}`];
+  }
+
+  // Past here the hoist wins over nesting: a multiply-referenced object is in
+  // `_shared.ts` for a cycle reason, which outranks reading nicely.
   if ((referrers.get(candidate.object.guid) ?? 0) > 1) return [".", SHARED_FILE];
-  if (candidate.object.kind === "trigger") {
+
+  if (kind === "trigger") {
     const dir = triggerDir(candidate, refs);
     return [dir, `${dir}/${symbol}.ts`];
   }
+  if (kind === "query") return queryFile(candidate, symbol, refs, symbolFor);
   return [candidate.dir, `${candidate.dir}/${symbol}.ts`];
+}
+
+/**
+ * A query's file: `query/<api group>/<name>_<VERB>.ts`.
+ *
+ * The group is the primary organising unit in Xano and the only thing that makes
+ * two queries named `posts` distinguishable, so it names the directory. The verb
+ * goes in the filename because `GET /posts` and `POST /posts` are different
+ * objects with the same name — one of them used to be `posts_2.ts`, which said
+ * nothing.
+ *
+ * The directory takes the group's ASSIGNED SYMBOL rather than its raw Xano name:
+ * `assignSymbols` has already stripped path-hostile characters and separated
+ * names that differ only by case, and a directory needs both of those for the
+ * same reason a file does — macOS and Windows fold `Admin/` onto `admin/`.
+ *
+ * Everything that is not in a resolvable group collects in one `query/orphaned.ts`
+ * — an absent `app`, the `0` sentinel, the numeric-id escape hatch, and a guid
+ * pointing outside the bundle all mean the same thing here: no folder to sit in.
+ */
+function queryFile(
+  candidate: Candidate,
+  symbol: string,
+  refs: RefIndex,
+  symbolFor: ReadonlyMap<string, string>,
+): [dir: string, path: string] {
+  const groupSymbol = apiGroupSymbol(candidate, refs, symbolFor);
+  if (groupSymbol === null) return [QUERY_DIR, ORPHANED_QUERY_FILE];
+  const dir = `${QUERY_DIR}/${groupSymbol}`;
+  const verb = candidate.stored.verb;
+  const suffix = typeof verb === "string" && verb !== "" ? `_${verb.toUpperCase()}` : "";
+  return [dir, `${dir}/${symbol}${suffix}.ts`];
+}
+
+/** The symbol of the api group a query belongs to, or null when it has none. */
+function apiGroupSymbol(
+  candidate: Candidate,
+  refs: RefIndex,
+  symbolFor: ReadonlyMap<string, string>,
+): string | null {
+  const id = (candidate.stored.app as { id?: unknown } | undefined)?.id;
+  if (typeof id !== "string" || id === "") return null;
+  const group = refs.lookup(id);
+  if (!group || group.kind !== "api_group") return null;
+  return symbolFor.get(group.guid) ?? null;
 }
 
 /**

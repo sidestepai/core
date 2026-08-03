@@ -102,7 +102,11 @@ export interface KindDecoder {
   readonly name: string;
   /** Payload array the kind lands in. */
   readonly payloadKey: string;
-  /** Directory the generated file goes in. */
+  /**
+   * Directory the generated file goes in — the DEFAULT, which placement may
+   * nest further: a query lands under its api group, a trigger under what it
+   * fires on, and every table collapses into one file. See `place()`.
+   */
   readonly dir: string;
   /** The `Xano.register*` method the barrel calls. */
   readonly register: string;
@@ -752,7 +756,9 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "api_group",
     payloadKey: "app",
-    dir: "apiGroup",
+    // A group gets a folder of its own UNDER this one, holding its definition
+    // and every query in it — so this is `query`, not `apiGroup`.
+    dir: "query",
     register: "registerApiGroups",
     defType: "ApiGroupDef",
     factory: "apiGroup",

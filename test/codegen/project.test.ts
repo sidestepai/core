@@ -21,6 +21,8 @@ import { defineFunction } from "../../src/function/define.js";
 import { table as defineTable } from "../../src/kinds/table.js";
 import { agent } from "../../src/kinds/agent.js";
 import { mcpServer } from "../../src/kinds/mcp-server.js";
+import { apiGroup } from "../../src/kinds/api-group.js";
+import { query } from "../../src/kinds/query.js";
 import {
   tableTrigger,
   agentTrigger,
@@ -134,6 +136,105 @@ describe("symbol naming", () => {
   it("assembles the same bundle to byte-identical files twice", () => {
     const defs = () => ({ tables: [table("users", guid(1))], functions: [fn("a", guid(2), [guid(1)])] });
     expect(build(defs()).files).toEqual(build(defs()).files);
+  });
+});
+
+describe("query placement", () => {
+  function pathsOf(build: (x: Xano) => Xano): string[] {
+    return decodeBundle(build(new Xano()).export()).files.map((f) => f.path);
+  }
+
+  it("nests a query under its api group, with the verb in the filename", () => {
+    const admin = apiGroup({ name: "admin", guid: guid(1) });
+    const paths = pathsOf((x) =>
+      x
+        .registerApiGroups([admin])
+        .registerQueries([query({ name: "posts", verb: "GET", apiGroup: admin, guid: guid(2) })]),
+    );
+    expect(paths).toContain("query/admin/apiGroup.ts");
+    expect(paths).toContain("query/admin/posts_GET.ts");
+  });
+
+  it("separates two queries that share a name but differ by verb", () => {
+    // `GET /posts` and `POST /posts` are different objects with the same name.
+    // One of them used to be `posts_2.ts`, which said nothing about which.
+    const admin = apiGroup({ name: "admin", guid: guid(1) });
+    const paths = pathsOf((x) =>
+      x.registerApiGroups([admin]).registerQueries([
+        query({ name: "posts", verb: "GET", apiGroup: admin, guid: guid(2) }),
+        query({ name: "posts", verb: "POST", apiGroup: admin, guid: guid(3) }),
+      ]),
+    );
+    expect(paths).toContain("query/admin/posts_GET.ts");
+    expect(paths).toContain("query/admin/posts_2_POST.ts");
+  });
+
+  it("gives an api group its folder even when it holds no queries", () => {
+    const paths = pathsOf((x) => x.registerApiGroups([apiGroup({ name: "empty", guid: guid(1) })]));
+    expect(paths).toContain("query/empty/apiGroup.ts");
+  });
+
+  it("collects every group-less query into one orphaned.ts", () => {
+    // An absent group and a guid pointing outside the bundle are the same thing
+    // here — no folder to sit in — so they share a file rather than a folder each.
+    const paths = pathsOf((x) =>
+      x.registerQueries([
+        query({ name: "loose", verb: "GET", guid: guid(1) }),
+        query({ name: "also_loose", verb: "POST", guid: guid(2) }),
+      ]),
+    );
+    expect(paths).toContain("query/orphaned.ts");
+    expect(paths.filter((p) => p.startsWith("query/"))).toEqual(["query/orphaned.ts"]);
+  });
+
+  it("emits no orphaned.ts when every query has a group", () => {
+    const admin = apiGroup({ name: "admin", guid: guid(1) });
+    const paths = pathsOf((x) =>
+      x
+        .registerApiGroups([admin])
+        .registerQueries([query({ name: "posts", verb: "GET", apiGroup: admin, guid: guid(2) })]),
+    );
+    expect(paths).not.toContain("query/orphaned.ts");
+  });
+
+  it("keeps two groups whose names differ only by case in distinct folders", () => {
+    // The folder takes the group's assigned SYMBOL, which `assignSymbols` has
+    // already case-separated — macOS and Windows fold `Admin/` onto `admin/`
+    // exactly as they fold `Admin.ts` onto `admin.ts`.
+    const paths = pathsOf((x) =>
+      x.registerApiGroups([apiGroup({ name: "admin", guid: guid(1) }), apiGroup({ name: "Admin", guid: guid(2) })]),
+    );
+    const folders = paths.filter((p) => p.endsWith("/apiGroup.ts")).map((p) => p.toLowerCase());
+    expect(new Set(folders).size, `case-insensitive folder collision: ${folders.join(", ")}`).toBe(2);
+  });
+
+  it("makes a path-safe folder from a group name that is not an identifier", () => {
+    const paths = pathsOf((x) => x.registerApiGroups([apiGroup({ name: "my group/v2", guid: guid(1) })]));
+    const group = paths.find((p) => p.endsWith("/apiGroup.ts"))!;
+    expect(group).toBe("query/my_group_v2/apiGroup.ts");
+  });
+
+  it("reaches a table and the barrel correctly from two directories deep", () => {
+    const users = defineTable({ name: "users", guid: guid(1), schema: { title: f.text() } });
+    const admin = apiGroup({ name: "admin", guid: guid(2) });
+    const project = decodeBundle(
+      new Xano()
+        .registerTables([users])
+        .registerApiGroups([admin])
+        .registerQueries([
+          query({
+            name: "posts",
+            verb: "GET",
+            apiGroup: admin,
+            guid: guid(3),
+            stack: [s.db.query({ table: users, as: "rows" })],
+          }),
+        ])
+        .export(),
+    );
+    expect(file(project, "query/admin/posts_GET.ts")).toContain('from "../../table/table.js"');
+    expect(file(project, "query/admin/posts_GET.ts")).toContain('from "./apiGroup.js"');
+    expect(file(project, "index.ts")).toContain('from "./query/admin/posts_GET.js"');
   });
 });
 
