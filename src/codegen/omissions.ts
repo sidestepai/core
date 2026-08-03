@@ -185,6 +185,73 @@ export const WORKSPACE_OMITTED_KEYS: Readonly<Record<string, OmissionPolicy>> = 
   },
 };
 
+/**
+ * Workspace keys the engine writes at a fixed default, and how to recognise that
+ * default.
+ *
+ * These are the `?=`-optional blocks {@link WorkspaceConfigXdo} emits BY PRESENCE
+ * — the encoder writes them only when the author asks for them, so that omitting
+ * `datasources` leaves a tenant's datasources alone rather than clearing them.
+ * The engine, meanwhile, materializes all of them on save: every one of the 177
+ * workspaces in the sweep stores `defaults: {db_primary_key: "int"}` and
+ * `datasource_live: {color: "#008000", show_banner: false}`, and 176 store
+ * `use_custom_names: false`.
+ *
+ * Carried into a generated tree verbatim, that is ten lines of workspace.ts per
+ * pull that say nothing and that an author would never write. Recognising the
+ * default lets codegen leave the key out — and this table is what tells
+ * verification that the absence is not a round-trip failure, so the drop is
+ * silent rather than ten notices deep.
+ *
+ * A PREDICATE rather than a value, because "the default" is not always one
+ * spelling: an empty list is `[]`, and the history block is a dozen keys of which
+ * only the departures matter.
+ */
+export const WORKSPACE_DEFAULTED_KEYS: Readonly<Record<string, (value: unknown) => boolean>> = {
+  use_custom_names: (v) => v === false,
+  defaults: (v) => isRecord(v) && Object.keys(v).length === 1 && v.db_primary_key === "int",
+  datasources: (v) => Array.isArray(v) && v.length === 0,
+  datasource_live: (v) =>
+    isRecord(v) && Object.keys(v).length === 2 && v.color === "#008000" && v.show_banner === false,
+  middleware: (v) => isRecord(v) && Object.values(v).every((list) => Array.isArray(list) && list.length === 0),
+  history: isDefaultWorkspaceHistory,
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * Object types whose workspace-tier request history defaults to OFF. The rest
+ * (query, task, tool) default to ON, and every limit defaults to 100.
+ */
+const HISTORY_DEFAULT_OFF = new Set(["function", "middleware", "trigger", "message"]);
+
+/**
+ * The stored workspace history map at its per-type defaults.
+ *
+ * Compared key by key rather than against one literal map, because the stored
+ * map's SHAPE drifts — an older save omits a type's `limit`, and Xano has added
+ * types over time. What matters is that no type departs from its default.
+ */
+function isDefaultWorkspaceHistory(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return Object.entries(value).every(([key, member]) => {
+    const enabled = key.endsWith("_enabled");
+    if (!enabled && !key.endsWith("_limit")) return false;
+    const type = key.slice(0, key.lastIndexOf("_"));
+    return enabled ? member === !HISTORY_DEFAULT_OFF.has(type) : member === 100;
+  });
+}
+
+/** Whether a `payload.workspace` key holds exactly the value the engine defaults it to. */
+export function isWorkspaceKeyAtDefault(key: string, value: unknown): boolean {
+  const predicate = Object.hasOwn(WORKSPACE_DEFAULTED_KEYS, key)
+    ? WORKSPACE_DEFAULTED_KEYS[key]
+    : undefined;
+  return predicate !== undefined && predicate(value);
+}
+
 /** The policy for a payload section, or `undefined` if it is not deliberately omitted. */
 export function sectionOmission(key: string): OmissionPolicy | undefined {
   return Object.hasOwn(UNSUPPORTED_SECTIONS, key) ? UNSUPPORTED_SECTIONS[key] : undefined;

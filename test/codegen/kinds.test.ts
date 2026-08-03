@@ -96,6 +96,66 @@ describe("kind decoders — every object round-trips, per kind", () => {
     expect((source.payload.env as unknown[])?.length ?? 0).toBeGreaterThan(0);
   });
 
+  it("leaves the engine's own workspace defaults out of the generated source", () => {
+    // Oracle 3. The engine materializes every one of these on save, so a pull
+    // used to carry ten lines nobody wrote and nobody can act on — and the round
+    // trip above cannot see it, since a re-emitted default round-trips fine.
+    const literal = project.files.find((f) => f.path === "workspace.ts")!.contents;
+    const defaulted = decodeBundle({
+      payload: {
+        workspace: {
+          name: "w",
+          preferences: { allow_push: false, track_performance: true, use_internal_docs: false },
+          settings: {
+            ai_enabled: false,
+            ai_settings: {
+              providers: {
+                google: { model: "", api_key: "" },
+                openai: { model: "", api_key: "" },
+                anthropic: { model: "", api_key: "" },
+                "azure-openai": { model: "", api_key: "", base_url: "", api_version: "" },
+              },
+              default_provider: "free",
+            },
+            hide_xano_agent: false,
+          },
+          middleware: { query_pre: [], query_post: [], function_pre: [], function_post: [] },
+          history: {
+            query_enabled: true,
+            query_limit: 100,
+            function_enabled: false,
+            function_limit: 100,
+          },
+          use_custom_names: false,
+          defaults: { db_primary_key: "int" },
+          datasources: [],
+          datasource_live: { color: "#008000", show_banner: false },
+        },
+      },
+    } as never).files.find((f) => f.path === "workspace.ts")!.contents;
+    for (const key of [
+      "preferences",
+      "settings",
+      "middleware",
+      "history",
+      "use_custom_names",
+      "defaults",
+      "datasources",
+      "datasource_live",
+    ]) {
+      expect(defaulted, `all-default workspace still emits \`${key}\``).not.toContain(`${key}:`);
+    }
+
+    // The sandbox departs from the default on every one of them, so the same
+    // keys must still be there — the elision is value-driven, not a blanket drop.
+    for (const key of ["preferences", "settings", "use_custom_names", "defaults", "datasource_live"]) {
+      expect(literal, `sandbox departure on \`${key}\` was dropped`).toContain(`${key}:`);
+    }
+    // And only the departing member of an opaque block is spelled out.
+    expect(literal).toContain("settings: {\n    ai_enabled: true,\n  },");
+    expect(literal).toContain("preferences: {\n    allow_push: true,\n  },");
+  });
+
   it("emits no `guid:` on workspace-config — the one KTD-7 exemption", () => {
     // Every other kind states its guid explicitly; `WorkspaceConfigDef` declares
     // no such field, so emitting one would not even type-check.

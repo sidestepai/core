@@ -104,8 +104,15 @@ describe("workspace config kind", () => {
       settings: { ai_enabled: true },
     });
     expect(w.name).toBe("b12");
-    expect(w.preferences).toEqual({ track_performance: true });
-    expect(w.settings).toEqual({ ai_enabled: true });
+    // Both blocks merge over the engine's default scaffold, so an author naming
+    // one member gets the complete block the engine itself persists.
+    expect(w.preferences).toEqual({
+      allow_push: false,
+      track_performance: true,
+      use_internal_docs: false,
+    });
+    expect(w.settings.ai_enabled).toBe(true);
+    expect(w.settings.ai_settings).toBeDefined();
     // The legacy realtime block is carried verbatim, so an unauthored one is the
     // engine's own empty shape rather than a canonical this SDK invented.
     expect(w.realtime).toEqual({ hash: "", mode: "", enabled: false, channels: [] });

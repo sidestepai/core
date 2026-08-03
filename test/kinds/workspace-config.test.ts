@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
+  DEFAULT_PREFERENCES,
+  DEFAULT_SETTINGS,
   encodeWorkspaceConfig,
   encodeWorkspaceEnv,
 } from "../../src/kinds/workspace-config.js";
@@ -122,6 +124,43 @@ describe("encodeWorkspaceConfig — presence-preserving optional blocks", () => 
     const xdo = encodeWorkspaceConfig({ name: "ws", use_custom_names: true });
     expect(xdo.name).toBe("ws");
     expect(xdo.env).toEqual([]);
-    expect(xdo.settings).toEqual({});
+    // `settings` and `preferences` fall back to the engine's own scaffold, not to
+    // `{}` — no workspace the engine has saved stores an empty one, and a deploy
+    // that sent `{}` would be relying on the engine to refill what it cleared.
+    expect(xdo.settings).toEqual(DEFAULT_SETTINGS);
+    expect(xdo.preferences).toEqual(DEFAULT_PREFERENCES);
+  });
+
+  it("merges an authored block over the engine default, member by member", () => {
+    // Naming one flag must not clear the twenty members beside it, and the merge
+    // is recursive — `providers` is three levels down.
+    const xdo = encodeWorkspaceConfig({
+      name: "ws",
+      preferences: { allow_push: true },
+      settings: { ai_enabled: true, ai_settings: { providers: { openai: { model: "gpt-5" } } } },
+    });
+    expect(xdo.preferences).toEqual({
+      allow_push: true,
+      track_performance: true,
+      use_internal_docs: false,
+    });
+    const ai = xdo.settings.ai_settings as Record<string, Record<string, unknown>>;
+    expect(xdo.settings.ai_enabled).toBe(true);
+    expect(xdo.settings.hide_xano_agent).toBe(false);
+    expect(ai.default_provider).toBe("free");
+    expect(ai.providers).toEqual({
+      google: { model: "", api_key: "" },
+      openai: { model: "gpt-5", api_key: "" },
+      anthropic: { model: "", api_key: "" },
+      "azure-openai": { model: "", api_key: "", base_url: "", api_version: "" },
+    });
+  });
+
+  it("does not let a merged block alias the engine default", () => {
+    // `DEFAULT_SETTINGS` is module state shared by every encode; a nested object
+    // handed out by reference would let one workspace's edit reach the next.
+    const first = encodeWorkspaceConfig({ name: "a" });
+    (first.settings.ai_settings as Record<string, unknown>).default_provider = "openai";
+    expect(encodeWorkspaceConfig({ name: "b" }).settings).toEqual(DEFAULT_SETTINGS);
   });
 });
