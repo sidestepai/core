@@ -184,15 +184,29 @@ function tsconfig(): string {
 
 /**
  * Relative import specifier from a file in `fromDir` to a generated file.
- * Every generated file sits at the root or exactly one directory below it, so
- * the only shapes are same-directory and up-one-then-down.
+ *
+ * The tree is no longer flat — a query sits two deep, under its api group — so
+ * this is a real relative-path walk rather than the same-directory /
+ * up-one-then-down pair the one-level layout could get away with. Written by
+ * hand against POSIX separators instead of `node:path`, because this module is
+ * on the browser-safe decode path and `relative()` would also fold `..` against
+ * the real filesystem, which is not what a specifier means.
  */
-function specifierFrom(fromDir: string, toPath: string): string {
+export function specifierFrom(fromDir: string, toPath: string): string {
   const target = toPath.replace(/\.ts$/, ".js");
-  if (fromDir === ".") return `./${target}`;
-  return target.startsWith(`${fromDir}/`)
-    ? `./${target.slice(fromDir.length + 1)}`
-    : `../${target}`;
+  const from = fromDir === "." ? [] : fromDir.split("/");
+  const to = target.split("/");
+  const file = to.pop()!;
+
+  let common = 0;
+  while (common < from.length && common < to.length && from[common] === to[common]) common += 1;
+
+  const up = from.length - common;
+  const down = to.slice(common);
+  // A specifier must be explicitly relative; `up === 0` means the target is at or
+  // below this directory, which needs the `./` that a bare path would not carry.
+  const prefix = up === 0 ? "./" : "../".repeat(up);
+  return `${prefix}${[...down, file].join("/")}`;
 }
 
 /**

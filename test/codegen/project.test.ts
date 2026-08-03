@@ -14,7 +14,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { decodeBundle } from "../../src/codegen/index.js";
-import { toSymbol } from "../../src/codegen/project.js";
+import { toSymbol, specifierFrom } from "../../src/codegen/project.js";
 import type { GeneratedProject } from "../../src/codegen/index.js";
 import { workspace } from "../../src/workspace/xano.js";
 import { defineFunction } from "../../src/function/define.js";
@@ -112,6 +112,47 @@ describe("symbol naming", () => {
   it("assembles the same bundle to byte-identical files twice", () => {
     const defs = () => ({ tables: [table("users", guid(1))], functions: [fn("a", guid(2), [guid(1)])] });
     expect(build(defs()).files).toEqual(build(defs()).files);
+  });
+});
+
+describe("relative import specifiers", () => {
+  // The tree is two deep once queries nest under their api group, so the
+  // same-directory / up-one-then-down pair the flat layout relied on is not
+  // enough. A wrong specifier here fails at LOAD, not at typecheck, so every
+  // depth combination the layout can produce is pinned.
+  it.each([
+    ["same directory", "function", "function/b.ts", "./b.js"],
+    ["root down one", ".", "table/table.js", "./table/table.js"],
+    ["root to root", ".", "_shared.ts", "./_shared.js"],
+    ["one deep up to root", "function", "_shared.ts", "../_shared.js"],
+    ["one deep to a sibling directory", "function", "table/table.ts", "../table/table.js"],
+    ["two deep to one deep", "query/admin", "table/table.ts", "../../table/table.js"],
+    ["two deep, same directory", "query/admin", "query/admin/posts_GET.ts", "./posts_GET.js"],
+    ["two deep to a peer group", "query/admin", "query/public/posts_GET.ts", "../public/posts_GET.js"],
+    ["two deep up to root", "query/admin", "_shared.ts", "../../_shared.js"],
+    ["one deep down to two", "table", "table/trigger/on_insert.ts", "./trigger/on_insert.js"],
+  ])("%s", (_label, fromDir, toPath, expected) => {
+    expect(specifierFrom(fromDir, toPath)).toBe(expected);
+  });
+
+  it("always emits an explicitly relative specifier", () => {
+    for (const [fromDir, toPath] of [
+      [".", "_shared.ts"],
+      ["function", "table/table.ts"],
+      ["query/admin", "query/admin/posts_GET.ts"],
+    ] as const) {
+      expect(specifierFrom(fromDir, toPath)).toMatch(/^\.{1,2}\//);
+    }
+  });
+
+  it("rewrites the extension at every depth", () => {
+    for (const [fromDir, toPath] of [
+      [".", "_shared.ts"],
+      ["function", "table/table.ts"],
+      ["query/admin", "query/public/posts_GET.ts"],
+    ] as const) {
+      expect(specifierFrom(fromDir, toPath)).toMatch(/\.js$/);
+    }
   });
 });
 
