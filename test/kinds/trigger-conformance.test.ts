@@ -16,13 +16,16 @@ import {
   realtimeTrigger,
   mcpServerTrigger,
   workspaceTrigger,
+  errorTrigger,
   encodeTrigger,
 } from "../../src/kinds/trigger.js";
 import { Xano } from "../../src/workspace/xano.js";
 import { impliedInputs } from "../../src/kinds/trigger-inputs.js";
 import { loadFixture, normalizedPair } from "../conformance/harness.js";
+import { c, col } from "../../src/values/value.js";
+import { and, cmp, or } from "../../src/statements/expression.js";
 
-const fixture = (n: string) => loadFixture<{ input: unknown[]; run: unknown[]; result: unknown[] }>(
+const fixture = (n: string) => loadFixture<{ input: unknown[]; run: unknown[]; result: unknown[]; meta: unknown }>(
   `triggers/${n}-trigger.json`,
 );
 
@@ -78,5 +81,118 @@ describe("trigger factory → encode → fixture conformance (U6)", () => {
     const exported = (bundle.payload.trigger as Array<{ input: unknown[]; obj_type: string }>)[0]!;
     expect(exported.obj_type).toBe("database");
     expect(exported.input).toEqual(impliedInputs("database"));
+  });
+});
+
+describe("tableTrigger `search` — the trigger condition (custom filter)", () => {
+  it("encodes byte-equal to the engine fixture's stored search block", () => {
+    // `table-trigger.json` carries a real custom filter captured off an engine.
+    // This is the byte claim: authoring the condition reproduces what Xano wrote.
+    const t = encodeTrigger(
+      tableTrigger({
+        name: "t",
+        objId: 1,
+        actions: { insert: true, update: true },
+        datasources: ["live"],
+        search: cmp(col("NEW.id"), "=", c.int(123)),
+      }),
+    );
+    // Compared as `{meta}`, not bare: the inert-group equivalence is keyed on the
+    // `meta` KEY, and this fixture is old enough to omit two of the six groups.
+    // The `database` block — action flags, datasource, and the search expression
+    // this test is about — is matched exactly either way.
+    const { actual, expected } = normalizedPair({ meta: t.meta }, { meta: fixture("table").meta });
+    expect(actual).toEqual(expected);
+  });
+
+  it("writes the empty block when no condition is given", () => {
+    const t = encodeTrigger(tableTrigger({ name: "t", objId: 1, actions: { insert: true } }));
+    expect((t.meta as any).database.search).toEqual({ expression: [] });
+  });
+
+  it("rejects a filter on `truncate`, which has no row to test", () => {
+    expect(() =>
+      tableTrigger({
+        name: "t",
+        actions: { truncate: true },
+        search: cmp(col("NEW.id"), "=", c.int(1)),
+      }),
+    ).toThrow(/truncate/);
+  });
+
+  it("rejects `OLD.*` when the trigger fires on insert", () => {
+    // An insert has no OLD row, so the condition could never be evaluated.
+    expect(() =>
+      tableTrigger({
+        name: "t",
+        actions: { insert: true },
+        search: cmp(col("OLD.status"), "=", c.text("x")),
+      }),
+    ).toThrow(/OLD\.status/);
+  });
+
+  it("rejects `NEW.*` when the trigger fires on delete", () => {
+    expect(() =>
+      tableTrigger({
+        name: "t",
+        actions: { delete: true },
+        search: cmp(col("NEW.status"), "=", c.text("x")),
+      }),
+    ).toThrow(/NEW\.status/);
+  });
+
+  it("rejects the forbidden side even when another action would allow it", () => {
+    // `{insert, update}` reading OLD.*: update could evaluate it, insert could
+    // not, and the engine runs one trigger for both.
+    expect(() =>
+      tableTrigger({
+        name: "t",
+        actions: { insert: true, update: true },
+        search: cmp(col("OLD.status"), "=", c.text("x")),
+      }),
+    ).toThrow(/OLD\.status/);
+  });
+
+  it("allows `OLD.*` on update+delete, where both sides exist", () => {
+    expect(() =>
+      tableTrigger({
+        name: "t",
+        actions: { update: true, delete: true },
+        search: cmp(col("OLD.status"), "=", c.text("x")),
+      }),
+    ).not.toThrow();
+  });
+
+  it("finds a forbidden operand nested inside a grouped condition", () => {
+    // The check walks the whole encoded tree, not just top-level terms.
+    expect(() =>
+      tableTrigger({
+        name: "t",
+        actions: { insert: true },
+        search: and(cmp(col("NEW.a"), "=", c.int(1)), or(cmp(col("OLD.b"), "=", c.int(2)), cmp(col("NEW.c"), "=", c.int(3)))),
+      }),
+    ).toThrow(/OLD\.b/);
+  });
+});
+
+describe("errorTrigger meta — inert, and consistent with every other type", () => {
+  it("writes the same six-group skeleton the other types write", () => {
+    const err = encodeTrigger(errorTrigger({ name: "e", objId: 1 }));
+    const tbl = encodeTrigger(tableTrigger({ name: "t", objId: 1 }));
+    // No `error` group exists — an error trigger has no action toggles — so the
+    // two skeletons are identical.
+    expect(Object.keys(err.meta as object).sort()).toEqual(Object.keys(tbl.meta as object).sort());
+  });
+
+  it("compares equal to the fixture's partial meta, because both are all-off", () => {
+    // The shipped fixture stores two of the six groups; the SDK writes all six.
+    // The engine reads every group as `?? false`, so these are one state — which
+    // is exactly what the normalizer's inert-group rule encodes.
+    const err = encodeTrigger(errorTrigger({ name: "e", objId: 1 }));
+    const { actual, expected } = normalizedPair(
+      { meta: err.meta },
+      { meta: fixture("error").meta },
+    );
+    expect(actual).toEqual(expected);
   });
 });

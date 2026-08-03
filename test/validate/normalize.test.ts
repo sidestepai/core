@@ -1202,3 +1202,58 @@ describe("validate normalizer — a required input's inert default", () => {
     expect((normalize(table) as typeof table).schema[0]!.default).toBe("now");
   });
 });
+
+describe("normalize — inert trigger meta groups", () => {
+  /**
+   * The engine writes all six action groups on a trigger it saves today, but a
+   * trigger saved before a group existed never gained it and nothing re-saves it
+   * — across a 25-bundle sweep, all 24 stored triggers carried only two to four.
+   * An absent group and an all-off group are one state: there is no flag to read
+   * either way. Without this equivalence every real-world trigger would fail its
+   * factory round-trip check and decode to the verbatim `satisfies` form.
+   */
+  const FULL = {
+    database: {
+      datasource: [],
+      search: { expression: [] },
+      action: { delete: false, insert: true, truncate: false, update: false },
+    },
+    toolset: { action: { connection: false } },
+    workspace: { action: { branch_live: false, branch_merge: false, branch_new: false } },
+    workspace_realtime_channel: { action: { message: false, join: false } },
+    realtime_server: { action: { connect: false, disconnect: false } },
+    channel: { action: { join: false, leave: false, deliver: false } },
+  };
+
+  it("equates a full six-group meta with the subset a real workspace stores", () => {
+    const subset = { database: FULL.database, workspace: FULL.workspace };
+    expect(normalize({ meta: FULL })).toEqual(normalize({ meta: subset }));
+  });
+
+  it("KEEPS a group whose flags are actually set, which is the point of the rule", () => {
+    // The assertion that stops this becoming "trigger meta does not compare".
+    const withToolset = { ...FULL, toolset: { action: { connection: true } } };
+    expect(normalize({ meta: withToolset })).not.toEqual(normalize({ meta: FULL }));
+  });
+
+  it("keeps a non-default database group distinct from an all-off one", () => {
+    const off = {
+      ...FULL,
+      database: { ...FULL.database, action: { delete: false, insert: false, truncate: false, update: false } },
+    };
+    expect(normalize({ meta: off })).not.toEqual(normalize({ meta: FULL }));
+  });
+
+  it("leaves a `meta` that is not a trigger meta entirely alone", () => {
+    // Scoped by group NAME: anything else keeps every member, so an unrelated
+    // object with a `meta` key is unaffected.
+    const other = { meta: { retries: 0, tags: [], nested: { a: false } } };
+    expect(normalize(other)).toEqual(other);
+  });
+
+  it("does not fire on a bare meta object with no parent key", () => {
+    // The rule is keyed on the `meta` KEY, so callers must pass the parent.
+    expect(normalize(FULL)).toEqual(normalize(FULL));
+    expect(Object.keys(normalize(FULL) as object)).toContain("channel");
+  });
+});

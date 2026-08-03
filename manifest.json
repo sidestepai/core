@@ -1,6 +1,6 @@
 {
   "name": "sidestep",
-  "version": "4.1.20",
+  "version": "4.1.21",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
@@ -196,7 +196,7 @@
         {
           "authorFactory": "tableTrigger",
           "objType": "database",
-          "description": "Fires when rows change on a bound table (insert/update/delete/truncate). The changed row is exposed as `t.new`/`t.old`, typed to the table when a `table()` handle is bound. Config-only (no response)."
+          "description": "Fires when rows change on a bound table (insert/update/delete/truncate). The changed row is exposed as `t.new`/`t.old`, typed to the table when a `table()` handle is bound. Config-only (no response). `search` filters rows in the DATABASE, so it uses `col(\"NEW.x\")`/`col(\"OLD.x\")`, not `t`; invalid with `truncate`, and insert/delete cannot read the absent side."
         },
         {
           "authorFactory": "realtimeTrigger",

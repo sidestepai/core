@@ -22,10 +22,24 @@
  * A kind with no `factory` falls back to `… satisfies <defType>`. That is the
  * escape hatch for kinds whose factory takes a *different* shape than the def it
  * returns and cannot be inverted faithfully.
+ *
+ * The choice is not always the same for every object of a kind. A trigger's
+ * factory depends on its `obj_type` (and, for `toolset`, on what the bound guid
+ * points at), and some stored shapes have no faithful factory form at all. Such a
+ * kind returns a {@link DecodedDef} from `decode` — its entries plus the factory
+ * THAT object is wrapped in — and `undefined` there means the object takes the
+ * `satisfies` fallback while its siblings still get their factory.
+ *
+ * That per-object refusal is the second reason a kind declines its factory, and
+ * the more important one: it is not a decoder gap but the safety property. A
+ * factory whose arguments cannot express what an object stores would emit a call
+ * that compiles and deploys something DIFFERENT. Preferring the better-typed form
+ * only where it is provably equivalent — and reporting every refusal — is what
+ * makes preferring it safe at all. See {@link triggerFactoryArgs}.
  */
 import type { DecodeContext } from "../context.js";
 import { CORE_MODULE } from "../context.js";
-import { arr, call, id, lit, obj, type Expr } from "../print.js";
+import { arr, arrow, call, id, lit, obj, type Expr } from "../print.js";
 import type { RefIndex, ResolveOptions } from "../ref-index.js";
 import { resolveReference } from "../ref-index.js";
 import { decodeFieldMap, decodeResponse, deepEqual } from "../field.js";
@@ -38,6 +52,16 @@ import {
   normalize,
 } from "../../validate/normalize.js";
 import type { ContainerPrefix } from "../../kinds/history.js";
+import {
+  encodeTrigger,
+  errorTrigger,
+  mcpServerTrigger,
+  tableTrigger,
+  workspaceTrigger,
+} from "../../kinds/trigger.js";
+import type { TriggerInputObjType } from "../../kinds/trigger-inputs.js";
+import type { Condition } from "../../statements/expression.js";
+import { rewriteTriggerInputRefs } from "./trigger-handle-refs.js";
 import { parsePathParams, unboundPathParams } from "../../kinds/path-params.js";
 import { ENGINE_HISTORY_LIMIT } from "../../validate/normalize.js";
 
@@ -55,6 +79,19 @@ export interface KindDecodeArgs {
   readonly resolve: ResolveOptions;
 }
 
+/**
+ * A decoded def when the kind picks its factory per object rather than per kind.
+ *
+ * Returned from `decode` instead of a bare entry list. `factory: undefined` is
+ * the deliberate fallback signal, not a missing value — the emitter wraps the
+ * entries in `satisfies <defType>` and the object still round-trips.
+ */
+export interface DecodedDef {
+  readonly entries: readonly DefEntry[];
+  /** The factory THIS object is wrapped in; `undefined` → `satisfies`. */
+  readonly factory?: string;
+}
+
 /** A registered kind decoder. */
 export interface KindDecoder {
   /** Kind name, matching the encode-side registry. */
@@ -68,12 +105,17 @@ export interface KindDecoder {
   /** The exported def type, imported `type`-only when there is no {@link factory}. */
   readonly defType: string;
   /**
-   * The exported factory the def literal is wrapped in, imported as a value.
-   * Omitted for kinds that still fall back to `satisfies` (see the module header).
+   * The exported factory EVERY object of this kind is wrapped in, imported as a
+   * value. Omitted both by kinds that always fall back to `satisfies` and by
+   * kinds that choose per object — those return the name from `decode` instead
+   * (see the module header).
    */
   readonly factory?: string;
-  /** Build the def literal's entries. */
-  decode(args: KindDecodeArgs): DefEntry[];
+  /**
+   * Build the def literal's entries. Returning a bare list takes the kind-wide
+   * {@link KindDecoder.factory}; returning a {@link DecodedDef} chooses per object.
+   */
+  decode(args: KindDecodeArgs): DefEntry[] | DecodedDef;
 }
 
 // --- shared inverses ---------------------------------------------------------
@@ -795,23 +837,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
     dir: "triggers",
     register: "registerTriggers",
     defType: "TriggerDef",
-    decode: (a) =>
-      compact([
-        ...identity(a),
-        ["objType", lit(a.stored.obj_type)],
-        plain(a.stored, "active", true),
-        plain(a.stored, "description", ""),
-        triggerObjId(a),
-        history(a),
-        ["meta", lit(a.stored.meta)],
-        tags(a.stored),
-        // `input` is implied by trigger type and re-injected by the encoder, so
-        // it is deliberately not carried. `hasResult` is required on `TriggerDef`
-        // (it selects the result envelope), so it is always stated.
-        ["hasResult", lit(Array.isArray(a.stored.result) && a.stored.result.length > 0)],
-        response(a),
-        stack(a),
-      ]),
+    decode: (a) => decodeTrigger(a),
   },
   {
     name: "task",
@@ -1005,6 +1031,362 @@ function realtimeHostBinding(
     defKey,
     resolveReference(a.ctx, a.refs, String(id), { ...a.resolve, unresolved: "object-ref" }),
   ];
+}
+
+// --- triggers ----------------------------------------------------------------
+
+/**
+ * `obj_type` → the root factory that builds it, for the types whose arguments
+ * invert faithfully.
+ *
+ * The three realtime types are absent on purpose. `realtimeChannelTrigger` binds
+ * a `RealtimeChannelDef` — a def handle carrying its server — and a stored
+ * trigger has only two guids with no way to know they agree, so there is no
+ * faithful inverse. `realtimeTrigger` is deprecated and withheld from the docs
+ * catalog. Both keep the `satisfies` form, which still checks the literal.
+ */
+const TRIGGER_FACTORIES: Readonly<Record<string, string>> = {
+  database: "tableTrigger",
+  workspace: "workspaceTrigger",
+  error: "errorTrigger",
+};
+
+/**
+ * The two kinds that persist under `toolset`, and the trigger factory and
+ * argument name each one's trigger uses.
+ *
+ * `mcpServerTrigger` and `agentTrigger` build the SAME object — both delegate to
+ * one internal helper — so this choice cannot change what deploys. It decides
+ * only which of the two the generated file reads as, and getting it from the
+ * bound object's own kind is the only way to say it truthfully.
+ */
+const TOOLSET_TRIGGERS: Readonly<Record<string, { factory: string; arg: string }>> = {
+  mcp_server: { factory: "mcpServerTrigger", arg: "mcpServer" },
+  agent: { factory: "agentTrigger", arg: "agent" },
+};
+
+/**
+ * The action flags each factory takes, in the order they are emitted.
+ *
+ * Read from the stored `meta.<group>.action` block and emitted as `actions`. Only
+ * TRUE members appear — every factory defaults each flag to `false` — and an
+ * all-false trigger emits no `actions` key at all.
+ */
+const TRIGGER_ACTIONS: Readonly<Record<string, { group: string; keys: readonly string[] }>> = {
+  database: { group: "database", keys: ["delete", "insert", "truncate", "update"] },
+  workspace: { group: "workspace", keys: ["branch_live", "branch_merge", "branch_new"] },
+};
+
+/**
+ * Decode a trigger, in factory form where that round-trips and `satisfies`
+ * otherwise.
+ *
+ * The fallback is not a decoder gap to be tidied away later — it is the safety
+ * property. A trigger carries state no factory argument reaches (see
+ * {@link triggerFactoryArgs}), and emitting a factory call that silently drops it
+ * would produce a file that compiles, imports, and deploys a DIFFERENT trigger.
+ * The `satisfies` form is byte-faithful for every shape; the factory form is
+ * better-typed for the shapes it can express. Preferring the second only when it
+ * is provably equivalent is the whole design.
+ */
+function decodeTrigger(a: KindDecodeArgs): DecodedDef {
+  const objType = a.stored.obj_type;
+  if (typeof objType === "string") {
+    const chosen =
+      objType === "toolset"
+        ? toolsetTriggerFactory(a)
+        : TRIGGER_FACTORIES[objType]
+          ? { factory: TRIGGER_FACTORIES[objType]!, arg: undefined }
+          : undefined;
+    if (chosen) {
+      const entries = triggerFactoryArgs(a, objType as TriggerInputObjType, chosen.arg);
+      if (entries) return { entries, factory: chosen.factory };
+    }
+  }
+  return { entries: triggerDefEntries(a) };
+}
+
+/**
+ * Which toolset trigger factory a stored object reads as, from the KIND of the
+ * object its `obj_id` names.
+ *
+ * A numeric or unresolvable `obj_id` yields nothing: both factories would encode
+ * identically, so guessing is safe for the deploy but writes a file that claims
+ * an agent trigger is an MCP-server trigger (or the reverse). The `satisfies`
+ * form says neither and stays true.
+ */
+function toolsetTriggerFactory(a: KindDecodeArgs): { factory: string; arg: string } | undefined {
+  const objId = a.stored.obj_id;
+  if (typeof objId !== "string" || objId === "") {
+    triggerFallback(a, "binds its toolset by numeric id, which does not say whether it is an MCP server or an agent");
+    return undefined;
+  }
+  const target = a.refs.lookup(objId);
+  const chosen = target ? TOOLSET_TRIGGERS[target.kind] : undefined;
+  if (!chosen) {
+    triggerFallback(a, `binds a toolset (${objId}) this bundle does not contain, so it cannot say whether it is an MCP server or an agent`);
+  }
+  return chosen;
+}
+
+/** The verbatim `satisfies TriggerDef` form — faithful for every trigger type. */
+function triggerDefEntries(a: KindDecodeArgs): DefEntry[] {
+  return compact([
+    ...identity(a),
+    ["objType", lit(a.stored.obj_type)],
+    plain(a.stored, "active", true),
+    plain(a.stored, "description", ""),
+    triggerObjId(a),
+    history(a),
+    ["meta", lit(a.stored.meta)],
+    tags(a.stored),
+    // `input` is implied by trigger type and re-injected by the encoder, so
+    // it is deliberately not carried. `hasResult` is required on `TriggerDef`
+    // (it selects the result envelope), so it is always stated.
+    ["hasResult", lit(Array.isArray(a.stored.result) && a.stored.result.length > 0)],
+    response(a),
+    stack(a),
+  ]);
+}
+
+/**
+ * Factory arguments for one trigger, or `null` when the factory cannot reproduce
+ * the stored object.
+ *
+ * Two things can force the fallback, and both are checked against the ENCODER
+ * rather than against a hand-maintained list of known-bad shapes:
+ *
+ * - **`meta` the factory does not synthesize.** A trigger condition
+ *   (`meta.database.search.expression`) is real, editable Xano state, and
+ *   `tableTrigger` has no `search` argument for it. Rather than enumerate that,
+ *   {@link triggerMetaMatches} builds the meta the factory WOULD produce from the
+ *   derived arguments and compares. Give `tableTrigger` a `search` argument later
+ *   and this widens on its own, with no second place to update.
+ * - **`history`.** `TriggerDef` carries it; no trigger factory's `CommonArgs`
+ *   accepts it. A non-default history therefore has nowhere to go.
+ */
+function triggerFactoryArgs(
+  a: KindDecodeArgs,
+  objType: TriggerInputObjType,
+  bindingArg: string | undefined,
+): DefEntry[] | null {
+  const historyEntry = history(a);
+  if (historyEntry) {
+    triggerFallback(a, "carries a `history` setting, which no trigger factory takes as an argument");
+    return null;
+  }
+
+  // A config-only factory has no `response` parameter, so a stored `result[]` on
+  // one of those types has nowhere to go. `hasResult` is false for all three, so
+  // this should not occur — but a trigger that stored one anyway would otherwise
+  // emit a `response:` argument the factory does not accept, and the generated
+  // file would fail to compile rather than merely losing the response.
+  if (
+    objType !== "toolset" &&
+    Array.isArray(a.stored.result) &&
+    a.stored.result.length > 0
+  ) {
+    triggerFallback(a, "stores a `result[]` on a config-only trigger type, which takes no `response`");
+    return null;
+  }
+
+  const actions = triggerActions(a.stored, objType);
+  const datasources = triggerDatasources(a.stored, objType);
+
+  // A trigger condition, inverted through the shared condition decoder. Declining
+  // is a real outcome — an expression this decoder cannot invert would otherwise
+  // become a trigger with NO filter, which fires for every row instead of the few
+  // the source intended. That is a widening, so it falls back rather than degrades.
+  const search = triggerSearch(a, objType);
+  if (search === "undecodable") {
+    triggerFallback(
+      a,
+      "stores a trigger condition (`meta.database.search.expression`) this decoder " +
+        "cannot invert; a factory call would drop it and fire for every row",
+    );
+    return null;
+  }
+
+  if (!triggerMetaMatches(a.stored, objType, actions, datasources, search?.runtime)) {
+    triggerFallback(a, "stores `meta` the factory does not synthesize");
+    return null;
+  }
+
+  return compact([
+    ...identity(a),
+    plain(a.stored, "active", true),
+    plain(a.stored, "description", ""),
+    triggerBinding(a, objType, bindingArg),
+    actions ? (["actions", lit(actions)] as DefEntry) : null,
+    datasources.length > 0 ? (["datasources", lit(datasources)] as DefEntry) : null,
+    search ? (["search", search.expr] as DefEntry) : null,
+    tags(a.stored),
+    ...triggerBody(a, objType),
+  ]);
+}
+
+/**
+ * The bound object, as the named handle argument its factory takes.
+ *
+ * A guid becomes `table: <handle>` / `mcpServer: <handle>` / `agent: <handle>`,
+ * resolved through the ref index exactly like a query's api-group binding — and
+ * degrading to `{name, guid}` when the target is outside this bundle, which
+ * `resolveRef` reads by guid and so stays faithful.
+ *
+ * A NUMERIC id keeps `objId`. That is the factories' documented escape hatch and
+ * the only form `CommonArgs.objId` accepts — `TriggerDef.objId` is
+ * `number | string`, but the factory argument is `number` alone, which is why a
+ * guid has to become a handle here rather than passing through.
+ */
+function triggerBinding(
+  a: KindDecodeArgs,
+  objType: string,
+  bindingArg: string | undefined,
+): DefEntry | null {
+  const objId = a.stored.obj_id;
+  const arg = objType === "database" ? "table" : bindingArg;
+  if (arg !== undefined && typeof objId === "string" && objId !== "") {
+    return [arg, resolveReference(a.ctx, a.refs, objId, { ...a.resolve, unresolved: "object-ref" })];
+  }
+  return plain(a.stored, "obj_id", 0, "objId");
+}
+
+/**
+ * `stack` and `response`, each elided when it equals what the factory injects.
+ *
+ * Only the toolset types inject anything — Xano's own defaults, which
+ * `toolsetTrigger` reproduces: a stack copying the two inputs into vars and a
+ * response returning them. Determined by encoding the factory's OWN no-argument
+ * output rather than by restating those defaults here, so they cannot drift.
+ */
+function triggerBody(a: KindDecodeArgs, objType: TriggerInputObjType): DefEntry[] {
+  const injected = objType === "toolset" ? encodeTrigger(mcpServerTrigger({ name: "probe" })) : null;
+  const out: DefEntry[] = [];
+
+  if (!injected || !deepEqual(normalize(a.stored.run), normalize(injected.run))) {
+    const entry = triggerStack(a, objType);
+    if (entry) out.push(entry);
+  }
+  if (
+    Array.isArray(a.stored.result) &&
+    a.stored.result.length > 0 &&
+    !(injected && deepEqual(normalize(a.stored.result), normalize(injected.result)))
+  ) {
+    const decoded = decodeResponse(a.ctx, a.stored.result as never);
+    if (decoded) out.push(["response", arrow(["t"], rewriteTriggerInputRefs(decoded, objType))]);
+  }
+  return out;
+}
+
+/** Record why an object took the `satisfies` form instead of its factory. */
+function triggerFallback(a: KindDecodeArgs, reason: string): void {
+  // `unsupported-section` rather than an error: the emitted def is byte-faithful
+  // and deploys correctly. What is lost is the factory's typing, not the object.
+  a.ctx.problem(
+    "unsupported-section",
+    `emitted as \`satisfies TriggerDef\` rather than a factory call — it ${reason}`,
+  );
+}
+
+/** Stored `meta.<group>.action` → the `actions` argument, true members only. */
+function triggerActions(
+  stored: StoredObject,
+  objType: string,
+): Record<string, boolean> | null {
+  const spec = TRIGGER_ACTIONS[objType];
+  if (!spec) return null;
+  const group = (stored.meta as Record<string, unknown> | undefined)?.[spec.group];
+  const flags = (group as { action?: Record<string, unknown> } | undefined)?.action ?? {};
+  const out: Record<string, boolean> = {};
+  for (const key of spec.keys) if (flags[key] === true) out[key] = true;
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/**
+ * Stored `meta.database.search` → the `search` argument.
+ *
+ * Returns `null` when there is no condition, the decoded pair when there is one,
+ * and the sentinel `"undecodable"` when a condition is present but this decoder
+ * cannot invert it — three outcomes the caller has to tell apart, because the
+ * middle and the last differ by whether the generated trigger fires for the right
+ * rows. Speculated so a decline records the reason rather than throwing.
+ */
+function triggerSearch(
+  a: KindDecodeArgs,
+  objType: string,
+): { expr: Expr; runtime: unknown } | null | "undecodable" {
+  if (objType !== "database") return null;
+  const meta = a.stored.meta as { database?: { search?: unknown } } | undefined;
+  const block = meta?.database?.search as { expression?: unknown } | undefined;
+  if (!Array.isArray(block?.expression) || block.expression.length === 0) return null;
+  const decoded = a.ctx.speculate(() => decodeCondition(a.ctx, block));
+  return decoded ?? "undecodable";
+}
+
+/** Stored `meta.database.datasource` (`[{tag}]`) → the `datasources` argument. */
+function triggerDatasources(stored: StoredObject, objType: string): string[] {
+  if (objType !== "database") return [];
+  const meta = stored.meta as { database?: { datasource?: unknown } } | undefined;
+  const raw = meta?.database?.datasource;
+  return Array.isArray(raw) ? raw.map((e) => String((e as { tag?: unknown })?.tag ?? "")) : [];
+}
+
+/**
+ * Does the factory synthesize exactly the stored `meta`?
+ *
+ * Built by CALLING the factory with the derived arguments and encoding the
+ * result, so the comparison is against the encoder's real output rather than a
+ * restatement of it. Only `meta` is compared: it is the whole of what these three
+ * factories synthesize from arguments (`obj_type` and `hasResult` are fixed by
+ * which factory ran, and `input` is re-injected identically either way), while
+ * the stack passes through the factory untouched and is already covered by the
+ * whole-object round trip.
+ *
+ * Compared under `normalize`, not raw. A stored trigger carries only the meta
+ * groups its vintage knew about while the factory always writes all six, and the
+ * engine reads those two spellings identically — normalize is where that
+ * equivalence lives, so this asks it rather than restating it here.
+ */
+function triggerMetaMatches(
+  stored: StoredObject,
+  objType: string,
+  actions: Record<string, boolean> | null,
+  datasources: readonly string[],
+  search: unknown,
+): boolean {
+  const probe =
+    objType === "database"
+      ? tableTrigger({
+          name: "probe",
+          actions: actions ?? {},
+          datasources: [...datasources],
+          // The decoded condition's RUNTIME form, so the probe encodes the real
+          // argument rather than a stand-in — this is what makes the comparison
+          // cover the condition too instead of quietly excluding it.
+          ...(search === undefined || search === null ? {} : { search: search as Condition }),
+        })
+      : objType === "workspace"
+        ? workspaceTrigger({ name: "probe", actions: actions ?? {} })
+        : objType === "toolset"
+          ? mcpServerTrigger({ name: "probe" })
+          : errorTrigger({ name: "probe" });
+  // Wrapped in `{meta}` rather than normalized bare: the inert-group rule is keyed
+  // on the `meta` KEY, so it only fires while walking the object that carries it.
+  return deepEqual(
+    normalize({ meta: encodeTrigger(probe).meta }),
+    normalize({ meta: stored.meta ?? {} }),
+  );
+}
+
+/** `stack: (t) => […]` — the callback form every trigger factory takes. */
+function triggerStack(a: KindDecodeArgs, objType: TriggerInputObjType): DefEntry | null {
+  const run = a.stored.run;
+  if (!Array.isArray(run) || run.length === 0) {
+    a.ctx.problem("empty-source", "no statements in the source object — emitted without a `stack`");
+    return null;
+  }
+  const decoded = decodeStack(a.ctx, a.refs, run, a.resolve);
+  return ["stack", arrow(["t"], rewriteTriggerInputRefs(decoded, objType))];
 }
 
 /**
@@ -1627,9 +2009,22 @@ export const KIND_DECODERS_BY_NAME: ReadonlyMap<string, KindDecoder> = new Map(
   KIND_DECODERS.map((decoder) => [decoder.name, decoder]),
 );
 
-/** Decode one stored object into its def literal expression. */
-export function decodeObject(decoder: KindDecoder, args: KindDecodeArgs): Expr {
-  return obj(decoder.decode(args));
+/**
+ * Decode one stored object into its def literal expression and the factory that
+ * literal is wrapped in.
+ *
+ * The factory is resolved HERE rather than by the caller because for a per-object
+ * kind it is a by-product of decoding — the trigger decoder cannot know whether a
+ * factory form round-trips until it has built the arguments and checked them.
+ */
+export function decodeObject(
+  decoder: KindDecoder,
+  args: KindDecodeArgs,
+): { readonly expr: Expr; readonly factory?: string } {
+  const decoded = decoder.decode(args);
+  return Array.isArray(decoded)
+    ? { expr: obj(decoded), factory: decoder.factory }
+    : { expr: obj(decoded.entries), factory: decoded.factory };
 }
 
 /** Re-exported for project assembly, which builds the barrel's register calls. */

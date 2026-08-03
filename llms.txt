@@ -1,4 +1,4 @@
-# sidestep v4.1.20
+# sidestep v4.1.21
 
 > TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.
 
@@ -148,8 +148,8 @@ live environment and prints its URL. `sidestep init` → `sidestep deploy` → U
   ships a pulled workspace to a live ephemeral URL. Decoded objects are emitted
   as FACTORY calls (`table({...})`, `query({...})`, `defineFunction({...})`) —
   the same form you author by hand — so a pulled tree keeps column/input/agent
-  output-schema inference; triggers are the one kind still emitted as
-  `{...} satisfies TriggerDef`. Object guids are preserved
+  output-schema inference. Triggers no factory expresses (realtime, or with a
+  condition/history) stay `{...} satisfies TriggerDef`. Object guids are preserved
   verbatim, so references stay consistent; a statement the catalog cannot model
   round-trips verbatim through `raw()` (`@sidestep/core/codegen`). An object
   ALREADY EMPTY upstream (an endpoint created but never filled in) decodes to a
@@ -401,7 +401,7 @@ Author with the factory, register on the Xano instance, lands under the payload 
 - table: `table` → `Xano.registerTables` → payload `dbo` — A database table: typed columns (`f.*`), indexes, and views; the schema other kinds read and write.
 - query: `query` → `Xano.registerQueries` → payload `query` — An HTTP API endpoint (verb + path) bound to an API group; the main request/response surface.
 - api_group: `apiGroup` → `Xano.registerApiGroups` → payload `app` — A container that groups queries under a shared base path, CORS, and swagger config.
-- trigger (database): `tableTrigger` → `Xano.registerTriggers` → payload `trigger` — Fires when rows change on a bound table (insert/update/delete/truncate). The changed row is exposed as `t.new`/`t.old`, typed to the table when a `table()` handle is bound. Config-only (no response).
+- trigger (database): `tableTrigger` → `Xano.registerTriggers` → payload `trigger` — Fires when rows change on a bound table (insert/update/delete/truncate). The changed row is exposed as `t.new`/`t.old`, typed to the table when a `table()` handle is bound. Config-only (no response). `search` filters rows in the DATABASE, so it uses `col("NEW.x")`/`col("OLD.x")`, not `t`; invalid with `truncate`, and insert/delete cannot read the absent side.
 - trigger (realtime_server): `realtimeServerTrigger` → `Xano.registerTriggers` → payload `trigger` — Fires when a client connects to or disconnects from a realtime server; inspect the connecting client and its permissions via `t`. Bind with `realtimeServer`. Response-bearing.
 - trigger (channel): `realtimeChannelTrigger` → `Xano.registerTriggers` → payload `trigger` — Fires when a client joins or leaves a channel; inspect the addressed channel path and the client via `t`. Bind with a `realtimeChannel()` handle (a bare path is ambiguous across servers). Response-bearing.
 - trigger (toolset): `mcpServerTrigger` → `Xano.registerTriggers` → payload `trigger` — Fires when an MCP client connects to a bound MCP server; gate or annotate the exposed tools via `t.toolset`/`t.tools`. Response-bearing.

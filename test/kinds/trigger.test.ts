@@ -138,10 +138,16 @@ describe("trigger kind — envelope + obj_type discrimination", () => {
     expect(t.input).toEqual(impliedInputs("workspace"));
   });
 
-  it("error trigger: obj_type=error, empty meta, config-only, rich implied inputs", () => {
+  it("error trigger: obj_type=error, no action group of its own, config-only, rich implied inputs", () => {
     const t = encodeTrigger(errorTrigger({ name: "e", stack: (i) => [setVar("x1", i.error("code"))] }));
     expect(t.obj_type).toBe("error");
-    expect(t.meta).toEqual({});
+    // Carries the same skeleton every other type does, with nothing set: there is
+    // no `error` group, because an error trigger has no action toggles. This used
+    // to be `{}`; both are inert (the engine reads every group as `?? false`) and
+    // one rule for all types beats a special case.
+    expect(t.meta).toEqual(encodeTrigger(tableTrigger({ name: "t" })).meta);
+    expect(Object.values(t.meta as Record<string, { action?: Record<string, boolean> }>)
+      .flatMap((g) => Object.values(g.action ?? {}))).not.toContain(true);
     expect(t.result).toEqual([]);
     expect(t.input).toEqual(impliedInputs("error"));
     expect(t.run[0]).toMatchObject({ context: { value: "error.code", tag: "input" } });

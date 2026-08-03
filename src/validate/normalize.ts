@@ -1364,6 +1364,54 @@ export function filledContext(stored: unknown): Record<string, unknown> | null {
   return null;
 }
 
+/**
+ * The six trigger `meta` action groups at rest — every flag off, every list
+ * empty. Mirrors the skeleton the trigger factories synthesize.
+ */
+const INERT_TRIGGER_META_GROUPS: Readonly<Record<string, unknown>> = {
+  database: {
+    datasource: [],
+    search: { expression: [] },
+    action: { delete: false, insert: false, truncate: false, update: false },
+  },
+  toolset: { action: { connection: false } },
+  workspace: { action: { branch_live: false, branch_merge: false, branch_new: false } },
+  workspace_realtime_channel: { action: { message: false, join: false } },
+  realtime_server: { action: { connect: false, disconnect: false } },
+  channel: { action: { join: false, leave: false, deliver: false } },
+};
+
+/**
+ * A trigger `meta` with its inert action groups dropped, or `undefined` when the
+ * value is not a trigger meta.
+ *
+ * Every trigger carries the WHOLE six-group skeleton with only its own group's
+ * flags set — that is what the engine writes today and what the factories
+ * synthesize. Real workspaces disagree: across a 25-bundle sweep, all 24 stored
+ * triggers carried only two to four of the groups, because a trigger saved before
+ * a group existed never gained it and nothing re-saves it. The engine reads an
+ * absent group and an all-off group identically (there is no flag to read either
+ * way), so the two are one state stored in two generations of spelling.
+ *
+ * Dropping the inert ones from both sides is what lets a subset-meta trigger
+ * decode to a factory call — `tableTrigger` has no argument for "which groups the
+ * engine happened to persist", and without this rule every real-world trigger
+ * would fail its round-trip check and fall back to `satisfies`.
+ *
+ * Deliberately narrow. Only a group that deep-equals its all-off default is
+ * dropped, and only under a `meta` key whose members are all recognized group
+ * names — so a NON-default group still compares, and a `meta` belonging to
+ * anything other than a trigger is left entirely alone.
+ */
+function withoutInertTriggerMetaGroups(value: unknown): Record<string, unknown> | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length === 0) return undefined;
+  if (!entries.every(([k]) => Object.hasOwn(INERT_TRIGGER_META_GROUPS, k))) return undefined;
+  const kept = entries.filter(([k, v]) => !deepEqual(v, INERT_TRIGGER_META_GROUPS[k]));
+  return kept.length === entries.length ? undefined : Object.fromEntries(kept);
+}
+
 export function normalize<T>(value: T): T {
   if (Array.isArray(value)) {
     return value.map((v) => normalize(v)) as unknown as T;
@@ -1499,6 +1547,16 @@ export function normalize<T>(value: T): T {
         const filled = historyWithDefaultLimit(v);
         if (filled !== undefined) {
           out[k] = normalize(filled);
+          continue;
+        }
+      }
+      // A trigger's `meta` carrying only SOME of the six action groups: the
+      // absent ones are one spelling of "all flags off" (see
+      // {@link withoutInertTriggerMetaGroups}).
+      if (k === "meta") {
+        const reduced = withoutInertTriggerMetaGroups(v);
+        if (reduced !== undefined) {
+          out[k] = normalize(reduced);
           continue;
         }
       }

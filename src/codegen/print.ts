@@ -28,7 +28,9 @@ export type Expr =
       readonly kind: "spread";
       readonly base: Expr;
       readonly entries: ReadonlyArray<readonly [string, Expr]>;
-    };
+    }
+  /** `(params) => body` — an arrow with an expression body, never a block. */
+  | { readonly kind: "arrow"; readonly params: readonly string[]; readonly body: Expr };
 
 /** An `import { … } from "…"` statement. */
 export interface ImportStmt {
@@ -88,6 +90,18 @@ export function spread(base: Expr, entries: ReadonlyArray<readonly [string, Expr
   return { kind: "spread", base, entries };
 }
 
+/**
+ * `(params) => body`.
+ *
+ * The form a factory taking a callback needs — a trigger's `stack: (t) => […]`,
+ * where `t` is the typed input handle. Expression-bodied only: every callback the
+ * decoders produce returns one expression, and a block body would need statements
+ * this printer has no node for.
+ */
+export function arrow(params: readonly string[], body: Expr): Expr {
+  return { kind: "arrow", params, body };
+}
+
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 const INDENT = "  ";
 
@@ -139,6 +153,12 @@ export function printExpr(node: Expr, depth = 0): string {
       for (const [k, v] of node.entries) lines.push(`${inner}${key(k)}: ${printExpr(v, depth + 1)},`);
       return `{\n${lines.join("\n")}\n${pad}}`;
     }
+
+    case "arrow":
+      // The body continues on the arrow's own line, so it renders at the arrow's
+      // depth — a multiline body closes under the line the arrow started on,
+      // exactly like a call's argument.
+      return `(${node.params.join(", ")}) => ${printExpr(node.body, depth)}`;
 
     case "call": {
       if (node.args.length === 0) return `${node.callee}()`;

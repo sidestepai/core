@@ -7,7 +7,7 @@
  * byte-identical run to run, which the generated-tree tests depend on.
  */
 import { describe, it, expect } from "vitest";
-import { arr, call, id, lit, obj, printExpr, printModule } from "../../src/codegen/print.js";
+import { arr, arrow, call, id, lit, obj, printExpr, printModule } from "../../src/codegen/print.js";
 
 describe("printExpr", () => {
   it("renders leaf calls inline", () => {
@@ -78,6 +78,34 @@ describe("printExpr", () => {
 
   it("is deterministic — identical input renders byte-identical twice", () => {
     const node = obj([["z", arr([lit(1), call("c.text", lit("x"))])], ["a", id("handle")]]);
+    expect(printExpr(node)).toBe(printExpr(node));
+  });
+
+  it("renders an arrow with an empty body inline", () => {
+    expect(printExpr(arrow(["t"], arr([])))).toBe("(t) => []");
+  });
+
+  it("renders an arrow with a multiline body closing at the arrow's own depth", () => {
+    expect(printExpr(arrow(["t"], arr([call("s.db.edit", obj([["as", lit("x")]]))])))).toBe(
+      ["(t) => [", "  s.db.edit({", "    as: \"x\",", "  }),", "]"].join("\n"),
+    );
+  });
+
+  it("indents a nested arrow against its parent, not the module root", () => {
+    // The reason `arrow` is a node rather than pre-printed text spliced into
+    // `id()`: a body rendered at depth 0 would close under column 0 here.
+    expect(printExpr(obj([["stack", arrow(["t"], arr([id("first"), id("second")]))]]))).toBe(
+      ["{", "  stack: (t) => [", "    first,", "    second,", "  ],", "}"].join("\n"),
+    );
+  });
+
+  it("renders a scalar-bodied arrow and a multi-parameter arrow", () => {
+    expect(printExpr(arrow(["t"], id("t.payload")))).toBe("(t) => t.payload");
+    expect(printExpr(arrow(["a", "b"], lit(1)))).toBe("(a, b) => 1");
+  });
+
+  it("is deterministic for arrow nodes", () => {
+    const node = arrow(["t"], arr([call("s.set", id("t.new"))]));
     expect(printExpr(node)).toBe(printExpr(node));
   });
 });

@@ -24,6 +24,8 @@ import { inp, ref } from "../values/value.js";
 import { setVar } from "../statements/set-var.js";
 import { encodeStatement } from "../statements/statement.js";
 import type { Statement } from "../statements/statement.js";
+import { encodeExpression } from "../statements/expression.js";
+import type { Condition } from "../statements/expression.js";
 import { encodeResponse } from "../responses/response.js";
 import type { ResponseDef } from "../responses/response.js";
 import { registerKind } from "./kind.js";
@@ -172,6 +174,63 @@ function baseMeta() {
   };
 }
 
+/**
+ * Reject a trigger condition the enabled actions cannot evaluate.
+ *
+ * Mirrors the checks Xano's own trigger editor runs before it will save. They are
+ * not stylistic: the pseudo-table a condition names has to EXIST for the action
+ * that fired. An `insert` has no `OLD` row and a `delete` has no `NEW` one, so a
+ * condition reading the missing side is unevaluable, and `truncate` fires once
+ * for the whole table with no row to test at all.
+ *
+ * Raised at authoring time rather than left to the deploy, because the engine
+ * accepts the object and the breakage surfaces later as a trigger that silently
+ * does not fire.
+ *
+ * A multi-action trigger is checked against EVERY enabled action — `{insert,
+ * update}` reading `OLD.*` is rejected, since the insert half could not run it.
+ */
+function assertSearchMatchesActions(
+  name: string,
+  expression: unknown,
+  action: { delete: boolean; insert: boolean; truncate: boolean; update: boolean },
+): void {
+  if (action.truncate) {
+    throw new Error(
+      `tableTrigger "${name}": \`search\` is not supported with the \`truncate\` action — ` +
+        `a truncate fires once for the whole table, with no row to test.`,
+    );
+  }
+  const operands = collectOperands(expression);
+  for (const [enabled, forbidden] of [
+    [action.insert, "OLD"],
+    [action.delete, "NEW"],
+  ] as const) {
+    if (!enabled) continue;
+    const hit = operands.find((o) => o.startsWith(`${forbidden}.`));
+    if (hit !== undefined) {
+      const act = forbidden === "OLD" ? "insert" : "delete";
+      throw new Error(
+        `tableTrigger "${name}": \`search\` reads \`${hit}\`, which does not exist for the ` +
+          `\`${act}\` action this trigger is enabled for. Use ${forbidden === "OLD" ? "`NEW.*`" : "`OLD.*`"}, ` +
+          `or split the actions into separate triggers.`,
+      );
+    }
+  }
+}
+
+/** Every `operand` string in an encoded expression tree, at any depth. */
+function collectOperands(node: unknown): string[] {
+  if (Array.isArray(node)) return node.flatMap(collectOperands);
+  if (node === null || typeof node !== "object") return [];
+  const out: string[] = [];
+  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+    if (key === "operand" && typeof value === "string") out.push(value);
+    else out.push(...collectOperands(value));
+  }
+  return out;
+}
+
 /** Internal trigger def produced by the `*Trigger` root factories. */
 export interface TriggerDef {
   name: string;
@@ -274,6 +333,21 @@ export function tableTrigger<
     table?: T;
     datasources?: string[];
     actions?: A;
+    /**
+     * Fire only for row changes matching this condition — Xano's "custom filter".
+     *
+     * Reference the changed row through the SQL-side pseudo-tables with `col()`:
+     * `col("NEW.status")` is the row after the change, `col("OLD.status")` before
+     * it. These are Postgres trigger operands, not the `t.new`/`t.old` stack
+     * handle, because the condition is evaluated by the DATABASE before any stack
+     * runs — which is also why a filtered trigger installs as a dynamic trigger
+     * rather than a static one.
+     *
+     * Three rules the engine enforces, checked here instead of at deploy:
+     * `truncate` admits no filter at all (there is no row to test), `insert` may
+     * not read `OLD.*`, and `delete` may not read `NEW.*`.
+     */
+    search?: Condition;
     stack?: (t: DatabaseInputs<TriggerRow<T>, A>) => Statement[];
   },
 ): TriggerDef {
@@ -285,6 +359,11 @@ export function tableTrigger<
     truncate: args.actions?.truncate ?? false,
     update: args.actions?.update ?? false,
   };
+  if (args.search !== undefined) {
+    const encoded = encodeExpression(args.search);
+    assertSearchMatchesActions(args.name, encoded.expression, meta.database.action);
+    meta.database.search = encoded;
+  }
   // Bind to the target table by its portable guid (a `table()` handle or
   // name); a raw numeric `objId` stays the escape hatch.
   const objId = args.table !== undefined ? resolveRef("dbo", args.table) : args.objId;
@@ -497,13 +576,26 @@ export function workspaceTrigger(
   };
 }
 
-/** Error trigger (obj_type=error, empty meta). Config-only. */
+/**
+ * Error trigger (obj_type=error). Config-only, and the one type with no action
+ * flags of its own — there is no `error` group in the meta skeleton, because an
+ * error trigger fires on the error events its INPUT schema describes rather than
+ * on a set of toggles.
+ *
+ * It still writes the full {@link baseMeta} skeleton, like every other type. This
+ * used to be `{}`, which contradicted both that rule and the one shipped fixture
+ * (which stores two of the groups). All three spellings are inert: the engine
+ * reads every group as `?? false`, so an absent group and an all-off group are
+ * the same state, and `normalize` treats them as one. With no live capture to
+ * settle which one Xano writes, matching the SDK's own rule is the spelling that
+ * leaves no contradiction to trip over — not an engine-verified correction.
+ */
 export function errorTrigger(
   args: CommonArgs & {
     stack?: (t: ErrorInputs) => Statement[];
   },
 ): TriggerDef {
-    const t = buildTriggerHandle("error") as unknown as ErrorInputs;
+  const t = buildTriggerHandle("error") as unknown as ErrorInputs;
   return {
     name: args.name,
     guid: args.guid,
@@ -513,7 +605,7 @@ export function errorTrigger(
     objId: args.objId,
     objType: "error",
     hasResult: false,
-    meta: {},
+    meta: baseMeta(),
     stack: args.stack?.(t) ?? [],
   };
 }
