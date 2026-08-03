@@ -1,0 +1,319 @@
+{
+  "run": [
+    {
+      "as": "touched",
+      "name": "mvp:dbo_editby",
+      "_xsid": "f:00000000-0000-4000-8000-000000000001",
+      "addon": [],
+      "input": [
+        {
+          "tag": "const",
+          "name": "field_name",
+          "value": "id",
+          "expand": false,
+          "ignore": false,
+          "filters": [],
+          "children": []
+        },
+        {
+          "tag": "input",
+          "name": "field_value",
+          "value": "new.id",
+          "expand": false,
+          "ignore": false,
+          "filters": [],
+          "children": []
+        },
+        {
+          "tag": "const:null",
+          "name": "id",
+          "value": "null",
+          "expand": false,
+          "ignore": true,
+          "filters": [],
+          "children": []
+        },
+        {
+          "tag": "const",
+          "name": "created_at",
+          "value": "",
+          "expand": false,
+          "ignore": true,
+          "filters": [],
+          "children": []
+        },
+        {
+          "tag": "const",
+          "name": "name",
+          "value": "",
+          "expand": false,
+          "ignore": true,
+          "filters": [],
+          "children": []
+        },
+        {
+          "tag": "const:null",
+          "name": "email",
+          "value": "null",
+          "expand": false,
+          "ignore": true,
+          "filters": [],
+          "children": []
+        },
+        {
+          "tag": "const:null",
+          "name": "password",
+          "value": "null",
+          "expand": false,
+          "ignore": true,
+          "filters": [],
+          "children": []
+        },
+        {
+          "tag": "const:null",
+          "name": "book_id",
+          "value": "null",
+          "expand": false,
+          "ignore": true,
+          "filters": [],
+          "children": []
+        },
+        {
+          "tag": "const:epochms",
+          "name": "last_updated",
+          "value": "now",
+          "expand": false,
+          "ignore": false,
+          "filters": [],
+          "children": []
+        },
+        {
+          "tag": "const",
+          "name": "userinfo",
+          "value": "",
+          "expand": false,
+          "ignore": true,
+          "filters": [],
+          "children": []
+        }
+      ],
+      "mocks": {},
+      "output": {
+        "items": [],
+        "filters": [],
+        "customize": false
+      },
+      "context": {
+        "dbo": {
+          "id": "test-guid-db-trigger-table"
+        }
+      },
+      "runtime": null,
+      "disabled": false,
+      "description": "",
+      "settings_registry": []
+    }
+  ],
+  "tag": [],
+  "guid": "test-guid-db-trigger-guid-bound",
+  "meta": {
+    "toolset": {
+      "action": {
+        "connection": false
+      }
+    },
+    "database": {
+      "action": {
+        "delete": false,
+        "insert": true,
+        "update": true,
+        "truncate": false
+      },
+      "search": {
+        "expression": []
+      },
+      "datasource": []
+    },
+    "workspace": {
+      "action": {
+        "branch_new": false,
+        "branch_live": false,
+        "branch_merge": false
+      }
+    },
+    "workspace_realtime_channel": {
+      "action": {
+        "join": false,
+        "message": false
+      }
+    }
+  },
+  "name": "row_touched",
+  "input": [
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "new",
+      "type": "json",
+      "_xsid": "",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": false,
+      "customize": "",
+      "sensitive": false,
+      "description": "",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    },
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "old",
+      "type": "json",
+      "_xsid": "",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": false,
+      "customize": "",
+      "sensitive": false,
+      "description": "",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    },
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "action",
+      "type": "enum",
+      "_xsid": "",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [
+        "insert",
+        "update",
+        "delete",
+        "truncate"
+      ],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": true,
+      "customize": "",
+      "sensitive": false,
+      "description": "",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    },
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "datasource",
+      "type": "text",
+      "_xsid": "",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [
+        "insert",
+        "update",
+        "delete",
+        "truncate"
+      ],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": true,
+      "customize": "",
+      "sensitive": false,
+      "description": "",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    }
+  ],
+  "active": true,
+  "obj_id": "test-guid-db-trigger-table",
+  "output": [],
+  "result": [],
+  "history": {
+    "limit": 100,
+    "enabled": false,
+    "inherit": true
+  },
+  "obj_type": "database",
+  "description": ""
+}

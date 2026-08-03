@@ -49,11 +49,41 @@ import { rawValue } from "../../src/values/raw-value.js";
 import { rawField } from "../../src/fields/raw-field.js";
 import { rawResponse } from "../../src/responses/raw-response.js";
 import { raw } from "../../src/statements/special/raw.js";
+import {
+  agentTrigger,
+  errorTrigger,
+  mcpServerTrigger,
+  tableTrigger,
+  workspaceTrigger,
+} from "../../src/kinds/trigger.js";
+import * as sdk from "../../src/index.js";
+import { KIND_DECODERS } from "../../src/codegen/kinds/index.js";
+
+/**
+ * Every root factory a decoded def can be wrapped in, taken from the decoder
+ * table itself so a new kind cannot drift out of this scope. The five trigger
+ * factories are added by hand: a trigger picks its factory per object, so none of
+ * them appears in a decoder's static `factory` field.
+ */
+const KIND_FACTORIES: Record<string, unknown> = {
+  ...Object.fromEntries(
+    KIND_DECODERS.filter((d) => d.factory).map((d) => [
+      d.factory!,
+      (sdk as Record<string, unknown>)[d.factory!],
+    ]),
+  ),
+  tableTrigger,
+  workspaceTrigger,
+  errorTrigger,
+  mcpServerTrigger,
+  agentTrigger,
+};
 
 /** Everything a generated file can import, as one evaluation scope. */
 const SURFACE = {
   s, c, ref, inp, col, auth, env, setting, out, obj,
   withFilters, fl, rawValue, rawField, rawResponse, raw, expr, cmp, and, or, f, input,
+  ...KIND_FACTORIES,
 };
 
 /** An empty index: a fixture stands alone, so every reference degrades to `{name, guid}`. */
@@ -209,9 +239,12 @@ describe("codegen corpus — whole kind objects", () => {
       const stored = loadFixture<Record<string, unknown>>(fixture);
       const decoder = KIND_DECODERS_BY_NAME.get(kind)!;
       const ctx = new DecodeContext();
-      const source = printExpr(
-        decodeKindObject(decoder, { ctx, refs: NO_REFS, stored, resolve: {} }).expr,
-      );
+      const decoded = decodeKindObject(decoder, { ctx, refs: NO_REFS, stored, resolve: {} });
+      // Wrap in the factory the EMITTER would wrap it in. A kind that chooses its
+      // factory per object emits factory ARGUMENTS, not a def — evaluating the
+      // bare literal and re-encoding it would be re-encoding the wrong shape.
+      const literal = printExpr(decoded.expr);
+      const source = decoded.factory ? `${decoded.factory}(${literal})` : literal;
       const reencoded = reencode(kind, evaluate(source), stored);
       expect(normalize(reencoded), `source: ${source}`).toEqual(normalize(stored));
     });
