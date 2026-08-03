@@ -29,6 +29,13 @@
  * kind returns a {@link DecodedDef} from `decode` — its entries plus the factory
  * THAT object is wrapped in — and `undefined` there means the object takes the
  * `satisfies` fallback while its siblings still get their factory.
+ *
+ * That per-object refusal is the second reason a kind declines its factory, and
+ * the more important one: it is not a decoder gap but the safety property. A
+ * factory whose arguments cannot express what an object stores would emit a call
+ * that compiles and deploys something DIFFERENT. Preferring the better-typed form
+ * only where it is provably equivalent — and reporting every refusal — is what
+ * makes preferring it safe at all. See {@link triggerFactoryArgs}.
  */
 import type { DecodeContext } from "../context.js";
 import { CORE_MODULE } from "../context.js";

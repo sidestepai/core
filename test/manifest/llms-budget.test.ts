@@ -157,7 +157,16 @@ import { measureCommittedLlms } from "../../scripts/measure-llms.js";
 // inferable from the name is that the step is still THERE — present in the stack,
 // skipped at runtime, not deleted. Reading it as "removed" silently changes what a
 // regenerated workspace does. Compressed twice before raising.
-const CEILING_TOKENS = 31_700;
+// Raised from 31.7k for the trigger factory-emission carve-out. The old line
+// ("triggers are the one kind still emitted as `{...} satisfies TriggerDef`") was
+// a flat fact; the new one has to name a CONDITION, because most triggers now
+// emit as factory calls and only some do not. An agent reading a pulled tree
+// meets both forms in the same directory, and the half it cannot infer is that
+// the `satisfies` one is not a decoder giving up — it is a trigger storing state
+// no factory argument reaches, which is exactly the object you must not
+// hand-convert to a factory call. Compressed three times before raising; what is
+// left is the condition itself.
+const CEILING_TOKENS = 31_750;
 
 describe("llms.txt token budget", () => {
   it("stays under the bloat-tripwire ceiling", () => {
