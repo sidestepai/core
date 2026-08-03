@@ -691,18 +691,18 @@ engine change (issue #35).
 - `fl.eq(value: <T>): bool`
 - `fl.every(code: text, timeout?: int): any[]` — `code` is a JS boolean expression run per element (true for all?)
 - `fl.filter(code: text, timeout?: int): any[]`
-- `fl.filter_empty(path: text): <T>[]` — keeps entries that are not empty ("", null, 0, "0", false, [], {})
-- `fl.filter_empty_array(path: text): <T>[]`
-- `fl.filter_empty_object(path: text): <T>[]`
-- `fl.filter_empty_text(path: text): <T>[]`
-- `fl.filter_false(path: text): <T>[]`
-- `fl.filter_null(path: text): <T>[]`
-- `fl.filter_zero(path: text): <T>[]`
+- `fl.filter_empty(path?: text): <T>[]` — keeps entries that are not empty ("", null, 0, "0", false, [], {})
+- `fl.filter_empty_array(path?: text): <T>[]`
+- `fl.filter_empty_object(path?: text): <T>[]`
+- `fl.filter_empty_text(path?: text): <T>[]`
+- `fl.filter_false(path?: text): <T>[]`
+- `fl.filter_null(path?: text): <T>[]`
+- `fl.filter_zero(path?: text): <T>[]`
 - `fl.find(code: text, timeout?: int): any[]`
 - `fl.findIndex(code: text, timeout?: int): any[]` — `code` is a JS boolean expression; returns the first matching index
 - `fl.first_notempty(value: any): any` — first value that is not empty ("", null, 0, "0", false, [], {})
 - `fl.first_notnull(value: any): any`
-- `fl.fsort(path: text, type?: enum, asc?: bool): <T>[]`
+- `fl.fsort(path?: text, type?: enum, asc?: bool): <T>[]`
 - `fl.get(path: text, default?: json): any`
 - `fl.gt(value: <T>): bool`
 - `fl.gte(value: <T>): bool`
@@ -770,7 +770,7 @@ engine change (issue #35).
 - `fl.to_epochms(timezone?: text): epochms`
 - `fl.transform(expression: text): any`
 - `fl.trim(mask?: text): text`
-- `fl.unique(path: text): <T>[]`
+- `fl.unique(path?: text): <T>[]`
 - `fl.unpick(keys: text): <T>` — returns the object without the named keys (inverse of a pick)
 - `fl.unset(path: text): any`
 - `fl.url_addarg(key: text, value: text, encoding_rfc3986?: bool): text`

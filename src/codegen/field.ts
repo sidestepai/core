@@ -25,7 +25,13 @@ import { input } from "../inputs/input.js";
 import { CODEGEN_MODULE, CORE_MODULE, type DecodeContext } from "./context.js";
 import { call, lit, obj, type Expr } from "./print.js";
 import { resolveReference, type RefIndex, type ResolveOptions } from "./ref-index.js";
-import { clearLocalDboRefs, normalize, isDeadResultItem, isEmptyCustomize } from "../validate/normalize.js";
+import {
+  clearLocalDboRefs,
+  hasNoListBounds,
+  normalize,
+  isDeadResultItem,
+  isEmptyCustomize,
+} from "../validate/normalize.js";
 import { decodeValue } from "./value.js";
 
 /** Which authoring catalog to emit against: table columns (`f`) or inputs (`input`). */
@@ -286,7 +292,14 @@ function recoverOptions(
   if (format !== "" || !elide) options.format = format as FieldOptions["format"];
   if (access !== "public" || !elide) options.access = access as FieldOptions["access"];
   if (values.length > 0) options.values = [...values] as FieldOptions["values"];
-  if (!deepEqual(list, { min: "", max: "" })) options.list = { ...list };
+  // Elided on the MEANING of the block, not on one spelling of it. A field with
+  // no length bounds stores `{min:"", max:""}` almost always and `{min:{},
+  // max:{}}` twice in the sweep; comparing against the first spelling alone
+  // emitted `list: {max: {}, min: {}}` for the second — bytes no author would
+  // write, and ill-typed besides, since `FieldOptions.list` declares strings. The
+  // predicate is shared with `normalize`, so the elision and the round-trip
+  // comparison cannot disagree about what "unbounded" is.
+  if (!hasNoListBounds(list)) options.list = { ...list } as FieldOptions["list"];
   if (!deepEqual(vector, { size: 3 })) options.vector = { ...vector };
   // `array: true` and `style: {type:"list"}` encode identically; the explicit
   // style is used so the recovered options re-encode without relying on which

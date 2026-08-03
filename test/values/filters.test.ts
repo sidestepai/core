@@ -134,6 +134,43 @@ describe("fl.* filter catalog", () => {
     fl.get("count", "not-a-value");
   });
 
+  /**
+   * The nine filters a live engine RUNS with no argument at all, though the
+   * upstream spec marks their `path` required (`vendor/filters-optional-args.json`,
+   * produced by `scripts/probe-optional-path.ts`).
+   *
+   * This is not a style preference. A real pulled workspace stores `filter_null`
+   * with `arg: []`, so codegen faithfully emits `fl.filter_null()` — and with a
+   * required `path` that did not type-check, taking the whole generated tree
+   * down with it.
+   */
+  const ENGINE_OPTIONAL_PATH = [
+    "filter_empty", "filter_empty_array", "filter_empty_object", "filter_empty_text",
+    "filter_false", "filter_null", "filter_zero", "fsort", "unique",
+  ] as const;
+
+  it.each(ENGINE_OPTIONAL_PATH)("fl.%s() takes no argument and emits an empty arg list", (name) => {
+    const fx = (fl[name] as () => { name: string; arg: unknown[] })();
+    expect(fx.name).toBe(name);
+    // The stored shape a pulled workspace carries — not `[undefined]`, and not a
+    // coerced empty string, either of which would change the bytes on deploy.
+    expect(fx.arg).toEqual([]);
+    expect(FILTER_SPECS[name]!.args![0]).toMatchObject({ name: "path", optional: true });
+  });
+
+  it("keeps `path` required on the eleven the engine rejects without it", () => {
+    // The paired negative, and the reason this is a probed list rather than a
+    // rule about the arg's name: the probe found `set`/`get`/`index_by`/
+    // `array_remove` and seven others throw "Too few arguments to function".
+    for (const name of ["set", "get", "unset", "has", "index_by", "array_remove", "append", "prepend"]) {
+      expect(FILTER_SPECS[name]!.args![0], name).not.toMatchObject({ optional: true });
+    }
+    // @ts-expect-error — `get` still demands its path.
+    fl.get();
+    // @ts-expect-error — so does `set`.
+    fl.set();
+  });
+
   it("the committed generated file is fresh vs the vendor snapshot", () => {
     const committed = readFileSync(join(ROOT, "src/values/generated/filters.generated.ts"), "utf8");
     // Regenerate to a temp path from the SAME committed vendor JSON (offline).

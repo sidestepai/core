@@ -6427,7 +6427,8 @@
       "args": [
         {
           "name": "path",
-          "type": "text"
+          "type": "text",
+          "optional": true
         }
       ],
       "result": "<T>[]",
@@ -6441,7 +6442,8 @@
       "args": [
         {
           "name": "path",
-          "type": "text"
+          "type": "text",
+          "optional": true
         }
       ],
       "result": "<T>[]",
@@ -6455,7 +6457,8 @@
       "args": [
         {
           "name": "path",
-          "type": "text"
+          "type": "text",
+          "optional": true
         }
       ],
       "result": "<T>[]",
@@ -6469,7 +6472,8 @@
       "args": [
         {
           "name": "path",
-          "type": "text"
+          "type": "text",
+          "optional": true
         }
       ],
       "result": "<T>[]",
@@ -6483,7 +6487,8 @@
       "args": [
         {
           "name": "path",
-          "type": "text"
+          "type": "text",
+          "optional": true
         }
       ],
       "result": "<T>[]",
@@ -6497,7 +6502,8 @@
       "args": [
         {
           "name": "path",
-          "type": "text"
+          "type": "text",
+          "optional": true
         }
       ],
       "result": "<T>[]",
@@ -6511,7 +6517,8 @@
       "args": [
         {
           "name": "path",
-          "type": "text"
+          "type": "text",
+          "optional": true
         }
       ],
       "result": "<T>[]",
@@ -6623,7 +6630,8 @@
       "args": [
         {
           "name": "path",
-          "type": "text"
+          "type": "text",
+          "optional": true
         },
         {
           "name": "type",
@@ -8078,7 +8086,8 @@
       "args": [
         {
           "name": "path",
-          "type": "text"
+          "type": "text",
+          "optional": true
         }
       ],
       "result": "<T>[]",

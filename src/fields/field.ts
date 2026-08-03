@@ -80,7 +80,18 @@ export interface FieldOptions {
   /** Field visibility in API output. Defaults to `"public"`. */
   access?: FieldAccess;
   style?: { type: FieldStyleType };
-  list?: { min: string; max: string };
+  /**
+   * Length bounds for an array field. Both members are `json`-typed in the
+   * engine, not numeric — the editor declares them as `json` and every consumer
+   * reads them through a numeric coercion (`+list.max`) — so a bound can arrive
+   * as `5` or as `"5"` and neither spelling is wrong.
+   *
+   * That is also why "unset" has no single spelling: an empty `json` control
+   * serializes to `""` on 8,814 fields in the sweep and to `{}` on two. Codegen
+   * elides the block whenever every member is blank in either form (see
+   * `hasNoListBounds`), so only a bound that is actually SET reaches this type.
+   */
+  list?: { min?: string | number; max?: string | number };
   vector?: { size: number };
   /**
    * Array/list field — stored as `style:{type:"list"}` (e.g. `int[]`, `object[]`).

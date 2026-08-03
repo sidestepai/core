@@ -76,6 +76,21 @@ export interface MethodXdo {
  * present `description`. (The older parser generation emitted `customize:""` /
  * string ids for inputs; the live `mvp_query`/`mvp_dbo` rows show they converge.)
  */
+/**
+ * A field's array length bounds, as PERSISTED.
+ *
+ * Both members are `json`-typed in the engine rather than numeric — the editor
+ * declares them that way and every consumer reads them through a coercion
+ * (`+list.max`) — so a set bound arrives as `5` or as `"5"`, and an UNSET one as
+ * whichever empty the editor serialized: `""` on 8,814 fields in the sweep, `{}`
+ * on two. All four spellings are real bytes, so the type admits them rather than
+ * asserting a tidiness the engine does not have.
+ */
+export type ListBoundsXdo = {
+  min?: string | number | Record<string, never>;
+  max?: string | number | Record<string, never>;
+};
+
 export interface FieldXdo {
   name: string;
   type: string;
@@ -96,7 +111,7 @@ export interface FieldXdo {
   mode: string;
   format: string;
   sensitive: boolean;
-  list: { min: string; max: string };
+  list: ListBoundsXdo;
   vector: { size: number };
   access: string;
   style: { type: string };
@@ -127,7 +142,7 @@ export interface InputXdo {
   mode: string;
   format: string;
   sensitive: boolean;
-  list: { min: string; max: string };
+  list: ListBoundsXdo;
   vector: { size: number };
   access: string;
   style: { type: string };
