@@ -146,7 +146,8 @@ live environment and prints its URL. `sidestep init` → `sidestep deploy` → U
   `table/trigger/`, `agent/trigger/`), every table in `table/table.ts`, settings
   in `xano/workspace.ts`, a `_shared.ts` for anything else referenced from more
   than one file, a barrel `xano/index.ts`, and `xano/README.md` carrying the
-  decode report. So
+  decode report. Paths are LOWER CASE throughout (the HTTP verb is the one
+  exception), while bindings keep the object's own casing. So
   `sidestep workspace codegen app && cd app && npm run build && npm run xano:deploy`
   ships a pulled workspace to a live ephemeral URL. Decoded objects are emitted
   as FACTORY calls (`table({...})`, `query({...})`, `defineFunction({...})`) —

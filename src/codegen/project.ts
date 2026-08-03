@@ -52,7 +52,7 @@ const TABLE_FILE = "table/table.ts";
  * with no resolvable group collect in one file beside the group folders.
  */
 const QUERY_DIR = "query";
-const API_GROUP_FILE = "apiGroup.ts";
+const API_GROUP_FILE = "api_group.ts";
 const ORPHANED_QUERY_FILE = "query/orphaned.ts";
 
 /** The workspace config's own file, and the binding the barrel imports from it. */
@@ -174,6 +174,28 @@ function kindWord(candidate: Candidate): string {
   return typeof verb === "string" && verb !== ""
     ? `${pascal(verb.toLowerCase())}Query`
     : "Query";
+}
+
+/**
+ * A symbol as it appears in a PATH — always lower case.
+ *
+ * Paths and bindings answer to different rules. A binding keeps whatever case
+ * the Xano object had, because that is the name a reader recognises; a path is
+ * typed, tab-completed, and compared across three filesystems, two of which
+ * fold case. Lower-casing every segment means a tree written on macOS and a tree
+ * written on Linux are the same tree.
+ *
+ * Uniqueness is not at risk. `assignSymbols` already separates symbols that
+ * differ only by case — it has to, since each one names a file — so two symbols
+ * can never fold onto one path segment here.
+ *
+ * The one thing that stays upper case is a query's HTTP verb, and that is
+ * applied after this (see {@link queryFile}): `GET` is not a word, it is the
+ * method, and `posts_get.ts` reads as a name where `posts_GET.ts` reads as a
+ * route.
+ */
+function toPathName(symbol: string): string {
+  return symbol.toLowerCase();
 }
 
 /** Turn a Xano object name into a valid TypeScript identifier. */
@@ -412,7 +434,7 @@ function fileFor(
   if (kind === "api_group") {
     // `candidate.dir` is `query` for this kind — a group's folder sits among the
     // queries it holds, not in a directory of its own.
-    const dir = `${candidate.dir}/${symbol}`;
+    const dir = `${candidate.dir}/${toPathName(symbol)}`;
     return [dir, `${dir}/${API_GROUP_FILE}`];
   }
 
@@ -422,10 +444,10 @@ function fileFor(
 
   if (kind === "trigger") {
     const dir = triggerDir(candidate, refs);
-    return [dir, `${dir}/${symbol}.ts`];
+    return [dir, `${dir}/${toPathName(symbol)}.ts`];
   }
   if (kind === "query") return queryFile(candidate, symbol, refs, symbolFor);
-  return [candidate.dir, `${candidate.dir}/${symbol}.ts`];
+  return [candidate.dir, `${candidate.dir}/${toPathName(symbol)}.ts`];
 }
 
 /**
@@ -454,10 +476,12 @@ function queryFile(
 ): [dir: string, path: string] {
   const groupSymbol = apiGroupSymbol(candidate, refs, symbolFor);
   if (groupSymbol === null) return [QUERY_DIR, ORPHANED_QUERY_FILE];
-  const dir = `${QUERY_DIR}/${groupSymbol}`;
+  const dir = `${QUERY_DIR}/${toPathName(groupSymbol)}`;
+  // The verb is the one upper-case thing in any path: it is an HTTP method, not
+  // a word, and it is what separates two queries sharing a name.
   const verb = candidate.stored.verb;
   const suffix = typeof verb === "string" && verb !== "" ? `_${verb.toUpperCase()}` : "";
-  return [dir, `${dir}/${symbol}${suffix}.ts`];
+  return [dir, `${dir}/${toPathName(symbol)}${suffix}.ts`];
 }
 
 /** The symbol of the api group a query belongs to, or null when it has none. */

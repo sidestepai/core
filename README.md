@@ -552,15 +552,19 @@ auto-discovery magic (deliberately):
 
 ```
 xano/
-├── function/    get-user.ts        export const getUser = defineFunction({...})
-├── table/       table.ts           export const user = table({...})
-│   └── trigger/ on-insert.ts       export const onInsert = tableTrigger({...})
-├── query/       public/apiGroup.ts export const publicApi = apiGroup({...})
-│               public/posts_GET.ts export const posts = query({...})
-├── agent/       assistant.ts       export const assistant = agent({...})
-├── workspace.ts                    export const workspaceSettings = workspaceConfig({...})
-└── index.ts     workspace("my-app").registerTables([...]).registerFunctions([...])…
+├── function/     get_user.ts         export const getUser = defineFunction({...})
+├── table/        table.ts            export const user = table({...})
+│   └── trigger/  on_insert.ts        export const onInsert = tableTrigger({...})
+├── query/        public/api_group.ts export const publicApi = apiGroup({...})
+│                 public/posts_GET.ts export const posts = query({...})
+├── agent/        assistant.ts        export const assistant = agent({...})
+├── workspace.ts                      export const workspaceSettings = workspaceConfig({...})
+└── index.ts      workspace("my-app").registerTables([...]).registerFunctions([...])…
 ```
+
+Paths are lower case throughout — an HTTP verb is the one exception, because it is
+the method rather than a word. Bindings keep the object's own casing, so a file name
+and the symbol it exports can differ.
 
 That is the shape `sidestep codegen` writes. Hand-authored projects are free to use
 any other — only `index.ts` registering the objects matters.

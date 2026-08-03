@@ -109,7 +109,7 @@ describe("symbol naming", () => {
     // otherwise produce one binding that shadows the other.
     const project = build({ tables: [table("users", guid(1))], functions: [fn("users", guid(2))] });
     expect(file(project, "table/table.ts")).toContain("export const users =");
-    expect(file(project, "function/usersFunction.ts")).toContain("export const usersFunction =");
+    expect(file(project, "function/usersfunction.ts")).toContain("export const usersFunction =");
   });
 
   it("disambiguates same-kind names that sanitize to the same identifier", () => {
@@ -128,9 +128,17 @@ describe("symbol naming", () => {
     // both, so the lost object's binding resolved to `undefined` and encoding
     // it crashed. A real workspace hit exactly this with `SocialFeed/Flag/{id}`
     // alongside `SocialFeed/flag/{id}`.
+    // Paths are lower-cased now, so "are the paths unique" would pass vacuously
+    // if the two objects MERGED into one file — there would simply be one path.
+    // Assert the separation itself: two objects, two files, two bindings.
     const project = build({ functions: [fn("my fn", guid(1)), fn("My FN", guid(2))] });
-    const paths = project.files.map((f) => f.path.toLowerCase());
-    expect(new Set(paths).size, `case-insensitive path collision: ${paths.join(", ")}`).toBe(paths.length);
+    const functions = project.files.filter((f) => f.path.startsWith("function/"));
+    expect(functions.map((f) => f.path)).toHaveLength(2);
+    expect(new Set(functions.map((f) => f.path)).size).toBe(2);
+    expect(objectSymbols(project)).toHaveLength(2);
+    for (const generated of functions) {
+      expect([...generated.contents.matchAll(/export const \w+ =/g)]).toHaveLength(1);
+    }
   });
 
   it("assembles the same bundle to byte-identical files twice", () => {
@@ -231,7 +239,7 @@ describe("query placement", () => {
         .registerApiGroups([admin])
         .registerQueries([query({ name: "posts", verb: "GET", apiGroup: admin, guid: guid(2) })]),
     );
-    expect(paths).toContain("query/admin/apiGroup.ts");
+    expect(paths).toContain("query/admin/api_group.ts");
     expect(paths).toContain("query/admin/posts_GET.ts");
   });
 
@@ -251,7 +259,7 @@ describe("query placement", () => {
 
   it("gives an api group its folder even when it holds no queries", () => {
     const paths = pathsOf((x) => x.registerApiGroups([apiGroup({ name: "empty", guid: guid(1) })]));
-    expect(paths).toContain("query/empty/apiGroup.ts");
+    expect(paths).toContain("query/empty/api_group.ts");
   });
 
   it("collects every group-less query into one orphaned.ts", () => {
@@ -284,14 +292,14 @@ describe("query placement", () => {
     const paths = pathsOf((x) =>
       x.registerApiGroups([apiGroup({ name: "admin", guid: guid(1) }), apiGroup({ name: "Admin", guid: guid(2) })]),
     );
-    const folders = paths.filter((p) => p.endsWith("/apiGroup.ts")).map((p) => p.toLowerCase());
+    const folders = paths.filter((p) => p.endsWith("/api_group.ts")).map((p) => p.toLowerCase());
     expect(new Set(folders).size, `case-insensitive folder collision: ${folders.join(", ")}`).toBe(2);
   });
 
   it("makes a path-safe folder from a group name that is not an identifier", () => {
     const paths = pathsOf((x) => x.registerApiGroups([apiGroup({ name: "my group/v2", guid: guid(1) })]));
-    const group = paths.find((p) => p.endsWith("/apiGroup.ts"))!;
-    expect(group).toBe("query/my_group_v2/apiGroup.ts");
+    const group = paths.find((p) => p.endsWith("/api_group.ts"))!;
+    expect(group).toBe("query/my_group_v2/api_group.ts");
   });
 
   it("reaches a table and the barrel correctly from two directories deep", () => {
@@ -313,7 +321,7 @@ describe("query placement", () => {
         .export(),
     );
     expect(file(project, "query/admin/posts_GET.ts")).toContain('from "../../table/table.js"');
-    expect(file(project, "query/admin/posts_GET.ts")).toContain('from "./apiGroup.js"');
+    expect(file(project, "query/admin/posts_GET.ts")).toContain('from "./api_group.js"');
     expect(file(project, "index.ts")).toContain('from "./query/admin/posts_GET.js"');
   });
 });
@@ -349,7 +357,7 @@ describe("trigger placement", () => {
         ]),
     );
     expect(paths).toContain("agent/trigger/on_agent.ts");
-    expect(paths).toContain("mcpServer/trigger/on_mcp.ts");
+    expect(paths).toContain("mcp_server/trigger/on_mcp.ts");
   });
 
   it("leaves a parentless trigger in the flat trigger directory", () => {
@@ -722,7 +730,7 @@ describe("reserved names never break the tree", () => {
   it("emits a parsing tree for a function named `default`", async () => {
     const project = build({ functions: [fn("default", guid(1))] });
     await expectParses(project);
-    expect(file(project, "function/defaultFunction.ts")).toContain("export const defaultFunction =");
+    expect(file(project, "function/defaultfunction.ts")).toContain("export const defaultFunction =");
   });
 
   it("emits a valid identifier for every reserved word used as a name", async () => {
@@ -752,7 +760,7 @@ describe("reserved names never break the tree", () => {
     const project = build({ tables: [table("table", guid(1))], functions: [fn("query", guid(2))] });
     await expectParses(project);
     expect(file(project, "table/table.ts")).toMatch(/export const tableTable = table\(/);
-    expect(file(project, "function/queryFunction.ts")).toContain("export const queryFunction =");
+    expect(file(project, "function/queryfunction.ts")).toContain("export const queryFunction =");
   });
 
   it("keeps a reserved name unique when two same-kind objects share it", async () => {

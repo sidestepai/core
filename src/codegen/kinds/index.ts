@@ -817,7 +817,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "realtime_server",
     payloadKey: "realtime_server",
-    dir: "realtimeServer",
+    dir: "realtime_server",
     register: "registerRealtimeServers",
     defType: "RealtimeServerDef",
     factory: "realtimeServer",
@@ -836,7 +836,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "channel",
     payloadKey: "channel",
-    dir: "realtimeChannel",
+    dir: "realtime_channel",
     register: "registerRealtimeChannels",
     defType: "RealtimeChannelDef",
     factory: "realtimeChannel",
@@ -867,7 +867,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "message",
     payloadKey: "message",
-    dir: "realtimeMessage",
+    dir: "realtime_message",
     register: "registerRealtimeMessages",
     defType: "RealtimeMessageDef",
     factory: "realtimeMessage",
@@ -978,7 +978,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "mcp_server",
     payloadKey: "toolset",
-    dir: "mcpServer",
+    dir: "mcp_server",
     register: "registerMcpServers",
     defType: "McpServerDef",
     factory: "mcpServer",
