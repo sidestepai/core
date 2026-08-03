@@ -7,9 +7,11 @@
  *   leading digits, and they collide across kinds (a `users` table and a `users`
  *   function are both legal). Sanitization plus deterministic disambiguation
  *   happens once, up front, so every reference site agrees.
- * - **File layout.** Tables, and anything referenced from more than one file,
- *   land in `_shared.ts` — mirroring `examples/sandbox/`, and keeping the import
- *   graph shallow enough to read.
+ * - **File layout.** One directory per kind, with an object nested under its
+ *   parent where it has one (a query under its api group, a trigger under what
+ *   it fires on). Every table lands in `table/table.ts`, and anything else
+ *   referenced from more than one file lands in `_shared.ts` — co-location is
+ *   what keeps the cross-file import graph acyclic.
  * - **Cycles.** Two functions that call each other would import each other.
  *   `ObjectRef` already accepts `{name, guid}`, so a back edge degrades to a
  *   hoisted const holding that literal instead (KTD-8) and no circular import is
@@ -37,8 +39,70 @@ import {
   type StoredObject,
 } from "./kinds/index.js";
 
-/** The file cross-referenced objects and every table share. */
+/** The file cross-referenced non-table objects share. */
 const SHARED_FILE = "_shared.ts";
+
+/** The one file every table lands in, and the directory holding it. */
+const TABLE_DIR = "table";
+const TABLE_FILE = "table/table.ts";
+
+/**
+ * Queries nest one level further than every other kind: `query/<api group>/`.
+ * A group's own definition sits in that folder under a fixed name, and queries
+ * with no resolvable group collect in one file beside the group folders.
+ */
+const QUERY_DIR = "query";
+
+/**
+ * Queries with no resolvable group share one file beside the group files.
+ *
+ * The leading underscore is not decoration: `toSymbol` strips leading
+ * underscores, so no Xano object can ever produce this name, and a group that
+ * happens to be called `orphaned` cannot collide with it. `_shared.ts` is safe
+ * for the same reason.
+ */
+const ORPHANED_QUERY_FILE = "query/_orphaned.ts";
+
+/**
+ * The stored reference naming a kind's parent, and the kind that reference must
+ * resolve to before it counts.
+ *
+ * Every one of these is stored the same way — `{ id: <guid> }` under a named key
+ * — so one shape reads all of them. Requiring the resolved KIND to match is what
+ * keeps a stale or reused guid from nesting an object under something unrelated.
+ *
+ * Realtime is the only three-level hierarchy in a workspace: a message belongs to
+ * a channel, which belongs to a server. Resolution is therefore recursive, and a
+ * message ends up beside its channel, inside its server.
+ */
+const PARENT_REF: Readonly<Record<string, { key: string; kind: string }>> = {
+  query: { key: "app", kind: "api_group" },
+  channel: { key: "server", kind: "realtime_server" },
+  message: { key: "channel", kind: "channel" },
+};
+
+/**
+ * Kinds that OWN a directory, because they have objects nested beneath them: an
+ * api group has queries, a realtime server has channels, a channel has messages
+ * and triggers.
+ *
+ * The definition itself sits BESIDE that directory rather than inside it —
+ * `chat.ts` next to `chat/` — which is the `Button.tsx` + `Button/` idiom. Three
+ * things fall out of that. The file is named for the OBJECT, so an editor tab
+ * reads `chat.ts` rather than a dozen identical `realtime_server.ts`. The path
+ * does not stutter (`chat/chat.ts`). And a container with nothing nested under
+ * it needs no directory at all.
+ *
+ * `table` is deliberately absent: tables collapse into one file instead.
+ */
+const CONTAINER_KINDS: ReadonlySet<string> = new Set(["api_group", "realtime_server", "channel"]);
+
+/** Where a trigger's own files go inside its parent's directory. */
+const TRIGGER_SUBDIR = "trigger";
+
+/** The workspace config's own file, and the binding the barrel imports from it. */
+const WORKSPACE_FILE = "workspace.ts";
+const WORKSPACE_SYMBOL = "workspaceSettings";
 
 /** One object placed in the generated tree. */
 interface Placement {
@@ -82,6 +146,10 @@ const RESERVED_SYMBOLS: readonly string[] = [
   "realtimeChannel",
   "realtimeMessage",
   "workspace",
+  // The barrel's import of `workspace.ts`. An object taking this name would make
+  // the barrel import two different bindings under one identifier — a syntax
+  // error in the one file that has to load for anything to deploy.
+  WORKSPACE_SYMBOL,
   // value helpers emitted inside def literals
   "s",
   "c",
@@ -153,6 +221,28 @@ function kindWord(candidate: Candidate): string {
     : "Query";
 }
 
+/**
+ * A symbol as it appears in a PATH — always lower case.
+ *
+ * Paths and bindings answer to different rules. A binding keeps whatever case
+ * the Xano object had, because that is the name a reader recognises; a path is
+ * typed, tab-completed, and compared across three filesystems, two of which
+ * fold case. Lower-casing every segment means a tree written on macOS and a tree
+ * written on Linux are the same tree.
+ *
+ * Uniqueness is not at risk. `assignSymbols` already separates symbols that
+ * differ only by case — it has to, since each one names a file — so two symbols
+ * can never fold onto one path segment here.
+ *
+ * The one thing that stays upper case is a query's HTTP verb, and that is
+ * applied after this (see {@link queryFile}): `GET` is not a word, it is the
+ * method, and `posts_get.ts` reads as a name where `posts_GET.ts` reads as a
+ * route.
+ */
+function toPathName(symbol: string): string {
+  return symbol.toLowerCase();
+}
+
 /** Turn a Xano object name into a valid TypeScript identifier. */
 export function toSymbol(name: string): string {
   const cleaned = name.replace(/[^A-Za-z0-9_$]+/g, "_").replace(/^_+|_+$/g, "");
@@ -184,15 +274,29 @@ function tsconfig(): string {
 
 /**
  * Relative import specifier from a file in `fromDir` to a generated file.
- * Every generated file sits at the root or exactly one directory below it, so
- * the only shapes are same-directory and up-one-then-down.
+ *
+ * The tree is no longer flat — a query sits two deep, under its api group — so
+ * this is a real relative-path walk rather than the same-directory /
+ * up-one-then-down pair the one-level layout could get away with. Written by
+ * hand against POSIX separators instead of `node:path`, because this module is
+ * on the browser-safe decode path and `relative()` would also fold `..` against
+ * the real filesystem, which is not what a specifier means.
  */
-function specifierFrom(fromDir: string, toPath: string): string {
+export function specifierFrom(fromDir: string, toPath: string): string {
   const target = toPath.replace(/\.ts$/, ".js");
-  if (fromDir === ".") return `./${target}`;
-  return target.startsWith(`${fromDir}/`)
-    ? `./${target.slice(fromDir.length + 1)}`
-    : `../${target}`;
+  const from = fromDir === "." ? [] : fromDir.split("/");
+  const to = target.split("/");
+  const file = to.pop()!;
+
+  let common = 0;
+  while (common < from.length && common < to.length && from[common] === to[common]) common += 1;
+
+  const up = from.length - common;
+  const down = to.slice(common);
+  // A specifier must be explicitly relative; `up === 0` means the target is at or
+  // below this directory, which needs the `./` that a bare path would not carry.
+  const prefix = up === 0 ? "./" : "../".repeat(up);
+  return `${prefix}${[...down, file].join("/")}`;
 }
 
 /**
@@ -313,7 +417,19 @@ function assignSymbols(list: readonly Candidate[]): string[] {
 
 /**
  * Choose a file for every candidate, then resolve the symbol/path each guid maps
- * to. Tables and multiply-referenced objects share `_shared.ts`.
+ * to.
+ *
+ * Two collapses, for different reasons. Every table goes in `table/table.ts`
+ * because nearly every statement family binds one and scattering them makes the
+ * import graph unreadable. Multiply-referenced non-tables go in `_shared.ts`
+ * because co-locating them is what keeps the cross-file graph acyclic — an edge
+ * inside one file is ordered, not imported, so it can never close a cycle.
+ *
+ * These used to be the same file, which meant a table referring to a shared
+ * object (or the reverse) was an intra-file edge and therefore free. Splitting
+ * them makes those edges real imports, and a cycle across the two now costs a
+ * degraded `{name, guid}` reference. The corpus says that is currently a
+ * non-event, and `npm run codegen:replay` reports the count so it stays one.
  */
 function place(refs: RefIndex, payload: Record<string, unknown>): Placement[] {
   const list = candidates(refs, payload);
@@ -329,20 +445,172 @@ function place(refs: RefIndex, payload: Record<string, unknown>): Placement[] {
     }
   }
 
-  return list.map((candidate, i) => {
+  // Guid → (candidate, symbol), so a child can resolve its parent's directory.
+  // A parent's symbol has to be settled before any child's path can be built,
+  // and a realtime message is three levels down, so this is a graph walk rather
+  // than one pass: `dirs` memoises it and doubles as the recursion guard.
+  const byGuid = new Map<string, { candidate: Candidate; symbol: string }>();
+  for (const [i, candidate] of list.entries()) {
+    byGuid.set(candidate.object.guid, { candidate, symbol: symbols[i]! });
+  }
+  const dirs = new Map<string, string>();
+  const resolveDir: DirResolver = (guid) => {
+    const found = byGuid.get(guid);
+    if (!found) return null;
+    const cached = dirs.get(guid);
+    if (cached !== undefined) return { dir: cached, kind: found.candidate.object.kind };
+    // Claim the slot before recursing. Stored parent links should form a tree,
+    // but they are engine data: a cycle would otherwise recurse until the stack
+    // gives out, and the kind's own directory is a correct answer either way.
+    dirs.set(guid, found.candidate.dir);
+    const dir = dirOf(found.candidate, found.symbol, resolveDir);
+    dirs.set(guid, dir);
+    return { dir, kind: found.candidate.object.kind };
+  };
+
+  const placements = list.map((candidate, i) => {
     const symbol = symbols[i]!;
-    // Tables are shared unconditionally: nearly every statement family binds one,
-    // so leaving them scattered makes the import graph unreadable even when a
-    // given table happens to be referenced once.
-    const shared = candidate.object.kind === "table" || (referrers.get(candidate.object.guid) ?? 0) > 1;
+    const dir = resolveDir(candidate.object.guid)!.dir;
     return {
       object: candidate.object,
       stored: candidate.stored,
       symbol,
-      dir: shared ? "." : candidate.dir,
-      path: shared ? SHARED_FILE : `${candidate.dir}/${symbol}.ts`,
+      ...fileFor(candidate, symbol, referrers, dir),
     };
   });
+  return disambiguatePaths(placements);
+}
+
+/** Resolve a guid to where that object's files live, and what kind it is. */
+type DirResolver = (guid: string) => { dir: string; kind: string } | null;
+
+/**
+ * The paths that legitimately hold more than one object. Everything else is one
+ * object per file, and two placements landing on one path would silently merge
+ * them — both bindings in one file, with the barrel none the wiser.
+ */
+const COLLAPSED_FILES: ReadonlySet<string> = new Set([SHARED_FILE, TABLE_FILE, ORPHANED_QUERY_FILE]);
+
+/**
+ * Give any two placements that claimed one path a path each.
+ *
+ * Symbols are globally unique, so an object file cannot collide with another
+ * object file. What CAN collide is an object against a container's fixed
+ * definition file: a realtime message named `realtime_channel`, or a verbless
+ * query named `api_group`, sanitizes to exactly the name its own folder already
+ * uses. Rare, but the failure is silent rather than loud, which is the kind
+ * worth spending ten lines on.
+ */
+function disambiguatePaths(placements: readonly Placement[]): Placement[] {
+  const taken = new Set<string>();
+  return placements.map((placement) => {
+    if (COLLAPSED_FILES.has(placement.path)) return placement;
+    const folded = placement.path.toLowerCase();
+    if (!taken.has(folded)) {
+      taken.add(folded);
+      return placement;
+    }
+    const base = placement.path.replace(/\.ts$/, "");
+    let path = placement.path;
+    for (let n = 2; taken.has(path.toLowerCase()); n += 1) path = `${base}_${n}.ts`;
+    taken.add(path.toLowerCase());
+    return { ...placement, path };
+  });
+}
+
+/**
+ * The file one candidate lands in, given the directory already resolved for it.
+ *
+ * Returns only `dir`/`path` overrides — a table and a hoisted object move to a
+ * file outside their own directory, so both fields travel together.
+ */
+function fileFor(
+  candidate: Candidate,
+  symbol: string,
+  referrers: ReadonlyMap<string, number>,
+  dir: string,
+): { dir: string; path: string } {
+  const kind = candidate.object.kind;
+
+  // Tables collapse whether or not anything references them.
+  if (kind === "table") return { dir: TABLE_DIR, path: TABLE_FILE };
+
+  // A container is exempt from the hoist, because for it the hoist would be
+  // actively wrong rather than merely unnecessary. Containers are referenced by
+  // everything they hold — every query names its api group, every channel names
+  // its server — so the hoist would catch nearly all of them and empty out the
+  // very folders their children are nesting into.
+  //
+  // Its definition sits beside its directory rather than inside it, so the file
+  // IS the directory plus `.ts`, and it lives one level up from what it holds.
+  if (CONTAINER_KINDS.has(kind)) {
+    return { dir: dir.split("/").slice(0, -1).join("/") || ".", path: `${dir}.ts` };
+  }
+
+  // Past here the hoist wins over nesting: a multiply-referenced object is in
+  // `_shared.ts` for a cycle reason, which outranks reading nicely.
+  if ((referrers.get(candidate.object.guid) ?? 0) > 1) return { dir: ".", path: SHARED_FILE };
+
+  // A query with no resolvable group has no folder to sit in, and there may be
+  // many of them, so they share a file rather than scattering.
+  if (kind === "query" && dir === QUERY_DIR) return { dir: QUERY_DIR, path: ORPHANED_QUERY_FILE };
+
+  // The verb is the one upper-case thing in any path: an HTTP method, not a
+  // word, and what separates two queries sharing a name.
+  const verb = kind === "query" ? candidate.stored.verb : undefined;
+  const suffix = typeof verb === "string" && verb !== "" ? `_${verb.toUpperCase()}` : "";
+  return { dir, path: `${dir}/${toPathName(symbol)}${suffix}.ts` };
+}
+
+/**
+ * The directory a candidate belongs in, resolving its parent chain.
+ *
+ * Three shapes, all falling back to the kind's own directory when nothing
+ * resolves — which is a home, not a failure. There is simply no parent to nest
+ * under, and the flat kind directory is where such an object belongs.
+ *
+ * - A CONTAINER (api group, realtime server, realtime channel) gets a directory
+ *   named after itself, inside its own parent's. That is what makes the realtime
+ *   hierarchy work: `realtime_server/<server>/<channel>/`.
+ * - A CHILD (query, realtime message) sits directly in its parent's directory,
+ *   beside the parent's own definition file.
+ * - A TRIGGER sits in a `trigger/` subdirectory of whatever it fires on, found
+ *   by resolving `obj_id` rather than by switching on the trigger's `obj_type`.
+ *   The decoder already works this way — `obj_type: "toolset"` covers both mcp
+ *   servers and agents, and only the bound object's kind separates them — so a
+ *   static type→directory table would restate that and misfile any type Xano
+ *   adds later.
+ */
+function dirOf(candidate: Candidate, symbol: string, resolveDir: DirResolver): string {
+  const kind = candidate.object.kind;
+
+  if (kind === "trigger") {
+    const objId = candidate.stored.obj_id;
+    const parent = typeof objId === "string" && objId !== "" ? resolveDir(objId) : null;
+    return parent === null ? candidate.dir : `${parent.dir}/${TRIGGER_SUBDIR}`;
+  }
+
+  const parentDir = parentDirOf(candidate, resolveDir);
+  if (CONTAINER_KINDS.has(kind)) {
+    return `${parentDir ?? candidate.dir}/${toPathName(symbol)}`;
+  }
+  return parentDir ?? candidate.dir;
+}
+
+/**
+ * The directory of the object a candidate hangs off, or null when it hangs off
+ * nothing — no `PARENT_REF` for the kind, an absent or non-guid reference, or a
+ * guid that resolves to nothing or to a DIFFERENT kind than the reference is
+ * declared to point at. That last check is what stops a stale or reused guid
+ * from filing an object under something unrelated.
+ */
+function parentDirOf(candidate: Candidate, resolveDir: DirResolver): string | null {
+  const ref = PARENT_REF[candidate.object.kind];
+  if (ref === undefined) return null;
+  const id = (candidate.stored[ref.key] as { id?: unknown } | undefined)?.id;
+  if (typeof id !== "string" || id === "") return null;
+  const parent = resolveDir(id);
+  return parent && parent.kind === ref.kind ? parent.dir : null;
 }
 
 /**
@@ -636,44 +904,90 @@ export function assembleProject(
   // Sorted so the file list itself is deterministic, not merely each file's bytes.
   out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 
-  out.push({ path: "index.ts", contents: barrel(ctx, refs, payload, placements) });
+  const settings = workspaceFile(ctx, refs, payload);
+  if (settings) out.push({ path: WORKSPACE_FILE, contents: settings.contents });
+  out.push({ path: "index.ts", contents: barrel(ctx, payload, placements, settings) });
   out.push({ path: "README.md", contents: readme(ctx, placements) });
   out.push({ path: "tsconfig.json", contents: tsconfig() });
   return out;
 }
 
-/** The barrel: registers every decoded object under its `register*` bucket. */
-function barrel(
+/** The decoded workspace config, as its own file. */
+interface WorkspaceFile {
+  readonly contents: string;
+  /** Binding the barrel imports and passes to `registerWorkspace`. */
+  readonly symbol: string;
+}
+
+/**
+ * Decode the workspace config into `workspace.ts`.
+ *
+ * It used to be inlined into the barrel's registry chain, which buried the one
+ * object a reader most often wants to find under every other object's
+ * registration — and a workspace config is not small: it carries the env var
+ * list and the four-host middleware map. Its own file also means the barrel is
+ * purely a registry again.
+ *
+ * Returns null when the payload carries no workspace object, in which case no
+ * file is emitted and the barrel registers nothing.
+ */
+function workspaceFile(
   ctx: DecodeContext,
   refs: RefIndex,
   payload: Record<string, unknown>,
+): WorkspaceFile | null {
+  // `payload.env` is hoisted out of the workspace object at export time; fold it
+  // back in so the workspace decoder sees the shape its encoder produced.
+  const stored: StoredObject = {
+    ...((payload.workspace ?? {}) as StoredObject),
+    ...(Array.isArray(payload.env) && payload.env.length > 0 ? { env: payload.env } : {}),
+  };
+  if (stored.name === undefined) return null;
+
+  const imports = ctx.beginFile();
+  const decoder = KIND_DECODERS_BY_NAME.get("workspace")!;
+  const { expr, factory } = ctx.inObject("workspace", () =>
+    decodeObject(decoder, { ctx, refs, stored, resolve: {} }),
+  );
+  if (factory) imports.use(CORE_MODULE, factory);
+  else imports.useType(CORE_MODULE, decoder.defType);
+
+  const literal = printExpr(expr);
+  return {
+    symbol: WORKSPACE_SYMBOL,
+    contents: printModule([
+      { kind: "comment", text: "Workspace settings — generated from a Xano bundle." },
+      ...imports.toStatements(),
+      { kind: "blank" },
+      {
+        kind: "const",
+        name: WORKSPACE_SYMBOL,
+        exported: true,
+        value: {
+          kind: "id",
+          text: factory ? `${factory}(${literal})` : `${literal} satisfies ${decoder.defType}`,
+        } as Expr,
+      },
+    ]),
+  };
+}
+
+/** The barrel: registers every decoded object under its `register*` bucket. */
+function barrel(
+  ctx: DecodeContext,
+  payload: Record<string, unknown>,
   placements: readonly Placement[],
+  settings: WorkspaceFile | null,
 ): string {
   const imports = ctx.beginFile();
   imports.use(CORE_MODULE, "workspace");
 
-  // `payload.env` is hoisted out of the workspace object at export time; fold it
-  // back in so the workspace decoder sees the shape its encoder produced.
-  const workspaceStored: StoredObject = {
-    ...((payload.workspace ?? {}) as StoredObject),
-    ...(Array.isArray(payload.env) && payload.env.length > 0 ? { env: payload.env } : {}),
-  };
-  const workspaceName = String(workspaceStored.name ?? "workspace");
+  const workspaceName = String((payload.workspace as StoredObject | undefined)?.name ?? "workspace");
   const lines: string[] = [`workspace(${JSON.stringify(workspaceName)})`];
 
-  if (workspaceStored.name !== undefined) {
-    const decoder = KIND_DECODERS_BY_NAME.get("workspace")!;
-    const { expr, factory } = ctx.inObject("workspace", () =>
-      decodeObject(decoder, { ctx, refs, stored: workspaceStored, resolve: {} }),
-    );
-    if (factory) imports.use(CORE_MODULE, factory);
-    else imports.useType(CORE_MODULE, decoder.defType);
-    const literal = indent(printExpr(expr));
-    lines.push(
-      `  .registerWorkspace(${
-        factory ? `${factory}(${literal})` : `${literal} satisfies ${decoder.defType}`
-      })`,
-    );
+  if (settings) {
+    imports.use(specifierFrom(".", WORKSPACE_FILE), settings.symbol);
+    lines.push(`  .registerWorkspace(${settings.symbol})`);
   }
 
   for (const decoder of KIND_DECODERS) {
@@ -741,14 +1055,15 @@ function readme(ctx: DecodeContext, placements: readonly Placement[]): string {
     const count = counts.get(decoder.name) ?? 0;
     if (count > 0) lines.push(`- ${count} × ${decoder.name}`);
   }
-  lines.push("", "Objects referenced from more than one file, and every table, live in `_shared.ts`.", "");
+  lines.push(
+    "",
+    "Every table lives in `table/table.ts`. Anything else referenced from more than " +
+      "one file lives in `_shared.ts`. A query sits under its API group, and a trigger " +
+      "under the object it fires on.",
+    "",
+  );
 
   const report = ctx.report.renderMarkdown();
   lines.push(report === "" ? "Everything in the source bundle round-tripped cleanly." : report);
   return `${lines.join("\n").replace(/\n+$/, "")}\n`;
-}
-
-/** Re-indent a rendered expression to sit inside the barrel's method chain. */
-function indent(source: string): string {
-  return source.split("\n").join("\n  ");
 }

@@ -1,4 +1,4 @@
-# sidestep v4.1.22
+# sidestep v4.1.23
 
 > TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.
 
@@ -141,9 +141,18 @@ live environment and prints its URL. `sidestep init` → `sidestep deploy` → U
   from `workspace/{id}/export` (the file form reads a bundle already on disk,
   fully offline) and share one core. The output is the same scaffold `init`
   writes — root package.json (dev/build/xano:export/xano:deploy), tsconfig, vite
-  config, frontend/ — with the decoded workspace filling `xano/`: per-kind
-  directories, a `_shared.ts` for tables and cross-referenced objects, a barrel
-  `xano/index.ts`, and `xano/README.md` carrying the decode report. So
+  config, frontend/ — with the decoded workspace filling `xano/`: one directory
+  per kind with each object under its parent (`query/<group>.ts` beside
+  `query/<group>/<name>_<VERB>.ts`, `table/trigger/`, `agent/trigger/`, and
+  realtime's three levels as `realtime_server/<server>.ts` beside
+  `<server>/<channel>.ts` beside `<channel>/<message>.ts`, with a `trigger/`
+  at each level). Anything holding children is a file named for ITSELF beside
+  their folder, so no two tabs read alike and a childless container needs no
+  folder. Every table lives in `table/table.ts`, settings
+  in `xano/workspace.ts`, a `_shared.ts` for anything else referenced from more
+  than one file, a barrel `xano/index.ts`, and `xano/README.md` carrying the
+  decode report. Paths are LOWER CASE throughout (the HTTP verb is the one
+  exception), while bindings keep the object's own casing. So
   `sidestep workspace codegen app && cd app && npm run build && npm run xano:deploy`
   ships a pulled workspace to a live ephemeral URL. Decoded objects are emitted
   as FACTORY calls (`table({...})`, `query({...})`, `defineFunction({...})`) —
@@ -161,7 +170,7 @@ live environment and prints its URL. `sidestep init` → `sidestep deploy` → U
   DISPOSABLE (re-running rewrites it and needs no `--force`, since the tree
   carries `xano/.sidestep-codegen.json`; the rest of the project is left alone)
   and SCHEMA-ONLY (no seed rows). Workspace env var VALUES ride inline in
-  `xano/index.ts`, so treat a pulled tree as secret-bearing. Deploying it is a
+  `xano/workspace.ts`, so treat a pulled tree as secret-bearing. Deploying it is a
   full replace, so send it only to an ephemeral or sandbox env — never a
   workspace holding data you care about.
 - `sidestep workspace <details|export|codegen>` — read the REAL workspace your

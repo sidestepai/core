@@ -102,7 +102,11 @@ export interface KindDecoder {
   readonly name: string;
   /** Payload array the kind lands in. */
   readonly payloadKey: string;
-  /** Directory the generated file goes in. */
+  /**
+   * Directory the generated file goes in — the DEFAULT, which placement may
+   * nest further: a query lands under its api group, a trigger under what it
+   * fires on, and every table collapses into one file. See `place()`.
+   */
   readonly dir: string;
   /** The `Xano.register*` method the barrel calls. */
   readonly register: string;
@@ -671,7 +675,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "table",
     payloadKey: "dbo",
-    dir: "tables",
+    dir: "table",
     register: "registerTables",
     defType: "TableDef",
     factory: "table",
@@ -699,7 +703,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "function",
     payloadKey: "function",
-    dir: "functions",
+    dir: "function",
     register: "registerFunctions",
     defType: "FunctionDef",
     factory: "defineFunction",
@@ -723,7 +727,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "query",
     payloadKey: "query",
-    dir: "queries",
+    dir: "query",
     register: "registerQueries",
     defType: "QueryDef",
     factory: "query",
@@ -752,7 +756,9 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "api_group",
     payloadKey: "app",
-    dir: "apiGroups",
+    // A group gets a folder of its own UNDER this one, holding its definition
+    // and every query in it — so this is `query`, not `apiGroup`.
+    dir: "query",
     register: "registerApiGroups",
     defType: "ApiGroupDef",
     factory: "apiGroup",
@@ -774,7 +780,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "microservice",
     payloadKey: "microservice",
-    dir: "microservices",
+    dir: "microservice",
     register: "registerMicroservices",
     defType: "MicroserviceDef",
     factory: "microservice",
@@ -811,7 +817,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "realtime_server",
     payloadKey: "realtime_server",
-    dir: "realtimeServers",
+    dir: "realtime_server",
     register: "registerRealtimeServers",
     defType: "RealtimeServerDef",
     factory: "realtimeServer",
@@ -830,7 +836,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "channel",
     payloadKey: "channel",
-    dir: "realtimeChannels",
+    dir: "realtime_channel",
     register: "registerRealtimeChannels",
     defType: "RealtimeChannelDef",
     factory: "realtimeChannel",
@@ -861,7 +867,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "message",
     payloadKey: "message",
-    dir: "realtimeMessages",
+    dir: "realtime_message",
     register: "registerRealtimeMessages",
     defType: "RealtimeMessageDef",
     factory: "realtimeMessage",
@@ -890,7 +896,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "trigger",
     payloadKey: "trigger",
-    dir: "triggers",
+    dir: "trigger",
     register: "registerTriggers",
     defType: "TriggerDef",
     decode: (a) => decodeTrigger(a),
@@ -898,7 +904,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "task",
     payloadKey: "task",
-    dir: "tasks",
+    dir: "task",
     register: "registerTasks",
     defType: "TaskDef",
     factory: "task",
@@ -940,7 +946,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "addon",
     payloadKey: "addon",
-    dir: "addons",
+    dir: "addon",
     register: "registerAddons",
     defType: "AddonDef",
     factory: "addon",
@@ -949,7 +955,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "tool",
     payloadKey: "tool",
-    dir: "ai",
+    dir: "tool",
     register: "registerTools",
     defType: "ToolDef",
     factory: "tool",
@@ -972,7 +978,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "mcp_server",
     payloadKey: "toolset",
-    dir: "ai",
+    dir: "mcp_server",
     register: "registerMcpServers",
     defType: "McpServerDef",
     factory: "mcpServer",
@@ -987,7 +993,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
   {
     name: "agent",
     payloadKey: "toolset",
-    dir: "ai",
+    dir: "agent",
     register: "registerAgents",
     defType: "AgentDef",
     factory: "agent",

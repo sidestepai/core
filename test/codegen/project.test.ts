@@ -14,11 +14,28 @@
  */
 import { describe, it, expect } from "vitest";
 import { decodeBundle } from "../../src/codegen/index.js";
-import { toSymbol } from "../../src/codegen/project.js";
+import { toSymbol, specifierFrom } from "../../src/codegen/project.js";
 import type { GeneratedProject } from "../../src/codegen/index.js";
-import { workspace } from "../../src/workspace/xano.js";
+import { workspace, Xano } from "../../src/workspace/xano.js";
 import { defineFunction } from "../../src/function/define.js";
 import { table as defineTable } from "../../src/kinds/table.js";
+import { agent } from "../../src/kinds/agent.js";
+import { mcpServer } from "../../src/kinds/mcp-server.js";
+import { apiGroup } from "../../src/kinds/api-group.js";
+import { query } from "../../src/kinds/query.js";
+import { realtimeServer } from "../../src/kinds/realtime-server.js";
+import { realtimeChannel } from "../../src/kinds/realtime-channel.js";
+import { realtimeMessage } from "../../src/kinds/realtime-message.js";
+import {
+  tableTrigger,
+  agentTrigger,
+  mcpServerTrigger,
+  workspaceTrigger,
+  errorTrigger,
+  realtimeServerTrigger,
+  realtimeChannelTrigger,
+} from "../../src/kinds/trigger.js";
+import "../../src/index.js"; // register kinds
 import { f } from "../../src/fields/catalog.js";
 import { s } from "../../src/statements/s.js";
 import type { FunctionDef } from "../../src/function/define.js";
@@ -68,6 +85,22 @@ function file(project: GeneratedProject, path: string): string {
   return found!.contents;
 }
 
+/**
+ * Every binding the tree exports for a decoded OBJECT.
+ *
+ * `workspace.ts` is excluded: its `workspaceSettings` is the workspace config,
+ * which is not a placed object, takes a reserved name no object can collide
+ * with, and is registered through `registerWorkspace(x)` rather than one of the
+ * array registrars. Counting it would make every symbol assertion here about
+ * assembly's own file rather than about the objects.
+ */
+function objectSymbols(project: GeneratedProject): string[] {
+  return project.files
+    .filter((f) => f.path.endsWith(".ts") && f.path !== "index.ts" && f.path !== "workspace.ts")
+    .flatMap((f) => [...f.contents.matchAll(/export const (\w+) =/g)].map((m) => m[1]!))
+    .sort();
+}
+
 describe("symbol naming", () => {
   it("turns a name that is not an identifier into one", () => {
     expect(toSymbol("My Table-2")).toBe("My_Table_2");
@@ -80,19 +113,15 @@ describe("symbol naming", () => {
     // A `users` table and a `users` function are both legal in Xano and would
     // otherwise produce one binding that shadows the other.
     const project = build({ tables: [table("users", guid(1))], functions: [fn("users", guid(2))] });
-    const shared = file(project, "_shared.ts");
-    const functions = file(project, "functions/usersFunction.ts");
-    expect(shared).toContain("export const users =");
-    expect(functions).toContain("export const usersFunction =");
+    expect(file(project, "table/table.ts")).toContain("export const users =");
+    expect(file(project, "function/usersfunction.ts")).toContain("export const usersFunction =");
   });
 
   it("disambiguates same-kind names that sanitize to the same identifier", () => {
     const project = build({
       functions: [fn("my fn", guid(1)), fn("my-fn", guid(2)), fn("my_fn", guid(3))],
     });
-    const symbols = project.files
-      .flatMap((f) => [...f.contents.matchAll(/export const (\w+) =/g)].map((m) => m[1]!))
-      .sort();
+    const symbols = objectSymbols(project);
     expect(new Set(symbols).size).toBe(symbols.length);
     expect(symbols).toEqual(["my_fn", "my_fn_2", "my_fn_3"]);
   });
@@ -104,9 +133,17 @@ describe("symbol naming", () => {
     // both, so the lost object's binding resolved to `undefined` and encoding
     // it crashed. A real workspace hit exactly this with `SocialFeed/Flag/{id}`
     // alongside `SocialFeed/flag/{id}`.
+    // Paths are lower-cased now, so "are the paths unique" would pass vacuously
+    // if the two objects MERGED into one file — there would simply be one path.
+    // Assert the separation itself: two objects, two files, two bindings.
     const project = build({ functions: [fn("my fn", guid(1)), fn("My FN", guid(2))] });
-    const paths = project.files.map((f) => f.path.toLowerCase());
-    expect(new Set(paths).size, `case-insensitive path collision: ${paths.join(", ")}`).toBe(paths.length);
+    const functions = project.files.filter((f) => f.path.startsWith("function/"));
+    expect(functions.map((f) => f.path)).toHaveLength(2);
+    expect(new Set(functions.map((f) => f.path)).size).toBe(2);
+    expect(objectSymbols(project)).toHaveLength(2);
+    for (const generated of functions) {
+      expect([...generated.contents.matchAll(/export const \w+ =/g)]).toHaveLength(1);
+    }
   });
 
   it("assembles the same bundle to byte-identical files twice", () => {
@@ -115,13 +152,410 @@ describe("symbol naming", () => {
   });
 });
 
+describe("every generated import resolves", () => {
+  /**
+   * The check a bundle round trip cannot make.
+   *
+   * A wrong relative specifier is invisible to the decoder AND to a re-export
+   * diff — both compare bundles, and neither ever loads the tree. It surfaces
+   * as `ERR_MODULE_NOT_FOUND` at import time, in the user's project, after
+   * install. Now that the tree nests two levels deep, that is the failure this
+   * layout is most likely to produce.
+   */
+  function unresolvable(project: GeneratedProject): string[] {
+    const present = new Set(project.files.map((f) => f.path));
+    const out: string[] = [];
+    for (const generated of project.files) {
+      if (!generated.path.endsWith(".ts")) continue;
+      for (const m of generated.contents.matchAll(/^import(?: type)? \{[^}]*\} from "(\.[^"]*)";$/gm)) {
+        const segments = generated.path.split("/").slice(0, -1);
+        for (const part of m[1]!.split("/")) {
+          if (part === ".") continue;
+          else if (part === "..") segments.pop();
+          else segments.push(part);
+        }
+        const target = segments.join("/").replace(/\.js$/, ".ts");
+        if (!present.has(target)) out.push(`${generated.path} → ${m[1]} (no ${target})`);
+      }
+    }
+    return out;
+  }
+
+  it("resolves every specifier in the sandbox tree", () => {
+    // The sandbox is the richest workspace on hand — every kind, api groups,
+    // triggers, tables, cross-file references — so it exercises each depth
+    // combination the layout can produce.
+    const project = decodeBundle(sandbox.export() as { payload: Record<string, unknown> });
+    expect(unresolvable(project)).toEqual([]);
+  });
+
+  it("resolves every specifier across nesting, hoisting, and the table file", () => {
+    const users = defineTable({ name: "users", guid: guid(1), schema: { title: f.text() } });
+    const admin = apiGroup({ name: "admin", guid: guid(2) });
+    const project = decodeBundle(
+      new Xano()
+        .registerTables([users])
+        .registerApiGroups([admin])
+        .registerQueries([
+          query({
+            name: "posts",
+            verb: "GET",
+            apiGroup: admin,
+            guid: guid(3),
+            stack: [s.db.query({ table: users, as: "rows" })],
+          }),
+        ])
+        .registerFunctions([fn("helper", guid(4)), fn("a", guid(5), [guid(4)]), fn("b", guid(6), [guid(4)])])
+        .registerTriggers([tableTrigger({ name: "on_insert", table: users, actions: { insert: true } })])
+        .export(),
+    );
+    expect(unresolvable(project)).toEqual([]);
+  });
+
+  it("would catch a specifier that points at nothing", () => {
+    // A guard that cannot fail is not a guard. Corrupt one specifier and the
+    // check must name it.
+    const project = decodeBundle(
+      new Xano()
+        .registerFunctions([fn("helper", guid(1)), fn("a", guid(2), [guid(1)])])
+        .export(),
+    );
+    const corrupted: GeneratedProject = {
+      ...project,
+      files: project.files.map((generated) =>
+        generated.path === "function/a.ts"
+          ? { ...generated, contents: generated.contents.replace('from "./helper.js"', 'from "./gone.js"') }
+          : generated,
+      ),
+    };
+    expect(unresolvable(corrupted)).toHaveLength(1);
+  });
+});
+
+describe("query placement", () => {
+  function pathsOf(build: (x: Xano) => Xano): string[] {
+    return decodeBundle(build(new Xano()).export()).files.map((f) => f.path);
+  }
+
+  it("nests a query under its api group, with the verb in the filename", () => {
+    const admin = apiGroup({ name: "admin", guid: guid(1) });
+    const paths = pathsOf((x) =>
+      x
+        .registerApiGroups([admin])
+        .registerQueries([query({ name: "posts", verb: "GET", apiGroup: admin, guid: guid(2) })]),
+    );
+    expect(paths).toContain("query/admin.ts");
+    expect(paths).toContain("query/admin/posts_GET.ts");
+  });
+
+  it("separates two queries that share a name but differ by verb", () => {
+    // `GET /posts` and `POST /posts` are different objects with the same name.
+    // One of them used to be `posts_2.ts`, which said nothing about which.
+    const admin = apiGroup({ name: "admin", guid: guid(1) });
+    const paths = pathsOf((x) =>
+      x.registerApiGroups([admin]).registerQueries([
+        query({ name: "posts", verb: "GET", apiGroup: admin, guid: guid(2) }),
+        query({ name: "posts", verb: "POST", apiGroup: admin, guid: guid(3) }),
+      ]),
+    );
+    expect(paths).toContain("query/admin/posts_GET.ts");
+    expect(paths).toContain("query/admin/posts_2_POST.ts");
+  });
+
+  it("gives a childless api group a file and NO folder", () => {
+    // The definition sits beside its folder rather than inside it, so a group
+    // holding nothing needs no directory at all.
+    const paths = pathsOf((x) => x.registerApiGroups([apiGroup({ name: "empty", guid: guid(1) })]));
+    expect(paths).toContain("query/empty.ts");
+    expect(paths.filter((path) => path.startsWith("query/empty/"))).toEqual([]);
+  });
+
+  it("collects every group-less query into one _orphaned.ts", () => {
+    // An absent group and a guid pointing outside the bundle are the same thing
+    // here — no folder to sit in — so they share a file rather than a folder each.
+    const paths = pathsOf((x) =>
+      x.registerQueries([
+        query({ name: "loose", verb: "GET", guid: guid(1) }),
+        query({ name: "also_loose", verb: "POST", guid: guid(2) }),
+      ]),
+    );
+    expect(paths).toContain("query/_orphaned.ts");
+    expect(paths.filter((p) => p.startsWith("query/"))).toEqual(["query/_orphaned.ts"]);
+  });
+
+  it("emits no orphaned.ts when every query has a group", () => {
+    const admin = apiGroup({ name: "admin", guid: guid(1) });
+    const paths = pathsOf((x) =>
+      x
+        .registerApiGroups([admin])
+        .registerQueries([query({ name: "posts", verb: "GET", apiGroup: admin, guid: guid(2) })]),
+    );
+    expect(paths).not.toContain("query/_orphaned.ts");
+  });
+
+  it("keeps two groups whose names differ only by case apart", () => {
+    // The path takes the group's assigned SYMBOL, which `assignSymbols` has
+    // already case-separated — macOS and Windows fold `Admin/` onto `admin/`
+    // exactly as they fold `Admin.ts` onto `admin.ts`.
+    const paths = pathsOf((x) =>
+      x.registerApiGroups([apiGroup({ name: "admin", guid: guid(1) }), apiGroup({ name: "Admin", guid: guid(2) })]),
+    );
+    const groups = paths.filter((p) => p.startsWith("query/"));
+    expect(groups, `expected one file per group, got ${groups.join(", ")}`).toHaveLength(2);
+    expect(new Set(groups).size, `path collision: ${groups.join(", ")}`).toBe(2);
+  });
+
+  it("makes a path-safe name from a group name that is not an identifier", () => {
+    const paths = pathsOf((x) => x.registerApiGroups([apiGroup({ name: "my group/v2", guid: guid(1) })]));
+    const group = paths.find((p) => p.startsWith("query/"))!;
+    expect(group).toBe("query/my_group_v2.ts");
+  });
+
+  it("reaches a table and the barrel correctly from two directories deep", () => {
+    const users = defineTable({ name: "users", guid: guid(1), schema: { title: f.text() } });
+    const admin = apiGroup({ name: "admin", guid: guid(2) });
+    const project = decodeBundle(
+      new Xano()
+        .registerTables([users])
+        .registerApiGroups([admin])
+        .registerQueries([
+          query({
+            name: "posts",
+            verb: "GET",
+            apiGroup: admin,
+            guid: guid(3),
+            stack: [s.db.query({ table: users, as: "rows" })],
+          }),
+        ])
+        .export(),
+    );
+    expect(file(project, "query/admin/posts_GET.ts")).toContain('from "../../table/table.js"');
+    expect(file(project, "query/admin/posts_GET.ts")).toContain('from "../admin.js"');
+    expect(file(project, "index.ts")).toContain('from "./query/admin/posts_GET.js"');
+  });
+});
+
+describe("realtime hierarchy placement", () => {
+  function pathsOf(build: (x: Xano) => Xano): string[] {
+    return decodeBundle(build(new Xano()).export()).files.map((f) => f.path);
+  }
+
+  const chat = realtimeServer({ name: "chat", guid: guid(1) });
+  const room = realtimeChannel({ name: "room", server: chat, guid: guid(2) });
+
+  it("nests server → channel → message, three levels deep", () => {
+    const paths = pathsOf((x) =>
+      x
+        .registerRealtimeServers([chat])
+        .registerRealtimeChannels([room])
+        .registerRealtimeMessages([realtimeMessage({ name: "ping", channel: room, guid: guid(3) })]),
+    );
+    expect(paths).toContain("realtime_server/chat.ts");
+    expect(paths).toContain("realtime_server/chat/room.ts");
+    expect(paths).toContain("realtime_server/chat/room/ping.ts");
+  });
+
+  it("nests a trigger under the level it fires on", () => {
+    const paths = pathsOf((x) =>
+      x
+        .registerRealtimeServers([chat])
+        .registerRealtimeChannels([room])
+        .registerTriggers([
+          realtimeServerTrigger({ name: "on_connect", realtimeServer: chat }),
+          realtimeChannelTrigger({ name: "on_join", channel: room }),
+        ]),
+    );
+    expect(paths).toContain("realtime_server/chat/trigger/on_connect.ts");
+    expect(paths).toContain("realtime_server/chat/room/trigger/on_join.ts");
+  });
+
+  it("keeps a server and channel out of _shared.ts however often they are referenced", () => {
+    // A container is referenced by everything it holds — that is its normal
+    // state, not a signal to hoist it. Hoisting would empty the folder its
+    // children nest into.
+    const paths = pathsOf((x) =>
+      x
+        .registerRealtimeServers([chat])
+        .registerRealtimeChannels([room])
+        .registerRealtimeMessages([
+          realtimeMessage({ name: "a", channel: room, guid: guid(3) }),
+          realtimeMessage({ name: "b", channel: room, guid: guid(4) }),
+        ])
+        .registerTriggers([realtimeChannelTrigger({ name: "on_join", channel: room })]),
+    );
+    expect(paths).not.toContain("_shared.ts");
+    expect(paths).toContain("realtime_server/chat/room.ts");
+  });
+
+  it("leaves an orphaned channel and message in their own kind directories", () => {
+    // No parent to nest under is a home, not a failure. An orphaned channel is
+    // still a container, so it keeps a folder for the messages it holds.
+    // Bound by NAME to objects this bundle does not hold: the reference mints a
+    // derived guid that resolves to nothing, which is what a pulled workspace
+    // looks like when its parent lives outside the export.
+    const loose = realtimeChannel({ name: "loose", server: "gone", guid: guid(5) });
+    const paths = pathsOf((x) =>
+      x
+        .registerRealtimeChannels([loose])
+        .registerRealtimeMessages([
+          realtimeMessage({ name: "orphan", channel: "missing", server: "gone", guid: guid(6) }),
+        ]),
+    );
+    expect(paths).toContain("realtime_channel/loose.ts");
+    expect(paths).toContain("realtime_message/orphan.ts");
+  });
+
+  it("does not merge a message that collides with its channel's own definition file", () => {
+    // A message named `realtime_channel` sanitizes to exactly the file its
+    // folder already uses. Symbols stay unique, so nothing warns — the two would
+    // simply land in one file, with both bindings in it.
+    const project = decodeBundle(
+      new Xano()
+        .registerRealtimeServers([chat])
+        .registerRealtimeChannels([room])
+        .registerRealtimeMessages([realtimeMessage({ name: "realtime channel", channel: room, guid: guid(3) })])
+        .export(),
+    );
+    const inFolder = project.files.filter((f) => f.path.startsWith("realtime_server/chat/room/"));
+    expect(new Set(inFolder.map((f) => f.path)).size).toBe(inFolder.length);
+    for (const generated of inFolder) {
+      expect([...generated.contents.matchAll(/export const \w+ =/g)]).toHaveLength(1);
+    }
+  });
+});
+
+describe("trigger placement", () => {
+  /** Paths in the generated tree, for asserting where a trigger landed. */
+  function pathsOf(build: (x: Xano) => Xano): string[] {
+    return decodeBundle(build(new Xano()).export()).files.map((f) => f.path);
+  }
+
+  it("puts a database trigger under the table directory", () => {
+    const users = defineTable({ name: "users", guid: guid(1), schema: { title: f.text() } });
+    const paths = pathsOf((x) =>
+      x
+        .registerTables([users])
+        .registerTriggers([tableTrigger({ name: "on_insert", table: users, actions: { insert: true } })]),
+    );
+    expect(paths).toContain("table/trigger/on_insert.ts");
+  });
+
+  it("separates an agent trigger from an mcp-server trigger by the bound object's kind", () => {
+    // Both store `obj_type: "toolset"` — only what `obj_id` resolves to tells
+    // them apart, which is exactly why placement resolves rather than switching.
+    const assistant = agent({ name: "assistant", guid: guid(2), llm: { type: "xano-free" } });
+    const books = mcpServer({ name: "books", guid: guid(3) });
+    const paths = pathsOf((x) =>
+      x
+        .registerAgents([assistant])
+        .registerMcpServers([books])
+        .registerTriggers([
+          agentTrigger({ name: "on_agent", agent: assistant }),
+          mcpServerTrigger({ name: "on_mcp", mcpServer: books }),
+        ]),
+    );
+    expect(paths).toContain("agent/trigger/on_agent.ts");
+    expect(paths).toContain("mcp_server/trigger/on_mcp.ts");
+  });
+
+  it("leaves a parentless trigger in the flat trigger directory", () => {
+    // Workspace and error triggers bind nothing — there is no parent directory
+    // for them to sit under, so the kind's own folder is the right home.
+    const paths = pathsOf((x) =>
+      x.registerTriggers([
+        workspaceTrigger({ name: "on_branch_live", actions: { branch_live: true } }),
+        errorTrigger({ name: "on_error" }),
+      ]),
+    );
+    expect(paths).toContain("trigger/on_branch_live.ts");
+    expect(paths).toContain("trigger/on_error.ts");
+  });
+
+  it("leaves a numeric-objId trigger flat rather than guessing a parent", () => {
+    // `objId` is the documented escape hatch: a number indexes the engine's own
+    // list and names no guid, so there is nothing to resolve.
+    const paths = pathsOf((x) =>
+      x.registerTriggers([tableTrigger({ name: "by_number", objId: 1, actions: { insert: true } })]),
+    );
+    expect(paths).toContain("trigger/by_number.ts");
+  });
+
+  it("leaves a trigger flat when its parent guid resolves to nothing", () => {
+    const paths = pathsOf((x) =>
+      x.registerTriggers([
+        tableTrigger({ name: "dangling", table: { name: "gone", guid: guid(9) }, actions: { insert: true } }),
+      ]),
+    );
+    expect(paths).toContain("trigger/dangling.ts");
+  });
+});
+
+describe("relative import specifiers", () => {
+  // The tree is two deep once queries nest under their api group, so the
+  // same-directory / up-one-then-down pair the flat layout relied on is not
+  // enough. A wrong specifier here fails at LOAD, not at typecheck, so every
+  // depth combination the layout can produce is pinned.
+  it.each([
+    ["same directory", "function", "function/b.ts", "./b.js"],
+    ["root down one", ".", "table/table.ts", "./table/table.js"],
+    ["root to root", ".", "_shared.ts", "./_shared.js"],
+    ["one deep up to root", "function", "_shared.ts", "../_shared.js"],
+    ["one deep to a sibling directory", "function", "table/table.ts", "../table/table.js"],
+    ["two deep to one deep", "query/admin", "table/table.ts", "../../table/table.js"],
+    ["two deep, same directory", "query/admin", "query/admin/posts_GET.ts", "./posts_GET.js"],
+    ["two deep to a peer group", "query/admin", "query/public/posts_GET.ts", "../public/posts_GET.js"],
+    ["two deep up to root", "query/admin", "_shared.ts", "../../_shared.js"],
+    ["one deep down to two", "table", "table/trigger/on_insert.ts", "./trigger/on_insert.js"],
+  ])("%s", (_label, fromDir, toPath, expected) => {
+    expect(specifierFrom(fromDir, toPath)).toBe(expected);
+  });
+
+  it("always emits an explicitly relative specifier", () => {
+    for (const [fromDir, toPath] of [
+      [".", "_shared.ts"],
+      ["function", "table/table.ts"],
+      ["query/admin", "query/admin/posts_GET.ts"],
+    ] as const) {
+      expect(specifierFrom(fromDir, toPath)).toMatch(/^\.{1,2}\//);
+    }
+  });
+
+  it("rewrites the extension at every depth", () => {
+    for (const [fromDir, toPath] of [
+      [".", "_shared.ts"],
+      ["function", "table/table.ts"],
+      ["query/admin", "query/public/posts_GET.ts"],
+    ] as const) {
+      expect(specifierFrom(fromDir, toPath)).toMatch(/\.js$/);
+    }
+  });
+});
+
 describe("file layout", () => {
-  it("puts every table in _shared.ts, even a singly-referenced one", () => {
+  it("puts every table in table/table.ts, even a singly-referenced one", () => {
     // Nearly every statement family binds a table, so scattering them across
     // per-object files makes the import graph unreadable.
     const project = build({ tables: [table("users", guid(1))], functions: [fn("a", guid(2), [guid(1)])] });
-    expect(file(project, "_shared.ts")).toContain("export const users =");
-    expect(project.files.map((f) => f.path)).not.toContain("tables/users.ts");
+    expect(file(project, "table/table.ts")).toContain("export const users =");
+    expect(project.files.map((f) => f.path)).not.toContain("table/users.ts");
+  });
+
+  it("keeps tables out of _shared.ts, which is now non-tables only", () => {
+    // The two used to be one file, which made every table↔shared edge intra-file
+    // and therefore free. Splitting them is what this assertion pins.
+    const project = build({
+      tables: [table("users", guid(1)), table("posts", guid(2))],
+      functions: [fn("a", guid(3), [guid(1)])],
+    });
+    const tables = file(project, "table/table.ts");
+    expect(tables).toContain("export const users =");
+    expect(tables).toContain("export const posts =");
+    expect(project.files.map((f) => f.path)).not.toContain("_shared.ts");
+  });
+
+  it("imports a table from one directory up", () => {
+    const project = build({ tables: [table("users", guid(1))], functions: [fn("a", guid(2), [guid(1)])] });
+    expect(file(project, "function/a.ts")).toContain('from "../table/table.js"');
   });
 
   it("hoists an object two files reference into _shared.ts and imports it from both", () => {
@@ -129,7 +563,7 @@ describe("file layout", () => {
       functions: [fn("helper", guid(1)), fn("a", guid(2), [guid(1)]), fn("b", guid(3), [guid(1)])],
     });
     expect(file(project, "_shared.ts")).toContain("export const helper =");
-    for (const path of ["functions/a.ts", "functions/b.ts"]) {
+    for (const path of ["function/a.ts", "function/b.ts"]) {
       expect(file(project, path)).toContain('from "../_shared.js"');
       expect(file(project, path)).toContain("helper");
     }
@@ -137,14 +571,14 @@ describe("file layout", () => {
 
   it("leaves a singly-referenced object in its own kind directory", () => {
     const project = build({ functions: [fn("helper", guid(1)), fn("a", guid(2), [guid(1)])] });
-    expect(file(project, "functions/a.ts")).toContain('from "./helper.js"');
+    expect(file(project, "function/a.ts")).toContain('from "./helper.js"');
   });
 
   it("imports only what a file actually uses", () => {
     const project = build({
       functions: [fn("helper", guid(1)), fn("a", guid(2), [guid(1)]), fn("b", guid(3))],
     });
-    expect(file(project, "functions/b.ts")).not.toContain("helper");
+    expect(file(project, "function/b.ts")).not.toContain("helper");
   });
 });
 
@@ -155,8 +589,8 @@ describe("reference cycles", () => {
     const project = build({
       functions: [fn("a", guid(1), [guid(2)]), fn("b", guid(2), [guid(1)])],
     });
-    const a = file(project, "functions/a.ts");
-    const b = file(project, "functions/b.ts");
+    const a = file(project, "function/a.ts");
+    const b = file(project, "function/b.ts");
     const imports = [a, b].filter((source) => /^import .* from "\.\//m.test(source));
     expect(imports).toHaveLength(1);
     // The degraded edge references its target by name and guid instead.
@@ -251,10 +685,7 @@ describe("generated tree contents", () => {
       .flatMap((m) => m[1]!.split(",").map((s) => s.trim()))
       .filter(Boolean);
     expect(new Set(registered).size).toBe(registered.length);
-    const exported = project.files
-      .filter((f) => f.path.endsWith(".ts") && f.path !== "index.ts")
-      .flatMap((f) => [...f.contents.matchAll(/export const (\w+) =/g)].map((m) => m[1]!));
-    expect(registered.sort()).toEqual(exported.sort());
+    expect(registered.sort()).toEqual(objectSymbols(project));
   });
 
   it("states the disposable / full-replace / schema-only warnings unconditionally", () => {
@@ -303,7 +734,7 @@ describe("empty source objects", () => {
     // Reporting must not turn into skipping: the object still exists upstream,
     // and a tree missing it would not round-trip.
     const project = build({ functions: [fn("empty", guid(1))] });
-    const generated = file(project, "functions/empty.ts");
+    const generated = file(project, "function/empty.ts");
     expect(generated).toContain("defineFunction({");
     expect(generated).toContain('name: "empty"');
     expect(generated).not.toContain("stack:");
@@ -325,7 +756,7 @@ describe("empty source objects", () => {
 describe("factory emission", () => {
   it("wraps each def in its factory rather than a `satisfies` annotation", () => {
     const project = build({ functions: [fn("a", guid(1), [guid(2)]), fn("b", guid(2), [guid(1)])] });
-    const generated = file(project, "functions/a.ts");
+    const generated = file(project, "function/a.ts");
     expect(generated).toContain("defineFunction({");
     expect(generated).not.toContain("satisfies");
     // Value import, not a type-only one — an `import type` would be erased and
@@ -334,11 +765,22 @@ describe("factory emission", () => {
     expect(generated).not.toContain("import type { FunctionDef }");
   });
 
-  it("registers the workspace through its factory in the barrel", () => {
+  it("wraps the workspace config in its factory, in its own file", () => {
+    // The config used to be inlined into the barrel's registry chain; it now
+    // has `workspace.ts` to itself, and the barrel only names the binding.
     const project = build({ tables: [table("t", guid(1))] });
+    const settings = file(project, "workspace.ts");
+    expect(settings).toContain("export const workspaceSettings = workspaceConfig({");
+    expect(settings).not.toContain("satisfies");
     const barrel = file(project, "index.ts");
-    expect(barrel).toContain(".registerWorkspace(workspaceConfig({");
-    expect(barrel).not.toContain("satisfies");
+    expect(barrel).toContain(".registerWorkspace(workspaceSettings)");
+    expect(barrel).toContain('from "./workspace.js"');
+  });
+
+  it("emits no workspace.ts when the bundle carries no workspace object", () => {
+    const project = decodeBundle({ payload: { dbo: [] } });
+    expect(project.files.map((f) => f.path)).not.toContain("workspace.ts");
+    expect(file(project, "index.ts")).not.toContain("registerWorkspace");
   });
 
   it("never lets an object symbol shadow a factory it imports", () => {
@@ -346,7 +788,7 @@ describe("factory emission", () => {
     // is a temporal-dead-zone crash at import time, not a type error — so it
     // would type-check, ship, and then explode on load.
     const project = build({ tables: [table("table", guid(1))] });
-    const shared = file(project, "_shared.ts");
+    const shared = file(project, "table/table.ts");
     expect(shared).toContain('import { f, table } from "@sidestep/core"');
     expect(shared).not.toMatch(/export const table = table\(/);
     expect(shared).toMatch(/export const tableTable = table\(/);
@@ -380,13 +822,13 @@ describe("reserved names never break the tree", () => {
   it("emits a parsing tree for a table named `new`", async () => {
     const project = build({ tables: [table("new", guid(1))] });
     await expectParses(project);
-    expect(file(project, "_shared.ts")).toContain("export const newTable =");
+    expect(file(project, "table/table.ts")).toContain("export const newTable =");
   });
 
   it("emits a parsing tree for a function named `default`", async () => {
     const project = build({ functions: [fn("default", guid(1))] });
     await expectParses(project);
-    expect(file(project, "functions/defaultFunction.ts")).toContain("export const defaultFunction =");
+    expect(file(project, "function/defaultfunction.ts")).toContain("export const defaultFunction =");
   });
 
   it("emits a valid identifier for every reserved word used as a name", async () => {
@@ -405,9 +847,7 @@ describe("reserved names never break the tree", () => {
       functions: words.map((word, i) => fn(word, guid(i + 1))),
     });
     await expectParses(project);
-    const symbols = project.files
-      .flatMap((generated) => [...generated.contents.matchAll(/export const (\w+) =/g)].map((m) => m[1]!))
-      .filter((symbol) => symbol !== "default");
+    const symbols = objectSymbols(project).filter((symbol) => symbol !== "default");
     expect(symbols).toHaveLength(words.length);
     for (const symbol of symbols) expect(words).not.toContain(symbol);
     // Still unique — the postfix must not collapse two words onto one symbol.
@@ -417,16 +857,14 @@ describe("reserved names never break the tree", () => {
   it("still reserves the SDK factory names it imports", async () => {
     const project = build({ tables: [table("table", guid(1))], functions: [fn("query", guid(2))] });
     await expectParses(project);
-    expect(file(project, "_shared.ts")).toMatch(/export const tableTable = table\(/);
-    expect(file(project, "functions/queryFunction.ts")).toContain("export const queryFunction =");
+    expect(file(project, "table/table.ts")).toMatch(/export const tableTable = table\(/);
+    expect(file(project, "function/queryfunction.ts")).toContain("export const queryFunction =");
   });
 
   it("keeps a reserved name unique when two same-kind objects share it", async () => {
     const project = build({ functions: [fn("new", guid(1)), fn("new", guid(2))] });
     await expectParses(project);
-    const symbols = project.files
-      .flatMap((generated) => [...generated.contents.matchAll(/export const (\w+) =/g)].map((m) => m[1]!))
-      .sort();
+    const symbols = objectSymbols(project);
     // The ordinal builds on the disambiguated symbol, not the bare reserved word.
     expect(symbols).toEqual(["newFunction", "newFunction_2"]);
   });
@@ -434,9 +872,7 @@ describe("reserved names never break the tree", () => {
   it("resolves a reserved name that also collides across kinds", async () => {
     const project = build({ tables: [table("new", guid(1))], functions: [fn("new", guid(2))] });
     await expectParses(project);
-    const symbols = project.files
-      .flatMap((generated) => [...generated.contents.matchAll(/export const (\w+) =/g)].map((m) => m[1]!))
-      .sort();
+    const symbols = objectSymbols(project);
     expect(symbols).toEqual(["newFunction", "newTable"]);
   });
 
