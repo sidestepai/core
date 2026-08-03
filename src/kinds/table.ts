@@ -425,6 +425,77 @@ export function tableIndexes(def: Pick<TableDef, "index" | "system" | "useXdo">)
   return [...missing, ...declared];
 }
 
+/**
+ * The system-column names {@link tableColumns} auto-prepends. Exported so codegen
+ * can ask whether an already-complete schema makes that injection a no-op, rather
+ * than restating the two names it would have to keep in sync by hand.
+ */
+export const SYSTEM_COLUMN_NAMES: readonly string[] = systemColumns().map((col) => col.name);
+
+/**
+ * `index` with the entries {@link tableIndexes} would re-inject removed — or
+ * `null` when removing them would not round-trip.
+ *
+ * The inverse of the auto-prepend, for codegen: a decoded table already carries a
+ * COMPLETE index list, so it has to either suppress the injection (`system:false`,
+ * verbose) or drop what the injection puts back (quiet). Choosing the quiet form
+ * is only safe if it re-encodes identically, which this asks {@link tableIndexes}
+ * itself rather than assuming — a table whose stored set is partial, or carries a
+ * differently-named `primary(id)`, gets `null` and keeps the verbose form.
+ *
+ * Every SUBSET of the standard set is tried, largest first, not just all-of-it.
+ * The engine has shipped more than one canonical order: `systemIndexes` writes
+ * `primary, gin, created_at`, and 223 tables in the survey instance store
+ * `primary, created_at, gin`. Dropping all three of those puts them back in the
+ * wrong order, but dropping the two that lead and leaving the `gin` DECLARED
+ * reproduces the stored list exactly — so the ordering vintage costs one stated
+ * index rather than the whole verbose form. The proof is unchanged: whichever
+ * subset is chosen, `tableIndexes` has to rebuild the stored bytes from it.
+ */
+export function elideSystemIndexes(
+  index: readonly IndexDef[],
+  useXdo: boolean,
+): IndexDef[] | null {
+  const system = systemIndexes(useXdo);
+  // Compared as ENCODED indexes so the check covers every key the authoring shape
+  // leaves optional (`name`, `lang`, a field's `op`) and the canonical ordering
+  // the injection imposes, not just the type/fields signature the dedup uses.
+  const encoded = (list: readonly IndexDef[]): string => JSON.stringify(list.map(encodeIndex));
+  const target = encoded(index);
+
+  for (const subset of subsetsLargestFirst(system.length)) {
+    const pending = new Map<string, number>();
+    for (const position of subset) {
+      const signature = indexSignature(system[position]!);
+      pending.set(signature, (pending.get(signature) ?? 0) + 1);
+    }
+    const kept = index.filter((entry) => {
+      const remaining = pending.get(indexSignature(entry)) ?? 0;
+      if (remaining === 0) return true;
+      pending.set(indexSignature(entry), remaining - 1);
+      return false;
+    });
+    if (kept.length === index.length) continue;
+    if (encoded(tableIndexes({ index: kept, useXdo })) === target) return kept;
+  }
+  return null;
+}
+
+/**
+ * Every non-empty subset of `0..n-1`, most members first — so the quietest
+ * candidate that survives the proof is the one returned. Ordered by size then by
+ * position, which keeps the choice deterministic across runs.
+ */
+function subsetsLargestFirst(n: number): number[][] {
+  const all: number[][] = [];
+  for (let mask = 1; mask < 1 << n; mask += 1) {
+    const members: number[] = [];
+    for (let bit = 0; bit < n; bit += 1) if (mask & (1 << bit)) members.push(bit);
+    all.push(members);
+  }
+  return all.sort((a, b) => b.length - a.length || a[0]! - b[0]!);
+}
+
 export function encodeIndex(def: IndexDef): IndexXdo {
   return {
     name: def.name ?? "",

@@ -183,6 +183,47 @@ describe("reference cycles", () => {
     expect(first).toContain("guid:");
   });
 
+  it("hoists a degraded reference to a named const instead of repeating the literal", () => {
+    // `b` is declared after `a`, so `a`'s two references to it cannot be symbols.
+    // Inline they would be two four-line literals saying the same thing twice.
+    const project = build({
+      functions: [
+        fn("a", guid(1), [guid(2), guid(2)]),
+        fn("b", guid(2), [guid(1), guid(1)]),
+        fn("c", guid(3), [guid(1), guid(2)]),
+      ],
+    });
+    const shared = file(project, "_shared.ts");
+    const hoisted = shared.match(/^const (\w+Ref) = \{$/m);
+    expect(hoisted, "no hoisted ref const emitted").not.toBeNull();
+    const symbol = hoisted![1]!;
+    // Declared once, above every declaration, and used by name at both sites.
+    expect(shared.indexOf(`const ${symbol} =`)).toBeLessThan(shared.indexOf("export const "));
+    expect(shared.split(`const ${symbol} = {`)).toHaveLength(2);
+    expect(shared.split(`fn: ${symbol},`)).toHaveLength(3);
+  });
+
+  it("never lets a hoisted ref const shadow an object symbol", () => {
+    // A workspace may legally hold objects named `a` and `aRef`, and the const
+    // for `a` would otherwise take the second one's binding.
+    const project = build({
+      functions: [
+        fn("a", guid(1), [guid(2)]),
+        fn("b", guid(2), [guid(1)]),
+        fn("aRef", guid(4)),
+        fn("bRef", guid(5)),
+        fn("c", guid(3), [guid(1), guid(2), guid(4), guid(5)]),
+        fn("d", guid(6), [guid(4), guid(5)]),
+      ],
+    });
+    const shared = file(project, "_shared.ts");
+    expect(shared).toContain("export const aRef =");
+    expect(shared).toContain("export const bRef =");
+    // The degraded edge runs in whichever direction the walk found it; either
+    // way the const it needs is already taken and falls to the ordinal.
+    expect(shared).toMatch(/^const [ab]Ref_2 = \{$/m);
+  });
+
   it("orders same-file declarations so a dependency is declared first", () => {
     const project = build({
       // `dep` is shared (two referrers); so are `a` and `b`? No — only `dep` is,

@@ -56,9 +56,13 @@ import {
   encodeTrigger,
   errorTrigger,
   mcpServerTrigger,
+  realtimeTrigger,
   tableTrigger,
   workspaceTrigger,
 } from "../../kinds/trigger.js";
+import { SYSTEM_COLUMN_NAMES, elideSystemIndexes } from "../../kinds/table.js";
+import type { IndexDef } from "../../kinds/table.js";
+import type { TriggerDef } from "../../kinds/trigger.js";
 import type { TriggerInputObjType } from "../../kinds/trigger-inputs.js";
 import type { Condition } from "../../statements/expression.js";
 import { rewriteTriggerInputRefs } from "./trigger-handle-refs.js";
@@ -501,34 +505,90 @@ function compact(entries: Array<DefEntry | null>): DefEntry[] {
 
 // --- table sub-structures ----------------------------------------------------
 
-/** Stored index → `IndexDef`, dropping the keys `encodeIndex` fills. */
-function indexes(args: KindDecodeArgs): DefEntry | null {
-  const stored = args.stored.index;
-  if (!Array.isArray(stored) || stored.length === 0) return null;
+/** Stored index → `IndexDef[]`, dropping the keys `encodeIndex` fills back in. */
+function storedIndexDefs(stored: unknown): IndexDef[] {
+  if (!Array.isArray(stored)) return [];
+  return stored.map((entry) => {
+    const index = entry as { name?: string; lang?: string; type: string; fields?: unknown[] };
+    return {
+      type: index.type,
+      fields: (index.fields ?? []).map((field) => {
+        const { name, op } = field as { name: string; op?: string };
+        return { name, ...(op ? { op: op as IndexDef["fields"][number]["op"] } : {}) };
+      }),
+      ...(index.name ? { name: index.name } : {}),
+      ...(index.lang ? { lang: index.lang as IndexDef["lang"] } : {}),
+    };
+  });
+}
+
+/** `IndexDef[]` → the `index:` argument, or nothing when the list is empty. */
+function indexes(list: readonly IndexDef[]): DefEntry | null {
+  if (list.length === 0) return null;
   return [
     "index",
     arr(
-      stored.map((entry) => {
-        const index = entry as { name?: string; lang?: string; type: string; fields: unknown[] };
-        return obj(
+      list.map((index) =>
+        obj(
           compact([
             ["type", lit(index.type)] as DefEntry,
             [
               "fields",
               arr(
-                (index.fields ?? []).map((field) => {
-                  const { name, op } = field as { name: string; op?: string };
-                  return obj(compact([["name", lit(name)] as DefEntry, op ? (["op", lit(op)] as DefEntry) : null]));
-                }),
+                index.fields.map(({ name, op }) =>
+                  obj(compact([["name", lit(name)] as DefEntry, op ? (["op", lit(op)] as DefEntry) : null])),
+                ),
               ),
             ] as DefEntry,
             index.name ? (["name", lit(index.name)] as DefEntry) : null,
             index.lang ? (["lang", lit(index.lang)] as DefEntry) : null,
           ]),
-        );
-      }),
+        ),
+      ),
     ),
   ];
+}
+
+/**
+ * The `system` and `index` arguments together, because the choice between them
+ * is one decision.
+ *
+ * A decoded table carries a COMPLETE schema and index list, so the encoder's
+ * auto-injection has to be kept out of the way. `system: false` does that
+ * bluntly and costs every generated table the three standard index literals
+ * nobody authored. When the schema already declares the system columns (making
+ * the column injection a no-op) and the standard indexes can be dropped and put
+ * back identically, the quiet form says the same thing: no `system` key, and only
+ * the indexes the user actually created.
+ */
+function tableSystemAndIndexes(a: KindDecodeArgs): DefEntry[] {
+  const declared = storedIndexDefs(a.stored.index);
+  const schema = Array.isArray(a.stored.schema) ? a.stored.schema : [];
+  const columns = new Set(schema.map((col) => String((col as { name?: unknown }).name ?? "")));
+  const elided = SYSTEM_COLUMN_NAMES.every((name) => columns.has(name))
+    ? elideSystemIndexes(declared, tableUsesXdo(a.stored))
+    : null;
+  return elided
+    ? compact([indexes(elided)])
+    : compact([["system", lit(false)] as DefEntry, indexes(declared)]);
+}
+
+/**
+ * The table's storage mode, from the stored flag when it is there and from the
+ * `gin(xdo)` index when it is not.
+ *
+ * `use_xdo` postdates a lot of what is in the field: real pulled workspaces carry
+ * tables with the gin index and no flag at all, and reading that absence as
+ * `false` writes a table that CLAIMS column storage while carrying the index only
+ * JSON storage produces. The index is the observable half of the same fact — see
+ * {@link TableDef.useXdo} — so it stands in when the flag is missing. An
+ * explicitly stored `false` is believed over the inference, never overridden.
+ */
+function tableUsesXdo(stored: StoredObject): boolean {
+  if (typeof stored.use_xdo === "boolean") return stored.use_xdo;
+  return storedIndexDefs(stored.index).some(
+    (index) => index.type === "gin" && index.fields.some((field) => field.name === "xdo"),
+  );
 }
 
 /**
@@ -622,21 +682,17 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
         plain(a.stored, "docs", ""),
         plain(a.stored, "auth", false),
         plain(a.stored, "install", false),
-        // The generated schema and index arrays are complete, so the encoder's
-        // system-column/index injection must stay out of the way — otherwise it
-        // re-prepends what is already there and the round trip drifts.
-        ["system", lit(false)],
         [
           "schema",
           decodeFieldMap(a.ctx, a.refs, (a.stored.schema ?? []) as never, "f", a.resolve),
         ],
-        indexes(a),
+        ...tableSystemAndIndexes(a),
         views(a),
         Array.isArray(a.stored.autocomplete) && a.stored.autocomplete.length > 0
           ? ["autocomplete", lit(a.stored.autocomplete.map((e) => (e as { name: string }).name))]
           : null,
         plain(a.stored, "external", EMPTY_EXTERNAL),
-        plain(a.stored, "use_xdo", false, "useXdo"),
+        tableUsesXdo(a.stored) ? (["useXdo", lit(true)] as DefEntry) : null,
         tags(a.stored),
       ]),
   },
@@ -1039,16 +1095,46 @@ function realtimeHostBinding(
  * `obj_type` → the root factory that builds it, for the types whose arguments
  * invert faithfully.
  *
- * The three realtime types are absent on purpose. `realtimeChannelTrigger` binds
- * a `RealtimeChannelDef` — a def handle carrying its server — and a stored
- * trigger has only two guids with no way to know they agree, so there is no
- * faithful inverse. `realtimeTrigger` is deprecated and withheld from the docs
- * catalog. Both keep the `satisfies` form, which still checks the literal.
+ * Two of the three realtime types are absent on purpose. `realtimeChannelTrigger`
+ * binds a `RealtimeChannelDef` — a def handle carrying its server — and a stored
+ * trigger has only two guids with no way to know they agree; `realtimeServerTrigger`
+ * binds its server the same way. Neither has a faithful inverse, so both keep the
+ * `satisfies` form, which still checks the literal.
+ *
+ * `realtimeTrigger` (the LEGACY `workspace_realtime_channel` type) does invert:
+ * it takes no handle at all, only the numeric `objId` that indexes the workspace's
+ * realtime channel list. Being deprecated is a reason to withhold it from the docs
+ * catalog, not a reason to make the one workspace that still holds one read worse.
  */
 const TRIGGER_FACTORIES: Readonly<Record<string, string>> = {
   database: "tableTrigger",
   workspace: "workspaceTrigger",
   error: "errorTrigger",
+  workspace_realtime_channel: "realtimeTrigger",
+};
+
+/**
+ * The trigger types whose factory takes a `response` callback. Every other type
+ * is config-only, so a stored `result[]` on one of those has nowhere to go and
+ * forces the `satisfies` form.
+ */
+const RESPONSE_BEARING_TRIGGERS: ReadonlySet<string> = new Set([
+  "toolset",
+  "workspace_realtime_channel",
+]);
+
+/**
+ * The defaults a factory injects when its `stack`/`response` arguments are
+ * omitted, as a probe built by the factory itself rather than restated here.
+ *
+ * Only these two types inject anything: `toolsetTrigger` reproduces Xano's own
+ * two-var stack and echoing response, and `realtimeTrigger` echoes the `payload`
+ * input back. A stored body equal to the probe's is elided, so the generated call
+ * relies on the same default the engine does.
+ */
+const TRIGGER_DEFAULTS: Readonly<Record<string, () => TriggerDef>> = {
+  toolset: () => mcpServerTrigger({ name: "probe" }),
+  workspace_realtime_channel: () => realtimeTrigger({ name: "probe" }),
 };
 
 /**
@@ -1075,6 +1161,10 @@ const TOOLSET_TRIGGERS: Readonly<Record<string, { factory: string; arg: string }
 const TRIGGER_ACTIONS: Readonly<Record<string, { group: string; keys: readonly string[] }>> = {
   database: { group: "database", keys: ["delete", "insert", "truncate", "update"] },
   workspace: { group: "workspace", keys: ["branch_live", "branch_merge", "branch_new"] },
+  workspace_realtime_channel: {
+    group: "workspace_realtime_channel",
+    keys: ["join", "message"],
+  },
 };
 
 /**
@@ -1180,16 +1270,28 @@ function triggerFactoryArgs(
   }
 
   // A config-only factory has no `response` parameter, so a stored `result[]` on
-  // one of those types has nowhere to go. `hasResult` is false for all three, so
-  // this should not occur — but a trigger that stored one anyway would otherwise
+  // one of those types has nowhere to go. `hasResult` is false for every type
+  // outside {@link RESPONSE_BEARING_TRIGGERS}, so this should not occur — but a
+  // trigger that stored one anyway would otherwise
   // emit a `response:` argument the factory does not accept, and the generated
   // file would fail to compile rather than merely losing the response.
   if (
-    objType !== "toolset" &&
+    !RESPONSE_BEARING_TRIGGERS.has(objType) &&
     Array.isArray(a.stored.result) &&
     a.stored.result.length > 0
   ) {
     triggerFallback(a, "stores a `result[]` on a config-only trigger type, which takes no `response`");
+    return null;
+  }
+
+  // A guid binding needs a handle argument to carry it: `CommonArgs.objId` is
+  // `number` alone, so emitting a guid there would not even compile. The types
+  // with no handle argument bind by numeric id (or not at all), so this is a
+  // stored shape that should not exist rather than a common one — but a factory
+  // call that fails to parse is worse than a verbose `satisfies`.
+  const objId = a.stored.obj_id;
+  if (objType !== "database" && bindingArg === undefined && typeof objId === "string" && objId !== "") {
+    triggerFallback(a, "binds its target by guid on a type whose factory takes only a numeric `objId`");
     return null;
   }
 
@@ -1257,13 +1359,13 @@ function triggerBinding(
 /**
  * `stack` and `response`, each elided when it equals what the factory injects.
  *
- * Only the toolset types inject anything — Xano's own defaults, which
- * `toolsetTrigger` reproduces: a stack copying the two inputs into vars and a
- * response returning them. Determined by encoding the factory's OWN no-argument
- * output rather than by restating those defaults here, so they cannot drift.
+ * See {@link TRIGGER_DEFAULTS} for which types inject anything. Determined by
+ * encoding the factory's OWN no-argument output rather than by restating those
+ * defaults here, so they cannot drift.
  */
 function triggerBody(a: KindDecodeArgs, objType: TriggerInputObjType): DefEntry[] {
-  const injected = objType === "toolset" ? encodeTrigger(mcpServerTrigger({ name: "probe" })) : null;
+  const probe = TRIGGER_DEFAULTS[objType];
+  const injected = probe ? encodeTrigger(probe()) : null;
   const out: DefEntry[] = [];
 
   if (!injected || !deepEqual(normalize(a.stored.run), normalize(injected.run))) {
@@ -1372,7 +1474,9 @@ function triggerMetaMatches(
         ? workspaceTrigger({ name: "probe", actions: actions ?? {} })
         : objType === "toolset"
           ? mcpServerTrigger({ name: "probe" })
-          : errorTrigger({ name: "probe" });
+          : objType === "workspace_realtime_channel"
+            ? realtimeTrigger({ name: "probe", actions: actions ?? {} })
+            : errorTrigger({ name: "probe" });
   // Wrapped in `{meta}` rather than normalized bare: the inert-group rule is keyed
   // on the `meta` KEY, so it only fires while walking the object that carries it.
   return deepEqual(

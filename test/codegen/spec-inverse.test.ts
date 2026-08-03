@@ -111,6 +111,20 @@ describe("decodeFromSpec — whole-catalog invertibility", () => {
     },
   );
 
+  it.each(
+    INVERTIBLE.filter((spec) => spec.envelope?.description).map((spec) => [spec.name, spec] as const),
+  )("emits one `description` cell, not two, for %s", (_name, spec) => {
+    // A spec whose envelope permits a description recovers it as an ordinary
+    // field, and the annotation passthrough carries the same stored key. Both
+    // printing is legal JavaScript that round-trips perfectly — the runtime
+    // merge collapses the duplicate — so nothing but the text can catch it.
+    const stored = encodeSpec(spec, { description: "why" });
+    const { source } = decodeSpec(stored);
+    expect(source, "no decode produced").not.toBeNull();
+    expect(source!.split("description:"), `source: ${source}`).toHaveLength(2);
+    expect(normalize(encodeStatement(evaluate(source!)))).toEqual(normalize(stored));
+  });
+
   it("covers the great majority of the catalog", () => {
     // A guard on the guard: if `INVERTIBLE` ever collapses to a handful, the
     // table above would still pass while proving almost nothing.

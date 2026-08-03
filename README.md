@@ -204,6 +204,17 @@ Pulled objects are authored the same way you would write them by hand — `table
 table's columns still check on `fieldName`/`output`/`sortBy`, `InferInput<typeof q>` still
 resolves a pulled query's payload, and a pulled agent still types `s.ai.agent.run`.
 
+A pull states what the source workspace actually holds and leaves out what the SDK would
+put back anyway. A table's `primary(id)` / `created_at` / `gin(xdo)` indexes are the
+engine's standard set, so only the indexes someone created are listed. A trigger comes back
+through the factory that built it (`tableTrigger`, `realtimeTrigger`, …) rather than a bare
+`satisfies TriggerDef`, which keeps its typed stack handle; the two realtime types that bind
+a def handle are the exception, since a stored trigger carries two guids with no way to know
+they agree. And two objects that reference each other — a pair of tables joined both ways,
+two functions that call each other — can't both be declared first, so the second reference
+is a `{name, guid}` const hoisted to the top of the file (`const OrdersRef = {…}`) instead of
+an import that would close a cycle. Only the guid is ever read, so it binds exactly.
+
 `xano/README.md` also lists objects that were **already empty in the source** — an
 endpoint someone created and never filled in pulls as a def with no `stack`, which looks
 identical to a decode that gave up. The report is what tells the two apart.
