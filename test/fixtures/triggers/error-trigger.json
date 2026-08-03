@@ -1,78 +1,932 @@
 {
-  "id": 1,
-  "created_at": "2026-05-05 12:00:00+0000",
-  "updated_at": "2026-05-05 12:00:00+0000",
-  "deleted_at": null,
-  "name": "errors",
-  "active": true,
-  "description": "Notify on new and fixed errors",
-  "guid": "test-guid-error-trigger",
-  "obj_id": 1,
-  "obj_type": "error",
-  "history": {
-    "inherit": true,
-    "enabled": false,
-    "limit": 100
-  },
-  "workspace": {
-    "id": 1
-  },
-  "branch": {
-    "id": 0
-  },
-  "output": [],
-  "meta": {
-    "realtime_server": {
-      "action": {
-        "connect": false,
-        "disconnect": false
-      }
+  "run": [
+    {
+      "as": "code_seen",
+      "name": "mvp:set_var",
+      "_xsid": "f:fe8b56c8-da39-4ca8-ab5a-9c1b8a0fc844",
+      "addon": [],
+      "input": [],
+      "mocks": {},
+      "output": {
+        "items": [],
+        "filters": [],
+        "customize": false
+      },
+      "context": {
+        "tag": "input",
+        "value": "error.code",
+        "filters": []
+      },
+      "runtime": null,
+      "disabled": false,
+      "description": "",
+      "settings_registry": null
     },
+    {
+      "as": "row",
+      "name": "mvp:dbo_add",
+      "_xsid": "f:f5015a33-be10-4454-88a6-dd22c16aa40b",
+      "addon": [],
+      "input": [
+        {
+          "tag": "var",
+          "name": "code",
+          "value": "code_seen",
+          "expand": false,
+          "ignore": false,
+          "filters": [],
+          "children": []
+        },
+        {
+          "tag": "input",
+          "name": "message",
+          "value": "error.message",
+          "expand": false,
+          "ignore": false,
+          "filters": [],
+          "children": []
+        }
+      ],
+      "mocks": {},
+      "output": {
+        "items": [],
+        "filters": [],
+        "customize": false
+      },
+      "context": {
+        "dbo": {
+          "id": "gsxKY3ykY8kkKAaEYop3b0mS7iQ"
+        }
+      },
+      "runtime": null,
+      "disabled": false,
+      "description": "",
+      "settings_registry": null
+    }
+  ],
+  "tag": [],
+  "guid": "TK41bKJQObTeyKnTO0S79hWureM",
+  "meta": {
     "channel": {
       "action": {
         "join": false,
         "leave": false,
         "deliver": false
       }
+    },
+    "toolset": {
+      "action": {
+        "connection": false
+      }
+    },
+    "database": {
+      "action": {
+        "delete": false,
+        "insert": false,
+        "update": false,
+        "truncate": false
+      },
+      "search": {
+        "expression": []
+      },
+      "datasource": []
+    },
+    "workspace": {
+      "action": {
+        "branch_new": false,
+        "branch_live": false,
+        "branch_merge": false
+      }
+    },
+    "realtime_server": {
+      "action": {
+        "connect": false,
+        "disconnect": false
+      }
+    },
+    "workspace_realtime_channel": {
+      "action": {
+        "join": false,
+        "message": false
+      }
     }
   },
-  "market_item": {
-    "id": 0,
-    "version": 0,
-    "guid": ""
-  },
-  "tag": [],
-  "_draft": false,
-  "_xsid": "trigger:error-test-xsid",
-  "input": [],
-  "result": [],
-  "run": [
+  "name": "on_error",
+  "input": [
     {
-      "name": "mvp:set_var",
-      "as": "msg",
-      "context": {
-        "tag": "const",
-        "value": "error fired",
-        "filters": []
+      "list": {
+        "max": "",
+        "min": ""
       },
-      "description": "",
-      "disabled": false,
-      "mocks": {},
-      "_xsid": "f:error-trigger-stack-step-1",
-      "input": [],
-      "settings_registry": null,
-      "output": {
-        "customize": false,
-        "filters": [],
-        "items": []
+      "mode": "",
+      "name": "event",
+      "type": "enum",
+      "_xsid": "i:364b0f5f-4f5c-4619-a3f4-0796297d530a",
+      "merge": false,
+      "style": {
+        "type": "single"
       },
-      "addon": [],
-      "runtime": null,
-      "@guid": "f:error-trigger-stack-step-1",
-      "@index": [
-        "1"
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [
+        "new",
+        "regression",
+        "fixed"
       ],
-      "index": 1
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": false,
+      "customize": {},
+      "sensitive": false,
+      "description": "Which event fired the trigger. \"new\" fires on first capture and on every snapshot re-capture for non-ignored signatures (rate-limited by the ~5min snapshot dedup window). \"regression\" fires when a previously-fixed signature re-occurs (the fix didn't hold, or the same bug regressed back). \"fixed\" fires when a user marks a signature as fixed.",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    },
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "id",
+      "type": "int",
+      "_xsid": "i:435fc7d8-700f-488b-b1d7-137bec1750c1",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": false,
+      "customize": {},
+      "sensitive": false,
+      "description": "The error signature row id. Use to build deep links into the error-logs UI.",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    },
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "signature",
+      "type": "text",
+      "_xsid": "i:be4612b6-924a-4aa7-bab2-6280c3f310f3",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": false,
+      "customize": {},
+      "sensitive": false,
+      "description": "Stable hash that identifies this error signature.",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    },
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "error",
+      "type": "obj",
+      "_xsid": "i:aba8c29f-27a3-46b8-a1d8-9738cb8f49fa",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [
+        {
+          "list": {
+            "max": "",
+            "min": ""
+          },
+          "mode": "",
+          "name": "code",
+          "type": "text",
+          "_xsid": "i:22a55bc3-b846-45fe-8031-622f6613746e",
+          "merge": false,
+          "style": {
+            "type": "single"
+          },
+          "access": "public",
+          "format": "",
+          "hidden": [],
+          "values": [],
+          "vector": {
+            "size": 3
+          },
+          "default": "",
+          "methods": [],
+          "children": [],
+          "nullable": false,
+          "override": [],
+          "required": false,
+          "customize": {},
+          "sensitive": false,
+          "description": "Machine-readable error code.",
+          "market_item": {
+            "id": 0,
+            "guid": "",
+            "version": 0
+          },
+          "is_settings_registry": false
+        },
+        {
+          "list": {
+            "max": "",
+            "min": ""
+          },
+          "mode": "",
+          "name": "message",
+          "type": "text",
+          "_xsid": "i:076622b6-b5cf-4970-8ce0-ad3161b6f517",
+          "merge": false,
+          "style": {
+            "type": "single"
+          },
+          "access": "public",
+          "format": "",
+          "hidden": [],
+          "values": [],
+          "vector": {
+            "size": 3
+          },
+          "default": "",
+          "methods": [],
+          "children": [],
+          "nullable": false,
+          "override": [],
+          "required": false,
+          "customize": {},
+          "sensitive": false,
+          "description": "Human-readable error message.",
+          "market_item": {
+            "id": 0,
+            "guid": "",
+            "version": 0
+          },
+          "is_settings_registry": false
+        }
+      ],
+      "nullable": false,
+      "override": [],
+      "required": false,
+      "customize": {},
+      "sensitive": false,
+      "description": "Error code and message captured from the failing run.",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    },
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "caller",
+      "type": "obj",
+      "_xsid": "i:a4f30d04-2aa7-465e-821b-4a16bb673009",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [
+        {
+          "list": {
+            "max": "",
+            "min": ""
+          },
+          "mode": "",
+          "name": "type",
+          "type": "text",
+          "_xsid": "i:d07143ee-f5a1-4595-b699-6120cd3f6ef1",
+          "merge": false,
+          "style": {
+            "type": "single"
+          },
+          "access": "public",
+          "format": "",
+          "hidden": [],
+          "values": [],
+          "vector": {
+            "size": 3
+          },
+          "default": "",
+          "methods": [],
+          "children": [],
+          "nullable": false,
+          "override": [],
+          "required": false,
+          "customize": {},
+          "sensitive": false,
+          "description": "Caller kind (api, function, task, middleware, trigger, unknown).",
+          "market_item": {
+            "id": 0,
+            "guid": "",
+            "version": 0
+          },
+          "is_settings_registry": false
+        },
+        {
+          "list": {
+            "max": "",
+            "min": ""
+          },
+          "mode": "",
+          "name": "id",
+          "type": "int",
+          "_xsid": "i:da9906c6-1132-48c8-9825-9ca9b5d08559",
+          "merge": false,
+          "style": {
+            "type": "single"
+          },
+          "access": "public",
+          "format": "",
+          "hidden": [],
+          "values": [],
+          "vector": {
+            "size": 3
+          },
+          "default": "",
+          "methods": [],
+          "children": [],
+          "nullable": false,
+          "override": [],
+          "required": false,
+          "customize": {},
+          "sensitive": false,
+          "description": "Caller object id.",
+          "market_item": {
+            "id": 0,
+            "guid": "",
+            "version": 0
+          },
+          "is_settings_registry": false
+        },
+        {
+          "list": {
+            "max": "",
+            "min": ""
+          },
+          "mode": "",
+          "name": "name",
+          "type": "text",
+          "_xsid": "i:7d43b862-47a5-4abf-89e1-7db92a17b86d",
+          "merge": false,
+          "style": {
+            "type": "single"
+          },
+          "access": "public",
+          "format": "",
+          "hidden": [],
+          "values": [],
+          "vector": {
+            "size": 3
+          },
+          "default": "",
+          "methods": [],
+          "children": [],
+          "nullable": true,
+          "override": [],
+          "required": false,
+          "customize": {},
+          "sensitive": false,
+          "description": "Caller object name.",
+          "market_item": {
+            "id": 0,
+            "guid": "",
+            "version": 0
+          },
+          "is_settings_registry": false
+        }
+      ],
+      "nullable": true,
+      "override": [],
+      "required": false,
+      "customize": {},
+      "sensitive": false,
+      "description": "Where the error originated. Null on 'fixed' events.",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    },
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "statement",
+      "type": "obj",
+      "_xsid": "i:347f5229-5982-4a83-98ae-b9dabb84af57",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [
+        {
+          "list": {
+            "max": "",
+            "min": ""
+          },
+          "mode": "",
+          "name": "name",
+          "type": "text",
+          "_xsid": "i:419a7379-6621-4f97-8a18-00a9ab7fbb85",
+          "merge": false,
+          "style": {
+            "type": "single"
+          },
+          "access": "public",
+          "format": "",
+          "hidden": [],
+          "values": [],
+          "vector": {
+            "size": 3
+          },
+          "default": "",
+          "methods": [],
+          "children": [],
+          "nullable": false,
+          "override": [],
+          "required": false,
+          "customize": {},
+          "sensitive": false,
+          "description": "Statement name.",
+          "market_item": {
+            "id": 0,
+            "guid": "",
+            "version": 0
+          },
+          "is_settings_registry": false
+        },
+        {
+          "list": {
+            "max": "",
+            "min": ""
+          },
+          "mode": "",
+          "name": "xsid",
+          "type": "text",
+          "_xsid": "i:7998c675-08d4-41ff-9869-632ec6455a8a",
+          "merge": false,
+          "style": {
+            "type": "single"
+          },
+          "access": "public",
+          "format": "",
+          "hidden": [],
+          "values": [],
+          "vector": {
+            "size": 3
+          },
+          "default": "",
+          "methods": [],
+          "children": [],
+          "nullable": false,
+          "override": [],
+          "required": false,
+          "customize": {},
+          "sensitive": false,
+          "description": "Statement xsid within the function stack.",
+          "market_item": {
+            "id": 0,
+            "guid": "",
+            "version": 0
+          },
+          "is_settings_registry": false
+        }
+      ],
+      "nullable": true,
+      "override": [],
+      "required": false,
+      "customize": {},
+      "sensitive": false,
+      "description": "Failing statement. Null on 'fixed' events.",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    },
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "actor",
+      "type": "obj",
+      "_xsid": "i:dd535e7c-fc21-4c69-ad41-49f62f27706a",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [
+        {
+          "list": {
+            "max": "",
+            "min": ""
+          },
+          "mode": "",
+          "name": "id",
+          "type": "int",
+          "_xsid": "i:1b5e965a-b27c-472b-9359-85f00117c8b2",
+          "merge": false,
+          "style": {
+            "type": "single"
+          },
+          "access": "public",
+          "format": "",
+          "hidden": [],
+          "values": [],
+          "vector": {
+            "size": 3
+          },
+          "default": "",
+          "methods": [],
+          "children": [],
+          "nullable": false,
+          "override": [],
+          "required": false,
+          "customize": {},
+          "sensitive": false,
+          "description": "User id.",
+          "market_item": {
+            "id": 0,
+            "guid": "",
+            "version": 0
+          },
+          "is_settings_registry": false
+        },
+        {
+          "list": {
+            "max": "",
+            "min": ""
+          },
+          "mode": "",
+          "name": "name",
+          "type": "text",
+          "_xsid": "i:a2f18e2e-206d-42eb-8fa0-612eb7a14096",
+          "merge": false,
+          "style": {
+            "type": "single"
+          },
+          "access": "public",
+          "format": "",
+          "hidden": [],
+          "values": [],
+          "vector": {
+            "size": 3
+          },
+          "default": "",
+          "methods": [],
+          "children": [],
+          "nullable": true,
+          "override": [],
+          "required": false,
+          "customize": {},
+          "sensitive": false,
+          "description": "User name.",
+          "market_item": {
+            "id": 0,
+            "guid": "",
+            "version": 0
+          },
+          "is_settings_registry": false
+        }
+      ],
+      "nullable": true,
+      "override": [],
+      "required": false,
+      "customize": {},
+      "sensitive": false,
+      "description": "User who marked the error as fixed. Populated only for 'fixed' events.",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    },
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "count",
+      "type": "obj",
+      "_xsid": "i:02b4e6b2-7167-423d-811e-d77d650ef46e",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [
+        {
+          "list": {
+            "max": "",
+            "min": ""
+          },
+          "mode": "",
+          "name": "total",
+          "type": "int",
+          "_xsid": "i:fe19aab4-30dd-4f43-863a-7876d6e496a7",
+          "merge": false,
+          "style": {
+            "type": "single"
+          },
+          "access": "public",
+          "format": "",
+          "hidden": [],
+          "values": [],
+          "vector": {
+            "size": 3
+          },
+          "default": "",
+          "methods": [],
+          "children": [],
+          "nullable": false,
+          "override": [],
+          "required": false,
+          "customize": {},
+          "sensitive": false,
+          "description": "Total occurrences since first seen.",
+          "market_item": {
+            "id": 0,
+            "guid": "",
+            "version": 0
+          },
+          "is_settings_registry": false
+        },
+        {
+          "list": {
+            "max": "",
+            "min": ""
+          },
+          "mode": "",
+          "name": "last_hour",
+          "type": "int",
+          "_xsid": "i:207f90f3-a561-4b46-945d-19f1055dc01c",
+          "merge": false,
+          "style": {
+            "type": "single"
+          },
+          "access": "public",
+          "format": "",
+          "hidden": [],
+          "values": [],
+          "vector": {
+            "size": 3
+          },
+          "default": "",
+          "methods": [],
+          "children": [],
+          "nullable": false,
+          "override": [],
+          "required": false,
+          "customize": {},
+          "sensitive": false,
+          "description": "Occurrences in the last hour.",
+          "market_item": {
+            "id": 0,
+            "guid": "",
+            "version": 0
+          },
+          "is_settings_registry": false
+        }
+      ],
+      "nullable": false,
+      "override": [],
+      "required": false,
+      "customize": {},
+      "sensitive": false,
+      "description": "Occurrence counts for this signature.",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    },
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "first_seen",
+      "type": "text",
+      "_xsid": "i:505156a4-ad4c-496a-9d9a-f7e5781f3a35",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": false,
+      "customize": {},
+      "sensitive": false,
+      "description": "ISO-8601 UTC timestamp of the first occurrence.",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    },
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "last_seen",
+      "type": "text",
+      "_xsid": "i:09f1666f-1a4f-438b-a989-feb2a1cc1762",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [],
+      "nullable": false,
+      "override": [],
+      "required": false,
+      "customize": {},
+      "sensitive": false,
+      "description": "ISO-8601 UTC timestamp of the most recent occurrence.",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
+    },
+    {
+      "list": {
+        "max": "",
+        "min": ""
+      },
+      "mode": "",
+      "name": "fixed_at",
+      "type": "text",
+      "_xsid": "i:510c78ba-b7ba-4586-88ce-b636298e0d5d",
+      "merge": false,
+      "style": {
+        "type": "single"
+      },
+      "access": "public",
+      "format": "",
+      "hidden": [],
+      "values": [],
+      "vector": {
+        "size": 3
+      },
+      "default": "",
+      "methods": [],
+      "children": [],
+      "nullable": true,
+      "override": [],
+      "required": false,
+      "customize": {},
+      "sensitive": false,
+      "description": "ISO-8601 UTC timestamp the error was marked fixed. Null otherwise.",
+      "market_item": {
+        "id": 0,
+        "guid": "",
+        "version": 0
+      },
+      "is_settings_registry": false
     }
-  ]
+  ],
+  "active": true,
+  "branch": {
+    "id": 0
+  },
+  "obj_id": 1,
+  "output": [],
+  "result": [],
+  "history": {
+    "limit": 100,
+    "enabled": false,
+    "inherit": true
+  },
+  "obj_type": "error",
+  "description": "capture fixture: records a signature to a table"
 }

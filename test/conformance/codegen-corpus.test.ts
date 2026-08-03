@@ -146,17 +146,19 @@ describe("codegen corpus — statement fixtures", () => {
  *   which a bundle export never emits. (`misc/task.json` and
  *   `misc/middleware.json` are the same vintage but their extra keys all
  *   normalize away, so they stay in the corpus.)
- * - `triggers/error-trigger.json` — documented stale: it stores `input: []` and
- *   predates the rich error-signature schema `impliedInputs("error")` now
- *   generates. `trigger-inputs.test.ts` asserts against that schema rather than
- *   this fixture for the same reason.
+ * `triggers/error-trigger.json` used to sit here too — it stored `input: []`,
+ * predating the rich error-signature schema `impliedInputs("error")` generates.
+ * It was recaptured from a live engine (a throwaway sandbox tenant, deployed and
+ * exported) and now carries all 11 signature inputs, so it rejoins the corpus.
+ * Note it is a BUNDLE payload object rather than a meta-API record like its
+ * siblings above — which is the shape decode actually takes, so it exercises
+ * the real path rather than relying on the extra keys normalizing away.
  *
  * The exclusions are asserted, not assumed — see the test below.
  */
 const EXCLUDED: ReadonlyMap<string, string> = new Map([
   ["misc/addon.json", "@io"],
   ["misc/workspace.json", "domain_prefix"],
-  ["triggers/error-trigger.json", "input"],
 ]);
 
 /**
