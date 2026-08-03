@@ -334,6 +334,93 @@ describe("an `ignore` flag on an entry that is not row data", () => {
   });
 });
 
+describe("the declines that are meant to stay", () => {
+  // A triage pass relaxed the preconditions that were stricter than the engine
+  // (`db.query`'s external/paging pair, `f.enum`'s non-empty values). These four
+  // are the ones deliberately left standing, and each is left standing for its
+  // own reason — so they are pinned by the message that states it. A future
+  // relaxation should be a decision someone made, not a test quietly going green.
+  const STAYS: ReadonlyArray<readonly [string, Record<string, unknown>, string]> = [
+    [
+      // The engine drops a flagged entry before the statement sees it, so
+      // authoring this would let a user write something silently discarded.
+      "db.edit with `ignore` on field_name",
+      {
+        name: "mvp:dbo_editby",
+        context: { dbo: { id: deriveGuid("dbo", "post") } },
+        input: [
+          { name: "field_name", tag: "const", value: "id", filters: [], ignore: true },
+          { name: "field_value", tag: "var", value: "x", filters: [] },
+        ],
+      },
+      "only row data can hold",
+    ],
+    [
+      "db.patch with no `item` entry",
+      {
+        name: "mvp:dbo_patch",
+        context: { dbo: { id: deriveGuid("dbo", "post") } },
+        input: [
+          { name: "field_name", tag: "const", value: "id", filters: [] },
+          { name: "field_value", tag: "var", value: "x", filters: [] },
+        ],
+      },
+      'input[] is missing required "item"',
+    ],
+    [
+      "db.get whose input[] leads with the wrong entry",
+      {
+        name: "mvp:dbo_getby",
+        context: { dbo: { id: deriveGuid("dbo", "post") } },
+        input: [
+          { name: "field_value", tag: "var", value: "x", filters: [] },
+          { name: "field_name", tag: "const", value: "id", filters: [] },
+        ],
+      },
+      "does not lead with field_name/field_value",
+    ],
+    [
+      // A leading `or` joins to nothing. Unlike the `external`/`paging` pair,
+      // there is no engine behaviour being misdescribed here — the stored form
+      // genuinely has no authored spelling.
+      "a condition whose first sibling carries an `or` flag",
+      {
+        name: "mvp:dbo_view",
+        context: {
+          dbo: { id: deriveGuid("dbo", "post") },
+          search: {
+            expression: [
+              {
+                or: true,
+                type: "statement",
+                group: { expression: [] },
+                statement: {
+                  op: "=",
+                  left: { tag: "col", filters: [], operand: "post.id" },
+                  right: { tag: "const:int", filters: [], operand: "1" },
+                },
+              },
+            ],
+          },
+        },
+      },
+      "joins it to nothing",
+    ],
+    [
+      "action.package.call carrying a marketplace identity",
+      { name: "mvp:action_package", context: { market_item: { id: 5, guid: "g", version: 1 } } },
+      "marketplace identity",
+    ],
+  ];
+
+  it.each(STAYS)("declines %s, and names why", (_label, stored, because) => {
+    const detail = fallbackDetail(stored);
+    expect(detail).toContain(because);
+    // Still a warning, not quietly downgraded to one of the new notices.
+    expect(detail).toContain("could not reproduce the stored statement");
+  });
+});
+
 describe("an async call's runtime block decodes instead of falling back", () => {
   /** Decode one stored statement and print the expression it produced. */
   function decoded(stored: Record<string, unknown>): string {

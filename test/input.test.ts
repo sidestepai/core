@@ -87,11 +87,14 @@ describe("encodeInput", () => {
     ]);
   });
 
-  it("enum carries its values and requires a non-empty list", () => {
+  it("enum carries its values, and accepts an empty list like f.enum does", () => {
     const enc = encodeInput("status", input.enum(["active", "archived"]));
     expect(enc.type).toBe("enum");
     expect(enc.values).toEqual(["active", "archived"]);
-    expect(() => input.enum([])).toThrow(/at least one value/);
+    // Mirrors `f.enum`. The two describe the same engine type, and one
+    // accepting what the other rejects is how they start disagreeing about
+    // what a workspace can hold.
+    expect(encodeInput("status", input.enum([])).values).toEqual([]);
   });
 
   it("object encodes type 'obj' with typed children", () => {

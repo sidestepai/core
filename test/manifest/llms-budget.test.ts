@@ -166,7 +166,25 @@ import { measureCommittedLlms } from "../../scripts/measure-llms.js";
 // no factory argument reaches, which is exactly the object you must not
 // hand-convert to a factory call. Compressed three times before raising; what is
 // left is the condition itself.
-const CEILING_TOKENS = 31_750;
+// Raised from 31.75k for `c.blank` and the corrected `db.query` external rule.
+// Both are things the doc was actively getting WRONG rather than merely not
+// covering, which is the strongest case for space there is.
+//
+// `c.blank` is a constructor codegen now emits, so an agent meets it while
+// reading a pulled tree with nothing to look it up against — the
+// named-but-unshaped surface this doc exists to prevent. The half it cannot
+// infer is that a blank is not a zero: the engine reads "" and "0" differently,
+// so `c.blank("const:int")` and `c.int(0)` are different stored values, and an
+// agent "tidying" one into the other silently changes what the workspace holds.
+// Same shape as the `c.obj()` / `c.obj(null)` split already documented here, and
+// it carries the same "do not author it" instruction.
+//
+// The `external` line is a correction. It said the blob was "mutually exclusive
+// with input-bound `paging` fields" — engine behaviour that does not exist. The
+// engine branches on the RESOLVED external and falls back to the per-field binds
+// when it comes back empty, so the two are a chain. The old line would have an
+// agent refuse a legal configuration, or "fix" a pulled workspace that uses one.
+const CEILING_TOKENS = 31_950;
 
 describe("llms.txt token budget", () => {
   it("stays under the bloat-tripwire ceiling", () => {

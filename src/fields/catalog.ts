@@ -182,12 +182,19 @@ export const f = {
   },
 
   // --- composite (positional payload + options) ---
-  /** Enum field; `values` is required and must be non-empty. */
+  /**
+   * Enum field. `values` may be empty — that is an enum column added in the
+   * editor and not yet given its options, which the engine stores and which
+   * appears in the survey corpus. Refusing it made the SDK stricter than the
+   * engine and cost a real table its readable form.
+   *
+   * An empty `values` brands the column `never`, which is the honest type: an
+   * enum permitting nothing can hold nothing.
+   */
   enum<const V extends ReadonlyArray<string | number>, const O extends ConstMethodOpts<never> = Record<string, never>>(
     values: V,
     options: O = {} as O,
   ): FieldDescriptor & TypeBrand<V[number], O> {
-    if (!values?.length) throw new Error("f.enum: at least one value is required.");
     return descriptor("enum", { ...options, values: [...values] } as FieldOptions) as FieldDescriptor &
       TypeBrand<V[number], O>;
   },
