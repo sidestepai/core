@@ -215,10 +215,10 @@ describe("realtime decoders — sandbox coverage", () => {
     // hoisting one would empty the folder its children nest into.
     const project = decodeBundle(sandbox.export());
     const server = project.files.find(
-      (f) => f.path === "realtime_server/ex_kind_chat_server/realtime_server.ts",
+      (f) => f.path === "realtime_server/ex_kind_chat_server.ts",
     );
     const channel = project.files.find(
-      (f) => f.path === "realtime_server/ex_kind_chat_server/rooms_room_id/realtime_channel.ts",
+      (f) => f.path === "realtime_server/ex_kind_chat_server/rooms_room_id.ts",
     );
     expect(server?.contents).toContain("export const ex_kind_chat_server =");
     expect(channel?.contents).toContain("export const rooms_room_id =");
@@ -232,9 +232,9 @@ describe("realtime decoders — sandbox coverage", () => {
     // shape that expresses it.
     const paths = decodeBundle(sandbox.export()).files.map((f) => f.path);
     const root = "realtime_server/ex_kind_chat_server";
-    expect(paths).toContain(`${root}/realtime_server.ts`);
+    expect(paths).toContain("realtime_server/ex_kind_chat_server.ts");
     expect(paths).toContain(`${root}/trigger/ex_kind_trigger_on_chat_connect.ts`);
-    expect(paths).toContain(`${root}/rooms_room_id/realtime_channel.ts`);
+    expect(paths).toContain(`${root}/rooms_room_id.ts`);
     expect(paths).toContain(`${root}/rooms_room_id/send.ts`);
     expect(paths).toContain(`${root}/rooms_room_id/trigger/ex_kind_trigger_on_room_join.ts`);
   });

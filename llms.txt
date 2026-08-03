@@ -142,10 +142,13 @@ live environment and prints its URL. `sidestep init` → `sidestep deploy` → U
   fully offline) and share one core. The output is the same scaffold `init`
   writes — root package.json (dev/build/xano:export/xano:deploy), tsconfig, vite
   config, frontend/ — with the decoded workspace filling `xano/`: one directory
-  per kind with each object under its parent (`query/<api group>/<name>_<VERB>.ts`,
-  `table/trigger/`, `agent/trigger/`, and realtime's three levels as
-  `realtime_server/<server>/<channel>/<message>.ts` with a `trigger/` at each
-  level), every table in `table/table.ts`, settings
+  per kind with each object under its parent (`query/<group>.ts` beside
+  `query/<group>/<name>_<VERB>.ts`, `table/trigger/`, `agent/trigger/`, and
+  realtime's three levels as `realtime_server/<server>.ts` beside
+  `<server>/<channel>.ts` beside `<channel>/<message>.ts`, with a `trigger/`
+  at each level). Anything holding children is a file named for ITSELF beside
+  their folder, so no two tabs read alike and a childless container needs no
+  folder. Every table lives in `table/table.ts`, settings
   in `xano/workspace.ts`, a `_shared.ts` for anything else referenced from more
   than one file, a barrel `xano/index.ts`, and `xano/README.md` carrying the
   decode report. Paths are LOWER CASE throughout (the HTTP verb is the one

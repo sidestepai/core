@@ -244,7 +244,7 @@ describe("query placement", () => {
         .registerApiGroups([admin])
         .registerQueries([query({ name: "posts", verb: "GET", apiGroup: admin, guid: guid(2) })]),
     );
-    expect(paths).toContain("query/admin/api_group.ts");
+    expect(paths).toContain("query/admin.ts");
     expect(paths).toContain("query/admin/posts_GET.ts");
   });
 
@@ -262,12 +262,15 @@ describe("query placement", () => {
     expect(paths).toContain("query/admin/posts_2_POST.ts");
   });
 
-  it("gives an api group its folder even when it holds no queries", () => {
+  it("gives a childless api group a file and NO folder", () => {
+    // The definition sits beside its folder rather than inside it, so a group
+    // holding nothing needs no directory at all.
     const paths = pathsOf((x) => x.registerApiGroups([apiGroup({ name: "empty", guid: guid(1) })]));
-    expect(paths).toContain("query/empty/api_group.ts");
+    expect(paths).toContain("query/empty.ts");
+    expect(paths.filter((path) => path.startsWith("query/empty/"))).toEqual([]);
   });
 
-  it("collects every group-less query into one orphaned.ts", () => {
+  it("collects every group-less query into one _orphaned.ts", () => {
     // An absent group and a guid pointing outside the bundle are the same thing
     // here — no folder to sit in — so they share a file rather than a folder each.
     const paths = pathsOf((x) =>
@@ -276,8 +279,8 @@ describe("query placement", () => {
         query({ name: "also_loose", verb: "POST", guid: guid(2) }),
       ]),
     );
-    expect(paths).toContain("query/orphaned.ts");
-    expect(paths.filter((p) => p.startsWith("query/"))).toEqual(["query/orphaned.ts"]);
+    expect(paths).toContain("query/_orphaned.ts");
+    expect(paths.filter((p) => p.startsWith("query/"))).toEqual(["query/_orphaned.ts"]);
   });
 
   it("emits no orphaned.ts when every query has a group", () => {
@@ -287,24 +290,25 @@ describe("query placement", () => {
         .registerApiGroups([admin])
         .registerQueries([query({ name: "posts", verb: "GET", apiGroup: admin, guid: guid(2) })]),
     );
-    expect(paths).not.toContain("query/orphaned.ts");
+    expect(paths).not.toContain("query/_orphaned.ts");
   });
 
-  it("keeps two groups whose names differ only by case in distinct folders", () => {
-    // The folder takes the group's assigned SYMBOL, which `assignSymbols` has
+  it("keeps two groups whose names differ only by case apart", () => {
+    // The path takes the group's assigned SYMBOL, which `assignSymbols` has
     // already case-separated — macOS and Windows fold `Admin/` onto `admin/`
     // exactly as they fold `Admin.ts` onto `admin.ts`.
     const paths = pathsOf((x) =>
       x.registerApiGroups([apiGroup({ name: "admin", guid: guid(1) }), apiGroup({ name: "Admin", guid: guid(2) })]),
     );
-    const folders = paths.filter((p) => p.endsWith("/api_group.ts")).map((p) => p.toLowerCase());
-    expect(new Set(folders).size, `case-insensitive folder collision: ${folders.join(", ")}`).toBe(2);
+    const groups = paths.filter((p) => p.startsWith("query/"));
+    expect(groups, `expected one file per group, got ${groups.join(", ")}`).toHaveLength(2);
+    expect(new Set(groups).size, `path collision: ${groups.join(", ")}`).toBe(2);
   });
 
-  it("makes a path-safe folder from a group name that is not an identifier", () => {
+  it("makes a path-safe name from a group name that is not an identifier", () => {
     const paths = pathsOf((x) => x.registerApiGroups([apiGroup({ name: "my group/v2", guid: guid(1) })]));
-    const group = paths.find((p) => p.endsWith("/api_group.ts"))!;
-    expect(group).toBe("query/my_group_v2/api_group.ts");
+    const group = paths.find((p) => p.startsWith("query/"))!;
+    expect(group).toBe("query/my_group_v2.ts");
   });
 
   it("reaches a table and the barrel correctly from two directories deep", () => {
@@ -326,7 +330,7 @@ describe("query placement", () => {
         .export(),
     );
     expect(file(project, "query/admin/posts_GET.ts")).toContain('from "../../table/table.js"');
-    expect(file(project, "query/admin/posts_GET.ts")).toContain('from "./api_group.js"');
+    expect(file(project, "query/admin/posts_GET.ts")).toContain('from "../admin.js"');
     expect(file(project, "index.ts")).toContain('from "./query/admin/posts_GET.js"');
   });
 });
@@ -346,8 +350,8 @@ describe("realtime hierarchy placement", () => {
         .registerRealtimeChannels([room])
         .registerRealtimeMessages([realtimeMessage({ name: "ping", channel: room, guid: guid(3) })]),
     );
-    expect(paths).toContain("realtime_server/chat/realtime_server.ts");
-    expect(paths).toContain("realtime_server/chat/room/realtime_channel.ts");
+    expect(paths).toContain("realtime_server/chat.ts");
+    expect(paths).toContain("realtime_server/chat/room.ts");
     expect(paths).toContain("realtime_server/chat/room/ping.ts");
   });
 
@@ -380,7 +384,7 @@ describe("realtime hierarchy placement", () => {
         .registerTriggers([realtimeChannelTrigger({ name: "on_join", channel: room })]),
     );
     expect(paths).not.toContain("_shared.ts");
-    expect(paths).toContain("realtime_server/chat/room/realtime_channel.ts");
+    expect(paths).toContain("realtime_server/chat/room.ts");
   });
 
   it("leaves an orphaned channel and message in their own kind directories", () => {
@@ -397,7 +401,7 @@ describe("realtime hierarchy placement", () => {
           realtimeMessage({ name: "orphan", channel: "missing", server: "gone", guid: guid(6) }),
         ]),
     );
-    expect(paths).toContain("realtime_channel/loose/realtime_channel.ts");
+    expect(paths).toContain("realtime_channel/loose.ts");
     expect(paths).toContain("realtime_message/orphan.ts");
   });
 

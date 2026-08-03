@@ -52,8 +52,16 @@ const TABLE_FILE = "table/table.ts";
  * with no resolvable group collect in one file beside the group folders.
  */
 const QUERY_DIR = "query";
-const API_GROUP_FILE = "api_group.ts";
-const ORPHANED_QUERY_FILE = "query/orphaned.ts";
+
+/**
+ * Queries with no resolvable group share one file beside the group files.
+ *
+ * The leading underscore is not decoration: `toSymbol` strips leading
+ * underscores, so no Xano object can ever produce this name, and a group that
+ * happens to be called `orphaned` cannot collide with it. `_shared.ts` is safe
+ * for the same reason.
+ */
+const ORPHANED_QUERY_FILE = "query/_orphaned.ts";
 
 /**
  * The stored reference naming a kind's parent, and the kind that reference must
@@ -74,18 +82,20 @@ const PARENT_REF: Readonly<Record<string, { key: string; kind: string }>> = {
 };
 
 /**
- * Kinds that OWN a directory named after themselves, holding their own
- * definition under a fixed file name plus everything nested beneath them.
+ * Kinds that OWN a directory, because they have objects nested beneath them: an
+ * api group has queries, a realtime server has channels, a channel has messages
+ * and triggers.
  *
- * The alternative — one file among its siblings — cannot express a hierarchy: a
- * channel has messages and triggers of its own, so it needs somewhere to put
- * them. `table` is deliberately absent; tables collapse into one file instead.
+ * The definition itself sits BESIDE that directory rather than inside it —
+ * `chat.ts` next to `chat/` — which is the `Button.tsx` + `Button/` idiom. Three
+ * things fall out of that. The file is named for the OBJECT, so an editor tab
+ * reads `chat.ts` rather than a dozen identical `realtime_server.ts`. The path
+ * does not stutter (`chat/chat.ts`). And a container with nothing nested under
+ * it needs no directory at all.
+ *
+ * `table` is deliberately absent: tables collapse into one file instead.
  */
-const CONTAINER_FILE: Readonly<Record<string, string>> = {
-  api_group: API_GROUP_FILE,
-  realtime_server: "realtime_server.ts",
-  channel: "realtime_channel.ts",
-};
+const CONTAINER_KINDS: ReadonlySet<string> = new Set(["api_group", "realtime_server", "channel"]);
 
 /** Where a trigger's own files go inside its parent's directory. */
 const TRIGGER_SUBDIR = "trigger";
@@ -530,8 +540,12 @@ function fileFor(
   // everything they hold — every query names its api group, every channel names
   // its server — so the hoist would catch nearly all of them and empty out the
   // very folders their children are nesting into.
-  const containerFile = CONTAINER_FILE[kind];
-  if (containerFile !== undefined) return { dir, path: `${dir}/${containerFile}` };
+  //
+  // Its definition sits beside its directory rather than inside it, so the file
+  // IS the directory plus `.ts`, and it lives one level up from what it holds.
+  if (CONTAINER_KINDS.has(kind)) {
+    return { dir: dir.split("/").slice(0, -1).join("/") || ".", path: `${dir}.ts` };
+  }
 
   // Past here the hoist wins over nesting: a multiply-referenced object is in
   // `_shared.ts` for a cycle reason, which outranks reading nicely.
@@ -577,7 +591,7 @@ function dirOf(candidate: Candidate, symbol: string, resolveDir: DirResolver): s
   }
 
   const parentDir = parentDirOf(candidate, resolveDir);
-  if (CONTAINER_FILE[kind] !== undefined) {
+  if (CONTAINER_KINDS.has(kind)) {
     return `${parentDir ?? candidate.dir}/${toPathName(symbol)}`;
   }
   return parentDir ?? candidate.dir;
