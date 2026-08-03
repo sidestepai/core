@@ -210,12 +210,14 @@ identical to a decode that gave up. The report is what tells the two apart.
 
 A few options exist only so a pull can be *faithful*, and reading them in generated code
 is the only time you should see them: `table: null` / `fn: null` (a statement whose target
-was deleted or never bound), `merge` / `hidden` on a field, and `paging: { enabled }` on a
-query. They describe what the source workspace actually stored — a pulled `table: null` is
-a defect to fix upstream, not a shape to copy — and each carries that warning at the call
-site. A blank reference also reports, because it has two causes worth telling apart: the
-target really is gone, or it sat outside this export's scope and was blanked on the way
-out. Re-pull with it in scope to know which.
+was deleted or never bound), `merge` / `hidden` on a field, `paging: { enabled }` on a
+query, and `c.blank(tag)` (the editor's unconfigured value box — **not** a zero or an
+empty collection; the engine reads `""` and `"0"` differently, so tidying one into the
+other changes what the workspace stores). They describe what the source workspace actually
+stored — a pulled `table: null` is a defect to fix upstream, not a shape to copy — and
+each carries that warning at the call site. A blank binding also reports, because a
+statement wired to a table or function that no longer exists is worth seeing even though
+it round-trips exactly.
 
 Then it checks its own work: the project it just wrote is loaded, exported, and diffed
 against the workspace it came from. A mismatch names the object and fails the command
@@ -1420,8 +1422,11 @@ the typed has-next signal.
 (e.g. `inp("page")`) — the dynamic value rides `context.simpleExternal` while a static
 block stays the engine gate (`enabled: true`). `paging.search`/`sort` are `Value` dynamic
 overrides; a `search`/`sort`-only `paging` (no numeric field) does **not** paginate.
-`external: { value, permissions? }` is the classic whole-config paging blob (mutually
-exclusive with input-bound `paging` fields; forces the gate on).
+`external: { value, permissions? }` is the classic whole-config paging blob (forces the
+gate on). It combines with input-bound `paging` as a **fallback chain**: the engine uses
+the blob when it resolves to something non-empty and the per-field binds when it does not,
+so a blob fed from an *optional* input with per-field paging behind it is a working
+configuration, not a conflict.
 
 **Addons** — enrich each returned row with related data by attaching addons to
 `s.db.query`/`get`/`add`/`edit`/`patch` (the row-returning ops).
