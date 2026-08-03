@@ -525,7 +525,7 @@ surface — `s.conditional`/`s.while` `when` (incl. each `elif` branch), and
 - `c.text(s: string) => Value` — String constant → tag "const".
 - `c.int(n: number) => Value` — Integer constant → tag "const:int".
 - `c.decimal(n: number | string) => Value` — Decimal constant → tag "const:decimal". Pass a string only to keep a stored spelling a number cannot reproduce (c.decimal("10.00") keeps its trailing zeros).
-- `c.blank(tag: "const:int" | "const:decimal" | "const:array" | "const:expr" | …) => Value` — The editor's UNCONFIGURED value box — a cell added and never filled in, stored as value "". Emitted by codegen for a pulled workspace that holds one; do not author it. It is NOT a zero, an empty string, or an empty collection — the engine reads "" and "0" differently, so c.blank("const:int") and c.int(0) are different stored values and neither is canonicalized into the other. Constant tags only (c.text("") and c.obj(null) already spell the other two blanks).
+- `c.blank(tag: "const:<type>") => Value` — The editor's UNCONFIGURED value box (stored value ""), emitted by codegen for a pulled workspace — do not author it. NOT a zero or an empty collection: the engine reads "" and "0" differently, so c.blank("const:int") ≠ c.int(0) and neither canonicalizes into the other. Constant tags except const/const:obj, whose blanks are c.text("")/c.obj(null).
 - `c.bool(b: boolean) => Value` — Boolean constant → tag "const:bool".
 - `c.null() => Value` — Null constant → tag "const:null".
 - `c.obj(o?: Json | null) => Value` — Object constant (JSON string) → tag "const:obj". No argument = the empty object {} — use this one. Explicit null = the legacy blank form the engine evaluates to null, NOT {}; it exists only so a pulled workspace round-trips, do not author it. Plain JSON literals only — a nested tagged value (inp/ref/auth/c.*) is rejected; for a computed object response use a record of values, not c.obj (issue #42).
@@ -556,6 +556,9 @@ valid names depend on the field type (below) — pass bare names (`"trim"`), the
 colon-form with args (`"min:8"`), or `{ name, arg }` for anything not listed.
 `f.enum(values)`/`f.vector(size)`/`f.object(children)`/`f.tableRef(table)` take a
 positional payload before opts — and still accept the standard `FieldOptions` after it
+(`f.enum([])`/`input.enum([])` are accepted, because the engine stores an enum whose
+options were never filled in — that is a pulled-workspace shape, not one to author; it
+brands the column `never`.)
 (e.g. `f.tableRef(users, { required: true })`; `llms.txt` lists only tableRef's `min`/`max`
 methods, but `required`/`nullable`/`description`/… apply like any field).
 `{ array: true }` makes any `f.*` scalar a **list column** — `f.text({ array: true })`

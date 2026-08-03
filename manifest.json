@@ -35,8 +35,8 @@
       },
       {
         "name": "c.blank",
-        "signature": "(tag: \"const:int\" | \"const:decimal\" | \"const:array\" | \"const:expr\" | …) => Value",
-        "description": "The editor's UNCONFIGURED value box — a cell added and never filled in, stored as value \"\". Emitted by codegen for a pulled workspace that holds one; do not author it. It is NOT a zero, an empty string, or an empty collection — the engine reads \"\" and \"0\" differently, so c.blank(\"const:int\") and c.int(0) are different stored values and neither is canonicalized into the other. Constant tags only (c.text(\"\") and c.obj(null) already spell the other two blanks)."
+        "signature": "(tag: \"const:<type>\") => Value",
+        "description": "The editor's UNCONFIGURED value box (stored value \"\"), emitted by codegen for a pulled workspace — do not author it. NOT a zero or an empty collection: the engine reads \"\" and \"0\" differently, so c.blank(\"const:int\") ≠ c.int(0) and neither canonicalizes into the other. Constant tags except const/const:obj, whose blanks are c.text(\"\")/c.obj(null)."
       },
       {
         "name": "c.bool",

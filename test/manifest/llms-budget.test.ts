@@ -11,6 +11,26 @@ import { measureCommittedLlms } from "../../scripts/measure-llms.js";
  * grounding to fit under it (that would invert the whole point of the doc).
  *
  * Inspect the current footprint any time with `npm run measure:llms`.
+ *
+ * ## Keep the headroom PROPORTIONAL — the rule this file learned the hard way
+ *
+ * The ceiling has been raised 21 times, and the log below records why each one
+ * was justified. What it also records, read as a whole, is a slow failure: the
+ * first ceiling sat ~1.9k tokens (≈8%) above the footprint, and every later raise
+ * landed within tens of tokens of whatever the doc happened to weigh that day.
+ * By the twenty-first it had 18 tokens of headroom.
+ *
+ * At 18 tokens this stopped being a bloat tripwire and became a toll on ALL
+ * growth: a one-line Gotcha trips it, so the raise is a formality performed
+ * during unrelated work, and a formality is not a control. That is the mechanism
+ * behind all 21 raises, not 21 independent bouts of bloat.
+ *
+ * So: keep roughly **5% headroom** over the committed footprint. The tripwire is
+ * meant to catch a section accidentally duplicated or a generator looping — the
+ * runaway cases, which are large — not to adjudicate every added sentence. When
+ * a raise IS needed, raise to ~5% above the new footprint rather than to the
+ * footprint itself, and the inverse rule still applies: ratchet back down after
+ * a real reduction.
  */
 // Set generously above the current footprint (~24.9k), below the pre-slim
 // baseline (~26.8k). Headroom for legitimate critical additions; raise it if a
@@ -166,6 +186,13 @@ import { measureCommittedLlms } from "../../scripts/measure-llms.js";
 // no factory argument reaches, which is exactly the object you must not
 // hand-convert to a factory call. Compressed three times before raising; what is
 // left is the condition itself.
+// Raised to 33.5k — ~5% over the committed footprint, per the proportional rule
+// above. This is the first raise that is about the CEILING rather than about a
+// new surface: the 18 tokens of headroom left after the previous one meant the
+// next contributor would have had to raise it again to add a single sentence.
+//
+// The entry below is the surface half of the same change, and stands as written.
+//
 // Raised from 31.75k for `c.blank` and the corrected `db.query` external rule.
 // Both are things the doc was actively getting WRONG rather than merely not
 // covering, which is the strongest case for space there is.
@@ -184,7 +211,7 @@ import { measureCommittedLlms } from "../../scripts/measure-llms.js";
 // engine branches on the RESOLVED external and falls back to the per-field binds
 // when it comes back empty, so the two are a chain. The old line would have an
 // agent refuse a legal configuration, or "fix" a pulled workspace that uses one.
-const CEILING_TOKENS = 31_950;
+const CEILING_TOKENS = 33_500;
 
 describe("llms.txt token budget", () => {
   it("stays under the bloat-tripwire ceiling", () => {
