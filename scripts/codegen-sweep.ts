@@ -25,6 +25,7 @@
  *   --limit <n>          first n workspaces only
  *   --concurrency <n>    parallel workspaces (default 4)
  *   --no-verify          skip the round-trip check (decode-only, much faster)
+ *   --no-typecheck       skip the `tsc` pass over the generated trees
  *   --keep-bundles       also write each source bundle.json (big; for repros)
  *   --resume             skip workspaces that already finished in this out dir
  *
@@ -64,6 +65,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { spawnSync } from "node:child_process";
 import { decodeBundle, type GeneratedProject } from "../src/codegen/index.js";
 import type { ReportEntry } from "../src/codegen/index.js";
 import { severityOf } from "../src/codegen/report.js";
@@ -82,6 +84,7 @@ interface Options {
   limit: number | undefined;
   concurrency: number;
   verify: boolean;
+  typecheck: boolean;
   keepBundles: boolean;
   resume: boolean;
 }
@@ -94,6 +97,7 @@ function parseArgs(argv: readonly string[]): Options {
     limit: undefined,
     concurrency: 4,
     verify: true,
+    typecheck: true,
     keepBundles: false,
     resume: false,
   };
@@ -110,6 +114,7 @@ function parseArgs(argv: readonly string[]): Options {
     else if (arg === "--limit") opts.limit = Number(next());
     else if (arg === "--concurrency") opts.concurrency = Math.max(1, Number(next()));
     else if (arg === "--no-verify") opts.verify = false;
+    else if (arg === "--no-typecheck") opts.typecheck = false;
     else if (arg === "--keep-bundles") opts.keepBundles = true;
     else if (arg === "--resume") opts.resume = true;
     else throw new Error(`Unknown flag "${arg}". See the header of scripts/codegen-sweep.ts.`);
@@ -189,6 +194,55 @@ function fileIndex(project: GeneratedProject): Map<string, string> {
     }
   }
   return index;
+}
+
+/**
+ * Type-check every generated tree, and report the ones that do not compile.
+ *
+ * The round trip cannot see this. Verification writes the tree, imports it, and
+ * compares the re-export — and `tsx` strips types, so a tree full of type errors
+ * imports and re-exports perfectly. Two real defects shipped through a green
+ * sweep exactly that way: an `input.enum` carrying `list: {max: {}, min: {}}`
+ * (the engine's other spelling of "no bounds", which the option type declares as
+ * strings) and `fl.filter_null()` (stored with no argument, while the generated
+ * signature demanded one). Both round-tripped byte-perfectly. Neither compiled.
+ *
+ * ONE `tsc` invocation over all of them, not one per workspace: the trees are
+ * independent modules, so a single program covers them at a fraction of the cost
+ * of N cold starts — the difference between seconds and half an hour on a
+ * full-instance sweep.
+ */
+function typecheckProjects(out: string, projects: readonly string[]): string[] {
+  if (projects.length === 0) return [];
+  const configPath = join(out, "tsconfig.check.json");
+  writeFileSync(
+    configPath,
+    JSON.stringify(
+      {
+        compilerOptions: {
+          target: "ES2022",
+          module: "ESNext",
+          moduleResolution: "Bundler",
+          lib: ["ES2022"],
+          strict: true,
+          noEmit: true,
+          skipLibCheck: true,
+          verbatimModuleSyntax: true,
+        },
+        include: projects.map((dir) => `${dir}/**/*.ts`),
+      },
+      null,
+      2,
+    ),
+    "utf8",
+  );
+  const res = spawnSync(
+    process.execPath,
+    [join(REPO, "node_modules/typescript/bin/tsc"), "--noEmit", "-p", configPath],
+    { encoding: "utf8", cwd: out },
+  );
+  const output = `${res.stdout ?? ""}${res.stderr ?? ""}`;
+  return output.split("\n").filter((line) => /\.ts\(\d+,\d+\): error /.test(line));
 }
 
 /** `kind:name` → the object's name half (the report's own format). */
@@ -431,13 +485,46 @@ async function main(): Promise<void> {
     JSON.stringify({ instance: config.instance, workspaces: merged, totals, byCategory }, null, 2),
     "utf8",
   );
+  const writeSummary = (extra: Record<string, unknown>): void =>
+    writeFileSync(
+      summaryPath,
+      JSON.stringify({ instance: config.instance, workspaces: merged, totals, byCategory, ...extra }, null, 2),
+      "utf8",
+    );
+
+  // Type-check LAST, over every tree this run produced. A tree that does not
+  // compile is unusable to the person who pulled it, and nothing earlier in the
+  // sweep can see that — `tsx` strips types, so verification imports and
+  // re-exports a broken tree perfectly.
+  let typeErrors: string[] = [];
+  if (opts.typecheck) {
+    const dirs = merged
+      .filter((r) => r.status !== "failed")
+      .map((r) => join("projects", `${r.id}-${slug(r.name)}`))
+      .filter((dir) => existsSync(join(out, dir)));
+    console.error(`\nType-checking ${dirs.length} generated tree(s)…`);
+    typeErrors = typecheckProjects(out, dirs);
+  }
 
   console.error(
     `\nDone. ${merged.length} workspace(s): ${totals.problems} problem(s), ${totals.informational} informational, ` +
       `${totals.mismatched} round-trip mismatch(es), ${totals.failed} failed.`,
   );
+  if (opts.typecheck) {
+    console.error(
+      typeErrors.length === 0
+        ? `Type-check: every generated tree compiles.`
+        : `Type-check: ${typeErrors.length} ERROR(S) — a pulled tree does not compile:`,
+    );
+    for (const line of typeErrors.slice(0, 40)) console.error(`  ${line}`);
+    if (typeErrors.length > 40) console.error(`  …and ${typeErrors.length - 40} more`);
+  }
+  if (opts.typecheck) writeSummary({ typeErrors });
   console.error(`CSV:     ${csvPath}`);
   console.error(`Summary: ${summaryPath}`);
+  // A tree that does not compile is a failure of the thing this tool exists to
+  // produce, so it has to be visible to a caller that only reads the exit code.
+  if (typeErrors.length > 0) process.exitCode = 1;
 }
 
 main().catch((err: unknown) => {
