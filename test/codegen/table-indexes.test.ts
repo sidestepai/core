@@ -12,6 +12,10 @@
  * says, and — through the corpus and golden suites — that the same object still
  * re-encodes equal. The refusals matter as much: a table whose stored set is
  * reordered, partial, or missing its system columns keeps the verbose form.
+ *
+ * Which SUBSET gets dropped is the proof's answer, not a fixed rule — the engine
+ * has shipped more than one canonical order, and leaving one entry stated is what
+ * lets the other two go on a table the all-or-nothing form gave up on entirely.
  */
 import { describe, it, expect } from "vitest";
 import { DecodeContext } from "../../src/codegen/context.js";
@@ -28,6 +32,20 @@ function decodeTable(stored: Record<string, unknown>): string {
   const refs = RefIndex.fromPayload({}, ctx);
   const decoder = KIND_DECODERS_BY_NAME.get("table")!;
   return printExpr(decodeObject(decoder, { ctx, refs, stored, resolve: {} }).expr);
+}
+
+/**
+ * Just the emitted `index:` argument.
+ *
+ * Asserted against rather than the whole def because a column named
+ * `created_at` puts that string in the SCHEMA too, so a bare `not.toContain`
+ * would pass or fail for the wrong reason.
+ */
+function indexArg(source: string): string {
+  const start = source.indexOf("\n  index: [");
+  if (start === -1) return "";
+  const end = source.indexOf("\n  ],", start);
+  return source.slice(start, end === -1 ? undefined : end);
 }
 
 /** A stored index entry in the engine's own spelling. */
@@ -67,12 +85,12 @@ describe("table decode — standard indexes", () => {
     // `btree(created_at desc)` ahead of two the user actually created.
     const src = decodeTable(loadFixture<Record<string, unknown>>("tables/ex_kind_products.json"));
     expect(src).not.toContain("system:");
-    expect(src).not.toContain('type: "primary"');
-    expect(src).not.toContain('name: "created_at"');
+    expect(indexArg(src)).not.toContain('type: "primary"');
+    expect(indexArg(src)).not.toContain('name: "created_at"');
     // The authored ones stay, verbatim and in order.
-    expect(src).toContain('type: "btree|unique"');
-    expect(src).toContain('name: "sku"');
-    expect(src).toContain('name: "price"');
+    expect(indexArg(src)).toContain('type: "btree|unique"');
+    expect(indexArg(src)).toContain('name: "sku"');
+    expect(indexArg(src)).toContain('name: "price"');
   });
 
   it("emits no `index` key at all when every index was a standard one", () => {
@@ -91,26 +109,46 @@ describe("table decode — standard indexes", () => {
     expect(src).not.toContain("index:");
   });
 
+  it("elides around an older canonical order rather than giving up on it", () => {
+    // The engine has shipped both `primary, gin, created_at` (what the injection
+    // writes) and `primary, created_at, gin` — 223 tables on the survey instance
+    // are the second. Dropping all three would reorder them; dropping the two
+    // that lead and leaving the `gin` stated reproduces the list exactly.
+    const src = decodeTable(storedTable([PRIMARY, CREATED, GIN, SKU]));
+    expect(src).toContain("useXdo: true");
+    expect(src).not.toContain("system:");
+    // Both leading entries go; the `gin` stays stated because it is what holds
+    // the stored order together, and the authored index rides behind it.
+    expect(indexArg(src)).not.toContain('type: "primary"');
+    expect(indexArg(src)).not.toContain('op: "desc"');
+    expect(indexArg(src)).toContain('type: "gin"');
+    expect(indexArg(src)).toContain('type: "btree|unique"');
+  });
+
   it("believes an explicitly stored `use_xdo: false` over the gin index", () => {
     const src = decodeTable(storedTable([PRIMARY, GIN, CREATED], { use_xdo: false }));
     expect(src).not.toContain("useXdo:");
-    // With column storage the injection would not put the gin index back, so
-    // the whole list has to stay stated.
-    expect(src).toContain("system: false");
-    expect(src).toContain('type: "gin"');
+    // Column storage means the injection is `primary, created_at` — it would not
+    // put the gin index back, and it cannot reach past it to the `created_at`
+    // that trails it. So only the leading `primary` is elided and the rest is
+    // stated, which is still quieter than suppressing the injection wholesale.
+    expect(src).not.toContain("system:");
+    expect(indexArg(src)).not.toContain('type: "primary"');
+    expect(indexArg(src)).toContain('type: "gin"');
+    expect(indexArg(src)).toContain('op: "desc"');
   });
 
   it("keeps the verbose form when the stored set is missing a standard index", () => {
     // The injection would ADD `primary(id)`, which the source does not have.
     const src = decodeTable(storedTable([CREATED, SKU]));
     expect(src).toContain("system: false");
-    expect(src).toContain('type: "btree|unique"');
+    expect(indexArg(src)).toContain('type: "btree|unique"');
   });
 
   it("keeps the verbose form when the stored set is reordered", () => {
     const src = decodeTable(storedTable([SKU, PRIMARY, CREATED]));
     expect(src).toContain("system: false");
-    expect(src).toContain('type: "primary"');
+    expect(indexArg(src)).toContain('type: "primary"');
   });
 
   it("keeps the verbose form when the schema omits a system column", () => {
@@ -121,7 +159,7 @@ describe("table decode — standard indexes", () => {
     };
     const src = decodeTable(stored);
     expect(src).toContain("system: false");
-    expect(src).toContain('type: "primary"');
+    expect(indexArg(src)).toContain('type: "primary"');
   });
 });
 
