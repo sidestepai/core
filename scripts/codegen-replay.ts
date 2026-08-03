@@ -18,6 +18,8 @@
  *   --dir <dir>       a sweep --out dir holding projects/<id>/bundle.json
  *                     (default /tmp/swb)
  *   --json <file>     write one JSON line per entry, for clustering
+ *   --refs <file>     write the degraded-reference counts, for before/after
+ *                     comparison across a change to file layout
  *   --category <cat>  print every matching entry to stderr as it is found
  *
  * Env:
@@ -26,7 +28,7 @@
  */
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { decodeBundle } from "../src/codegen/index.js";
+import { decodeBundle, type GeneratedFile } from "../src/codegen/index.js";
 import { type ReportEntry } from "../src/codegen/report.js";
 
 function flag(name: string, fallback?: string): string | undefined {
@@ -34,8 +36,57 @@ function flag(name: string, fallback?: string): string | undefined {
   return i === -1 ? fallback : process.argv[i + 1];
 }
 
+/** The comment `refConstStatements` puts above a file's hoisted ref consts. */
+const REF_BLOCK_MARKER = "// References to objects declared below";
+
+/**
+ * Count the references a file could NOT emit as a symbol.
+ *
+ * A reference degrades to a hoisted `{name, guid}` const for one of three
+ * reasons: the object refers to itself, an intra-file cycle put the target below
+ * the referrer, or importing the target would close a cross-file cycle. Only the
+ * last two move when file layout moves, so they are counted apart from the first.
+ *
+ * `inFile` is "the target is declared in this same file" — self-reference and
+ * intra-file cycle both land there, and both shrink as a layout change spreads
+ * objects across more files. `crossFile` is the cross-file back edge, which grows
+ * for the same reason. The TOTAL is the number that must not rise: it is the
+ * count of references that ship as an opaque guid instead of a real binding.
+ *
+ * Read off the emitted source rather than instrumented into the decoder, because
+ * the printer is deterministic (see `src/codegen/print.ts`) and the artifact is
+ * what actually ships. Nothing in `src/` changes to support this measurement.
+ */
+function countDegradedRefs(files: readonly GeneratedFile[]): { inFile: number; crossFile: number } {
+  let inFile = 0;
+  let crossFile = 0;
+  for (const file of files) {
+    const lines = file.contents.split("\n");
+    const start = lines.findIndex((l) => l.startsWith(REF_BLOCK_MARKER));
+    if (start === -1) continue;
+    // Every `export const <symbol> =` in this file — the bindings a hoisted ref
+    // could be standing in for without needing an import.
+    const declared = new Set<string>();
+    for (const line of lines) {
+      const m = /^export const (\w+) =/.exec(line);
+      if (m) declared.add(m[1]!);
+    }
+    // The block runs from the marker to the first blank line after it.
+    for (let i = start + 1; i < lines.length && lines[i] !== ""; i += 1) {
+      // `<symbol>Ref`, or `<symbol>Ref_2` when that name was already taken. The
+      // greedy `\w+` keeps a symbol's own `_2` suffix (`posts_2Ref` → `posts_2`).
+      const m = /^const (\w+)Ref(?:_\d+)? = \{$/.exec(lines[i]!);
+      if (!m) continue;
+      if (declared.has(m[1]!)) inFile += 1;
+      else crossFile += 1;
+    }
+  }
+  return { inFile, crossFile };
+}
+
 const dir = join(flag("dir", "/tmp/swb")!, "projects");
 const jsonOut = flag("json");
+const refsOut = flag("refs");
 const showCategory = flag("category");
 
 const counts = new Map<string, number>();
@@ -45,6 +96,9 @@ let failed = 0;
 /** Workspaces carrying at least one entry a user is asked to act on. */
 let workspacesWithProblems = 0;
 const bySeverity = { error: 0, warning: 0, notice: 0 };
+/** Degraded references (see `countDegradedRefs`), the layout-fidelity metric. */
+const degraded = { inFile: 0, crossFile: 0 };
+const degradedByWorkspace: Array<{ workspace: string; inFile: number; crossFile: number }> = [];
 
 for (const entry of readdirSync(dir).sort()) {
   let bundle: { payload: Record<string, unknown> };
@@ -56,7 +110,12 @@ for (const entry of readdirSync(dir).sort()) {
   workspaces++;
   let report;
   try {
-    report = decodeBundle(bundle).report;
+    const project = decodeBundle(bundle);
+    report = project.report;
+    const refs = countDegradedRefs(project.files);
+    degraded.inFile += refs.inFile;
+    degraded.crossFile += refs.crossFile;
+    if (refs.inFile + refs.crossFile > 0) degradedByWorkspace.push({ workspace: entry, ...refs });
   } catch (e) {
     failed++;
     counts.set("sweep-failed", (counts.get("sweep-failed") ?? 0) + 1);
@@ -97,6 +156,28 @@ console.log(
   `\n${workspaces} workspaces replayed, ${failed} threw, ` +
     `${workspacesWithProblems} carry at least one error or warning`,
 );
+console.log(
+  `\n${String(degraded.inFile + degraded.crossFile).padStart(6)} DEGRADED REFS ` +
+    `(${degraded.inFile} same-file, ${degraded.crossFile} cross-file) ` +
+    `across ${degradedByWorkspace.length} workspaces`,
+);
+
+if (refsOut) {
+  writeFileSync(
+    refsOut,
+    JSON.stringify(
+      {
+        total: degraded.inFile + degraded.crossFile,
+        inFile: degraded.inFile,
+        crossFile: degraded.crossFile,
+        workspaces: degradedByWorkspace.sort((a, b) => a.workspace.localeCompare(b.workspace)),
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  console.log(`wrote degraded-ref baseline to ${refsOut}`);
+}
 
 if (jsonOut) {
   writeFileSync(jsonOut, rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
