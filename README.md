@@ -2042,11 +2042,15 @@ the lock.
 SideStep ships two machine-readable descriptions of its whole authoring surface so an agent
 can learn the SDK without reading source:
 
-- **`manifest.json`** — every object kind (factory, `Xano.register*` method, payload key),
-  every statement surface (the `s.<path>` accessor, stored `mvp:` name, and a typed field
-  schema for the 154 declarative statements), the value constructors, the tag catalog, and
-  the filter catalog — plus live coverage counts.
-- **`llms.txt`** — the same surface rendered as a concise plaintext grounding doc.
+- **`llms.txt`** — the concise plaintext grounding doc for **authoring**: object def shapes,
+  statements, values, fields, filters, and the non-obvious rules in `## Gotchas`. It does not
+  document the CLI — `sidestep <command> --help` and the `cli` array below do, from the same
+  registry that generates the shell completions.
+- **`manifest.json`** — the exhaustive reference tier, reached by targeted lookup (grep or
+  `jq` one entry; never read it whole). Every object kind (factory, `Xano.register*` method,
+  payload key), every statement surface (the `s.<path>` accessor, stored `mvp:` name, and a
+  typed field schema for the 154 declarative statements), the value constructors, the tag
+  catalog, the filter catalog, and every CLI command and flag — plus live coverage counts.
 
 Both derive from the SDK's own sources of truth (so they can't drift), regenerate with
 `npm run manifest`, and are available at runtime via `buildManifest()` / `renderLlmsTxt()`.

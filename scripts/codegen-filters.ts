@@ -274,7 +274,7 @@ for (const n of [
   "regex_get_first_match",
 ]) {
   PIPE_DIRECTION_NOTES[n] =
-    "Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains. Build the pattern with c.regex(...) (delimiter-wrapped); a bare c.text(...) is rejected (issue #128).";
+    "Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains. Build the pattern with c.regex(...) (delimiter-wrapped); a bare c.text(...) is rejected.";
 }
 
 /**

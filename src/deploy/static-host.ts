@@ -79,7 +79,9 @@ export interface StaticHostRequest {
   /**
    * Public config baked into the archive's root `index.html` as `window.<KEY>`
    * globals, evaluated before the app bundle runs. The deploy layer seeds
-   * `XANO_HOST` with the sandbox backend URL and merges any `--static-env`.
+   * `XANO_HOST` with the backend URL of whichever env was just deployed to —
+   * the ephemeral on the default path, the sandbox under `--dest sandbox` — and
+   * merges any `--static-env`.
    *
    * A static host has no server runtime: every value here is served to the
    * browser verbatim, so it is **public** — base URLs and publishable keys only,
