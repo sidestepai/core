@@ -38,6 +38,17 @@ export interface SubcommandSpec {
   readonly example?: string;
   /** Set when the verb once existed and now fails loudly with this explanation. */
   readonly removed?: string;
+  /**
+   * Surface this verb as its own row in a global-help group. The three live
+   * `codegen` variants earn a line in "Pull" even though their parents live
+   * under "Environments" — pulling a workspace is the task you go looking for,
+   * not the noun you'd think to type first.
+   */
+  readonly group?: HelpGroup;
+  /** The name column for that row (required whenever `group` is set). */
+  readonly display?: string;
+  /** A one-line summary for that row, when the verb's own reads oddly out of context. */
+  readonly groupSummary?: string;
 }
 
 /** A top-level command. */
@@ -239,6 +250,9 @@ export const COMMANDS = {
         args: [{ name: "path", required: true }],
         flags: [...SCAFFOLD, "no-verify", ...AUTH],
         example: "sidestep workspace codegen ./app",
+        group: "Pull",
+        display: "workspace codegen <path>",
+        groupSummary: "Your real workspace → a runnable SideStep project",
       },
       deploy: {
         summary: "Removed — SideStep never writes back to your real workspace",
@@ -282,6 +296,9 @@ export const COMMANDS = {
         ],
         flags: [...SCAFFOLD, "no-verify", ...AUTH],
         example: "sidestep ephemeral codegen my-env ./app",
+        group: "Pull",
+        display: "ephemeral codegen <env> <path>",
+        groupSummary: "An ephemeral env → a runnable SideStep project",
       },
       impersonate: {
         summary: "Open the env's dashboard as a scoped session",
@@ -310,6 +327,9 @@ export const COMMANDS = {
         args: [{ name: "path", required: true }],
         flags: [...SCAFFOLD, "no-verify", ...AUTH],
         example: "sidestep sandbox codegen ./app",
+        group: "Pull",
+        display: "sandbox codegen <path>",
+        groupSummary: "Your sandbox → a runnable SideStep project",
       },
       deploy: {
         summary: "Removed — unified under `sidestep deploy --dest sandbox`",

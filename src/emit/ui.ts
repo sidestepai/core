@@ -28,6 +28,9 @@ function makePalette(on: boolean) {
   };
 }
 
+/** The shape every helper here (and the help renderer) paints through. */
+export type Palette = ReturnType<typeof makePalette>;
+
 /**
  * Small ANSI palette for the stderr progress UI (no-ops when color is disabled).
  * Color tracks STDERR, where every helper in this module writes.
@@ -35,11 +38,22 @@ function makePalette(on: boolean) {
 export const style = makePalette(resolveColor(process.stderr.isTTY));
 
 /**
+ * A palette for a human-facing view written to STDERR — the failure path's help
+ * block. Built per call (rather than reusing {@link style}) so a test that flips
+ * `NO_COLOR`/`FORCE_COLOR` mid-process sees the change; `style` is resolved once
+ * at import time, which is right for the long-lived progress helpers and wrong
+ * for a one-shot render.
+ */
+export function stderrStyle(): Palette {
+  return makePalette(resolveColor(process.stderr.isTTY));
+}
+
+/**
  * A palette for a human-facing view a command prints to STDOUT (its data
  * channel) — so color tracks stdout's TTY, not stderr's. Built per call because
  * a command may only print to stdout when it detects a TTY there.
  */
-export function stdoutStyle(): ReturnType<typeof makePalette> {
+export function stdoutStyle(): Palette {
   return makePalette(resolveColor(process.stdout.isTTY));
 }
 
