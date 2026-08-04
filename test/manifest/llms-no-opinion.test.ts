@@ -61,6 +61,15 @@ const BANNED: { pattern: RegExp; why: string }[] = [
   { pattern: /\bsearch reader\b/i, why: "engine internal" },
   // Self-referential size claims drift the moment either artifact changes.
   { pattern: /~\s*\d+(\.\d+)?x this file/i, why: "drifting self-reference" },
+  // Narration. Removed wholesale by the 2026-08 audit; these are the exact shapes
+  // that were there, so reintroducing one fails rather than accreting again.
+  { pattern: /\bcall this out to agents\b/i, why: "narration" },
+  { pattern: /\bthe primary loop\b/i, why: "narration" },
+  { pattern: /\bjust works\b/i, why: "narration" },
+  { pattern: /\bideal for\b/i, why: "narration" },
+  { pattern: /\ball of which surprise people\b/i, why: "narration" },
+  { pattern: /\btypical agent flow\b/i, why: "narration" },
+  { pattern: /\bfully manage those\b/i, why: "narration" },
 ];
 
 /**
