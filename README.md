@@ -1756,6 +1756,8 @@ sidestep profile me                          # print the scoped user + instance 
 sidestep logout                              # revoke the refresh token + clear the shared cache (--local for the project one)
 sidestep version                             # print the installed @sidestep/core version
 sidestep help                                # grouped command reference (also the no-arg default)
+sidestep <command> --help                    # that command's usage, subcommands, and flags (`sidestep deploy --help`)
+sidestep <noun> <verb> --help                # scoped to one verb (`sidestep workspace codegen --help`)
 
 sidestep validate ./xano/index.ts            # import into a live instance, diff each object back
 sidestep validate ./xano/index.ts --runtime  # also run each deployed function on the engine

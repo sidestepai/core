@@ -128,6 +128,41 @@ describe("command registry", () => {
     });
   });
 
+  it("every live registry command is named somewhere in the dispatch chain", () => {
+    // The inverse of the test below: a command declared here that `run()` never
+    // mentions would render in help and then fail as "unknown".
+    const src = readFileSync(fileURLToPath(new URL("../../src/emit/cli.ts", import.meta.url)), "utf8");
+    const undispatched = liveCommandNames().filter((c) => !src.includes(`"${c}"`));
+    expect(undispatched, "registry commands cli.ts never dispatches").toEqual([]);
+  });
+
+  it("each family's registry verbs match the verbs its handler dispatches", () => {
+    // Families dispatch in three different shapes — a `switch` in their own
+    // module, an `if` chain in cli.ts, a `!==` guard — so this asserts the
+    // weaker but shape-independent property: every live verb is named in the
+    // module that handles it, and every `case "verb":` there is in the registry.
+    const read = (rel: string) =>
+      readFileSync(fileURLToPath(new URL(`../../src/emit/${rel}`, import.meta.url)), "utf8");
+    const handlers: Array<[family: string, source: string]> = [
+      ["workspace", read("workspace-command.ts")],
+      ["ephemeral", read("ephemeral-command.ts")],
+      ["lock", read("lock-commands.ts")],
+      ["sandbox", read("cli.ts")],
+      ["profile", read("cli.ts")],
+    ];
+    for (const [family, source] of handlers) {
+      for (const verb of liveSubcommandNames(family)) {
+        expect(source.includes(`"${verb}"`), `${family} ${verb} is not dispatched`).toBe(true);
+      }
+      // `switch`-shaped handlers additionally get the reverse check.
+      const cases = [...source.matchAll(/case "([a-z-]+)":/g)].map((m) => m[1]!);
+      if (cases.length === 0) continue;
+      const registryVerbs = new Set(Object.keys(COMMANDS[family as keyof typeof COMMANDS].subcommands ?? {}));
+      const unlisted = cases.filter((c) => !registryVerbs.has(c));
+      expect(unlisted, `${family} dispatches verbs the registry doesn't list`).toEqual([]);
+    }
+  });
+
   it("registry keys cover every command the dispatch chain compares against", () => {
     // The lazy `await import(...)` chain in cli.ts is written separately from the
     // registry (so the browser-safe bundle stays clean). This pins the two
