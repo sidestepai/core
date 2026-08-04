@@ -41,7 +41,7 @@ import { tableColumns } from "../../kinds/table.js";
 import type { ColumnDef, TableDef, InferRow } from "../../kinds/table.js";
 import type { Prettify } from "../../fields/value-types.js";
 import { encodeOutputItems } from "./output-select.js";
-import type { OutputPath, OutputRoot } from "./output-select.js";
+import type { OutputPath, OutputRoot, QualifiedCol } from "./output-select.js";
 import { encodeSearch, encodeSort, encodeEval, qualifyAggregateEvals } from "./db-search.js";
 import type { DbWhere, SortDirective, DbEval, EvalFields, AggregateRow } from "./db-search.js";
 import { annotate } from "../statement.js";
@@ -55,6 +55,22 @@ export type { DbWhere, SortDir, SortDirective, DbEval, DbEvalFilter } from "./db
  * `output`, `sortBy`, and `row` keys.
  */
 type ColsOf<T> = T extends TableDef<infer C> ? C : string;
+
+/**
+ * The aliases a query's own `eval` declares — computed columns that exist on the
+ * result but on no table.
+ *
+ * `eval: [{name: "…$searchindex", as: "rank", filters: [{name: "search_rank"}]}]`
+ * makes `rank` selectable and sortable in the SAME call, and the engine's docs
+ * (and this SDK's) say so: each `as` grafts onto the row. Typed only against the
+ * table's columns, `sortBy: "rank"` did not compile — six selections in one real
+ * workspace, all of them valid.
+ */
+type EvalAliases<E> = E extends readonly (infer Item)[]
+  ? Item extends { as: infer A extends string }
+    ? A
+    : never
+  : never;
 
 /**
  * The single-row shape a db read yields, for `InferResponse`'s trace (U5): the
@@ -503,8 +519,12 @@ export interface DbGetArgs<
 
   /** The target table (def handle or name). */
   table: DbTableRef<T>;
-  /** The lookup field (defaults to the primary key `id`). */
-  fieldName?: ColsOf<T>;
+  /**
+   * The lookup field (defaults to the primary key `id`). A dotted path reaches a
+   * sub-key of an object column (`"google_oauth.id"`) or a joined table's column
+   * — see {@link QualifiedCol}.
+   */
+  fieldName?: QualifiedCol<ColsOf<T>>;
   /** The value to match. */
   fieldValue: Value;
   /** Acquire a row lock for the transaction. */
@@ -626,7 +646,8 @@ export interface DbDelArgs<T extends ObjectRef = ObjectRef> extends StatementAnn
   tableAlias?: string;
 
   table: DbTableRef<T>;
-  fieldName?: ColsOf<T>;
+  /** The lookup field. A dotted path reaches an object column's sub-key or a joined table's column ({@link QualifiedCol}). */
+  fieldName?: QualifiedCol<ColsOf<T>>;
   fieldValue: Value;
   as?: string;
 }
@@ -663,7 +684,8 @@ export interface DbHasArgs<T extends ObjectRef = ObjectRef, As extends string = 
   tableAlias?: string;
 
   table: DbTableRef<T>;
-  fieldName?: ColsOf<T>;
+  /** The lookup field. A dotted path reaches an object column's sub-key or a joined table's column ({@link QualifiedCol}). */
+  fieldName?: QualifiedCol<ColsOf<T>>;
   fieldValue: Value;
   /** Capture the existence boolean into this stack variable. Captured literally so
    * `InferResponse` can trace a `ref` back to this statement. */
@@ -700,7 +722,8 @@ export interface DbPatchArgs<
   tableAlias?: string;
 
   table: DbTableRef<T>;
-  fieldName?: ColsOf<T>;
+  /** The lookup field. A dotted path reaches an object column's sub-key or a joined table's column ({@link QualifiedCol}). */
+  fieldName?: QualifiedCol<ColsOf<T>>;
   fieldValue: Value;
   /** The partial row to merge (an object value). */
   data: Value;
@@ -1056,7 +1079,8 @@ export interface DbEditArgs<
   enforceHiddenFields?: boolean;
 
   table: DbTableRef<T>;
-  fieldName?: ColsOf<T>;
+  /** The lookup field. A dotted path reaches an object column's sub-key or a joined table's column ({@link QualifiedCol}). */
+  fieldName?: QualifiedCol<ColsOf<T>>;
   fieldValue: Value;
   /** The new field values as explicit entries (exact control over each field + `ignore`). */
   data?: DbField[];
@@ -1147,7 +1171,8 @@ export interface DbAddOrEditArgs<T extends ObjectRef = ObjectRef, As extends str
 
   table: DbTableRef<T>;
   /** The match field (defaults to the primary key `id`). */
-  fieldName?: ColsOf<T>;
+  /** The lookup field. A dotted path reaches an object column's sub-key or a joined table's column ({@link QualifiedCol}). */
+  fieldName?: QualifiedCol<ColsOf<T>>;
   /** The value to match for the edit branch. */
   fieldValue: Value;
   /** The row to upsert as explicit entries (exact control over each field + `ignore`). */
@@ -1713,7 +1738,7 @@ function encodeReturn(
 export interface DbQueryArgs<
   T extends ObjectRef = ObjectRef,
   As extends string = string,
-  Cols extends readonly OutputPath<ColsOf<T>>[] = readonly ColsOf<T>[],
+  Cols extends readonly OutputPath<ColsOf<T> | EvalAliases<E>>[] = readonly ColsOf<T>[],
   A extends readonly AddonSpec[] = readonly AddonSpec[],
   P extends DbPaging | undefined = DbPaging | undefined,
   RT extends DbReturnType = DbReturnType,
@@ -1746,7 +1771,7 @@ export interface DbQueryArgs<
    */
   bind?: DbBind[];
   /** Sort directives (`[{ sortBy, dir }]`) — applied by the engine. */
-  sort?: SortDirective<ColsOf<T>>[];
+  sort?: SortDirective<ColsOf<T> | EvalAliases<E>>[];
   /** Acquire row locks. */
   lock?: boolean;
   /**
@@ -1815,7 +1840,7 @@ export interface DbQueryArgs<
 export function dbQuery<
   T extends ObjectRef,
   const As extends string = "",
-  const Cols extends readonly OutputPath<ColsOf<T>>[] = readonly [],
+  const Cols extends readonly OutputPath<ColsOf<T> | EvalAliases<E>>[] = readonly [],
   const A extends readonly AddonSpec[] = readonly [],
   const P extends DbPaging | undefined = undefined,
   const RT extends DbReturnType = "list",

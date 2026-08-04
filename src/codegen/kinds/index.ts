@@ -1611,20 +1611,26 @@ function apiGroupBinding(a: KindDecodeArgs): DefEntry | null {
   ];
 }
 
-/** An api group's CORS block, elided when it is the encoder default. */
+/**
+ * An api group's CORS block, elided when it configures nothing.
+ *
+ * "Configures nothing" is `normalize`'s call, not a literal comparison against
+ * one spelling. A block applies only at `mode: "custom"`, and there are two inert
+ * spellings in the wild: the current `mode: "default"` (184 groups in the sweep)
+ * and an older one predating `mode` that carries `enabled: false` (4). Comparing
+ * against the first alone let the second through — and `CorsConfig` declares no
+ * `enabled`, so the emitted literal failed excess-property checking and took the
+ * whole generated tree down with it.
+ *
+ * Asking `normalize` is what makes the elision safe rather than merely plausible:
+ * it is the same oracle the round trip is judged against, so a block it calls
+ * inert cannot become a mismatch by being dropped. Normalized as a one-key
+ * OBJECT because the rule is keyed off the member name.
+ */
 function cors(a: KindDecodeArgs): DefEntry | null {
-  const stored = a.stored.cors as Record<string, unknown> | undefined;
+  const stored = a.stored.cors;
   if (stored === undefined) return null;
-  const isDefault =
-    deepEqual(stored, {
-      mode: "default",
-      allowOrigins: [],
-      allowHeaders: [],
-      allowCredentials: false,
-      maxAge: 0,
-      allowMethods: { delete: false, get: false, head: false, patch: false, post: false, put: false },
-    });
-  return isDefault ? null : ["cors", lit(stored)];
+  return deepEqual(normalize({ cors: stored }), {}) ? null : ["cors", lit(stored)];
 }
 
 /** A task's schedule list, inverting `encodeSchedule`. */

@@ -199,9 +199,21 @@ export type BlankTag = Exclude<Extract<Tag, `const${string}`>, "const" | "const:
 
 /** Constant constructors. Values always serialize as strings (per fixture). */
 export const c = {
-  /** Plain string constant → `tag:"const"`. */
-  text(s: string): Value {
-    return val(s, "const");
+  /**
+   * Plain string constant → `tag:"const"`.
+   *
+   * `null` is accepted alongside a string because the engine stores both: 47
+   * values in the sweep are a bare `const` holding `null` rather than `""`,
+   * mostly ignored statement-input entries the engine never reads. They are
+   * distinct bytes — `normalize` keeps them apart, unlike the `const:obj` blanks
+   * it does canonicalize — so a pull has to be able to spell the null form, and
+   * `c.text(null)` did not type-check.
+   *
+   * Write `c.text("")` for an empty string. The null form is here so a pulled
+   * workspace round-trips, not to be authored.
+   */
+  text(s: string | null): Value {
+    return val(s as string, "const");
   },
   /** Integer constant → `tag:"const:int"`, value stringified (e.g. `"123"`). */
   int(n: number): Value {

@@ -12,6 +12,7 @@
  */
 import type { Value } from "../../values/value.js";
 import type { Prettify } from "../../fields/value-types.js";
+import type { QualifiedCol } from "./output-select.js";
 import {
   type SearchNode,
   isValue,
@@ -45,8 +46,12 @@ export type SortDir = "asc" | "desc" | "rand";
  * this doc stays placement-neutral; see each caller's own doc for where it lands.
  */
 export interface SortDirective<C extends string = string> {
-  /** The column (or dot-path) to sort by. */
-  sortBy: C;
+  /**
+   * The column to sort by, or a dotted path qualifying one — a joined table's
+   * column, or the bound table's own `tableAlias` (`"comments.id"`), which is the
+   * form Xano's editor writes. See {@link QualifiedCol}.
+   */
+  sortBy: QualifiedCol<C>;
   /** Direction (`"asc"` | `"desc"` | `"rand"`); defaults to ascending. */
   dir?: SortDir;
 }

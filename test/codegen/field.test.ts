@@ -388,8 +388,13 @@ describe("decodeField — inputs", () => {
     // Reset to the unbound spelling, not carried — on the READABLE path, which
     // is where a customized dblink lands now.
     expect(source).toContain("input.dbLink(");
-    // The `@` target survives as the colon shorthand, pointing at nothing.
-    expect(source).toContain('"@:dbo="');
+    // The `@` target survives, pointing at nothing — in the explicit `{name, arg}`
+    // form, not the colon shorthand. No field type's method union enumerates `@`,
+    // so `"@:dbo="` did not type-check and the whole generated tree failed to
+    // compile; the object form is what `MethodArg` carries for exactly this.
+    expect(source).toContain('name: "@"');
+    expect(source).toContain('"dbo="');
+    expect(source).not.toContain('"@:dbo="');
     expect(source).not.toContain("dbo=14");
     // Warned about by name — a cleared reference is a real loss, not a passthrough.
     const detail = ctx.report.entries.map((e) => String(e.detail)).join(" | ");

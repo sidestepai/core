@@ -20,6 +20,7 @@ import type { FieldXdo, MethodXdo, ResultItemXdo, TaggedValue } from "../types/x
 import type { FieldCustomization, FieldOptions, MethodSpec, NestedField } from "../fields/field.js";
 import { COLUMN_CONTEXT, INPUT_CONTEXT, encodeField } from "../fields/field.js";
 import { f } from "../fields/catalog.js";
+import { FIELD_METHODS } from "../fields/generated/field-methods.generated.js";
 import type { FieldDescriptor } from "../fields/catalog.js";
 import { input } from "../inputs/input.js";
 import { CODEGEN_MODULE, CORE_MODULE, type DecodeContext } from "./context.js";
@@ -192,6 +193,30 @@ function colonForm(name: string, args: readonly (string | number)[]): string | n
   return recovered.every((value, i) => value === args[i]) ? candidate : null;
 }
 
+/**
+ * Every method name any field type's generated union enumerates.
+ *
+ * The colon shorthand (`"min:8"`) only type-checks against `MethodArg<N>`, whose
+ * `N` is the per-type union — so a name no union carries has to take the
+ * explicit `{name, arg}` form, which {@link MethodArg} documents as the
+ * universal escape hatch for exactly that.
+ *
+ * Membership is checked across ALL types rather than the field's own, because
+ * the same helper reads `customize` blocks, whose per-column overrides target the
+ * columns of a DIFFERENT table — types this decoder does not have. Checking the
+ * union of every type keeps all 842 customize-bearing fields on the readable
+ * shorthand; scoping it per-type would have pushed every one of them to the
+ * fifteen-line object form to catch a case that does not occur.
+ *
+ * It costs nothing in practice: the corpus holds exactly ONE name outside the
+ * unions, `@` — the FK annotation, 814 uses — and the 58 of those pointing at
+ * nothing ride `methods` verbatim rather than becoming an `f.tableRef`, so they
+ * were emitted as `"@:dbo="` and the tree did not compile.
+ */
+const ENUMERATED_METHODS: ReadonlySet<string> = new Set(
+  Object.values(FIELD_METHODS).flatMap((methods) => Object.keys(methods)),
+);
+
 /** Recover authoring `methods` from the stored list, or null when not expressible. */
 function recoverMethods(stored: readonly MethodXdo[]): MethodSpec[] | null {
   const out: MethodSpec[] = [];
@@ -207,7 +232,7 @@ function recoverMethods(stored: readonly MethodXdo[]): MethodSpec[] | null {
     // It is only emitted when re-parsing it yields the stored args exactly, so
     // an arg that cannot survive the trip (an embedded `:`, a string that looks
     // like a number) falls back to the explicit form rather than drifting.
-    const shorthand = colonForm(method.name, args);
+    const shorthand = ENUMERATED_METHODS.has(method.name) ? colonForm(method.name, args) : null;
     out.push(shorthand ?? { name: method.name, arg: [...args] });
   }
   return out;

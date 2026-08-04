@@ -89,16 +89,36 @@ interface LlmCommon {
   extraConfig?: Record<string, unknown>;
 }
 
+/**
+ * A numeric provider setting, as PERSISTED.
+ *
+ * These read as numbers and were declared `number`, but the editor's controls
+ * are `json`-typed, so the corpus stores every one of them both ways —
+ * `temperature` 12 times as an int and 18 as a string, `thinkingBudget` 12 and
+ * 10, `thinking.budgetTokens` always as a string — with `""` the spelling an
+ * untouched control leaves behind.
+ *
+ * The value round-trips verbatim either way (`normalize` already canonicalizes
+ * the two numeric spellings to one), so all the narrower type bought was a
+ * generated `temperature: ""` that would not compile.
+ *
+ * Widened rather than elided at `""`: dropping it would make the encoder write
+ * the SDK default instead, and whether the engine reads a blank as that default
+ * or as zero is a semantic claim nothing here can settle. Carrying the bytes
+ * through unchanged needs no such claim.
+ */
+export type LlmNumber = number | string;
+
 /** Anthropic provider settings → `configs.anthropic`. */
 export interface AnthropicLlm extends LlmCommon {
   type: "anthropic";
   apiKey?: string;
   model?: string;
-  temperature?: number;
+  temperature?: LlmNumber;
   /** Include reasoning in the response (stored `sendReasoning`). Defaults to true. */
   sendReasoning?: boolean;
   /** Extended-thinking token budget — presence enables `thinking` (`thinking.budgetTokens`). */
-  thinkingTokens?: number;
+  thinkingTokens?: LlmNumber;
   baseURL?: string;
   headers?: string;
 }
@@ -108,7 +128,7 @@ export interface OpenAiLlm extends LlmCommon {
   type: "openai";
   apiKey?: string;
   model?: string;
-  temperature?: number;
+  temperature?: LlmNumber;
   /** `configs.openai.reasoningEffort` (e.g. "low" | "medium" | "high"). Defaults to "medium". */
   reasoningEffort?: string;
   baseURL?: string;
@@ -124,11 +144,11 @@ export interface GoogleGenAiLlm extends LlmCommon {
   type: "google-genai";
   apiKey?: string;
   model?: string;
-  temperature?: number;
+  temperature?: LlmNumber;
   /** Stored `useSearchGrounding`. */
   searchGrounding?: boolean;
   /** Stored `thinkingConfig.thinkingBudget`. */
-  thinkingBudget?: number;
+  thinkingBudget?: LlmNumber;
   /** Stored `thinkingConfig.includeThoughts`. */
   includeThoughts?: boolean;
   baseURL?: string;
@@ -141,9 +161,9 @@ export interface GoogleGenAiLlm extends LlmCommon {
 /** Xano Free provider settings → `configs.xano-free` (a Google-GenAI wrapper with no `apiKey`/`model`). */
 export interface XanoFreeLlm extends LlmCommon {
   type: "xano-free";
-  temperature?: number;
+  temperature?: LlmNumber;
   searchGrounding?: boolean;
-  thinkingBudget?: number;
+  thinkingBudget?: LlmNumber;
   includeThoughts?: boolean;
   baseURL?: string;
   headers?: string;
