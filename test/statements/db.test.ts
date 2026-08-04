@@ -248,9 +248,25 @@ describe("db !map:dbo family — byte-shape vs transform-temp goldens", () => {
       // A dotted path selects sub-keys of a declared column; the sub-keys of an
       // object column are not declared, so only the root is checked.
       dbGet({ table: users, fieldValue: c.int(1), output: ["password_reset.token"] });
-      // @ts-expect-error — 'nope' is still not a column, dotted or not
-      dbGet({ table: users, fieldValue: c.int(1), output: ["nope.token"] });
+      // A dotted root is NOT checked against the schema, deliberately: a dot at
+      // the root means the root is a table, not a column of this one, and a
+      // joined table is exactly how `photo.id` / `comments.id` are addressed.
+      // The engine has no other meaning for the form, and 45 real selections and
+      // sorts needed it — see `QualifiedCol`.
+      dbGet({ table: users, fieldValue: c.int(1), output: ["photo.token"] });
+    });
 
+    it("still rejects a bare name that is not a column", () => {
+      // The arm that stays closed. Opening the dotted root must not open this
+      // one: a bare typo is where the union earns its keep.
+      const users = table({ name: "user", schema: { email: f.email() } });
+      const _typeOnly = (): void => {
+        // @ts-expect-error — 'nope' is not a column of `users`
+        dbGet({ table: users, fieldValue: c.int(1), output: ["nope"] });
+        // @ts-expect-error — nor is it a valid `fieldName`
+        dbGet({ table: users, fieldValue: c.int(1), fieldName: "nope" });
+      };
+      expect(typeof _typeOnly).toBe("function");
     });
   });
 

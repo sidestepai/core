@@ -198,11 +198,22 @@ function recoverRule(
   }
 }
 
-/** The `output` envelope a spec emits when the author shapes nothing. */
-function baseOutput(spec: StatementSpec): Record<string, unknown> {
-  return spec.envelope?.richOutput
-    ? { customize: false, filters: [], items: [] }
-    : { filters: [] };
+/**
+ * Whether a stored `output` envelope shapes nothing.
+ *
+ * There is no single spelling of "shapes nothing". The corpus holds
+ * `{items: [], filters: []}` 4,900 times, a bare `null` 518 times, `{filters: []}`
+ * 146 times, and `{}` besides — the engine writes whichever its generation and
+ * the statement's own envelope produce.
+ *
+ * Comparing against the one spelling a spec would emit let the others through as
+ * an authored value, and `null` is not assignable to `OutputAuthored` — so the
+ * generated statement did not compile. `normalize` already collapses all four to
+ * nothing, and it is the oracle the round trip is judged against, so asking it
+ * makes the elision provably safe rather than merely plausible.
+ */
+function shapesNothing(output: unknown): boolean {
+  return deepEqual(normalize({ output }), {});
 }
 
 /** Build the reserved envelope entries (`description`, `output`) a spec allows. */
@@ -213,7 +224,7 @@ function envelopeEntries(spec: StatementSpec, stored: StackItemXdo): Recovered[]
     out.push({ field: "description", runtime: description, expr: lit(description), isDefault: false });
   }
   const storedOutput = (stored as { output?: unknown }).output;
-  if (spec.output && storedOutput !== undefined && !deepEqual(storedOutput, baseOutput(spec))) {
+  if (spec.output && storedOutput !== undefined && !shapesNothing(storedOutput)) {
     out.push({ field: "output", runtime: storedOutput, expr: lit(storedOutput), isDefault: false });
   }
   return out;

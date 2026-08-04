@@ -25,11 +25,52 @@ export interface OutputItem {
 }
 
 /**
- * A selectable output path for a table whose columns are `C`: a column name, or
- * a dotted path into an object column. The suffix stays `string` because the
- * sub-keys of an `obj`/`json` column are not declared in the table schema.
+ * A selectable output path: a column of the bound table, a dotted path (into an
+ * object column, or into a joined table), or a field of the paging envelope.
+ *
+ * The bound table's schema is not the set of valid roots. A real query also
+ * selects from joined tables (`photo.id`, `merchant.id`) and, when it is paged,
+ * from the envelope wrapped around the rows (`itemsReceived`, `curPage`,
+ * `items.title`) — none of which any table declares. Typed as bare columns, the
+ * union rejected valid queries and a tree pulled from one did not compile.
+ *
+ * The bare-name arm stays CLOSED, so a typo is still an error. Only the two
+ * forms that were provably wrong are open: see {@link QualifiedCol} for the
+ * dotted root, and {@link PagingEnvelopeField} for the envelope.
  */
-export type OutputPath<C extends string> = C | `${C}.${string}`;
+export type OutputPath<C extends string> = QualifiedCol<C> | PagingEnvelopeField;
+
+/**
+ * A column of the bound table, or a column of any OTHER table reached by a
+ * dotted path.
+ *
+ * A dot at the root means the root is a table, not a column of this one:
+ * `photo.id` reads the joined `photo`, and `comments.id` qualifies the bound
+ * table by its own `tableAlias`, which is what Xano's editor writes. The SDK's
+ * own docs say so — "joined columns are addressable by dotted path in
+ * `where`/`sort`/`eval`" — and `SortDirective.sortBy` is documented as "the
+ * column (or dot-path)". Both were typed as a bare column anyway, so 45 real
+ * selections and sorts across 11 workspaces did not compile.
+ *
+ * The bare arm stays closed: a typo like `"emial"` is still an error, which is
+ * where the union earns its keep. Nothing is given up by opening the dotted form,
+ * because the engine has no other meaning for a dot at the root.
+ */
+export type QualifiedCol<C extends string> = C | `${string}.${string}`;
+
+/**
+ * The fields a PAGED read adds around the rows. Selectable like a column and
+ * declared by no table, so a paged query's `output` names them directly.
+ */
+type PagingEnvelopeField =
+  | "itemsReceived"
+  | "itemsTotal"
+  | "curPage"
+  | "nextPage"
+  | "prevPage"
+  | "pageTotal"
+  | "offset"
+  | "perPage";
 
 /** The root segment of a dotted output path — the column it selects from. */
 export type OutputRoot<P extends string> = P extends `${infer Head}.${string}` ? Head : P;
