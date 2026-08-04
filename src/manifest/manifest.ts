@@ -27,6 +27,8 @@ import { isRegisteredKind } from "../kinds/kind.js";
 import { TAGS } from "../types/xdo.js";
 import { FILTER_NAMES, FILTER_SPECS } from "../values/generated/filters.generated.js";
 import { FIELD_METHODS } from "../fields/generated/field-methods.generated.js";
+import { COMMANDS, FLAGS, flagKey, flagSummary } from "../emit/commands.js";
+import type { CommandSpec, SubcommandSpec, FlagRef } from "../emit/commands.js";
 
 /** Total engine object kinds. */
 export const TOTAL_OBJECT_KINDS = 30;
@@ -191,9 +193,16 @@ export interface ManifestCliFlag {
 }
 
 /**
- * One CLI command. Hand-maintained (there is no SDK source of truth for CLI
- * verbs), so — unlike the derived catalogs — this is the one manifest section
- * kept in sync by editing `CLI_COMMANDS` below when the CLI surface changes.
+ * One CLI command, DERIVED from the `COMMANDS`/`FLAGS` registry in
+ * `src/emit/commands.ts` — the same table that renders `--help` and generates the
+ * shell completions.
+ *
+ * It used to be hand-maintained here, and it drifted: `init` and `validate` were
+ * missing outright, `deploy` was short six flags, and the `--static` description
+ * claimed the frontend always lands on the parent workspace (true only under
+ * `--dest sandbox`). Deriving it makes that class of drift unrepresentable, which
+ * matters more now that `llms.txt` no longer documents the CLI — this array and
+ * `--help` are the only two surfaces, and they are now one source.
  */
 export interface ManifestCliCommand {
   /** The invocation verb, e.g. `deploy`. */
@@ -231,164 +240,55 @@ export interface Manifest {
  * no SDK source of truth for CLI verbs, so this list is hand-maintained: keep it
  * in sync with `USAGE` / the dispatch in `src/emit/cli.ts` when commands change.
  */
-const CLI_COMMANDS: readonly ManifestCliCommand[] = [
-  {
-    command: "compile",
-    args: "<file> [--out <path>]",
-    description: "Emit one function's importable JSON to --out (or stdout).",
-  },
-  {
-    command: "export",
-    args: "<file> [--out <path>]",
-    flags: [
-      { flag: "--lock[=<path>]", description: "Freeze object guids into a committed xano.lock (default: beside the entry)." },
-      { flag: "--frozen-lock", description: "CI guard: fail instead of changing the lock." },
-    ],
-    description: "Compile the default-exported Xano registry into the aggregate workspace bundle.",
-  },
-  {
-    command: "paths",
-    args: "<file> [--lock=<path>]",
-    description:
-      "List every API query's HTTP verb and resolved group-relative path (api:<canonical>/<name>). Alias: `routes`. Read-only — seeds an existing xano.lock to resolve canonicals but never writes one; a group with no resolvable canonical is reported with the `export --lock` fix.",
-  },
-  {
-    command: "deploy",
-    args: "<file> | --bundle <path>",
-    flags: [
-      { flag: "--dest <sandbox|ephemeral>", description: "Which environment to import into. Default `ephemeral`: a named, workspace-scoped, auto-expiring tenant, create-or-refreshed (tracked in ./.xano/ephemeral.json). `sandbox`: the throwaway singleton. Both do a FULL REPLACE (reset is inherent; no opt-out)." },
-      { flag: "--name <display>", description: "Ephemeral display name at create time (default: the workspace name from the bundle, else the project dir basename). Ignored for --dest sandbox." },
-      { flag: "--expires-hours <n>", description: "Ephemeral TTL at create time, 1–72 (default 1). Only applies when a new ephemeral is created, not on refresh." },
-      { flag: "--static <dir>", description: "Archive a built frontend directory and deploy it to a static host after the backend import. The target follows --dest: `ephemeral` puts it on the EPHEMERAL itself, `sandbox` on your OWN (parent) workspace (the sandbox tenant does not serve static hosting). The deployed env's backend URL is auto-injected into the build's root index.html as `window.XANO_HOST`, so the frontend needs no rebuild." },
-      { flag: "--static-host <name>", description: "Static-host NAME to deploy the frontend to (default `default`). Give each app a DISTINCT host so deploys don't share and overwrite the one `default` host. The host is auto-created on first deploy." },
-      { flag: "--static-env KEY=VALUE", description: "Repeatable. Bake extra PUBLIC config into the static build's index.html as `window.<KEY>` globals. Merged over the auto-seeded XANO_HOST; served verbatim, so never put secrets here." },
-      { flag: "--no-verify", description: "Skip the post-deploy liveness poll. By default, after a --static upload the CLI polls the deployed URL until the edge is serving THIS build (matching its X-Xano-Canonical), so success means the frontend is actually live — not just that the build was accepted. An unconfirmed poll is a warning, never a failure. Use --no-verify for fast iterative deploys or when the URL isn't reachable from the CLI host." },
-      { flag: "--config <path>", description: "Explicit credential file path (default: $XANO_CONFIG, then the shared ~/.sidestep/auth.json, falling back to ./.xano/auth.json when it exists). Either credential type is accepted." },
-      { flag: "--local", description: "Read credentials from the project-local ./.xano/auth.json cache instead of the shared ~/.sidestep/auth.json one. Reads already prefer an existing project-local cache, so this only matters when both exist." },
-    ],
-    description:
-      "Deploy the compiled workspace to a live environment and print its URL. Default `--dest ephemeral` create-or-refreshes a named auto-expiring environment: a live one is refreshed (URL unchanged), a gone/expired one is recreated (the new URL is called out). `--dest sandbox` targets the singleton throwaway. Each deploy is a full replace. Prints a projected, secret-free summary as JSON on stdout when piped. Never writes SERVER identities back into xano.lock (the compile step still maintains it as `export` does).",
-  },
-  {
-    command: "release",
-    args: "<file> | --bundle <path>",
-    flags: [
-      { flag: "--yes", description: "Skip the replace-confirmation (for CI). Only relevant once release is enabled." },
-    ],
-    description:
-      "COMING SOON. Promotes your compiled workspace to your MAIN Xano instance workspace (the production target), vs. `deploy` which ships to a disposable ephemeral/sandbox. The target workspace is the one your OAuth token is scoped to — there is no override. Currently gated: it prints a 'coming soon' message and takes no action, pending a record-preserving import (a release must not wipe production table data the way a full replace would).",
-  },
-  {
-    command: "ephemeral list|get|delete|export|impersonate",
-    args: "[<name>] [--all-workspaces] [--format <json|multidoc>] [--path <path>|-] [--guest] [--url-only] [--yes]",
-    flags: [
-      { flag: "list [--all-workspaces]", description: "List ephemeral tenants in your credential's workspace, or across every workspace on the instance with --all-workspaces. Expired-but-unswept rows are marked." },
-      { flag: "get <name>", description: "Show one ephemeral's base URL, state, and expiry (JSON when piped)." },
-      { flag: "delete <name> [--yes]", description: "Destroy an ephemeral (confirm unless --yes/--force). Idempotent if already gone; clears the matching local record." },
-      { flag: "export <name> [--format json|multidoc] [--path <p>|-]", description: "Export the ephemeral's workspace as the JSON bundle (default) or XanoScript multidoc (.xs), mirroring `sandbox export`." },
-      { flag: "codegen <name> <path>", description: "Pull the ephemeral's workspace into a runnable SideStep project at <path>. Note the positional order: tenant first, output path second." },
-      { flag: "impersonate <name> [--guest] [--url-only]", description: "Mint a one-time token and open the ephemeral in the builder. --guest = read-only session. --url-only prints the dashboard URL instead of opening a browser; when piped, output is JSON ({ _ti, url })." },
-    ],
-    description:
-      "Manage the ephemeral environments `deploy` creates. get/export/delete resolve the tenant first: a swept (404) or past-expiry tenant yields one actionable 'run `sidestep deploy`' message (never touching the dead env), and clears its stale local record.",
-  },
-  {
-    command: "sandbox export",
-    args: "[--format <json|multidoc>] [--path <path>|-] [--name <name>]",
-    flags: [
-      { flag: "--format json", description: "(default) Export the workspace CURRENTLY DEPLOYED to your sandbox as the JSON bundle — the same packageExport shape `deploy` sends — and write a .json file. Reads the deployed tenant over the meta API (sandbox/me → the tenant's workspace export → decode), NOT the local package." },
-      { flag: "--format multidoc", description: "GET the sandbox tenant's XanoScript multidoc over OAuth and write it to a .xs file." },
-      { flag: "--path <path>|-", description: "Output location: a directory (writes <name>.<ext> inside it), a full file path (verbatim), or `-` for stdout. Default: ./sandbox.<ext> in the cwd." },
-      { flag: "--name <name>", description: "Output basename override (default `sandbox`)." },
-    ],
-    description:
-      "Export the workspace CURRENTLY DEPLOYED to your sandbox — as the JSON bundle (default) or the XanoScript multidoc (.xs). Both are pure OAuth meta calls against the sandbox: no local file, no compile step, so a bare `sandbox export` just works (run `sidestep deploy --dest sandbox` first). To compile a LOCAL workspace to JSON instead, use `sidestep export <file>`. env/records/draft are unsupported (endpoint defaults).",
-  },
-  {
-    command: "workspace details|export|codegen",
-    args: "[<path>] [--path <path>|-] [--name <name>] [--ai <preset>] [--force] [--no-install] [--no-verify]",
-    flags: [
-      { flag: "details", description: "Show which workspace your credential is bound to — instance, numeric id, name, guid, and which credential selected it. Read it before `export`/`codegen` to confirm what they will read." },
-      { flag: "export [--path <p>|-] [--name <n>]", description: "Write the workspace bundle JSON (the same packageExport shape `deploy` sends). JSON only — the multidoc route is a sandbox/tenant surface." },
-      { flag: "codegen <path>", description: "Decode the workspace into a runnable SideStep project at <path> (the `init` scaffold with `xano/` filled from the pull), then verify it re-exports identically." },
-    ],
-    description:
-      "Read the REAL workspace your credential is bound to, via `workspace/{id}/export` (the compressed bundle). The workspace id comes from the credential and cannot be overridden. Deliberately read-only: there is no `workspace deploy`, because the only import path is a FULL REPLACE of the target workspace. The loop is pull from here, edit, then `deploy` to a disposable ephemeral/sandbox env.",
-  },
-  {
-    command: "codegen",
-    args: "<bundle.json> <path> [--name <n>] [--ai <preset>] [--force] [--no-install] [--no-verify]",
-    flags: [
-      { flag: "<bundle.json>", description: "A bundle already on disk (from `sidestep export` or any `<env> export`). Pure and OFFLINE — no auth, no network." },
-      { flag: "<path>", description: "Project directory. Created if absent. A directory a previous codegen wrote (it carries `xano/.sidestep-codegen.json`) has its `xano/` refreshed in place; any other non-empty directory is refused unless --force." },
-      { flag: "--name <n>", description: "Package name for the scaffolded project (default: the target directory basename)." },
-      { flag: "--ai <preset>", description: "Scaffold AI-assistant instructions (claude|codex|cursor|none, repeatable). The codegen variant tells an agent that `xano/` is machine-written and regenerated wholesale." },
-      { flag: "--force", description: "Write into a non-empty directory that is not a previous codegen project. `xano/` is cleared first so files from an earlier tree cannot survive as orphans." },
-      { flag: "--no-install", description: "Skip the post-scaffold `npm install`. Verification needs the dependencies to load the tree, so this also leaves the round trip unchecked." },
-      { flag: "--no-verify", description: "Skip the post-write round-trip check. On by default; skipping it leaves the tree unchecked." },
-    ],
-    description:
-      "Decode a Xano bundle into a RUNNABLE project: the same scaffold `sidestep init` writes (root package.json with dev/build/xano:export/xano:deploy, tsconfig, vite config, frontend/) with the decoded workspace filling `xano/` — one directory per kind with each object under its parent (`query/<group>.ts` beside `query/<group>/<name>_<VERB>.ts`, `table/trigger/`, `agent/trigger/`, and realtime's three levels as `realtime_server/<server>.ts` beside `realtime_server/<server>/<channel>.ts` beside `.../<channel>/<message>.ts`, with a `trigger/` at each level). Anything holding children is a file named for ITSELF sitting beside their folder, so no two tabs read alike and a childless container needs no folder. Every table has its own file under `table/`, settings in `xano/workspace.ts`, a `_shared.ts` for anything else referenced from more than one file, a barrel `xano/index.ts`, and `xano/README.md` carrying the decode report. Paths are LOWER CASE throughout (the HTTP verb is the one exception), while bindings keep the object's own casing — so a file name and the symbol it exports can differ. So `sidestep <src> codegen app && cd app && npm run build && npm run xano:deploy` ships a pulled workspace to a live ephemeral URL. Guids are preserved verbatim so references stay consistent. A statement the catalog cannot model round-trips verbatim through `raw()` from `@sidestep/core/codegen`. After install, the tree is loaded, re-exported, and diffed against the source bundle — a mismatch names the object and FAILS. `xano/` is disposable and schema-only (no seed rows): re-running rewrites it (the rest of the project is left alone) and deploying is a full replace, so send it only to an ephemeral/sandbox env. Workspace env var VALUES are carried inline in `xano/workspace.ts`, so treat a pulled tree as secret-bearing. The live variants are `workspace codegen`, `sandbox codegen`, and `ephemeral codegen`.",
-  },
-  {
-    command: "sandbox codegen",
-    args: "<path> [--name <n>] [--ai <preset>] [--force] [--no-install] [--no-verify]",
-    description:
-      "Pull the workspace CURRENTLY DEPLOYED to your sandbox into a runnable SideStep project at <path>. Same core as `sidestep codegen <bundle.json>`; only the source differs. See `codegen` for the flags and the disposable/full-replace boundaries.",
-  },
-  {
-    command: "sandbox details",
-    args: "[--config <path>] [--local]",
-    description:
-      "Print the sandbox tenant as JSON, headlined by its public `baseUrl` — read it to point a frontend at the deployed backend without re-running a deploy. Projects only safe fields (never the raw tenant blob).",
-  },
-  {
-    command: "profile me",
-    args: "[--config <path>] [--local]",
-    description:
-      "Print the scoped user and the instance base URL as JSON — read `instance` to configure a frontend's API base before a --static upload.",
-  },
-  {
-    command: "login",
-    args: "[--origin <origin>] [--config <path>] [--local] [--port <n>] [--scope <list>]",
-    description: "OAuth sign-in (browser consent; pick the instance AND workspace at consent). Writes a `type: \"oauth\"` credential to the shared ~/.sidestep/auth.json (reused from any project), or the project-local ./.xano/auth.json with --local, PINNING the numeric workspace so no later command looks it up or overrides it. For CI, set $XANO_REFRESH_TOKEN + $XANO_CLIENT_ID instead.",
-  },
-  {
-    command: "logout",
-    args: "[--config <path>] [--local]",
-    description: "Delete the stored credential — the shared ~/.sidestep one by default, or the project-local ./.xano one with --local. An `oauth` credential is revoked at the authorization server first; a hand-authored `token` credential has nothing to revoke, so the file is simply removed.",
-  },
-  {
-    command: "lock",
-    args: "<rename|prune|adopt> …",
-    description: "xano.lock identity maintenance (rename an object, prune stale entries, adopt an existing live bundle).",
-  },
-  {
-    command: "completion",
-    args: "<bash|zsh|fish>",
-    description:
-      "Print a shell completion script to stdout, generated from the CLI's own command table — every " +
-      "command, verb, flag, and closed value set (`--dest`, `--format`, `--ai`). Baked at generation " +
-      "time, so re-run it after upgrading. Install: `sidestep completion zsh > \"${fpath[1]}/_sidestep\"`, " +
-      "`sidestep completion bash > ~/.sidestep-completion.bash` (then source it), or " +
-      "`sidestep completion fish > ~/.config/fish/completions/sidestep.fish`.",
-  },
-  {
-    command: "version",
-    args: "",
-    description: "Print the installed @sidestep/core version to stdout (also `--version` / `-v`). Handy for debugging which build is running.",
-  },
-  {
-    command: "help",
-    args: "",
-    description:
-      "Print the grouped command reference to stdout (also the no-argument default, `--help`, and `-h`). " +
-      "`--help`/`-h` also works AFTER a command or verb — `sidestep deploy --help`, `sidestep workspace codegen --help` " +
-      "— printing that scope's usage, subcommands, and accepted flags. Requested help goes to stdout and exits 0; " +
-      "a usage failure (unknown command or verb, missing argument) prints the same block to STDERR under a `✗` line, " +
-      "with a did-you-mean when one is close, and exits nonzero.",
-  },
-];
+/** `[{name, required}]` → the usage grammar string, e.g. `<file> [dir]`. */
+function argGrammar(args: readonly { name: string; required: boolean }[] | undefined): string | undefined {
+  if (args === undefined || args.length === 0) return undefined;
+  return args.map((a) => (a.required ? `<${a.name}>` : `[${a.name}]`)).join(" ");
+}
+
+/** A command's flag refs → the manifest's `{flag, description}` pairs. */
+function flagsOf(refs: readonly FlagRef[] | undefined): ManifestCliFlag[] | undefined {
+  if (refs === undefined || refs.length === 0) return undefined;
+  return refs.map((ref) => ({ flag: FLAGS[flagKey(ref) as keyof typeof FLAGS].spec, description: flagSummary(ref) }));
+}
+
+/**
+ * Flatten the registry into one manifest entry per invocable verb. A command with
+ * subcommands contributes one entry per subcommand (`ephemeral get`) rather than a
+ * single `ephemeral list|get|delete` row, so grepping the manifest for the verb an
+ * agent means to run actually finds it. Removed verbs are omitted — they exist in
+ * the registry only to fail loudly with an explanation.
+ */
+function buildCli(): ManifestCliCommand[] {
+  const out: ManifestCliCommand[] = [];
+  for (const [name, spec] of Object.entries(COMMANDS) as [string, CommandSpec][]) {
+    if (spec.removed !== undefined) continue;
+    const description =
+      spec.aliasOf === undefined ? spec.summary : `${spec.summary} (alias of \`${spec.aliasOf}\`)`;
+    const subs = Object.entries(spec.subcommands ?? {}) as [string, SubcommandSpec][];
+    if (subs.length === 0) {
+      out.push({
+        command: name,
+        ...(argGrammar(spec.args) !== undefined ? { args: argGrammar(spec.args)! } : {}),
+        ...(flagsOf(spec.flags) !== undefined ? { flags: flagsOf(spec.flags)! } : {}),
+        description,
+      });
+      continue;
+    }
+    for (const [subName, sub] of subs) {
+      if (sub.removed !== undefined) continue;
+      const args = argGrammar(sub.args ?? spec.args);
+      const flags = flagsOf(sub.flags ?? spec.flags);
+      out.push({
+        command: `${name} ${subName}`,
+        ...(args !== undefined ? { args } : {}),
+        ...(flags !== undefined ? { flags } : {}),
+        description: sub.summary,
+      });
+    }
+  }
+  return out.sort((a, b) => a.command.localeCompare(b.command));
+}
 
 /**
  * The 12 implemented object kinds with their authoring + registration metadata.
@@ -668,7 +568,7 @@ export function buildManifest(opts: { version?: string } = {}): Manifest {
     fieldTypes: buildFieldTypes(),
     statements,
     filters,
-    cli: [...CLI_COMMANDS],
+    cli: buildCli(),
   };
 }
 
