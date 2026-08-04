@@ -78,6 +78,19 @@ describe("command registry", () => {
     expect(flagSummary("name")).toBe(FLAGS.name.summary);
   });
 
+  it("every closed value set is non-empty", () => {
+    // An empty `values: []` reads as "no constraint" at the type level but makes
+    // completion offer nothing where it promised a choice.
+    for (const [key, spec] of Object.entries(FLAGS) as Array<[string, { values?: readonly string[] }]>) {
+      if (spec.values !== undefined) expect(spec.values.length, `${key}.values`).toBeGreaterThan(0);
+    }
+    for (const [name, spec] of entries) {
+      for (const arg of spec.args ?? []) {
+        if (arg.values !== undefined) expect(arg.values.length, `${name} <${arg.name}>`).toBeGreaterThan(0);
+      }
+    }
+  });
+
   it("every FLAGS entry has a spec and a summary", () => {
     for (const [key, spec] of Object.entries(FLAGS)) {
       expect(spec.spec, `${key}.spec`).toMatch(/^-/);

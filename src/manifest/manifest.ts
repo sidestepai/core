@@ -364,6 +364,16 @@ const CLI_COMMANDS: readonly ManifestCliCommand[] = [
     description: "xano.lock identity maintenance (rename an object, prune stale entries, adopt an existing live bundle).",
   },
   {
+    command: "completion",
+    args: "<bash|zsh|fish>",
+    description:
+      "Print a shell completion script to stdout, generated from the CLI's own command table — every " +
+      "command, verb, flag, and closed value set (`--dest`, `--format`, `--ai`). Baked at generation " +
+      "time, so re-run it after upgrading. Install: `sidestep completion zsh > \"${fpath[1]}/_sidestep\"`, " +
+      "`sidestep completion bash > ~/.sidestep-completion.bash` (then source it), or " +
+      "`sidestep completion fish > ~/.config/fish/completions/sidestep.fish`.",
+  },
+  {
     command: "version",
     args: "",
     description: "Print the installed @sidestep/core version to stdout (also `--version` / `-v`). Handy for debugging which build is running.",

@@ -52,6 +52,19 @@ function flagSection(flags: readonly FlagRef[] | undefined, s: Palette): string[
   return ["", s.bold("Flags"), ...table(rows, s)];
 }
 
+/**
+ * An `Arguments` block for positionals that accept a closed set. Free-form
+ * positionals are already described by the usage line; only a fixed set carries
+ * information the usage line can't, and leaving it to prose means the terminal
+ * can't answer "what values does this take".
+ */
+function argSection(args: readonly ArgSpec[] | undefined, s: Palette): string[] {
+  const rows = (args ?? [])
+    .filter((a) => a.values !== undefined && a.values.length > 0)
+    .map((a) => [`<${a.name}>`, a.values!.join(", ")] as const);
+  return rows.length === 0 ? [] : ["", s.bold("Arguments"), ...table(rows, s)];
+}
+
 /** Trailing example line, or nothing. */
 function exampleSection(example: string | undefined, s: Palette): string[] {
   return example ? ["", s.bold("Example"), `  ${s.dim(example)}`] : [];
@@ -125,6 +138,7 @@ export function renderCommandHelp(command: string, s: Palette = stdoutStyle()): 
     lines.push("", s.bold("Subcommands"), ...table(rows, s));
   }
 
+  lines.push(...argSection(spec.args, s));
   lines.push(...flagSection(spec.flags, s));
   lines.push(...exampleSection(spec.example, s));
 
@@ -147,6 +161,7 @@ export function renderSubcommandHelp(command: string, sub: string, s: Palette = 
     "",
     `${s.dim("Usage:")} sidestep ${command} ${sub}${args ? ` ${args}` : ""} ${s.dim("[options]")}`,
   ];
+  lines.push(...argSection(spec.args, s));
   lines.push(...flagSection(spec.flags, s));
   lines.push(...exampleSection(spec.example, s));
   return lines.join("\n") + "\n";

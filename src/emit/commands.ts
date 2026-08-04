@@ -21,6 +21,8 @@ export interface FlagSpec {
   /** How the flag is written, e.g. `--dest <sandbox|ephemeral>`. */
   readonly spec: string;
   readonly summary: string;
+  /** The closed set this flag accepts, when it has one — shell completion offers these. */
+  readonly values?: readonly string[];
 }
 
 /**
@@ -36,6 +38,10 @@ export type FlagRef = string | { readonly key: string; readonly summary: string 
 export interface ArgSpec {
   readonly name: string;
   readonly required: boolean;
+  /** This argument names a file or directory — shell completion offers paths for it. */
+  readonly path?: boolean;
+  /** The closed set this argument accepts, when it has one — shell completion offers these. */
+  readonly values?: readonly string[];
 }
 
 /** A verb under a noun command (`workspace details`, `ephemeral list`). */
@@ -103,7 +109,11 @@ export const FLAGS = {
   yes: { spec: "--yes, -y", summary: "Confirm a destructive action non-interactively" },
   bundle: { spec: "--bundle <path>", summary: "Use an already-exported bundle instead of an entry file" },
   reset: { spec: "--reset", summary: "Accepted but redundant — every deploy is a full replace" },
-  dest: { spec: "--dest <ephemeral|sandbox>", summary: "Which environment to import into (default: ephemeral)" },
+  dest: {
+    spec: "--dest <ephemeral|sandbox>",
+    summary: "Which environment to import into (default: ephemeral)",
+    values: ["ephemeral", "sandbox"],
+  },
   "expires-hours": { spec: "--expires-hours <n>", summary: "Ephemeral TTL at create time, 1–72 (default: 1)" },
   static: { spec: "--static <dir>", summary: "Archive this built frontend and deploy it to the static host" },
   "static-env": { spec: "--static-env KEY=VALUE", summary: "Public config baked in as window.<KEY> (repeatable; never secrets)" },
@@ -121,10 +131,14 @@ export const FLAGS = {
   capture: { spec: "--capture", summary: "Write each round-tripped function's fetched JSON" },
   verbose: { spec: "--verbose", summary: "Print full diffs and raw engine detail" },
   instance: { spec: "--instance <url>", summary: "Override XANO_VALIDATE_INSTANCE for this run" },
-  format: { spec: "--format <json|multidoc>", summary: "Which artifact to emit" },
+  format: { spec: "--format <json|multidoc>", summary: "Which artifact to emit", values: ["json", "multidoc"] },
   path: { spec: "--path <p>", summary: "Output location — `-` for stdout, a dir, or a file path" },
   name: { spec: "--name <n>", summary: "Name for what this command produces" },
-  ai: { spec: "--ai <preset>", summary: "AI instruction files to scaffold: claude, codex, cursor, none" },
+  ai: {
+    spec: "--ai <preset>",
+    summary: "AI instruction files to scaffold: claude, codex, cursor, none",
+    values: ["claude", "codex", "cursor", "none"],
+  },
   force: { spec: "--force", summary: "Scaffold into a non-empty directory (overwriting our own files)" },
   "no-install": { spec: "--no-install", summary: "Skip the post-scaffold npm install" },
 } as const satisfies Record<string, FlagSpec>;
@@ -155,7 +169,7 @@ export const COMMANDS = {
     group: "Author",
     display: "compile <file>",
     summary: "Type-check and compile a workspace to XanoScript",
-    args: [{ name: "file", required: true }],
+    args: [{ name: "file", required: true, path: true }],
     flags: ["out", "lock"],
     example: "sidestep compile ./xano/query/public/health_GET.ts",
   },
@@ -163,7 +177,7 @@ export const COMMANDS = {
     group: "Author",
     display: "export <file>",
     summary: "Compile and write the deployable JSON bundle",
-    args: [{ name: "file", required: true }],
+    args: [{ name: "file", required: true, path: true }],
     flags: ["out", ...COMPILE],
     example: "sidestep export ./index.ts --out bundle.json",
   },
@@ -171,7 +185,7 @@ export const COMMANDS = {
     group: "Author",
     display: "paths <file>",
     summary: "List each query's verb + resolved api:<canonical>/<name>",
-    args: [{ name: "file", required: true }],
+    args: [{ name: "file", required: true, path: true }],
     flags: ["lock"],
     example: "sidestep paths ./index.ts",
   },
@@ -180,14 +194,14 @@ export const COMMANDS = {
     display: "routes <file>",
     summary: "Alias for `paths`",
     aliasOf: "paths",
-    args: [{ name: "file", required: true }],
+    args: [{ name: "file", required: true, path: true }],
     flags: ["lock"],
   },
   init: {
     group: "Author",
     display: "init [dir]",
     summary: "Scaffold a new sidestep project",
-    args: [{ name: "dir", required: false }],
+    args: [{ name: "dir", required: false, path: true }],
     flags: [...SCAFFOLD],
     example: "sidestep init my-app --ai claude",
   },
@@ -197,7 +211,7 @@ export const COMMANDS = {
     group: "Deploy",
     display: "deploy <file>",
     summary: "Ship to a live ephemeral env (or --dest sandbox) → URL",
-    args: [{ name: "file", required: true }],
+    args: [{ name: "file", required: true, path: true }],
     flags: [
       "dest",
       "expires-hours",
@@ -217,7 +231,7 @@ export const COMMANDS = {
     group: "Deploy",
     display: "release <file>",
     summary: "Promote to your instance workspace (coming soon)",
-    args: [{ name: "file", required: true }],
+    args: [{ name: "file", required: true, path: true }],
     flags: [
       "yes",
       { key: "force", summary: "Skip the replace-my-workspace confirmation (same as --yes)" },
@@ -234,7 +248,7 @@ export const COMMANDS = {
     group: "Deploy",
     display: "validate <file>",
     summary: "Deploy to a throwaway tenant and verify the round-trip",
-    args: [{ name: "file", required: true }],
+    args: [{ name: "file", required: true, path: true }],
     flags: ["runtime", "capture", "verbose", "instance", "out", ...COMPILE],
     example: "sidestep validate ./index.ts --runtime",
   },
@@ -245,8 +259,8 @@ export const COMMANDS = {
     display: "codegen <bundle> <path>",
     summary: "A bundle JSON file → a runnable SideStep project (offline)",
     args: [
-      { name: "bundle.json", required: true },
-      { name: "path", required: true },
+      { name: "bundle.json", required: true, path: true },
+      { name: "path", required: true, path: true },
     ],
     flags: [...SCAFFOLD, "no-verify"],
     example: "sidestep codegen ./bundle.json ./app",
@@ -270,7 +284,7 @@ export const COMMANDS = {
       },
       codegen: {
         summary: "Decode it into a runnable SideStep project",
-        args: [{ name: "path", required: true }],
+        args: [{ name: "path", required: true, path: true }],
         flags: [...SCAFFOLD, "no-verify", ...AUTH],
         example: "sidestep workspace codegen ./app",
         group: "Pull",
@@ -315,7 +329,7 @@ export const COMMANDS = {
         summary: "Decode an env into a runnable SideStep project",
         args: [
           { name: "name", required: true },
-          { name: "path", required: true },
+          { name: "path", required: true, path: true },
         ],
         flags: [...SCAFFOLD, "no-verify", ...AUTH],
         example: "sidestep ephemeral codegen my-env ./app",
@@ -347,7 +361,7 @@ export const COMMANDS = {
       },
       codegen: {
         summary: "Decode the sandbox into a runnable SideStep project",
-        args: [{ name: "path", required: true }],
+        args: [{ name: "path", required: true, path: true }],
         flags: [...SCAFFOLD, "no-verify", ...AUTH],
         example: "sidestep sandbox codegen ./app",
         group: "Pull",
@@ -409,7 +423,7 @@ export const COMMANDS = {
       prune: {
         summary: "Drop orphaned entries (all, or just the named keys)",
         args: [
-          { name: "entry-file", required: true },
+          { name: "entry-file", required: true, path: true },
           { name: "keys…", required: false },
         ],
         flags: ["yes", "lock"],
@@ -417,11 +431,18 @@ export const COMMANDS = {
       },
       adopt: {
         summary: "Seed the lock from a live engine packageExport",
-        args: [{ name: "bundle.json", required: true }],
+        args: [{ name: "bundle.json", required: true, path: true }],
         flags: ["yes", "lock"],
         example: "sidestep lock adopt ./packageExport.json",
       },
     },
+  },
+  completion: {
+    group: "Maintenance",
+    display: "completion <shell>",
+    summary: "Print a shell completion script (bash, zsh, fish)",
+    args: [{ name: "shell", required: true, values: ["bash", "zsh", "fish"] }],
+    example: "sidestep completion zsh > \"${fpath[1]}/_sidestep\"",
   },
   version: {
     group: "Maintenance",

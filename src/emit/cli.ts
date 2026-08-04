@@ -59,7 +59,7 @@ import { readLockFile, writeLockFile } from "../lock/io.js";
 import { resetLockOverrides, seedLockOverrides } from "../lock/store.js";
 import { warn, info, detail, stdoutStyle } from "./ui.js";
 import { renderGlobalHelp, renderHelpFor } from "./help.js";
-import { getSubcommand, isCommand } from "./commands.js";
+import { getSubcommand, isCommand, suggest } from "./commands.js";
 import {
   UsageError,
   missingArgument,
@@ -689,6 +689,21 @@ export async function run(argv: string[]): Promise<void> {
     // authoring bundle never pulls it in.
     const { runInitCommand } = await import("./init-command.js");
     return runInitCommand(args);
+  }
+  if (command === "completion") {
+    // Pure string building over the registry, but lazily imported all the same:
+    // almost no run needs it, and the common path should not carry it.
+    const { isCompletionShell, runCompletionCommand, COMPLETION_SHELLS } = await import("./completion.js");
+    const shell = args.positionals[0];
+    if (shell === undefined || !isCompletionShell(shell)) {
+      throw new UsageError(
+        shell === undefined
+          ? `\`sidestep completion\`: missing required <shell>.`
+          : `\`sidestep completion\`: unknown shell "${shell}". Supported: ${COMPLETION_SHELLS.join(", ")}.`,
+        { helpFor: { command: "completion" }, suggestion: suggest(shell ?? "", COMPLETION_SHELLS) },
+      );
+    }
+    return runCompletionCommand(shell);
   }
   if (command === "lock") {
     const { runLockCommand } = await import("./lock-commands.js");
