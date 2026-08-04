@@ -303,16 +303,19 @@ xano/
 5. **Compile** with \`npm run xano:export\`, and **deploy** with
    \`npm run xano:deploy\` (after \`sidestep login\`).
 
-## Testing in the sandbox
+## Testing event-driven objects
 
-Event-driven objects **deploy but do not fire in the sandbox**: a scheduled
-\`task\`, an \`mcpServer\`, and every trigger (a table insert/update/delete does NOT
-run its stack) import cleanly but never execute, and there's no way to fire one
-manually. Only synchronously-invoked objects — queries, functions, and the agents
-an endpoint calls with \`s.ai.agent.run\` — actually run. To test event-driven
-logic, factor its body into a \`defineFunction\` you can also call directly (e.g.
-from a query via \`s.function.run\`) and assert against that. See \`llms.txt\` for the
-full guidance.
+A scheduled \`task\`, an \`mcpServer\`, and every trigger **fire normally on an
+ephemeral** — \`deploy\`'s default destination — so test them by deploying and
+letting them run.
+
+Under \`--dest sandbox\` they **deploy but do not fire**: they import cleanly, never
+execute, and there's no way to fire one manually (a table insert/update/delete does
+NOT run its trigger). Only synchronously-invoked objects — queries, functions, and
+the agents an endpoint calls with \`s.ai.agent.run\` — run there. If you must stay on
+the sandbox, factor the body into a \`defineFunction\` you can also call directly
+(e.g. from a query via \`s.function.run\`) and assert against that. See \`llms.txt\`
+for the full guidance.
 
 ## Wire the frontend
 

@@ -85,7 +85,7 @@ const KEEPS: { text: string; in: (typeof ARTIFACTS)[number] }[] = [
   { text: "Foreign key is `f.tableRef(table)`, not `ref`.", in: "llms.txt" },
   { text: "`db.get` binds `null` on a no-match, but a nested `ref(\"owner.user_id\")`", in: "llms.txt" },
   { text: "0 MEANS OFF", in: "llms.txt" },
-  { text: "does NOT run its stack", in: "llms.txt" },
+  { text: "does NOT fire in the sandbox", in: "llms.txt" },
   { text: "a bare path is NOT accepted", in: "llms.txt" },
   // Wire-visible identifiers. `mvp:dbo_view` proves the `dbo_view` lookbehind
   // spares a statement NAME; it lives only in manifest.json, since llms.txt

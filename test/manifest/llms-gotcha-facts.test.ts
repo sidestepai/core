@@ -56,7 +56,7 @@ const GOTCHA_BULLETS = [
   "Don't take a password through `input.password` on login — it double-hashes.",
   // Promoted from the old `## Deploy` prose when the CLI surface moved to `--help`.
   "Agents authenticate with env vars — never `sidestep login`.",
-  "Event-driven objects deploy but DO NOT FIRE in the sandbox.",
+  "Event-driven objects fire on an EPHEMERAL, not in the sandbox.",
   "Reading a pulled tree.",
 ];
 
@@ -103,8 +103,14 @@ const DEPLOY_FACTS: Fact[] = [
     needs: [/--dest\s*\n?\s*ephemeral|--dest ephemeral/, /auto-expiring/],
   },
   {
-    name: "event-driven objects deploy but never fire in the sandbox",
-    needs: [/DO NOT FIRE in the sandbox/i, /`task`/, /`mcpServer`/, /tableTrigger/],
+    name: "event-driven objects fire on an ephemeral but not in the sandbox",
+    needs: [
+      /fire on an EPHEMERAL/i,
+      /DEFAULT destination/i,
+      /--dest sandbox/,
+      /NEVER execute/i,
+      /`task`/, /`mcpServer`/, /tableTrigger/,
+    ],
   },
   {
     name: "the sandbox workaround is to factor the body into a callable function",
