@@ -149,8 +149,11 @@ describe("CLI", () => {
     }
   });
 
-  it("an unknown command's error points at `sidestep help`, not a wall of usage", async () => {
-    await expect(run(["frobnicate"])).rejects.toThrow(/Run `sidestep help`/);
+  // An unknown command used to end at a one-line pointer to `sidestep help`. It
+  // now throws a UsageError carrying the help block itself — see
+  // test/emit/cli-usage-errors.test.ts for the full contract.
+  it("an unknown command throws a UsageError targeting the global reference", async () => {
+    await expect(run(["frobnicate"])).rejects.toThrow(/Unknown command "frobnicate"/);
   });
 
   it("compiling the example module writes the expected JSON to --out", async () => {
@@ -165,7 +168,4 @@ describe("CLI", () => {
     }
   });
 
-  it("an unknown command throws a usage error", async () => {
-    await expect(run(["frobnicate"])).rejects.toThrow(/Unknown command/);
-  });
 });

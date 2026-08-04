@@ -21,6 +21,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { loadDefault, type ParsedArgs } from "./cli.js";
+import { missingArgument, unknownSubcommand } from "./errors.js";
 import { Xano } from "../workspace/xano.js";
 import {
   adoptFromBundle,
@@ -34,11 +35,6 @@ import {
 import { readLockFile, writeLockFile } from "../lock/io.js";
 import { resetLockOverrides, seedLockOverrides } from "../lock/store.js";
 
-const LOCK_USAGE =
-  "Usage: sidestep lock rename <kind> <old> <new> [--lock=<path>] | " +
-  "sidestep lock prune <entry-file> [keys…] --yes [--lock=<path>] | " +
-  "sidestep lock adopt <bundle.json> [--yes] [--lock=<path>]";
-
 export async function runLockCommand(args: ParsedArgs): Promise<void> {
   const [sub] = args.positionals;
   switch (sub) {
@@ -49,7 +45,10 @@ export async function runLockCommand(args: ParsedArgs): Promise<void> {
     case "adopt":
       return lockAdopt(args);
     default:
-      throw new Error(`Unknown lock subcommand "${sub ?? ""}". ${LOCK_USAGE}`);
+      // `lock` is the one family whose verb is positionals[0], not
+      // `args.subcommand` — it predates NOUN_COMMANDS and never joined it. The
+      // error is shaped identically regardless.
+      throw unknownSubcommand("lock", sub);
   }
 }
 
@@ -63,7 +62,7 @@ function describeEntry(entry: LockEntry): string {
 function lockRename(args: ParsedArgs): void {
   const [, kind, oldName, newName] = args.positionals;
   if (!kind || !oldName || !newName) {
-    throw new Error(`lock rename needs <kind> <old> <new>. ${LOCK_USAGE}`);
+    throw missingArgument(!kind ? "kind" : !oldName ? "old" : "new", { command: "lock", subcommand: "rename" });
   }
   const lockPath = args.lockPath !== undefined ? resolve(args.lockPath) : resolve("xano.lock");
   const lock = readLockFile(lockPath);
@@ -90,9 +89,7 @@ function lockRename(args: ParsedArgs): void {
 async function lockPrune(args: ParsedArgs): Promise<void> {
   const [, entryFile, ...keys] = args.positionals;
   if (!entryFile) {
-    throw new Error(
-      `lock prune needs the workspace entry file (to know which objects still exist). ${LOCK_USAGE}`,
-    );
+    throw missingArgument("entry-file", { command: "lock", subcommand: "prune" });
   }
   const lockPath =
     args.lockPath !== undefined
@@ -153,7 +150,7 @@ async function lockPrune(args: ParsedArgs): Promise<void> {
 function lockAdopt(args: ParsedArgs): void {
   const [, bundlePath] = args.positionals;
   if (!bundlePath) {
-    throw new Error(`lock adopt needs a packageExport bundle file. ${LOCK_USAGE}`);
+    throw missingArgument("bundle.json", { command: "lock", subcommand: "adopt" });
   }
   const lockPath = args.lockPath !== undefined ? resolve(args.lockPath) : resolve("xano.lock");
   const lock: LockFile = existsSync(lockPath) ? readLockFile(lockPath) : emptyLock();

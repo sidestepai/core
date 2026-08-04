@@ -23,6 +23,7 @@ async function captureStdout(argv: string[]): Promise<string> {
   }
 }
 
+// eslint-disable-next-line no-control-regex -- matching ANSI escapes is the point
 const ANSI = /\x1b\[[0-9;]*m/g;
 
 afterEach(() => {

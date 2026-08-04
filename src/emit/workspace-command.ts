@@ -25,6 +25,7 @@ import { getAccessToken, type ResolvedAuth } from "../auth/token.js";
 import { resolveOutputTarget } from "./sandbox-export-command.js";
 import { fetchWorkspaceBundle, runCodegenCommand } from "./codegen-command.js";
 import { formatFields, step, success, stdoutStyle } from "./ui.js";
+import { removedSubcommand, unknownSubcommand } from "./errors.js";
 
 const TIMEOUT_MS = 30_000;
 
@@ -40,16 +41,9 @@ export async function runWorkspaceCommand(args: ParsedArgs): Promise<void> {
     case "codegen":
       return runCodegenCommand(args, { kind: "workspace" });
     case "deploy":
-      throw new Error(
-        "`sidestep workspace deploy` does not exist — the only import path is a FULL REPLACE of the " +
-          "target workspace, so SideStep never writes back to your real one. Use `sidestep deploy` " +
-          "(`--dest ephemeral` by default, or `--dest sandbox`).",
-      );
+      throw removedSubcommand("workspace", "deploy");
     default:
-      throw new Error(
-        `Unknown workspace subcommand "${args.subcommand ?? ""}". ` +
-          "Expected `details`, `export`, or `codegen <path>`.",
-      );
+      throw unknownSubcommand("workspace", args.subcommand);
   }
 }
 

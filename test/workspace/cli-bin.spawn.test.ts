@@ -63,10 +63,32 @@ describe("sidestep bin (spawned subprocess against built dist)", () => {
   }, 120_000);
 
   it("actually runs — an unknown command exits nonzero with usage (guards the inert-bin regression)", () => {
-    const { status, stderr } = runBin(["frobnicate"]);
+    const { status, stdout, stderr } = runBin(["frobnicate"]);
     // The inert bin exited 0 and printed nothing; a live one rejects the command.
     expect(status).not.toBe(0);
     expect(stderr).toMatch(/Unknown command/);
+    // The failure is designed: the ✗ headline plus the command reference — and
+    // all of it on stderr, never the data channel.
+    expect(stderr).toContain("✗");
+    expect(stderr).toMatch(/Usage: sidestep/);
+    expect(stdout).toBe("");
+  });
+
+  it("requested help exits 0 to stdout, at every depth (issue #173)", () => {
+    for (const args of [["--help"], ["deploy", "--help"], ["workspace", "codegen", "--help"]]) {
+      const { status, stdout, stderr } = runBin(args);
+      expect(status, args.join(" ")).toBe(0);
+      expect(stdout, args.join(" ")).toMatch(/Usage: sidestep/);
+      // The pre-#173 failure was a module-resolution error on a file named `--help`.
+      expect(stderr, args.join(" ")).not.toMatch(/Cannot find module/);
+    }
+  });
+
+  it("an unknown subcommand exits nonzero and lists the real verbs", () => {
+    const { status, stderr } = runBin(["workspace", "list"]);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain("✗");
+    for (const verb of ["details", "export", "codegen"]) expect(stderr, verb).toContain(verb);
   });
 
   it("exports a .ts entry from an ESM consumer to a bundle file", () => {

@@ -60,6 +60,14 @@ import { resetLockOverrides, seedLockOverrides } from "../lock/store.js";
 import { warn, info, detail, stdoutStyle } from "./ui.js";
 import { renderGlobalHelp, renderHelpFor } from "./help.js";
 import { getSubcommand, isCommand } from "./commands.js";
+import {
+  UsageError,
+  missingArgument,
+  removedSubcommand,
+  unknownCommand,
+  unknownSubcommand,
+  type HelpTarget,
+} from "./errors.js";
 
 export interface ParsedArgs {
   command: string | undefined;
@@ -184,6 +192,18 @@ function parsePort(raw: string | undefined): number {
 
 /** Nouns that take a verb as a second token (`sidestep <noun> <verb> …`). */
 const NOUN_COMMANDS = new Set(["sandbox", "profile", "ephemeral", "workspace"]);
+
+/**
+ * The help block that belongs with a parse-time failure: as specific as the
+ * tokens seen so far allow, and undefined (no block) when the command itself
+ * isn't recognizable — a global command dump under a flag error is noise.
+ */
+function helpTargetFor(command: string | undefined, subcommand: string | undefined): HelpTarget | undefined {
+  if (command === undefined || !isCommand(command)) return undefined;
+  return subcommand !== undefined && getSubcommand(command, subcommand) !== undefined
+    ? { command, subcommand }
+    : { command };
+}
 
 export function parseArgs(argv: string[]): ParsedArgs {
   const [command, ...afterCommand] = argv;
@@ -335,18 +355,20 @@ export function parseArgs(argv: string[]): ParsedArgs {
     } else if (arg === "--profile" || arg.startsWith("--profile=")) {
       // Removed in the OAuth migration — fail loudly instead of letting the flag
       // (and its value) fall through into positionals and misparse as an entry file.
-      throw new Error(
-        `\`--profile\` was removed — push now authenticates via OAuth. ` +
+      throw new UsageError(
+        `\`--profile\` was removed — deploy now authenticates via OAuth. ` +
           `Run \`sidestep login\` once (or set XANO_REFRESH_TOKEN for CI).`,
+        { helpFor: helpTargetFor(command, subcommand) },
       );
     } else if (arg === "--workspace" || arg.startsWith("--workspace=")) {
       // Removed: a credential addresses exactly one workspace. Fail loudly
       // rather than silently ignoring the flag and acting on a different one
       // than the caller asked for.
-      throw new Error(
+      throw new UsageError(
         `\`--workspace\` was removed. Every command acts on the workspace its credential is ` +
           `bound to — pinned at \`sidestep login\`, or set as \`workspace_id\` in a meta API ` +
           `token credential. Run \`sidestep workspace details\` to see which one that is.`,
+        { helpFor: helpTargetFor(command, subcommand) },
       );
     } else if (
       arg === "--prune" ||
@@ -358,9 +380,10 @@ export function parseArgs(argv: string[]): ParsedArgs {
       // Fail loudly (like `--profile`) rather than silently dropping the flag and
       // deploying anyway, which would hide a broken migrated command.
       const flag = arg.split("=")[0];
-      throw new Error(
+      throw new UsageError(
         `\`${flag}\` was removed along with \`sidestep workspace deploy\` — ` +
           `deploy targets are selected with \`sidestep deploy --dest <ephemeral|sandbox>\`.`,
+        { helpFor: helpTargetFor(command, subcommand) },
       );
     } else if (arg === "--help" || arg === "-h") {
       // Consumed so it never reaches `positionals` (and thus `file`). `run()`
@@ -577,9 +600,6 @@ export function readVersion(): string {
   return "unknown";
 }
 
-/** One-line pointer to the full help — appended to command errors in place of a wall of usage text. */
-const HELP_HINT = "Run `sidestep help` to see all commands.";
-
 /**
  * Write the grouped command reference to STDOUT — help is requested output, not
  * an error. The reference itself comes from the command registry via
@@ -704,10 +724,7 @@ export async function run(argv: string[]): Promise<void> {
   }
   if (command === "sandbox") {
     if (args.subcommand === "deploy") {
-      throw new Error(
-        `\`sidestep sandbox deploy\` was removed — use \`sidestep deploy --dest sandbox\` ` +
-          `(same behavior against the singleton sandbox, unified under \`deploy\`). ${HELP_HINT}`,
-      );
+      throw removedSubcommand("sandbox", "deploy");
     }
     if (args.subcommand === "details") {
       // Lazily imported like the other Node-only commands so the browser-safe
@@ -724,10 +741,7 @@ export async function run(argv: string[]): Promise<void> {
       const { runCodegenCommand } = await import("./codegen-command.js");
       return runCodegenCommand(args, { kind: "sandbox" });
     }
-    throw new Error(
-      `Unknown sandbox subcommand "${args.subcommand ?? ""}". ` +
-        `Expected \`export\`, \`codegen <path>\`, or \`details\`. (Deploy moved to \`sidestep deploy --dest sandbox\`.) ${HELP_HINT}`,
-    );
+    throw unknownSubcommand("sandbox", args.subcommand);
   }
   if (command === "workspace") {
     // Read-only by design: pull from the real workspace, deploy to a disposable
@@ -742,15 +756,13 @@ export async function run(argv: string[]): Promise<void> {
   }
   if (command === "profile") {
     if (args.subcommand !== "me") {
-      throw new Error(`Unknown profile subcommand "${args.subcommand ?? ""}". Did you mean \`sidestep profile me\`? ${HELP_HINT}`);
+      throw unknownSubcommand("profile", args.subcommand);
     }
     const { runProfileCommand } = await import("./profile-command.js");
     return runProfileCommand(args);
   }
   if (command === "push") {
-    throw new Error(
-      `\`sidestep push\` was removed — use \`sidestep deploy\` (\`--dest ephemeral\` by default, or \`--dest sandbox\`). ${HELP_HINT}`,
-    );
+    throw unknownCommand("push");
   }
   if (command === "validate") {
     // Node-only (fetch/fs/env + the validate stack); lazily imported like the
@@ -759,10 +771,10 @@ export async function run(argv: string[]): Promise<void> {
     return runValidateCommand(args);
   }
   if (command !== "compile" && command !== "export" && command !== "paths" && command !== "routes") {
-    throw new Error(`Unknown command "${command ?? ""}". ${HELP_HINT}`);
+    throw unknownCommand(command);
   }
   if (!args.file) {
-    throw new Error(`Missing input file. ${HELP_HINT}`);
+    throw missingArgument("file", { command });
   }
 
   if (command === "compile") {

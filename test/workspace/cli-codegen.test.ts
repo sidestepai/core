@@ -351,8 +351,13 @@ describe("workspace — the read-only family", () => {
     await expect(run(["workspace", "deploy"])).rejects.toThrow(/FULL REPLACE/);
   });
 
-  it("rejects an unknown subcommand with the ones that exist", async () => {
-    await expect(run(["workspace", "frobnicate"])).rejects.toThrow(/details.*export.*codegen/s);
+  it("rejects an unknown subcommand, pointing at the family's help", async () => {
+    // The valid-verb list moved out of the message and into the help block the
+    // bin renders under it — see test/emit/cli-usage-errors.test.ts.
+    await expect(run(["workspace", "frobnicate"])).rejects.toMatchObject({
+      name: "UsageError",
+      helpFor: { command: "workspace" },
+    });
   });
 });
 

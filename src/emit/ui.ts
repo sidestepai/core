@@ -80,6 +80,15 @@ export function success(msg: string): void {
   process.stderr.write(`${style.green("✓")} ${msg}\n`);
 }
 
+/**
+ * A fatal outcome (`✗ …`, red). The counterpart to {@link success}: every way
+ * the CLI can end now has a glyph, so a failed run reads as a designed state
+ * rather than an unstyled sentence.
+ */
+export function error(msg: string): void {
+  process.stderr.write(`${stderrStyle().red("✗")} ${msg}\n`);
+}
+
 /** A non-fatal warning (`! …`, yellow). */
 export function warn(msg: string): void {
   process.stderr.write(`${style.yellow("!")} ${msg}\n`);

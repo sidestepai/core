@@ -278,7 +278,11 @@ describe("parseArgs / CLI dispatch for sandbox export", () => {
     }
   });
 
-  it("run() rejects an unknown sandbox subcommand, listing the ones that exist", async () => {
-    await expect(run(["sandbox", "bogus"])).rejects.toThrow(/export.*codegen.*details/s);
+  it("run() rejects an unknown sandbox subcommand, pointing at the family's help", async () => {
+    // The valid-verb list lives in the rendered help block now, not the message.
+    await expect(run(["sandbox", "bogus"])).rejects.toMatchObject({
+      name: "UsageError",
+      helpFor: { command: "sandbox" },
+    });
   });
 });
