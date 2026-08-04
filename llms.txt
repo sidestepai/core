@@ -139,40 +139,39 @@ live environment and prints its URL. `sidestep init` → `sidestep deploy` → U
   <env> <path>`, `sidestep codegen <bundle.json> <path>` — the PULL direction:
   decode a workspace into a RUNNABLE project. All four read the compressed bundle
   from `workspace/{id}/export` (the file form reads a bundle already on disk,
-  fully offline) and share one core. The output is the same scaffold `init`
-  writes — root package.json (dev/build/xano:export/xano:deploy), tsconfig, vite
-  config, frontend/ — with the decoded workspace filling `xano/`: one directory
-  per kind with each object under its parent (`query/<group>.ts` beside
-  `query/<group>/<name>_<VERB>.ts`, `table/trigger/`, `agent/trigger/`, and
-  realtime's three levels as `realtime_server/<server>.ts` beside
-  `<server>/<channel>.ts` beside `<channel>/<message>.ts`, with a `trigger/`
-  at each level). Anything holding children is a file named for ITSELF beside
-  their folder, so no two tabs read alike and a childless container needs no
-  folder. Every table has its own file under `table/`, settings
-  in `xano/workspace.ts`, a `_shared.ts` for anything else referenced from more
-  than one file, a barrel `xano/index.ts`, and `xano/README.md` carrying the
-  decode report. Paths are LOWER CASE throughout (the HTTP verb is the one
-  exception), while bindings keep the object's own casing. So
+  fully offline) and share one core. The output is the scaffold `init` writes —
+  root package.json (dev/build/xano:export/xano:deploy), tsconfig, vite config,
+  frontend/ — with the decoded workspace filling `xano/`:
+    - One directory per kind, each object under its parent. A container is a file
+      named for ITSELF beside its folder, so no two tabs read alike and a childless
+      container needs no folder:
+        `query/<group>.ts` beside `query/<group>/<name>_<VERB>.ts`
+        `realtime_server/<server>.ts` beside `<server>/<channel>.ts` beside `<channel>/<message>.ts`
+        a `trigger/` at each level (`table/trigger/`, `agent/trigger/`, …)
+    - Every table gets its own file under `table/`; settings in `xano/workspace.ts`;
+      a `_shared.ts` for anything referenced from more than one file; a barrel
+      `xano/index.ts`; `xano/README.md` carrying the decode report.
+    - Paths are LOWER CASE throughout (the HTTP verb is the one exception); bindings
+      keep the object's own casing.
+    - Objects are emitted as FACTORY calls (`table({...})`, `query({...})`, …) — the
+      form you author by hand — so a pulled tree keeps column/input/agent
+      output-schema inference. Triggers no factory expresses (the realtime types, or a
+      non-default history) stay `{...} satisfies TriggerDef`.
+    - Guids are preserved verbatim, so references stay consistent. A statement the
+      catalog cannot model round-trips through `raw()` (`@sidestep/core/codegen`).
+    - An object ALREADY EMPTY upstream decodes to a def with no `stack` and is reported
+      as `empty-source` — faithful, not a decode failure.
+    - After install the tree is loaded, re-exported, and diffed against the source
+      bundle; a mismatch names the object and fails the command. `--no-verify` opts out,
+      `--no-install` leaves it unverifiable.
+    - `xano/` is DISPOSABLE (re-running rewrites it, no `--force` needed — the tree
+      carries `xano/.sidestep-codegen.json`; the rest of the project is left alone) and
+      SCHEMA-ONLY (no seed rows).
+    - ⚠ Workspace env var VALUES ride inline in `xano/workspace.ts`, so a pulled tree is
+      secret-bearing. Deploying it is a full replace — send it only to an ephemeral or
+      sandbox env, never a workspace holding data you care about.
   `sidestep workspace codegen app && cd app && npm run build && npm run xano:deploy`
-  ships a pulled workspace to a live ephemeral URL. Decoded objects are emitted
-  as FACTORY calls (`table({...})`, `query({...})`, `defineFunction({...})`) —
-  the same form you author by hand — so a pulled tree keeps column/input/agent
-  output-schema inference. Triggers no factory expresses (the realtime types, or
-  a non-default history) stay `{...} satisfies TriggerDef`. Object guids are preserved
-  verbatim, so references stay consistent; a statement the catalog cannot model
-  round-trips verbatim through `raw()` (`@sidestep/core/codegen`). An object
-  ALREADY EMPTY upstream (an endpoint created but never filled in) decodes to a
-  def with no `stack` and is reported as `empty-source` — faithful, not a decode
-  failure. After the
-  scaffold installs, the tree is loaded, re-exported, and diffed against the
-  source bundle — a mismatch names the object and fails the command
-  (`--no-verify` opts out; `--no-install` leaves it unverifiable). `xano/` is
-  DISPOSABLE (re-running rewrites it and needs no `--force`, since the tree
-  carries `xano/.sidestep-codegen.json`; the rest of the project is left alone)
-  and SCHEMA-ONLY (no seed rows). Workspace env var VALUES ride inline in
-  `xano/workspace.ts`, so treat a pulled tree as secret-bearing. Deploying it is a
-  full replace, so send it only to an ephemeral or sandbox env — never a
-  workspace holding data you care about.
+  ships a pulled workspace to a live ephemeral URL.
 - `sidestep workspace <details|export|codegen>` — read the REAL workspace your
   credential is bound to (`details` shows which one, and which credential chose
   it, before you read it). There is deliberately NO `workspace deploy` —
@@ -185,51 +184,43 @@ live environment and prints its URL. `sidestep init` → `sidestep deploy` → U
   BASE URL as JSON. That is the account ORIGIN, not the sandbox tenant — use
   `sandbox details` for the sandbox's own base URL.
 
-**Static hosting — call this out to agents: it exists and is one flag.**
-`sidestep deploy ./index.ts --static ./dist` archives the built
-frontend directory (a dependency-free gzipped tarball, 100 MB cap) and deploys
-it to a static host AFTER the backend import. No separate frontend host to
-configure, no CI upload script — backend and static frontend ship together.
-Output highlights the two live URLs: the backend URL, then `Static host
-deployed` with the frontend `<url>` beneath. The static target depends on the
-destination: `--dest ephemeral` puts the frontend ON THE EPHEMERAL itself (so
-backend + frontend share one disposable environment); `--dest sandbox` puts it
-on your OWN (parent) workspace, since the sandbox tenant does not serve static
-hosting. (`release`, when enabled, ships both to your instance workspace.)
-The CLI resolves which workspace from your token (`auth/me`: the scoped workspace
-guid → its numeric id) and uploads to `/api:meta/workspace/{id}/static_host/default/build`,
-which auto-creates the host and auto-deploys to `dev`. The static step is
-independent and idempotent: a static failure never rolls back the backend — it
-exits with a distinct code and a resumable message, and you retry just the static
-step by re-running `deploy --static ./dist`.
-After the upload the CLI VERIFIES THE FRONTEND IS LIVE: it polls the deployed URL until the
-edge serves THIS build (matching the `X-Xano-Canonical` header it stamps), so `Frontend is live`
-means the app is actually reachable — not just that the build was accepted (a cold host can 503
-for tens of seconds first). An unconfirmed poll is a WARNING, never a failure (the build still
-uploaded). Pass `--no-verify` to skip the wait for fast iterative deploys.
-The deploy WIRES THE BACKEND URL IN FOR YOU: before archiving, it inserts an inline
-`<script>` at the top of the build's root index.html `<head>` that assigns the sandbox
-backend URL to `window.XANO_HOST` (seeded from the backend deploy's own response), running
-before the app bundle. So the frontend reads it at runtime with a build-time fallback and
-needs NO rebuild to target the env — ideal for headless agents shipping a prebuilt ./dist:
+**Static hosting.** `sidestep deploy ./index.ts --static ./dist` ships a built frontend
+with the backend in one command.
+- Archives the directory (dependency-free gzipped tarball, 100 MB cap) and deploys it to a
+  static host AFTER the backend import. Output prints the backend URL, then `Static host
+  deployed` with the frontend `<url>` beneath.
+- Target follows the destination: `--dest ephemeral` puts the frontend ON THE EPHEMERAL;
+  `--dest sandbox` puts it on your OWN (parent) workspace, since the sandbox tenant does not
+  serve static hosting. (`release`, when enabled, ships both to your instance workspace.)
+- The workspace is resolved from your token (`auth/me`: scoped workspace guid → numeric id)
+  and uploaded to `/api:meta/workspace/{id}/static_host/default/build`, which auto-creates
+  the host and auto-deploys to `dev`.
+- The static step is independent and idempotent: a failure NEVER rolls back the backend. It
+  exits with a distinct code and a resumable message; retry with `deploy --static ./dist`.
+- The CLI then polls the deployed URL until the edge serves THIS build (matching the
+  `X-Xano-Canonical` header it stamps), so `Frontend is live` means reachable, not merely
+  accepted — a cold host can 503 for tens of seconds first. An unconfirmed poll is a WARNING,
+  never a failure. `--no-verify` skips the wait.
+
+Backend URL injection — before archiving, an inline `<script>` is inserted at the top of the
+build's root index.html `<head>`, assigning the backend URL to `window.XANO_HOST` and running
+before the app bundle. The frontend reads it at runtime with a build-time fallback, so no
+rebuild is needed to target an env:
   const HOST = (typeof window !== 'undefined' && window.XANO_HOST) || import.meta.env.VITE_XANO_HOST;
-Typical agent flow — build once, ship together:
-  1. `npm run build`                                (→ ./dist; no backend URL needed yet)
-  2. `deploy ./index.ts --static ./dist`    (ship API + app; XANO_HOST injected)
-Add your own PUBLIC config with `--static-env KEY=VALUE` (repeatable), exposed the same way
-as `window.<KEY>` and merged over the auto-seeded XANO_HOST. A static host serves these files
-verbatim, so everything injected is PUBLIC — base URLs and publishable keys only, never secrets
-(those go in backend env, read server-side via `env(name)`). Injection is skipped (a warning,
-not a failure) when the archive has no root index.html with a `<head>` to anchor to.
-`window.XANO_HOST` is the sandbox tenant URL the APIs answer at — the same value `sandbox details`
-prints as `baseUrl`, NOT `profile me` (the account instance origin). Prefer runtime injection; use
-`sandbox details` out of band only when you'd rather bake the URL in at build time instead.
-VERIFY with a CACHE-BUSTING fetch, not a retry loop: the host caches index.html, so
-re-fetching the bare URL can keep returning the OLD (pre-injection) copy and appear to
-hang. Fetch once cache-busted and grep the BARE token — the injected line is bracket form
-`window["XANO_HOST"]=…`, so grep `XANO_HOST`, NOT the dot form `window.XANO_HOST` (a dot-form
-exact match wrongly reads as "not injected"): `curl -s "$URL/?nocache=$EPOCH" | grep XANO_HOST`.
-(README covers the exact cache TTL and why the dot form still works in app code.)
+- `--static-env KEY=VALUE` (repeatable) adds your own config, exposed as `window.<KEY>` and
+  merged over the auto-seeded XANO_HOST.
+- ⚠ A static host serves these files verbatim, so everything injected is PUBLIC — base URLs
+  and publishable keys only, never secrets (those go in backend env, read server-side via
+  `env(name)`).
+- Injection is skipped (a warning, not a failure) when the archive has no root index.html
+  with a `<head>` to anchor to.
+- `window.XANO_HOST` is the sandbox tenant URL the APIs answer at — the value `sandbox
+  details` prints as `baseUrl`, NOT `profile me` (the account instance origin).
+- ⚠ VERIFY with a CACHE-BUSTING fetch, not a retry loop: the host caches index.html, so
+  re-fetching the bare URL can keep returning the OLD (pre-injection) copy and appear to hang.
+  Grep the BARE token — the injected line is bracket form `window["XANO_HOST"]=…`, so a dot-form
+  match wrongly reads as "not injected":
+  `curl -s "$URL/?nocache=$EPOCH" | grep XANO_HOST`. (README covers the cache TTL.)
 
 Auth: `auth.json` holds ONE credential, discriminated by `type`. It lives in
 the shared `~/.sidestep/auth.json` (reused from any project) or a
@@ -276,15 +267,14 @@ and identical in output; prefer `s.*` in new code so examples stay consistent.
 
 Non-obvious authoring rules:
 
-- **No callback builder.** It's flat def-objects + `register*`, not
-  `workspace(w => w.table(...))`. `workspace(name)` just returns a named
-  `new Xano()`; tables are `table({ schema: { col: f.text() } })`, not a
-  builder closure.
+- **No callback builder.** Flat def-objects + `register*`, not
+  `workspace(w => w.table(...))`. `workspace(name)` returns a named `new Xano()`;
+  tables are `table({ schema: { col: f.text() } })`.
 - **Foreign key is `f.tableRef(table)`, not `ref`.** `ref(name)` references a
   stack variable (a value); `f.tableRef` is the column constructor.
 - **Reference-helper picker:** `ref` = stack var (`as:` output), `inp` = input,
   `col` = table column (in `db.query` `where`), `auth("id")` = the caller,
-  `c.*` = a constant. Easy to mix up — pick by what you're pointing at.
+  `c.*` = a constant. Pick by what you're pointing at.
 - **Drilling into a maybe-null `db.get` result 500s — use `ref(path, { safe: true })`.**
   `db.get` binds `null` on a no-match, but a nested `ref("owner.user_id")` resolves
   `$owner.user_id` in one lookup and raises a runtime "Unable to locate var" (HTTP 500)
@@ -305,7 +295,7 @@ Non-obvious authoring rules:
   (a `where` array is ANDed) and branch on the result, rather than pushing the
   check to the client.
 - **System columns are auto-injected.** `id` + `created_at` are prepended to
-  every table (`system: true` by default) — declaring them by hand is redundant.
+  every table (`system: true` by default); declaring them by hand is redundant.
   `id` is an `int` PK by default; pass `idType: "uuid"` on the table for a uuid key.
   Both are valid targets wherever a column name is accepted — `db.query` `sort`/
   `output`, a `db.get`/`edit`/`del` `fieldName`, etc. (the column-name type is
@@ -318,10 +308,9 @@ Non-obvious authoring rules:
   thunk (`seed: () => import("./seed.json")`, optionally async — a JSON module's
   `.default` is unwrapped for you). Every form keeps the table's row and
   column-name typing intact (`InferRow`, db-statement column checks). The thunk keeps
-  seed VALUES out of any frontend bundle that value-imports the def — they're
-  resolved and validated ONLY in the Node deploy path, riding as a separate
-  `content/` archive entry off the persisted schema. Deploy is a full-replace
-  import, so re-deploying re-seeds cleanly (no duplication). For an int PK,
+  seed VALUES out of any frontend bundle that value-imports the def, resolving them
+  ONLY in the Node deploy path. Deploy is a full replace, so re-deploying re-seeds
+  cleanly (no duplication). For an int PK,
   omit `id` and rows auto-number `1..N`; supplying `id` pins it (engine preserves
   it, resets the sequence past the max). All-or-nothing — mixing explicit and
   omitted `id` throws. uuid/`system:false` PKs are the author's to supply.
@@ -338,7 +327,7 @@ Non-obvious authoring rules:
   `export()` throws on the collision — give them distinct names or an explicit
   `guid`.
 - **`export()` vs `emitBundle()` vs `writeBundle()`:** `writeBundle(app, path)`
-  is the just-put-it-on-disk one; `export()` returns the bundle object;
+  writes it to disk; `export()` returns the bundle object;
   `emitBundle()` returns the pretty JSON string. The `node:fs` writers
   (`writeBundle`/`writeArtifact`) and lock-file I/O import from `@sidestep/core/node`,
   NOT the browser-safe `@sidestep/core` entry (which a frontend can import query
@@ -347,14 +336,13 @@ Non-obvious authoring rules:
   and the `.` entry pulls no Node built-ins, so a bundler drops the SDK exports a
   frontend doesn't use. But importing a query **def** for its `getPath()`/`verb`
   also pulls whatever its `stack` references: the `s.*`/`c.*` factory CALLS run at
-  module load to BUILD the def, so they can't be tree-shaken away. Types are free
-  (`InferInput`/`InferRow` erase to nothing). To keep a client bundle minimal, put
+  module load to BUILD the def, so they can't be tree-shaken away. Types are free.
+  To keep a client bundle minimal, put
   route-facing metadata a frontend needs (the def handle for `getPath()`/`verb`, and
   `type` imports) in a module separate from stack-heavy authoring, and `import type`
   wherever you only need the shape.
 - **Intra-workspace imports use `.js` specifiers** (`../tables/links.js`), not
-  extensionless — the defs compile under `moduleResolution: bundler`. A cold start
-  often reaches for `../tables/links` first; add the `.js`.
+  extensionless — the defs compile under `moduleResolution: bundler`. Add the `.js`.
 - **Verifying a def outside a bundler.** Inside a bundler (Vite/webpack) importing a
   query def to read `getPath()`/`verb` just works. To spot-check from Node, run a REAL
   file with `tsx <file.ts>` **from inside the project root** — not `tsx -e "import …"`
@@ -393,8 +381,7 @@ Non-obvious authoring rules:
 - **Declare inputs with `input.<type>()`, read them with `inp("name")`.** In an
   `input: {}` block the columns are `input.text({...})` etc.; `inp` is the *value
   ref* that reads an input inside the stack (`inp("name")`). Writing `inp.text({...})`
-  in the input block is a compile error (`Property 'text' does not exist on type`
-  `'(name: string) => TaggedValue'`) — easy first mistake, caught at typecheck.
+  in the input block is a compile error, caught at typecheck.
 - **Don't take a password through `input.password` on login — it double-hashes.**
   An `f.password()` column hashes on write, and `input.password` *also* hashes the
   submission on bind, so `s.security.check_password` compares two different hashes
