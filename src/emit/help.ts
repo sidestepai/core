@@ -17,8 +17,11 @@ import {
   getCommand,
   getSubcommand,
   liveSubcommandNames,
+  flagKey,
+  flagSummary,
   type ArgSpec,
   type CommandSpec,
+  type FlagRef,
   type SubcommandSpec,
 } from "./commands.js";
 import { stdoutStyle, type Palette } from "./ui.js";
@@ -40,11 +43,11 @@ function renderArgs(args: readonly ArgSpec[] | undefined): string {
 }
 
 /** The `Flags` block for a command or subcommand, or nothing when it takes none. */
-function flagSection(flags: readonly string[] | undefined, s: Palette): string[] {
+function flagSection(flags: readonly FlagRef[] | undefined, s: Palette): string[] {
   if (!flags || flags.length === 0) return [];
   const rows = flags
-    .filter((k) => Object.hasOwn(FLAGS, k))
-    .map((k) => [FLAGS[k as keyof typeof FLAGS].spec, FLAGS[k as keyof typeof FLAGS].summary] as const);
+    .filter((ref) => Object.hasOwn(FLAGS, flagKey(ref)))
+    .map((ref) => [FLAGS[flagKey(ref) as keyof typeof FLAGS].spec, flagSummary(ref)] as const);
   if (rows.length === 0) return [];
   return ["", s.bold("Flags"), ...table(rows, s)];
 }

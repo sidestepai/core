@@ -13,6 +13,8 @@ import {
   COMMANDS,
   FLAGS,
   HELP_GROUP_ORDER,
+  flagKey,
+  flagSummary,
   getCommand,
   getSubcommand,
   isCommand,
@@ -43,12 +45,12 @@ describe("command registry", () => {
 
   it("every flag key a command references exists in FLAGS", () => {
     for (const [name, spec] of entries) {
-      for (const key of spec.flags ?? []) {
-        expect(FLAGS, `${name} references unknown flag "${key}"`).toHaveProperty(key);
+      for (const ref of spec.flags ?? []) {
+        expect(FLAGS, `${name} references unknown flag "${flagKey(ref)}"`).toHaveProperty(flagKey(ref));
       }
       for (const [sub, subSpec] of Object.entries(spec.subcommands ?? {})) {
-        for (const key of subSpec.flags ?? []) {
-          expect(FLAGS, `${name} ${sub} references unknown flag "${key}"`).toHaveProperty(key);
+        for (const ref of subSpec.flags ?? []) {
+          expect(FLAGS, `${name} ${sub} references unknown flag "${flagKey(ref)}"`).toHaveProperty(flagKey(ref));
         }
       }
     }
@@ -57,13 +59,23 @@ describe("command registry", () => {
   it("every documented flag is referenced by at least one command", () => {
     const referenced = new Set<string>();
     for (const [, spec] of entries) {
-      for (const key of spec.flags ?? []) referenced.add(key);
+      for (const ref of spec.flags ?? []) referenced.add(flagKey(ref));
       for (const subSpec of Object.values(spec.subcommands ?? {})) {
-        for (const key of subSpec.flags ?? []) referenced.add(key);
+        for (const ref of subSpec.flags ?? []) referenced.add(flagKey(ref));
       }
     }
     const orphans = Object.keys(FLAGS).filter((k) => !referenced.has(k));
     expect(orphans, "FLAGS entries no command accepts").toEqual([]);
+  });
+
+  it("a command-specific flag summary overrides the shared one", () => {
+    // `--force` skips a confirmation for `ephemeral delete` but overwrites files
+    // for `init`; a scoped help page must describe the one that applies.
+    const del = getSubcommand("ephemeral", "delete")!.flags!.find((f) => flagKey(f) === "force")!;
+    expect(flagSummary(del)).toMatch(/confirmation/);
+    const init = COMMANDS.init.flags.find((f) => flagKey(f) === "force")!;
+    expect(flagSummary(init)).toBe(FLAGS.force.summary);
+    expect(flagSummary("name")).toBe(FLAGS.name.summary);
   });
 
   it("every FLAGS entry has a spec and a summary", () => {
@@ -157,7 +169,8 @@ describe("command registry", () => {
       // `switch`-shaped handlers additionally get the reverse check.
       const cases = [...source.matchAll(/case "([a-z-]+)":/g)].map((m) => m[1]!);
       if (cases.length === 0) continue;
-      const registryVerbs = new Set(Object.keys(COMMANDS[family as keyof typeof COMMANDS].subcommands ?? {}));
+      const spec = COMMANDS[family as keyof typeof COMMANDS] as CommandSpec;
+      const registryVerbs = new Set(Object.keys(spec.subcommands ?? {}));
       const unlisted = cases.filter((c) => !registryVerbs.has(c));
       expect(unlisted, `${family} dispatches verbs the registry doesn't list`).toEqual([]);
     }

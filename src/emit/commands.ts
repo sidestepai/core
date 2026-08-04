@@ -23,6 +23,15 @@ export interface FlagSpec {
   readonly summary: string;
 }
 
+/**
+ * A command's reference to a flag: the {@link FLAGS} key, or the key plus a
+ * summary that replaces the shared one. Several flags genuinely mean different
+ * things per command — `--force` skips a confirmation for `ephemeral delete` but
+ * overwrites a non-empty directory for `init` — and a scoped help page that
+ * describes the wrong one is worse than no help at all.
+ */
+export type FlagRef = string | { readonly key: string; readonly summary: string };
+
 /** A positional argument in a usage line. */
 export interface ArgSpec {
   readonly name: string;
@@ -33,8 +42,8 @@ export interface ArgSpec {
 export interface SubcommandSpec {
   readonly summary: string;
   readonly args?: readonly ArgSpec[];
-  /** Keys into {@link FLAGS}. */
-  readonly flags?: readonly string[];
+  /** Keys into {@link FLAGS}, optionally with a command-specific summary. */
+  readonly flags?: readonly FlagRef[];
   readonly example?: string;
   /** Set when the verb once existed and now fails loudly with this explanation. */
   readonly removed?: string;
@@ -59,8 +68,8 @@ export interface CommandSpec {
   /** The name column in global help, e.g. `deploy <file>`. */
   readonly display: string;
   readonly args?: readonly ArgSpec[];
-  /** Keys into {@link FLAGS}. */
-  readonly flags?: readonly string[];
+  /** Keys into {@link FLAGS}, optionally with a command-specific summary. */
+  readonly flags?: readonly FlagRef[];
   readonly subcommands?: Readonly<Record<string, SubcommandSpec>>;
   readonly example?: string;
   /** Set when the command once existed and now fails loudly with this explanation. */
@@ -114,9 +123,9 @@ export const FLAGS = {
   instance: { spec: "--instance <url>", summary: "Override XANO_VALIDATE_INSTANCE for this run" },
   format: { spec: "--format <json|multidoc>", summary: "Which artifact to emit" },
   path: { spec: "--path <p>", summary: "Output location — `-` for stdout, a dir, or a file path" },
-  name: { spec: "--name <n>", summary: "Output basename, app name, or ephemeral display name" },
+  name: { spec: "--name <n>", summary: "Name for what this command produces" },
   ai: { spec: "--ai <preset>", summary: "AI instruction files to scaffold: claude, codex, cursor, none" },
-  force: { spec: "--force", summary: "Proceed into a non-empty target directory (overwrite our own files)" },
+  force: { spec: "--force", summary: "Scaffold into a non-empty directory (overwriting our own files)" },
   "no-install": { spec: "--no-install", summary: "Skip the post-scaffold npm install" },
 } as const satisfies Record<string, FlagSpec>;
 
@@ -129,7 +138,12 @@ const AUTH = ["origin", "config", "local"] as const;
 const COMPILE = ["lock", "frozen-lock", "strict"] as const;
 
 /** Flags the scaffold-writing commands (`init`, `codegen`) share. */
-const SCAFFOLD = ["name", "ai", "force", "no-install"] as const;
+const SCAFFOLD = [
+  { key: "name", summary: "Project name (default: the target directory's basename)" },
+  "ai",
+  "force",
+  "no-install",
+] as const satisfies readonly FlagRef[];
 
 /**
  * Every command `sidestep` accepts. Order within a group is the render order;
@@ -187,7 +201,7 @@ export const COMMANDS = {
     flags: [
       "dest",
       "expires-hours",
-      "name",
+      { key: "name", summary: "Display name for the ephemeral env (default: the workspace name)" },
       "bundle",
       "static",
       "static-host",
@@ -204,7 +218,16 @@ export const COMMANDS = {
     display: "release <file>",
     summary: "Promote to your instance workspace (coming soon)",
     args: [{ name: "file", required: true }],
-    flags: ["yes", "force", "static", "static-host", "static-env", "no-verify", ...COMPILE, ...AUTH],
+    flags: [
+      "yes",
+      { key: "force", summary: "Skip the replace-my-workspace confirmation (same as --yes)" },
+      "static",
+      "static-host",
+      "static-env",
+      "no-verify",
+      ...COMPILE,
+      ...AUTH,
+    ],
     example: "sidestep release ./index.ts",
   },
   validate: {
@@ -242,7 +265,7 @@ export const COMMANDS = {
       },
       export: {
         summary: "Write its bundle JSON",
-        flags: ["path", "name", ...AUTH],
+        flags: ["path", { key: "name", summary: "Output basename (default: `workspace`)" }, ...AUTH],
         example: "sidestep workspace export --path -",
       },
       codegen: {
@@ -281,12 +304,12 @@ export const COMMANDS = {
       delete: {
         summary: "Tear an env down now instead of waiting for its TTL",
         args: [{ name: "name", required: true }],
-        flags: ["yes", "force", ...AUTH],
+        flags: ["yes", { key: "force", summary: "Skip the destroy-this-env confirmation (same as --yes)" }, ...AUTH],
       },
       export: {
         summary: "Write an env's bundle JSON",
         args: [{ name: "name", required: true }],
-        flags: ["format", "path", "name", ...AUTH],
+        flags: ["format", "path", { key: "name", summary: "Output basename (default: the env name)" }, ...AUTH],
       },
       codegen: {
         summary: "Decode an env into a runnable SideStep project",
@@ -319,7 +342,7 @@ export const COMMANDS = {
       },
       export: {
         summary: "Write the sandbox workspace as JSON or multidoc XanoScript",
-        flags: ["format", "path", "name", "bundle", ...COMPILE, ...AUTH],
+        flags: ["format", "path", { key: "name", summary: "Output basename (default: `sandbox`)" }, "bundle", ...COMPILE, ...AUTH],
         example: "sidestep sandbox export --format multidoc",
       },
       codegen: {
@@ -451,6 +474,17 @@ export function liveCommandNames(): string[] {
   return Object.entries(COMMANDS)
     .filter(([, spec]) => (spec as CommandSpec).removed === undefined && (spec as CommandSpec).aliasOf === undefined)
     .map(([name]) => name);
+}
+
+/** The key a flag reference points at. */
+export function flagKey(ref: FlagRef): string {
+  return typeof ref === "string" ? ref : ref.key;
+}
+
+/** The summary to render for a flag reference — the command's override, else the shared one. */
+export function flagSummary(ref: FlagRef): string {
+  if (typeof ref !== "string") return ref.summary;
+  return FLAGS[ref as FlagKey].summary;
 }
 
 /** Live subcommand names under a command (removed verbs excluded). */
