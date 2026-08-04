@@ -9,7 +9,8 @@
  * `import.meta.url` is the chunk, not the bin, the guard is always false, and the
  * CLI exits silently. An always-run bin can't regress that way.
  */
-import { run } from "./cli.js";
+import { run, readVersion } from "./cli.js";
+import { reportFailure } from "./errors.js";
 import { maybeNotifyUpdate } from "./update-check.js";
 
 run(process.argv.slice(2))
@@ -17,6 +18,9 @@ run(process.argv.slice(2))
   // Best-effort and swallowed internally — it can never fail the run.
   .then(() => maybeNotifyUpdate())
   .catch((err) => {
-    process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+    // Deliberately no update nudge here: an "a newer version is available"
+    // banner under a failed command is noise at the exact moment the user is
+    // trying to read what went wrong.
+    reportFailure(err, readVersion());
     process.exit(1);
   });

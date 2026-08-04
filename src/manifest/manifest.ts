@@ -364,6 +364,16 @@ const CLI_COMMANDS: readonly ManifestCliCommand[] = [
     description: "xano.lock identity maintenance (rename an object, prune stale entries, adopt an existing live bundle).",
   },
   {
+    command: "completion",
+    args: "<bash|zsh|fish>",
+    description:
+      "Print a shell completion script to stdout, generated from the CLI's own command table — every " +
+      "command, verb, flag, and closed value set (`--dest`, `--format`, `--ai`). Baked at generation " +
+      "time, so re-run it after upgrading. Install: `sidestep completion zsh > \"${fpath[1]}/_sidestep\"`, " +
+      "`sidestep completion bash > ~/.sidestep-completion.bash` (then source it), or " +
+      "`sidestep completion fish > ~/.config/fish/completions/sidestep.fish`.",
+  },
+  {
     command: "version",
     args: "",
     description: "Print the installed @sidestep/core version to stdout (also `--version` / `-v`). Handy for debugging which build is running.",
@@ -371,7 +381,12 @@ const CLI_COMMANDS: readonly ManifestCliCommand[] = [
   {
     command: "help",
     args: "",
-    description: "Print the grouped command reference to stdout (also the no-argument default, `--help`, and `-h`).",
+    description:
+      "Print the grouped command reference to stdout (also the no-argument default, `--help`, and `-h`). " +
+      "`--help`/`-h` also works AFTER a command or verb — `sidestep deploy --help`, `sidestep workspace codegen --help` " +
+      "— printing that scope's usage, subcommands, and accepted flags. Requested help goes to stdout and exits 0; " +
+      "a usage failure (unknown command or verb, missing argument) prints the same block to STDERR under a `✗` line, " +
+      "with a did-you-mean when one is close, and exits nonzero.",
   },
 ];
 

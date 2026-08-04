@@ -34,6 +34,7 @@ import { readEphemeralState, getEnvironment, clearEnvironment } from "../deploy/
 import { exportWorkspaceBundle, type ExportedBundle } from "../deploy/workspace-export.js";
 import { resolveOutputTarget } from "./sandbox-export-command.js";
 import { step, success, warn, detail, info, formatFields, formatExpiration, stdoutStyle, style } from "./ui.js";
+import { unknownSubcommand } from "./errors.js";
 
 const TIMEOUT_MS = 120_000;
 
@@ -88,11 +89,7 @@ export async function runEphemeralCommand(args: ParsedArgs): Promise<void> {
       return runCodegenCommand(args, { kind: "ephemeral" });
     }
     default:
-      throw new Error(
-        `Unknown ephemeral subcommand "${args.subcommand ?? ""}". ` +
-          `Expected \`list\`, \`get <name>\`, \`delete <name>\`, \`export <name>\`, ` +
-          `\`codegen <name> <path>\`, or \`impersonate <name>\`.`,
-      );
+      throw unknownSubcommand("ephemeral", args.subcommand);
   }
 }
 
