@@ -84,7 +84,7 @@ const KEEPS: { text: string; in: (typeof ARTIFACTS)[number] }[] = [
   { text: "mvp:dbo_view", in: "manifest.json" },
   { text: "mvp:crypto_jwe_encode3", in: "llms.txt" },
   { text: "context.search", in: "llms.txt" },
-  { text: "`X-Xano-Canonical`", in: "llms.txt" },
+  { text: "window.XANO_HOST", in: "llms.txt" },
 ];
 
 describe("grounding artifacts carry no self-justification prose", () => {

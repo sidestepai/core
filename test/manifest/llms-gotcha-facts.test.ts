@@ -7,15 +7,25 @@ import { measureLlms } from "../../scripts/measure-llms.js";
 /**
  * Fact inventory for the `## Gotchas`, `## Deploy`, and `## Quickstart` prose.
  *
- * Written BEFORE the de-narration pass over those sections. Gotchas is the
- * highest-signal region in the doc — every bullet is a rule an agent gets wrong
- * without it — so the compression there is bounded by an explicit roster: all 22
- * bullets must still be present afterward, keyed by their bold lead phrase. Losing
- * one to a tightening pass is the exact failure this file exists to prevent.
+ * Gotchas is the highest-signal region in the doc — every bullet is a rule an agent
+ * gets wrong without it — so compression there is bounded by an explicit roster:
+ * every bullet must still be present afterward, keyed by its bold lead phrase, and
+ * the count is asserted so one cannot quietly vanish or appear.
  *
- * Deploy is the opposite case: it carries the most narration in the doc, so the
- * assertions here pin the load-bearing half (destructive-operation warnings, the
- * non-interactive auth path, the injection contract) and let the framing go.
+ * Deploy was cut down to the authoring-relevant half when the CLI surface moved out
+ * of this doc. `sidestep <cmd> --help` documents every command and flag from the
+ * same registry that fills `manifest.json`'s `cli` array, so duplicating it here
+ * bought nothing but drift — and it HAD drifted: the `--static` description claimed
+ * the frontend always lands on the parent workspace, which is true only under
+ * `--dest sandbox`.
+ *
+ * What stayed is what `--help` cannot carry: the ephemeral-vs-sandbox targeting
+ * split (it changes where the frontend lands and how redeploys behave), the
+ * full-replace blast radius, and the `window.XANO_HOST` contract the frontend's own
+ * code must honor. Three further facts were PROMOTED into Gotchas rather than
+ * dropped, because they constrain how you author rather than how you invoke: the
+ * non-interactive auth path, the sandbox no-fire rule, and how to read a pulled
+ * tree. The roster below covers them.
  */
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const llms = readFileSync(join(ROOT, "llms.txt"), "utf8");
@@ -44,6 +54,10 @@ const GOTCHA_BULLETS = [
   "Build regex-filter patterns with `c.regex(body, flags?)`, never `c.text`.",
   'Declare inputs with `input.<type>()`, read them with `inp("name")`.',
   "Don't take a password through `input.password` on login — it double-hashes.",
+  // Promoted from the old `## Deploy` prose when the CLI surface moved to `--help`.
+  "Agents authenticate with env vars — never `sidestep login`.",
+  "Event-driven objects deploy but DO NOT FIRE in the sandbox.",
+  "Reading a pulled tree.",
 ];
 
 type Fact = { name: string; needs: RegExp[] };
@@ -82,7 +96,7 @@ const GOTCHA_FACTS: Fact[] = [
 const DEPLOY_FACTS: Fact[] = [
   {
     name: "deploy is a FULL REPLACE that clears objects AND records",
-    needs: [/FULL REPLACE/, /objects AND records/],
+    needs: [/FULL REPLACE/, /objects\s+AND records/],
   },
   {
     name: "deploy defaults to --dest ephemeral",
@@ -90,7 +104,7 @@ const DEPLOY_FACTS: Fact[] = [
   },
   {
     name: "event-driven objects deploy but never fire in the sandbox",
-    needs: [/DO NOT FIRE IN THE SANDBOX/, /`task`/, /`mcpServer`/, /tableTrigger/],
+    needs: [/DO NOT FIRE in the sandbox/i, /`task`/, /`mcpServer`/, /tableTrigger/],
   },
   {
     name: "the sandbox workaround is to factor the body into a callable function",
@@ -98,35 +112,31 @@ const DEPLOY_FACTS: Fact[] = [
   },
   {
     name: "agents authenticate with the refresh-token env pair and must not run `sidestep login`",
-    needs: [/\$XANO_REFRESH_TOKEN/, /\$XANO_CLIENT_ID/, /do NOT run/, /sidestep login/],
-  },
-  {
-    name: "auth.json holds ONE credential discriminated by type, oauth or token",
-    needs: [/auth\.json/, /ONE credential/, /"oauth"/, /"token"/],
+    needs: [/\$XANO_REFRESH_TOKEN/, /\$XANO_CLIENT_ID/, /never `sidestep login`/, /browser consent/],
   },
   {
     name: "the static deploy injects window.XANO_HOST before the app bundle",
-    needs: [/window\.XANO_HOST/, /index\.html/, /<head>/],
-  },
-  {
-    name: "verify injection with a cache-busting fetch and grep the BARE token, not the dot form",
-    needs: [/cache-bust/i, /grep `?XANO_HOST`?/, /dot[- ]form/],
-  },
-  {
-    name: "a static failure never rolls back the backend and is retried on its own",
-    needs: [/never rolls back the backend/i, /retry|resumable/i],
+    needs: [/window\.XANO_HOST/, /index\.html/, /before the app bundle/],
   },
   {
     name: "injected static config is PUBLIC — secrets go in backend env",
-    needs: [/--static-env/, /PUBLIC/, /never secrets/i, /env\(/],
+    needs: [/PUBLIC/, /never secrets/i, /env\(name\)/],
   },
   {
-    name: "a pulled tree is secret-bearing and schema-only",
-    needs: [/secret-bearing/, /SCHEMA-ONLY/i],
+    name: "a pulled tree is secret-bearing",
+    needs: [/secret-bearing/],
   },
   {
-    name: "there is no `workspace deploy` — SideStep never writes back to the real workspace",
-    needs: [/workspace deploy/, /never writes back/],
+    name: "--static target follows --dest: ephemeral hosts it, sandbox falls back to the parent workspace",
+    needs: [/ON THE EPHEMERAL/, /OWN \(parent\) workspace/, /does\s*\n?\s*not serve static hosting|not serve static hosting/],
+  },
+  {
+    name: "an ephemeral refreshes in place on redeploy; the URL is unchanged",
+    needs: [/REFRESHES it/, /URL is unchanged/, /\.xano\/ephemeral\.json/],
+  },
+  {
+    name: "the CLI surface is reachable from --help and manifest.json, not duplicated here",
+    needs: [/sidestep <command> --help/, /`cli` array/],
   },
 ];
 
@@ -179,21 +189,34 @@ assertFacts("llms.txt Deploy facts", DEPLOY_FACTS);
 assertFacts("llms.txt Quickstart facts", QUICKSTART_FACTS);
 
 /**
- * Deploy is the most padded section in the doc — narration, restatement, and a
- * worked "typical agent flow" whose commands both appear in full above it. Unlike
- * the def-shape sections (which sit at their information floor), this one has real
- * headroom, so the ceiling here is a target the de-narration pass must actually hit.
+ * Section ceilings, set from the measured floor after de-narration.
+ *
+ * Deploy carried the most narration in the doc and was expected to have real
+ * headroom. It had less than it looked: every removable phrase — "the primary
+ * loop", "call this out to agents", "ideal for headless agents", "just works", the
+ * redundant "typical agent flow" worked example, and the restatement around FULL
+ * REPLACE — came to ~340 tokens against a 3,380-token section. What remains is CLI
+ * contract: flags, paths, destructive-operation warnings, the two credential
+ * shapes, the injection rules. None of it is prose that can be shortened without
+ * dropping a flag or a warning.
+ *
+ * So these are RE-BLOAT guards, not targets. Same rule as the budget tripwire: if a
+ * legitimate new flag or warning pushes past one, raise it; never cut grounding to
+ * fit. Ratchet down after a real reduction.
  */
+const DEPLOY_CEILING = 800;
+const GOTCHAS_CEILING = 3_250;
+
 describe("prose sections stay lean", () => {
-  it("Deploy is under 2,600 tokens", () => {
+  it(`Deploy is under ${DEPLOY_CEILING.toLocaleString()} tokens`, () => {
     const s = measureLlms(llms).sections.find((x) => x.title.startsWith("Deploy"));
     expect(s, "no `## Deploy` section").toBeDefined();
-    expect(s!.tokens).toBeLessThan(2_600);
+    expect(s!.tokens).toBeLessThan(DEPLOY_CEILING);
   });
 
-  it("Gotchas is under 2,600 tokens", () => {
+  it(`Gotchas is under ${GOTCHAS_CEILING.toLocaleString()} tokens`, () => {
     const s = measureLlms(llms).sections.find((x) => x.title === "Gotchas");
     expect(s, "no `## Gotchas` section").toBeDefined();
-    expect(s!.tokens).toBeLessThan(2_600);
+    expect(s!.tokens).toBeLessThan(GOTCHAS_CEILING);
   });
 });

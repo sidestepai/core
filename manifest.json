@@ -8317,7 +8317,7 @@
         },
         {
           "flag": "--static <dir>",
-          "description": "Archive a built frontend directory and deploy it to your (parent) workspace's static host after the backend import. The backend URL is auto-injected into the build's root index.html as `window.XANO_HOST`, so the frontend needs no rebuild."
+          "description": "Archive a built frontend directory and deploy it to a static host after the backend import. The target follows --dest: `ephemeral` puts it on the EPHEMERAL itself, `sandbox` on your OWN (parent) workspace (the sandbox tenant does not serve static hosting). The deployed env's backend URL is auto-injected into the build's root index.html as `window.XANO_HOST`, so the frontend needs no rebuild."
         },
         {
           "flag": "--static-host <name>",
