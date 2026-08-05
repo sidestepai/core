@@ -11,7 +11,7 @@ import { s } from "../../src/statements/s.js";
 import { generated } from "../../src/statements/generated/factories.generated.js";
 import { encodeStatement } from "../../src/statements/statement.js";
 import { deriveGuid } from "../../src/refs/guid.js";
-import { c, col, auth, inp, filter, withFilters } from "../../src/values/value.js";
+import { c, col, auth, inp, ref, filter, withFilters } from "../../src/values/value.js";
 import { expr } from "../../src/statements/conditional.js";
 import { and } from "../../src/statements/special/db-search.js";
 
@@ -141,6 +141,45 @@ describe("structural array + misc specials", () => {
     expect(enc.name).toBe("mvp:array_map");
     expect((enc.context as { collection: unknown }).collection).toBeDefined();
     expect((enc.context as { output_type: string }).output_type).toBe("value");
+  });
+
+  it("array.map with a RECORD transform stores the engine's object mode", () => {
+    // Shape read off the engine's declared context schema for this statement:
+    // `output_type:"object"` plus `transform_object[]` of
+    // `{attribute_key, attribute_value}`. The key is a plain `const` text triple
+    // — what the engine's own decoder builds for a static object key — and
+    // `transform_value` is absent, because the object branch never reads it.
+    const enc = encodeStatement(
+      s.array.map({ source: ref("ids"), as: "rows", transform: { id: ref("$this"), pos: ref("$index") } }),
+    );
+    const context = enc.context as Record<string, unknown>;
+    expect(context.output_type).toBe("object");
+    expect(context.transform_value).toBeUndefined();
+    expect(context.transform_object).toEqual([
+      {
+        attribute_key: { value: "id", tag: "const", filters: [] },
+        attribute_value: { value: "$this", tag: "var", filters: [] },
+      },
+      {
+        attribute_key: { value: "pos", tag: "const", filters: [] },
+        attribute_value: { value: "$index", tag: "var", filters: [] },
+      },
+    ]);
+  });
+
+  it("array.map keeps the scalar path on a single-value transform", () => {
+    const context = encodeStatement(
+      s.array.map({ source: ref("ids"), transform: ref("$this") }),
+    ).context as Record<string, unknown>;
+    expect(context.output_type).toBe("value");
+    expect(context.transform_object).toBeUndefined();
+    expect(context.transform_value).toEqual({ value: "$this", tag: "var", filters: [] });
+  });
+
+  it("array.map rejects an empty record transform", () => {
+    // The engine's object branch iterates `transform_object`, so an empty one
+    // maps every item to `{}` — silently, at runtime. Fail at authoring instead.
+    expect(() => s.array.map({ source: ref("ids"), transform: {} })).toThrow(/at least one key/);
   });
 
   it("array.union stores source as context.left, with as context.right", () => {

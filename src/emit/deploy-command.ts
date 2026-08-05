@@ -42,6 +42,12 @@ import {
 } from "../deploy/ephemeral.js";
 import { readEphemeralState, getEnvironment, setEnvironment } from "../deploy/ephemeral-state.js";
 import { resolveScopedWorkspaceId } from "../deploy/workspace.js";
+import {
+  waitForMicroservices,
+  type MicroserviceSummary,
+  type WaitOptions,
+} from "../deploy/microservice-status.js";
+import { microserviceLine, readyRatio } from "./microservice-view.js";
 import { step, success, warn, detail, info, link, formatExpiration } from "./ui.js";
 import { basename } from "node:path";
 
@@ -59,6 +65,8 @@ interface DeploySummary {
   ephemeral?: { name: string; display: string | undefined; expiresAt: string | number | undefined };
   created?: boolean;
   static?: { url: string | undefined; verified?: boolean };
+  /** Present only when the deployed workspace declared microservices. */
+  microservices?: MicroserviceSummary[];
 }
 
 /**
@@ -131,7 +139,7 @@ export async function runDeployCommand(args: ParsedArgs): Promise<void> {
 
   const summary: DeploySummary =
     dest === "sandbox"
-      ? await deploySandbox(auth, archive, source)
+      ? await deploySandbox(auth, archive, source, args.noVerify)
       : await deployEphemeral(auth, { archive, bundle, source, args });
 
   if (args.static !== undefined) {
@@ -167,13 +175,75 @@ export async function runDeployCommand(args: ParsedArgs): Promise<void> {
   }
 }
 
-async function deploySandbox(auth: ResolvedAuth, archive: Uint8Array, source: string): Promise<DeploySummary> {
+async function deploySandbox(
+  auth: ResolvedAuth,
+  archive: Uint8Array,
+  source: string,
+  noVerify: boolean,
+): Promise<DeploySummary> {
   step(`Deploying ${source} → sandbox (full replace)`);
   const baseUrl = await resolveSandboxBaseUrl(auth);
   await importWorkspaceArchive(auth, { baseUrl, archive });
   success("Backend deployed to sandbox");
   link(baseUrl);
-  return { dest: "sandbox", url: baseUrl };
+  const microservices = await verifyMicroservices(auth, baseUrl, noVerify);
+  return { dest: "sandbox", url: baseUrl, ...(microservices ? { microservices } : {}) };
+}
+
+/**
+ * After a committed import, wait for the environment's microservices and report
+ * what each one is doing.
+ *
+ * Prints nothing when the workspace declares none, which is the common case and
+ * the reason this costs a single request rather than a visible step. Never
+ * fails the deploy: the import has already committed, so an unconfirmed or
+ * broken microservice is reported and folded into the summary while the exit
+ * code stays with the import — the same posture the static-host rollout check
+ * takes. Returns `undefined` when there was nothing to report.
+ *
+ * Exported for tests.
+ */
+export async function verifyMicroservices(
+  auth: ResolvedAuth,
+  baseUrl: string,
+  noVerify: boolean,
+  waitOpts: WaitOptions = {},
+): Promise<MicroserviceSummary[] | undefined> {
+  if (noVerify) return undefined;
+
+  let result;
+  try {
+    // An env's own internal workspace id is always 1 — the same pair the import
+    // just used, so this reads exactly what was written.
+    result = await waitForMicroservices(auth, { baseUrl, workspaceId: 1 }, waitOpts);
+  } catch (err) {
+    warn("Could not read microservice status (the backend deployed fine):");
+    detail(err instanceof Error ? err.message : String(err));
+    return undefined;
+  }
+
+  const { microservices, timedOut, hadFailure } = result;
+  if (microservices.length === 0) return undefined;
+
+  const { ready, startable } = readyRatio(microservices);
+
+  if (hadFailure) {
+    warn("Some microservices failed to start:");
+  } else if (timedOut) {
+    warn(`Microservices are still starting (${ready}/${startable} ready) — they should come up shortly:`);
+  } else if (startable === 0) {
+    // Every microservice is manual or disabled: nothing was started, and saying
+    // "ready (0/0)" would imply otherwise.
+    info("No microservices to start:");
+  } else {
+    success(`Microservices ready (${ready}/${startable})`);
+  }
+  for (const m of microservices) detail(microserviceLine(m));
+  if (timedOut && !hadFailure) {
+    detail("Re-check with `sidestep ephemeral get <env>`, or skip this wait next time with --no-verify.");
+  }
+
+  return microservices;
 }
 
 async function deployEphemeral(
@@ -241,11 +311,14 @@ async function deployEphemeral(
   // is what `ephemeral get/delete/export` take, so spell out the handle to use.
   detail(`Manage with \`sidestep ephemeral get ${target.name}\``);
 
+  const microservices = await verifyMicroservices(auth, baseUrl, args.noVerify);
+
   return {
     dest: "ephemeral",
     url: baseUrl,
     ephemeral: { name: target.name, display: target.display, expiresAt: target.expiresAt },
     created,
+    ...(microservices ? { microservices } : {}),
   };
 }
 

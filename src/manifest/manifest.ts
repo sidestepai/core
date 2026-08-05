@@ -1442,7 +1442,7 @@ export function renderLlmsTxt(m: Manifest): string {
     "",
     "Array blocks (an `if`/`transform` is applied per item):",
     "",
-    "- `s.array.map({ source, as?, transform? })` — `transform` is a per-item `Value` expression.",
+    "- `s.array.map({ source, as?, transform? })` — `transform` is either a per-item `Value` expression (each item maps to that value) or a **record of values** (each item maps to an object with those keys). Use `ref(\"$this\")` for the item and `ref(\"$index\")` for its position.",
     "- `s.array.union({ source, with?, as?, transform? })` — set-union two arrays.",
     "",
     "DB reads/writes (`table` is a def handle or name; `fieldName` defaults to the",

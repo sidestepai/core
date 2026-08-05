@@ -15,6 +15,7 @@ import { lit, obj, type Expr } from "../print.js";
 import { resolveReference } from "../ref-index.js";
 import { decodeValue } from "../value.js";
 import { declineHere, getPath, prove, type SpecialArgs, type SpecialDecoder } from "./prove.js";
+import { liveArrayMapContext } from "../../validate/normalize.js";
 
 /** Coerce a stored `{value, tag, filters}` block to a tagged value. */
 function toValue(raw: unknown): TaggedValue | null {
@@ -404,22 +405,79 @@ const createGuid: SpecialDecoder = (a) => {
   return prove(a.ctx, a.stored, "security.create_guid", [runtime], [obj(entries)]);
 };
 
+/**
+ * `array.map` — both engine output modes.
+ *
+ * `output_type:"value"` reads the scalar `transform_value`; `output_type:"object"`
+ * reads `transform_object[]` and rebuilds it as the record form the factory takes.
+ * A record key has to be a literal, so an `attribute_key` that is anything other
+ * than an unfiltered `const` text declines to `raw()` rather than inventing one —
+ * the engine's editor offers a full tagged value there and this surface does not.
+ *
+ * The context is reduced through {@link liveArrayMapContext} first, because an
+ * editor-saved statement carries BOTH mapping branches and only one is live. The
+ * dead branch at its inert spelling is dropped; a dead branch carrying anything
+ * real is left in place and declines below, since the SDK cannot write it back.
+ */
+const arrayMap: SpecialDecoder = (a) => {
+  const context = (liveArrayMapContext(a.stored) ?? a.stored.context ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const outputType = context.output_type ?? "value";
+  const known = new Set(["output_type", "collection", "transform_value", "transform_object"]);
+  for (const key of Object.keys(context))
+    if (!known.has(key)) return declineHere(`array.map: unmodelled context key "${key}"`);
+
+  const source = toValue(context.collection);
+  if (!source) return declineHere("array.map: required context.collection is absent");
+  const entries: Array<[string, Expr]> = [["source", decodeValue(a.ctx, source)]];
+  const runtime: Record<string, unknown> = { source };
+
+  if (outputType === "value") {
+    // The object branch never reads `transform_object`, and vice versa — a
+    // statement carrying the other mode's key is a shape this does not model.
+    if (context.transform_object !== undefined)
+      return declineHere("array.map: transform_object present on a value-mode statement");
+    const transform = toValue(context.transform_value);
+    if (context.transform_value !== undefined) {
+      if (!transform) return declineHere("array.map: context.transform_value is not a tagged value");
+      entries.push(["transform", decodeValue(a.ctx, transform)]);
+      runtime.transform = transform;
+    }
+  } else if (outputType === "object") {
+    if (context.transform_value !== undefined)
+      return declineHere("array.map: transform_value present on an object-mode statement");
+    const attributes = context.transform_object;
+    if (!Array.isArray(attributes) || attributes.length === 0)
+      return declineHere("array.map: object mode with no transform_object entries");
+    const mapEntries: Array<[string, Expr]> = [];
+    const mapRuntime: Record<string, unknown> = {};
+    for (const attribute of attributes) {
+      const key = toValue((attribute as Record<string, unknown> | null)?.attribute_key);
+      const value = toValue((attribute as Record<string, unknown> | null)?.attribute_value);
+      if (!key || !value) return declineHere("array.map: transform_object entry is not two values");
+      if (key.tag !== "const" || key.filters.length > 0)
+        return declineHere("array.map: transform_object key is computed, not a literal");
+      if (Object.hasOwn(mapRuntime, key.value))
+        return declineHere(`array.map: duplicate transform_object key "${key.value}"`);
+      mapEntries.push([key.value, decodeValue(a.ctx, value)]);
+      mapRuntime[key.value] = value;
+    }
+    entries.push(["transform", obj(mapEntries)]);
+    runtime.transform = mapRuntime;
+  } else {
+    return declineHere(`array.map: unmodelled output_type "${String(outputType)}"`);
+  }
+
+  withAs(a, entries, runtime);
+  return prove(a.ctx, a.stored, "array.map", [runtime], [obj(entries)]);
+};
+
 /** Miscellaneous decoders by stored name. */
 export const MISC_DECODERS: ReadonlyMap<string, SpecialDecoder> = new Map<string, SpecialDecoder>([
   ["mvp:get_input", getRawInput],
-  [
-    "mvp:array_map",
-    contextValues(
-      "array.map",
-      [
-        ["collection", "source", true],
-        ["transform_value", "transform"],
-      ],
-      // Only the scalar mapping path is modelled; the object-literal form stores
-      // a different `output_type` and falls through to `raw()`.
-      { output_type: "value" },
-    ),
-  ],
+  ["mvp:array_map", arrayMap],
   [
     "mvp:array_union",
     contextValues("array.union", [

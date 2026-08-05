@@ -118,7 +118,7 @@ export const FLAGS = {
   static: { spec: "--static <dir>", summary: "Archive this built frontend and deploy it to the static host" },
   "static-env": { spec: "--static-env KEY=VALUE", summary: "Public config baked in as window.<KEY> (repeatable; never secrets)" },
   "static-host": { spec: "--static-host <name>", summary: "Static-host name to deploy to (default: default)" },
-  "no-verify": { spec: "--no-verify", summary: "Skip the post-deploy static-host liveness poll" },
+  "no-verify": { spec: "--no-verify", summary: "Skip the post-deploy liveness checks (static host, microservices)" },
   origin: { spec: "--origin <origin>", summary: "Xano control-plane OAuth host (default: $XANO_ORIGIN)" },
   config: { spec: "--config <path>", summary: "Explicit credential file (default: $XANO_CONFIG)" },
   local: { spec: "--local", summary: "Use the project-local ./.xano/auth.json instead of the shared cache" },

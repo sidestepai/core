@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { f } from "../../src/fields/catalog.js";
-import { encodeTable, encodeColumn } from "../../src/kinds/table.js";
+import { encodeTable, encodeColumn, table } from "../../src/kinds/table.js";
 import type { TableDef } from "../../src/kinds/table.js";
 import { col, c } from "../../src/values/value.js";
 import { expr } from "../../src/statements/conditional.js";
@@ -217,6 +217,26 @@ describe("table-reference (foreign-key) fields", () => {
 
   it("supports uuid-keyed references", () => {
     expect(f.tableRef("org", { type: "uuid" }).type).toBe("uuid");
+  });
+
+  it("rejects a reference whose type contradicts the target's primary key", () => {
+    // The engine requires the two to match and fails the IMPORT otherwise, which
+    // is the slowest possible place to learn it. A def handle carries `idType`,
+    // so both directions are catchable at authoring time.
+    const orgs = table({ name: "orgs", idType: "uuid", schema: { title: f.text() } });
+    const posts = table({ name: "posts", schema: { title: f.text() } });
+    expect(() => f.tableRef(orgs)).toThrow(/primary key is "uuid"/);
+    expect(() => f.tableRef(posts, { type: "uuid" })).toThrow(/primary key is "int"/);
+    // …and the matching pairs stay silent, including the int default.
+    expect(f.tableRef(orgs, { type: "uuid" }).type).toBe("uuid");
+    expect(f.tableRef(posts).type).toBe("int");
+  });
+
+  it("leaves a BARE-NAME reference unchecked — there is no schema to check against", () => {
+    // The self-reference spelling. Guessing a key type here would reject valid
+    // authoring; the engine still catches a real mismatch at import.
+    expect(() => f.tableRef("orgs")).not.toThrow();
+    expect(() => f.tableRef("orgs", { type: "uuid" })).not.toThrow();
   });
 });
 

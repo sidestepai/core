@@ -24,6 +24,7 @@ import type { ParsedArgs } from "./cli.js";
 import { getAccessToken, type ResolvedAuth } from "../auth/token.js";
 import { resolveOutputTarget } from "./sandbox-export-command.js";
 import { fetchWorkspaceBundle, runCodegenCommand } from "./codegen-command.js";
+import { printMicroserviceSection, readMicroservices } from "./microservice-view.js";
 import { formatFields, step, success, stdoutStyle } from "./ui.js";
 import { removedSubcommand, unknownSubcommand } from "./errors.js";
 
@@ -111,8 +112,12 @@ async function runDetails(args: ParsedArgs): Promise<void> {
     credential: auth.credentialType,
   };
 
+  // The real workspace is addressed at the instance origin under its OWN id —
+  // never the fixed 1 an ephemeral/sandbox uses internally.
+  const microservices = await readMicroservices(auth, auth.instance, workspaceId);
+
   if (!process.stdout.isTTY) {
-    process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
+    process.stdout.write(JSON.stringify({ ...summary, microservices }, null, 2) + "\n");
     return;
   }
   const s = stdoutStyle();
@@ -126,6 +131,7 @@ async function runDetails(args: ParsedArgs): Promise<void> {
     summary.credential === "token" ? "your meta API token credential" : "your sign-in (pinned at login)",
   ]);
   process.stdout.write(formatFields(rows) + "\n");
+  printMicroserviceSection(microservices);
 }
 
 /**

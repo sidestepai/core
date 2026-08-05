@@ -1,6 +1,6 @@
 {
   "name": "sidestep",
-  "version": "4.1.30",
+  "version": "4.1.31",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
@@ -8545,7 +8545,7 @@
         },
         {
           "flag": "--no-verify",
-          "description": "Skip the post-deploy static-host liveness poll"
+          "description": "Skip the post-deploy liveness checks (static host, microservices)"
         }
       ],
       "description": "A bundle JSON file → a runnable SideStep project (offline)"
@@ -8604,7 +8604,7 @@
         },
         {
           "flag": "--no-verify",
-          "description": "Skip the post-deploy static-host liveness poll"
+          "description": "Skip the post-deploy liveness checks (static host, microservices)"
         },
         {
           "flag": "--reset",
@@ -8659,7 +8659,7 @@
         },
         {
           "flag": "--no-verify",
-          "description": "Skip the post-deploy static-host liveness poll"
+          "description": "Skip the post-deploy liveness checks (static host, microservices)"
         },
         {
           "flag": "--origin <origin>",
@@ -8993,7 +8993,7 @@
         },
         {
           "flag": "--no-verify",
-          "description": "Skip the post-deploy static-host liveness poll"
+          "description": "Skip the post-deploy liveness checks (static host, microservices)"
         },
         {
           "flag": "--lock[=<path>]",
@@ -9055,7 +9055,7 @@
         },
         {
           "flag": "--no-verify",
-          "description": "Skip the post-deploy static-host liveness poll"
+          "description": "Skip the post-deploy liveness checks (static host, microservices)"
         },
         {
           "flag": "--origin <origin>",
@@ -9201,7 +9201,7 @@
         },
         {
           "flag": "--no-verify",
-          "description": "Skip the post-deploy static-host liveness poll"
+          "description": "Skip the post-deploy liveness checks (static host, microservices)"
         },
         {
           "flag": "--origin <origin>",

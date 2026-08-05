@@ -165,10 +165,11 @@ export interface ParsedArgs {
   /** `init`/`codegen` `--no-install`: skip the post-scaffold `npm install`. For `codegen` this also means the round trip cannot be verified, since loading the tree needs its dependencies. */
   noInstall: boolean;
   /**
-   * `deploy --no-verify`: skip the post-deploy static-host liveness poll. The
-   * build still uploads; SideStep just doesn't wait to confirm the edge is
-   * serving *this* build via `X-Xano-Canonical`. Useful for fast iterative
-   * deploys or when the deployed URL isn't reachable from the CLI host.
+   * `deploy --no-verify`: skip the post-deploy liveness checks. Everything is
+   * still deployed; SideStep just doesn't wait to confirm it came up — neither
+   * that the edge is serving *this* static build (via `X-Xano-Canonical`) nor
+   * that the workspace's microservices reached a ready state. Useful for fast
+   * iterative deploys or when the deployed URL isn't reachable from the CLI host.
    */
   noVerify: boolean;
   /**

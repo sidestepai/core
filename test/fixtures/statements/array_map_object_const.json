@@ -1,0 +1,57 @@
+{
+  "as": "rows",
+  "name": "mvp:array_map",
+  "_xsid": "f:a4aba2a1-95cc-4d0a-b864-f502ed6d453b",
+  "addon": [],
+  "input": [],
+  "mocks": {},
+  "output": {
+    "items": [],
+    "filters": [],
+    "customize": false
+  },
+  "context": {
+    "collection": {
+      "tag": "const",
+      "value": "[1,2,3]",
+      "filters": [
+        {
+          "arg": [],
+          "name": "json_decode",
+          "disabled": false
+        }
+      ]
+    },
+    "output_type": "object",
+    "transform_object": [
+      {
+        "attribute_key": {
+          "tag": "const",
+          "value": "label",
+          "filters": []
+        },
+        "attribute_value": {
+          "tag": "const",
+          "value": "row",
+          "filters": []
+        }
+      },
+      {
+        "attribute_key": {
+          "tag": "const",
+          "value": "n",
+          "filters": []
+        },
+        "attribute_value": {
+          "tag": "var",
+          "value": "$this",
+          "filters": []
+        }
+      }
+    ]
+  },
+  "runtime": null,
+  "disabled": false,
+  "description": "",
+  "settings_registry": null
+}
