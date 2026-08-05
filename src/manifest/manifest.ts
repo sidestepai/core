@@ -355,6 +355,7 @@ export const KIND_DESCRIPTORS: ReadonlyArray<Omit<ManifestKind, "registered">> =
   { kind: "mcp_server", payloadKey: "toolset", authorFactory: "mcpServer", description: "An MCP server exposing a set of tools to external MCP clients.", registerMethod: "registerMcpServers" },
   { kind: "agent", payloadKey: "toolset", authorFactory: "agent", description: "An AI agent: an LLM configuration plus the tools it can call. Invoke it from any stack (query/function/task/tool/trigger) with `s.ai.agent.run` — no public endpoint; the result is a rich envelope whose completion text is at `.result`.", registerMethod: "registerAgents" },
   { kind: "task", payloadKey: "task", authorFactory: "task", description: "A scheduled background job (cron/interval) that runs a stack on a timer.", registerMethod: "registerTasks" },
+  { kind: "workflow_test", payloadKey: "workflow_test", authorFactory: "workflowTest", description: "An end-to-end test: a named stack with NO input and NO response that invokes other objects (`s.function.call`, `s.task.call`, `s.api.call`) and asserts on what they bind with `s.expect.*`. `datasource` defaults to `\"\"` (an EMPTY datasource, recommended); naming one makes the engine CLONE that datasource before every run, so pointing a test at production-sized data can be slow enough to fail the run — `\"live\"` warns at compile time.", registerMethod: "registerWorkflowTests" },
   { kind: "middleware", payloadKey: "middleware", authorFactory: "middleware", description: "A reusable pre/post stack attached to a query/function/task/tool/API group to run before or after its own logic.", registerMethod: "registerMiddleware" },
   { kind: "addon", payloadKey: "addon", authorFactory: "addon", description: "A reusable read fragment that enriches a query result by joining related table data.", registerMethod: "registerAddons" },
   { kind: "realtime_server", payloadKey: "realtime_server", authorFactory: "realtimeServer", description: "A realtime (websocket) server: the canonical-addressed container that owns realtime channels. Off until `enabled: true`. Returns a handle with `getUrl(baseUrl)`/`getPath()` for the client's socket URL (`wss://<host>/ws/<canonical>`).", registerMethod: "registerRealtimeServers" },
@@ -415,12 +416,7 @@ export const ENGINE_OBJECT_KINDS: ReadonlyArray<EngineObjectKind> = [
   },
   { kind: "task", authorFactory: "task" },
   { kind: "tool", authorFactory: "tool" },
-  {
-    kind: "workflow_test",
-    authorFactory: null,
-    absence:
-      "unmodeled: a named stack run as a test against a datasource. The most tractable gap — its body is an ordinary stack this SDK already compiles",
-  },
+  { kind: "workflow_test", authorFactory: "workflowTest" },
   { kind: "workspace", authorFactory: "workspaceConfig" },
   { kind: "workspace_trigger", authorFactory: "workspaceTrigger" },
 ];

@@ -4,7 +4,7 @@
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
-      "implemented": 23,
+      "implemented": 24,
       "total": 30,
       "unmodeled": [
         {
@@ -30,10 +30,6 @@
         {
           "kind": "tablemap",
           "absence": "unmodeled: a column mapping over a table, used to shape an external schema onto it"
-        },
-        {
-          "kind": "workflow_test",
-          "absence": "unmodeled: a named stack run as a test against a datasource. The most tractable gap — its body is an ordinary stack this SDK already compiles"
         }
       ]
     },
@@ -302,6 +298,14 @@
       "authorFactory": "task",
       "description": "A scheduled background job (cron/interval) that runs a stack on a timer.",
       "registerMethod": "registerTasks",
+      "registered": true
+    },
+    {
+      "kind": "workflow_test",
+      "payloadKey": "workflow_test",
+      "authorFactory": "workflowTest",
+      "description": "An end-to-end test: a named stack with NO input and NO response that invokes other objects (`s.function.call`, `s.task.call`, `s.api.call`) and asserts on what they bind with `s.expect.*`. `datasource` defaults to `\"\"` (an EMPTY datasource, recommended); naming one makes the engine CLONE that datasource before every run, so pointing a test at production-sized data can be slow enough to fail the run — `\"live\"` warns at compile time.",
+      "registerMethod": "registerWorkflowTests",
       "registered": true
     },
     {

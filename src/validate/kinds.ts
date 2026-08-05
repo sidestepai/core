@@ -10,9 +10,9 @@
  * how nested/attached kinds like `tool` (persisted under `toolset`) stay honest.
  *
  * Deploy-target / server blobs (`workspace`, `branch`, `market_item`, `app`,
- * `vault`, `env`, `service`, `run_install`, `workflow_test`) are deliberately
- * absent: they are never authored objects, and the residual `unchecked` set is
- * an allowlist of these registered kinds, never "any payload key not listed".
+ * `vault`, `env`, `service`, `run_install`) are deliberately absent: they are
+ * never authored objects, and the residual `unchecked` set is an allowlist of
+ * these registered kinds, never "any payload key not listed".
  */
 
 /** One round-trippable kind: its payload array key + the corpus/capture dir. */
@@ -45,6 +45,7 @@ export const ROUND_TRIP_KINDS: RoundTripKind[] = [
   { key: "tool", fixtureDir: "toolset" },
   { key: "middleware", fixtureDir: "middleware" },
   { key: "addon", fixtureDir: "addon" },
+  { key: "workflow_test", fixtureDir: "workflow-test" },
 ];
 
 const FIXTURE_DIR_BY_KIND = new Map(ROUND_TRIP_KINDS.map((k) => [k.key, k.fixtureDir]));

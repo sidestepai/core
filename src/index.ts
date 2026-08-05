@@ -420,6 +420,8 @@ export type {
 } from "./kinds/realtime-message.js";
 export { task, taskKind, encodeTask, encodeSchedule } from "./kinds/task.js";
 export type { TaskDef, TaskXdo, ScheduleDef } from "./kinds/task.js";
+export { workflowTest, workflowTestKind, encodeWorkflowTest } from "./kinds/workflow-test.js";
+export type { WorkflowTestDef, WorkflowTestXdo } from "./kinds/workflow-test.js";
 export { middleware, middlewareKind, encodeMiddleware } from "./kinds/middleware.js";
 export type { MiddlewareDef, MiddlewareXdo, ResultStrategy, ExceptionPolicy } from "./kinds/middleware.js";
 export { buildMiddlewareBlock, encodeMiddlewareEntry, encodeMiddlewareList } from "./kinds/middleware-attach.js";

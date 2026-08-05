@@ -287,7 +287,6 @@ describe("severity", () => {
       run_install: "notice",
       action_package_install: "notice",
       knowledge: "warning",
-      workflow_test: "warning",
       service: "warning",
     });
   });

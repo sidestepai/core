@@ -13,6 +13,7 @@ import "./table.js";
 import "./query.js";
 import "./api-group.js";
 import "./task.js";
+import "./workflow-test.js";
 import "./middleware.js";
 import "./addon.js";
 import "./microservice.js";
