@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import "../../src/index.js"; // load all kind + statement registrations
 import { computeCoverage, formatCoverage, IMPLEMENTED_KINDS, IMPLEMENTED_STATEMENTS, TOTAL_STATEMENTS } from "./coverage.js";
+import { unmodeledObjectKinds } from "../../src/manifest/manifest.js";
 import { normalize, loadFixture } from "./harness.js";
 import { encodeStatement, getStatementFactory } from "../../src/statements/statement.js";
 import type { Authored } from "../../src/statements/schema-dsl/interpret.js";
@@ -552,7 +553,15 @@ describe("coverage report (1:1 measured, not asserted)", () => {
     const r = computeCoverage();
     expect(r.kinds.implemented).toBe(IMPLEMENTED_KINDS.length);
     expect(r.statements.implemented).toBe(IMPLEMENTED_STATEMENTS.length);
-    expect(r.kinds.implemented).toBeGreaterThanOrEqual(11);
+    expect(r.kinds.implemented).toBeGreaterThanOrEqual(23);
     expect(r.statements.implemented).toBe(TOTAL_STATEMENTS); // all 214 surfaces reachable
+  });
+
+  // The numerator and the named shortfall come from one catalog, so they must
+  // account for every engine kind between them. A kind dropped from the table
+  // would otherwise raise the percentage by shrinking the denominator.
+  it("implemented + unmodeled accounts for the whole engine catalog", () => {
+    const r = computeCoverage();
+    expect(r.kinds.implemented + unmodeledObjectKinds().length).toBe(r.kinds.total);
   });
 });

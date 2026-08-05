@@ -30,8 +30,28 @@ import { FIELD_METHODS } from "../fields/generated/field-methods.generated.js";
 import { COMMANDS, FLAGS, flagKey, flagSummary } from "../emit/commands.js";
 import type { CommandSpec, SubcommandSpec, FlagRef } from "../emit/commands.js";
 
-/** Total engine object kinds. */
-export const TOTAL_OBJECT_KINDS = 30;
+/**
+ * One entry in the engine's object-kind catalog — the coverage DENOMINATOR,
+ * enumerated rather than asserted as a bare number.
+ *
+ * The engine counts each trigger TYPE as its own object kind, while this SDK
+ * models them as sub-kinds of a single `trigger` kind. A count of registered SDK
+ * kinds therefore understated coverage by seven, which is why the denominator is
+ * a named list now: the number is derived from entries that each say which
+ * factory authors them, and an unmapped entry has to explain itself.
+ */
+export interface EngineObjectKind {
+  /** Engine object-kind name. */
+  kind: string;
+  /**
+   * The SDK factory that authors it, or `null` when this SDK models no kind for
+   * it. Pinned in both directions against {@link KIND_DESCRIPTORS} (including
+   * sub-kind factories), so neither table can drift from the other.
+   */
+  authorFactory: string | null;
+  /** Why an unmapped kind is absent. Required exactly when `authorFactory` is null. */
+  absence?: string;
+}
 
 /** A statement field, flattened from its generated spec rule. */
 export interface ManifestField {
@@ -218,7 +238,16 @@ export interface Manifest {
   version: string;
   description: string;
   coverage: {
-    objectKinds: { implemented: number; total: number };
+    /**
+     * Counted over the ENGINE's object-kind catalog, where every trigger type is
+     * its own kind. `unmodeled` names the shortfall so the denominator is
+     * inspectable rather than a bare ratio.
+     */
+    objectKinds: {
+      implemented: number;
+      total: number;
+      unmodeled: { kind: string; absence: string }[];
+    };
     statements: { implemented: number; total: number };
     filters: { typed: number; total: number };
   };
@@ -291,10 +320,14 @@ function buildCli(): ManifestCliCommand[] {
 }
 
 /**
- * The 12 implemented object kinds with their authoring + registration metadata.
+ * The implemented object kinds with their authoring + registration metadata.
  * `registered` is verified against the live kind registry at build time, and the
  * manifest test asserts payload keys match `registeredKinds()`. `mcp_server` and
  * `agent` are distinct kinds that both persist under the `toolset` payload key.
+ *
+ * These are SIDESTEP kinds, which are not one-to-one with the engine's object
+ * kinds — `trigger` covers seven of them. {@link ENGINE_OBJECT_KINDS} holds that
+ * mapping, and is what coverage counts against.
  */
 export const KIND_DESCRIPTORS: ReadonlyArray<Omit<ManifestKind, "registered">> = [
   { kind: "function", payloadKey: "function", authorFactory: "defineFunction", description: "Reusable server-side logic (a custom function) callable from any stack via `s.function.run`.", registerMethod: "registerFunctions" },
@@ -330,6 +363,107 @@ export const KIND_DESCRIPTORS: ReadonlyArray<Omit<ManifestKind, "registered">> =
   { kind: "microservice", payloadKey: "microservice", authorFactory: "microservice", description: "A container workload deployed alongside the workspace, called from a stack with `s.api.microservice`. Two mutually exclusive shapes via `kind`: `builtin` declares containers (image/ports/resources/env/command/args) plus optional `ingresses`, and `helm` points at a chart and its `values` — passing both throws. EARLY SURFACE, expected to change: `configs`/`volumes` are typed but unconfirmed against a live engine. SECRETS RIDE ALONG — `chart.values` and `registryAuth.dockerconfigjson` are carried into a pulled tree verbatim (they must be, or a pulled microservice could not be redeployed), so a tree holding a private-registry microservice holds a live credential; prefer leaving `dockerconfigjson` unset and supplying it out of band.", registerMethod: "registerMicroservices" },
   { kind: "workspace", payloadKey: "workspace", authorFactory: "workspaceConfig", description: "Workspace-level configuration such as default middleware chains and request-history defaults per host kind.", registerMethod: "registerWorkspace" },
 ];
+
+/**
+ * The engine's full object-kind catalog, and which SDK factory authors each.
+ *
+ * This is the coverage denominator. Every trigger type is its own engine kind
+ * even though this SDK groups them under one `trigger` kind, so the mapping is
+ * to a FACTORY rather than to an SDK kind name — otherwise seven authorable
+ * kinds read as unimplemented.
+ *
+ * An entry with `authorFactory: null` is a kind you cannot author here and
+ * cannot pull into a generated tree. Each says why, in the same two categories
+ * codegen's omission policy uses: *unmodeled* (a real authoring surface this SDK
+ * has not built) versus *instance-owned* (records of what was done TO a
+ * workspace, which are not workspace source and have nothing to author).
+ */
+export const ENGINE_OBJECT_KINDS: ReadonlyArray<EngineObjectKind> = [
+  { kind: "addon", authorFactory: "addon" },
+  { kind: "agent", authorFactory: "agent" },
+  { kind: "agent_trigger", authorFactory: "agentTrigger" },
+  { kind: "api_group", authorFactory: "apiGroup" },
+  { kind: "branch", authorFactory: null, absence: "instance-owned: a branch is instance state, not workspace source" },
+  { kind: "channel", authorFactory: "realtimeChannel" },
+  { kind: "channel_trigger", authorFactory: "realtimeChannelTrigger" },
+  { kind: "error_trigger", authorFactory: "errorTrigger" },
+  { kind: "function", authorFactory: "defineFunction" },
+  { kind: "market_item", authorFactory: null, absence: "instance-owned: marketplace provenance belongs to the instance that installed it" },
+  { kind: "mcp_server", authorFactory: "mcpServer" },
+  { kind: "mcp_server_trigger", authorFactory: "mcpServerTrigger" },
+  { kind: "message", authorFactory: "realtimeMessage" },
+  { kind: "microservice", authorFactory: "microservice" },
+  { kind: "middleware", authorFactory: "middleware" },
+  { kind: "query", authorFactory: "query" },
+  {
+    kind: "realtime_channel",
+    authorFactory: null,
+    absence:
+      "unmodeled: the SUPERSEDED workspace-global realtime channel. Its trigger is authorable (`realtimeTrigger`) so a legacy workspace's handlers survive a pull, but the channel object itself is not — author a `realtimeServer` + `realtimeChannel` instead",
+  },
+  { kind: "realtime_server", authorFactory: "realtimeServer" },
+  { kind: "realtime_server_trigger", authorFactory: "realtimeServerTrigger" },
+  { kind: "realtime_trigger", authorFactory: "realtimeTrigger" },
+  { kind: "run.job", authorFactory: null, absence: "unmodeled: a container job — declares a main entrypoint plus pre/post steps and its env" },
+  { kind: "run.service", authorFactory: null, absence: "unmodeled: a long-running container service — declares a pre step and its env" },
+  { kind: "table", authorFactory: "table" },
+  { kind: "table_trigger", authorFactory: "tableTrigger" },
+  {
+    kind: "tablemap",
+    authorFactory: null,
+    absence: "unmodeled: a column mapping over a table, used to shape an external schema onto it",
+  },
+  { kind: "task", authorFactory: "task" },
+  { kind: "tool", authorFactory: "tool" },
+  {
+    kind: "workflow_test",
+    authorFactory: null,
+    absence:
+      "unmodeled: a named stack run as a test against a datasource. The most tractable gap — its body is an ordinary stack this SDK already compiles",
+  },
+  { kind: "workspace", authorFactory: "workspaceConfig" },
+  { kind: "workspace_trigger", authorFactory: "workspaceTrigger" },
+];
+
+/** Total engine object kinds — the size of the catalog above, never a literal. */
+export const TOTAL_OBJECT_KINDS = ENGINE_OBJECT_KINDS.length;
+
+/**
+ * Author factories on the PUBLISHED surface — every descriptor factory, minus
+ * anything withheld by `unpublished`, and taking a kind's sub-kind factories in
+ * place of its grouped brace-list.
+ */
+export const PUBLISHED_AUTHOR_FACTORIES: ReadonlySet<string> = new Set(
+  KIND_DESCRIPTORS.filter((d) => !d.unpublished).flatMap((d) =>
+    d.subKinds
+      ? d.subKinds.filter((sub) => !sub.unpublished).map((sub) => sub.authorFactory)
+      : [d.authorFactory],
+  ),
+);
+
+/**
+ * Engine kinds this SDK can author today. An `unpublished` factory is withheld
+ * here exactly as it is from the catalog, so the numerator keeps meaning "what
+ * an agent can reach right now".
+ */
+export const IMPLEMENTED_OBJECT_KINDS: ReadonlyArray<EngineObjectKind & { authorFactory: string }> =
+  ENGINE_OBJECT_KINDS.filter(
+    (k): k is EngineObjectKind & { authorFactory: string } =>
+      k.authorFactory !== null && PUBLISHED_AUTHOR_FACTORIES.has(k.authorFactory),
+  );
+
+/**
+ * The shortfall, with its reason — every engine kind the published surface
+ * cannot author. Derived from the same catalog as the numerator, so the two can
+ * never sum to anything but the total.
+ */
+export function unmodeledObjectKinds(): { kind: string; absence: string }[] {
+  const implemented = new Set(IMPLEMENTED_OBJECT_KINDS.map((k) => k.kind));
+  return ENGINE_OBJECT_KINDS.filter((k) => !implemented.has(k.kind)).map((k) => ({
+    kind: k.kind,
+    absence: k.absence ?? "built but withheld from the published surface",
+  }));
+}
 
 /** Value constructors / helpers exported from the package root. */
 const VALUE_CONSTRUCTORS: ReadonlyArray<ManifestValue> = [
@@ -556,7 +690,15 @@ export function buildManifest(opts: { version?: string } = {}): Manifest {
     description:
       "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
     coverage: {
-      objectKinds: { implemented: objectKinds.filter((k) => k.registered).length, total: TOTAL_OBJECT_KINDS },
+      // Counted over the ENGINE's catalog, not over this SDK's kinds: the engine
+      // has one object kind per trigger type where the SDK has one `trigger`
+      // kind with sub-kinds, so counting SDK kinds reported 16/30 for a surface
+      // that actually authors 23 of them.
+      objectKinds: {
+        implemented: IMPLEMENTED_OBJECT_KINDS.length,
+        total: TOTAL_OBJECT_KINDS,
+        unmodeled: unmodeledObjectKinds(),
+      },
       statements: {
         implemented: statements.filter((s) => s.registered).length,
         total: TOTAL_STATEMENTS,
@@ -659,6 +801,10 @@ export function renderLlmsTxt(m: Manifest): string {
     `Coverage: object kinds ${m.coverage.objectKinds.implemented}/${m.coverage.objectKinds.total}, ` +
       `statement surfaces ${m.coverage.statements.implemented}/${m.coverage.statements.total}, ` +
       `filters ${m.coverage.filters.total} (${m.coverage.filters.typed} typed).`,
+    // The shortfall by name: an agent that cannot see WHICH kinds are missing
+    // will invent a factory for one. Reasons live in `manifest.json`.
+    `Not authorable here: ${m.coverage.objectKinds.unmodeled.map((k) => k.kind).join(", ")} — ` +
+      "these cannot be authored and do not survive a pull; see `coverage.objectKinds.unmodeled` in `manifest.json`.",
     "",
     "Full reference: this doc shows the authoring signature for every kind, statement, and",
     "filter. For exhaustive per-entry detail NOT shown here — a statement's full field schema",

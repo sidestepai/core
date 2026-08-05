@@ -4,8 +4,38 @@
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
-      "implemented": 16,
-      "total": 30
+      "implemented": 23,
+      "total": 30,
+      "unmodeled": [
+        {
+          "kind": "branch",
+          "absence": "instance-owned: a branch is instance state, not workspace source"
+        },
+        {
+          "kind": "market_item",
+          "absence": "instance-owned: marketplace provenance belongs to the instance that installed it"
+        },
+        {
+          "kind": "realtime_channel",
+          "absence": "unmodeled: the SUPERSEDED workspace-global realtime channel. Its trigger is authorable (`realtimeTrigger`) so a legacy workspace's handlers survive a pull, but the channel object itself is not — author a `realtimeServer` + `realtimeChannel` instead"
+        },
+        {
+          "kind": "run.job",
+          "absence": "unmodeled: a container job — declares a main entrypoint plus pre/post steps and its env"
+        },
+        {
+          "kind": "run.service",
+          "absence": "unmodeled: a long-running container service — declares a pre step and its env"
+        },
+        {
+          "kind": "tablemap",
+          "absence": "unmodeled: a column mapping over a table, used to shape an external schema onto it"
+        },
+        {
+          "kind": "workflow_test",
+          "absence": "unmodeled: a named stack run as a test against a datasource. The most tractable gap — its body is an ordinary stack this SDK already compiles"
+        }
+      ]
     },
     "statements": {
       "implemented": 215,
