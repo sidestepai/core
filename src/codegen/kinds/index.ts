@@ -934,6 +934,28 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
       ]),
   },
   {
+    name: "workflow_test",
+    payloadKey: "workflow_test",
+    dir: "workflow-test",
+    register: "registerWorkflowTests",
+    defType: "WorkflowTestDef",
+    factory: "workflowTest",
+    // Mirrors `encodeWorkflowTest` key for key. No middleware/history/inputs/
+    // response: the kind has none. `lastRun` is deliberately unread — it is the
+    // outcome of the last execution, instance state rather than workspace
+    // source, so a stored object carrying one is normal and not a decoder gap.
+    decode: (a) =>
+      compact([
+        ...identity(a),
+        plain(a.stored, "description", ""),
+        plain(a.stored, "docs", ""),
+        plain(a.stored, "datasource", ""),
+        plain(a.stored, "active", true),
+        tags(a.stored),
+        stack(a),
+      ]),
+  },
+  {
     name: "middleware",
     payloadKey: "middleware",
     dir: "middleware",

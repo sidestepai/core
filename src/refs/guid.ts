@@ -70,6 +70,14 @@ export const REFERENCEABLE_KIND_PAYLOAD_KEYS: Readonly<Record<string, string>> =
   // addresses one by NAME — but it is listed here because it is a top-level
   // guid-tracked object, and the codegen index only places objects it recognises.
   microservice: "microservice",
+  // An end-to-end test: a named stack of runs plus `expect` assertions. Kind
+  // name and migrate type are the same string, so the mapping is identity.
+  // Membership here is load-bearing twice over: `s.workflow_test.call` already
+  // resolves its target through this map, and `Xano#encodeOne` stamps a guid
+  // only for kinds in `REFERENCEABLE_KINDS` — and the engine REFUSES to export a
+  // workflow test that has none ("Missing workflow test guid."), a failure that
+  // surfaces only against a live instance.
+  workflow_test: "workflow_test",
 };
 
 export const REFERENCEABLE_KINDS = new Set(Object.keys(REFERENCEABLE_KIND_PAYLOAD_KEYS));

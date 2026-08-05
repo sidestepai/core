@@ -215,7 +215,11 @@ describe("def-shape signatures list every field", () => {
  * budget tripwire: if a legitimate new constraint pushes past it, raise it — never
  * cut grounding to fit. Ratchet it down after a real reduction.
  */
-const DEF_SHAPES_CEILING = 7_400;
+// Raised 7,400 → 7,500 when `workflowTest` landed: a ninth factory signature plus
+// its datasource-clone constraint, which is the kind's one real trap. Exactly the
+// "legitimate new constraint" case above — the entry was already compressed from
+// 128 tokens over to 13 before raising.
+const DEF_SHAPES_CEILING = 7_500;
 
 describe("object def shapes section stays lean", () => {
   it(`is under ${DEF_SHAPES_CEILING.toLocaleString()} tokens`, () => {

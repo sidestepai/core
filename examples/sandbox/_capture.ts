@@ -11,8 +11,8 @@
  *
  * Run:  node dist/bin.js validate examples/sandbox/_capture.ts --capture --out validate-out
  */
-import { workspace, query, s, inp, input, ref } from "@sidestep/core";
-import { api, users, posts } from "./_shared.js";
+import { workspace, query, workflowTest, s, c, inp, input, ref } from "@sidestep/core";
+import { api, users, posts, doubleFn } from "./_shared.js";
 import { fieldTableRef } from "./fields/tableRef.js";
 import { productTable } from "./kinds/table.js";
 import { getUserQuery } from "./kinds/query.js";
@@ -20,6 +20,7 @@ import { onUserInsert, onMessage, onBranchLive } from "./kinds/trigger.js";
 import { searchTool } from "./kinds/tool.js";
 import { exampleMcpServer, assistant, askAssistant } from "./kinds/ai.js";
 import { nightlyCleanup } from "./kinds/task.js";
+import { doubleFnTest } from "./kinds/workflowTest.js";
 import { rateLimit } from "./kinds/middleware.js";
 import { authorAddon } from "./kinds/addon.js";
 import { echoService, helmService } from "./kinds/microservice.js";
@@ -46,6 +47,23 @@ const historyQuery = query({
   response: ref("user"),
 });
 
+// A workflow test whose stack references NOTHING. The shipped example calls a
+// function, and a `.call` stores its target's guid — which only matches a golden
+// when the SDK's own bundle was the thing deployed. This one is capture-only so
+// the kind's ENVELOPE (active/datasource/docs/tag/run) can be byte-verified on
+// its own; statement fidelity is the statement corpus's job. Same reason
+// `historyQuery` above is defined here rather than reused from `kinds/`.
+const workflowTestGolden = workflowTest({
+  name: "ex_kind_workflow_test",
+  description: "asserts a computed value",
+  tags: ["smoke", "release"],
+  stack: [
+    s.set_var("doubled", c.int(42)),
+    s.expect.to_be_defined({ expr: ref("doubled") }),
+    s.expect.to_equal({ expr: ref("doubled"), value: c.int(42) }),
+  ],
+});
+
 // register* buckets are typed per kind; the examples span many kinds.
 const defs = (xs: unknown[]) => xs as never[];
 
@@ -57,7 +75,9 @@ export default workspace("sidestep-capture-kinds")
   .registerTools(defs([searchTool]))
   .registerMcpServers(defs([exampleMcpServer]))
   .registerAgents(defs([assistant]))
+  .registerFunctions(defs([doubleFn]))
   .registerTasks(defs([nightlyCleanup]))
+  .registerWorkflowTests(defs([doubleFnTest, workflowTestGolden]))
   .registerMiddleware(defs([rateLimit]))
   .registerAddons(defs([authorAddon]))
   .registerMicroservices(defs([echoService, helmService]))

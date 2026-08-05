@@ -1,0 +1,94 @@
+{
+  "run": [
+    {
+      "as": "doubled",
+      "name": "mvp:set_var",
+      "_xsid": "f:5e69eed6-304f-423d-add3-6fd612d689ac",
+      "addon": [],
+      "input": [],
+      "mocks": {},
+      "output": {
+        "items": [],
+        "filters": [],
+        "customize": false
+      },
+      "context": {
+        "tag": "const:int",
+        "value": "42",
+        "filters": []
+      },
+      "runtime": null,
+      "disabled": false,
+      "description": "",
+      "settings_registry": null
+    },
+    {
+      "as": "",
+      "name": "mvp:test_expect_to_be_defined",
+      "_xsid": "f:bc3a02d6-f295-489f-84eb-92a709c0f23d",
+      "addon": [],
+      "input": [],
+      "mocks": {},
+      "output": {
+        "items": [],
+        "filters": [],
+        "customize": false
+      },
+      "context": {
+        "value1": {
+          "tag": "var",
+          "value": "doubled"
+        }
+      },
+      "runtime": null,
+      "disabled": false,
+      "description": "",
+      "settings_registry": null
+    },
+    {
+      "as": "",
+      "name": "mvp:test_expect_to_equal",
+      "_xsid": "f:ffb9a9f4-9afb-4d04-a8d8-85546d2a2a16",
+      "addon": [],
+      "input": [],
+      "mocks": {},
+      "output": {
+        "items": [],
+        "filters": [],
+        "customize": false
+      },
+      "context": {
+        "value1": {
+          "tag": "var",
+          "value": "doubled"
+        },
+        "value2": {
+          "tag": "const:int",
+          "value": "42"
+        }
+      },
+      "runtime": null,
+      "disabled": false,
+      "description": "",
+      "settings_registry": null
+    }
+  ],
+  "tag": [
+    {
+      "tag": "smoke"
+    },
+    {
+      "tag": "release"
+    }
+  ],
+  "docs": "",
+  "guid": "H60P-LhyPmKJd1YkZzA_SY2Y-4Q",
+  "name": "ex_kind_workflow_test",
+  "active": true,
+  "branch": {
+    "id": 0
+  },
+  "lastRun": null,
+  "datasource": "",
+  "description": "asserts a computed value"
+}

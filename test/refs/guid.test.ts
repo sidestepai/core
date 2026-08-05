@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { deriveGuid, resolveRef } from "../../src/refs/guid.js";
+import {
+  deriveGuid,
+  resolveRef,
+  REFERENCEABLE_KINDS,
+  REFERENCEABLE_KIND_PAYLOAD_KEYS,
+} from "../../src/refs/guid.js";
 import { Xano } from "../../src/workspace/xano.js";
 import { defineFunction } from "../../src/function/define.js";
 import "../../src/index.js"; // register kinds
@@ -45,6 +50,22 @@ describe("cross-object reference guids", () => {
     const fn = (bundle.payload.function as Array<{ name: string; guid: string }>)[0]!;
     expect(fn.name).toBe("Get User v2");
     expect(fn.guid).toBe("fn_get_user");
+  });
+
+  it("workflow_test is referenceable, and its migrate type is its own name", () => {
+    // Identity mapping (unlike table→dbo or agent→toolset). Membership is what
+    // makes `s.workflow_test.call` and the emitted object agree on one guid.
+    expect(REFERENCEABLE_KIND_PAYLOAD_KEYS.workflow_test).toBe("workflow_test");
+    expect(REFERENCEABLE_KINDS.has("workflow_test")).toBe(true);
+    expect(resolveRef("workflow_test", "smoke_suite")).toBe(
+      deriveGuid("workflow_test", "smoke_suite"),
+    );
+    // A def handle resolves identically to its bare name…
+    expect(resolveRef("workflow_test", { name: "smoke_suite" })).toBe(
+      resolveRef("workflow_test", "smoke_suite"),
+    );
+    // …and an explicit guid wins over the derivation.
+    expect(resolveRef("workflow_test", { name: "smoke_suite", guid: "pinned" })).toBe("pinned");
   });
 
   it("a reference resolves to a target's explicit guid (not its name-derived one)", () => {

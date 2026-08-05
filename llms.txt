@@ -6,8 +6,8 @@ Author a Xano workspace in TypeScript: build typed objects, register them on a
 `new Xano()` instance, and call `.export()` to get one importable bundle. Compile
 with `sidestep export ./xano/index.js`.
 
-Coverage: object kinds 23/30, statement surfaces 215/215, filters 225 (129 typed).
-Not authorable here: branch, market_item, realtime_channel, run.job, run.service, tablemap, workflow_test — these cannot be authored and do not survive a pull; see `coverage.objectKinds.unmodeled` in `manifest.json`.
+Coverage: object kinds 24/30, statement surfaces 215/215, filters 225 (129 typed).
+Not authorable here: branch, market_item, realtime_channel, run.job, run.service, tablemap — these cannot be authored and do not survive a pull; see `coverage.objectKinds.unmodeled` in `manifest.json`.
 
 Full reference: this doc shows the authoring signature for every kind, statement, and
 filter. For exhaustive per-entry detail NOT shown here — a statement's full field schema
@@ -310,6 +310,7 @@ Author with the factory, register on the Xano instance, lands under the payload 
 - mcp_server: `mcpServer` → `Xano.registerMcpServers` → payload `toolset` — An MCP server exposing a set of tools to external MCP clients.
 - agent: `agent` → `Xano.registerAgents` → payload `toolset` — An AI agent: an LLM configuration plus the tools it can call. Invoke it from any stack (query/function/task/tool/trigger) with `s.ai.agent.run` — no public endpoint; the result is a rich envelope whose completion text is at `.result`.
 - task: `task` → `Xano.registerTasks` → payload `task` — A scheduled background job (cron/interval) that runs a stack on a timer.
+- workflow_test: `workflowTest` → `Xano.registerWorkflowTests` → payload `workflow_test` — An end-to-end test: a named stack with NO input and NO response that invokes other objects (`s.function.call`, `s.task.call`, `s.api.call`) and asserts on what they bind with `s.expect.*`. `datasource` defaults to `""` (an EMPTY datasource, recommended); naming one makes the engine CLONE that datasource before every run, so pointing a test at production-sized data can be slow enough to fail the run — `"live"` warns at compile time.
 - middleware: `middleware` → `Xano.registerMiddleware` → payload `middleware` — A reusable pre/post stack attached to a query/function/task/tool/API group to run before or after its own logic.
 - addon: `addon` → `Xano.registerAddons` → payload `addon` — A reusable read fragment that enriches a query result by joining related table data.
 - realtime_server: `realtimeServer` → `Xano.registerRealtimeServers` → payload `realtime_server` — A realtime (websocket) server: the canonical-addressed container that owns realtime channels. Off until `enabled: true`. Returns a handle with `getUrl(baseUrl)`/`getPath()` for the client's socket URL (`wss://<host>/ws/<canonical>`).
@@ -337,6 +338,8 @@ omit it and it derives from `name` (set it to survive a rename).
 - `defineFunction`/`query`/`apiGroup` above cover the queries+tables core; the five below are the "reach past that" primitives (agents, tools, tasks, middleware, MCP servers). Same envelope conventions (`guid?`, `description?`, `docs?`, `tags?`, `history?`) unless noted.
 - `task({ name, guid?, description?, docs?, datasource?, active?, tags?, history?, schedule?, stack?, middleware? })` — a scheduled background job (function-like `stack`, no `input`/`response`).
   - `schedule?`: a `ScheduleDef[]` (NOT a single object) — `{ startsOn, freq?, repeatEnabled?, endsOn?, endsEnabled? }`. `startsOn`/`endsOn` are **ISO-8601 string** timestamps (`"2026-01-01T00:00:00Z"`), not epoch numbers; `freq` is the repeat interval **in seconds** (default `86400` = daily); `endsOn` present ⇒ the schedule has an end. `endsEnabled?` defaults to that and is recovery-only — state it to reproduce a stored schedule that remembers an end date with the gate OFF. Fires on an ephemeral; does NOT fire in the sandbox (see Gotchas).
+- `workflowTest({ name, guid?, description?, docs?, datasource?, active?, tags?, stack? })` — an end-to-end test. NO `input`/`response`: `.call` something with an `as`, then assert on that var — `s.function.call({ fn, input, as: "r" })`, `s.expect.to_equal({ expr: ref("r"), value: c.int(42) })`. `s.expect.*` is only meaningful here. `active?` defaults `true`; chain tests with `s.workflow_test.call({ workflowTest: <def handle> })`.
+  - `datasource?`: **the trap.** Default `""` is an EMPTY datasource (recommended), not "no datasource". Any non-empty name makes the engine CLONE it before EVERY run — against production-sized data, slow enough to fail the run. `"live"` warns at compile time; other names don't.
 - `middleware({ name, guid?, description?, docs?, resultStrategy?, exceptionPolicy?, tags?, history?, input?, stack?, response? })` — a pre/post interceptor (function-like `stack`); attach it via a host's `middleware: { pre, post }`.
   - `resultStrategy?`: `"merge" | "replace"` (default `merge`) — how the middleware `response` folds into the host's.
   - `exceptionPolicy?`: `"silent" | "rethrow" | "critical"` (default `"silent"` — a throw is SWALLOWED, so a guard is NOT enforced). A rate-limit/auth guard wants `"rethrow"` (throw aborts the request, surfaces the status); `"critical"` also skips the `post` chain.
@@ -846,6 +849,7 @@ Auth & calls:
 - `s.webflow.request({ path?, method?, …tls, as? })` — Webflow API request (`mvp:connect_webflow_api_request`); like `s.api.request` but addressed by `path` (host is engine-supplied).
 - `s.api.microservice({ host, path, method, params, headers, timeout, follow_location, as? })` — in-cluster microservice call (`mvp:microservice_request`); typed, all request fields required, no TLS fields.
 - `s.task.call` / `s.tool.call` / `s.trigger.call` / `s.middleware.call` / `s.addon.call` — same `{ <target>, input?, as? }` shape against the named kind.
+- `s.workflow_test.call({ workflowTest, datasource?, as? })` — run another workflow test from inside one. The odd one out: NO `input` (a workflow test takes none), and it carries `datasource?` instead — same clone caveat as the kind's own field.
 
 ### (top-level)
 
@@ -982,6 +986,8 @@ Auth & calls:
 - `s.debug.stop({ value: value })`
 
 ### expect
+
+Assertions. These belong in a `workflowTest({...})` stack — assert on what a `.call` bound with `as`. An `s.expect.*` in a query/function/task stack is reachable but asserts nothing useful: nothing collects the result.
 
 - `s.expect.to_be_defined({ expr?: value })`
 - `s.expect.to_be_empty({ expr?: value })`
@@ -1134,6 +1140,8 @@ Auth & calls:
 - `s.webflow.request` [special]
 
 ### workflow_test
+
+Run another workflow test from inside one. Pass the `workflowTest()` def handle, not a name.
 
 - `s.workflow_test.call` [special]
 

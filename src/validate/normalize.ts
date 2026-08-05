@@ -33,6 +33,12 @@ const STRIP_KEYS = new Set([
   "market_item",
   // engine-stored source artifact (the raw XanoScript text), not authored data
   "xanoscript",
+  // A workflow test's LAST RUN result — when it ran, how long it took, and the
+  // pass/fail of each statement. Instance state produced by executing the test,
+  // not workspace source, so the SDK neither authors nor emits it. A stored
+  // object always carries the key (`null` until the test has been run once), so
+  // without this the whole kind reads as a failed round trip.
+  "lastRun",
   // A query's saved request/response SAMPLE. Authored, but nothing in this SDK
   // models it, so it cannot survive a pull — the decoder reports a populated one
   // as an omission rather than letting it read as a failed round trip.

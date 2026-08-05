@@ -177,6 +177,10 @@ export class Xano {
     return this.register("message", defs);
   }
 
+  registerWorkflowTests(defs: unknown[]): this {
+    return this.register("workflow_test", defs);
+  }
+
   /**
    * Assemble the signed aggregate `packageExport` bundle.
    *

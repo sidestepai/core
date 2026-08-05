@@ -30,9 +30,11 @@
  * api.call emits the `headers`/`auth` blocks (verb/name/api_group are
  * engine-derived, not stored).
  *
- * @TODO(byte-verify): `function.run` (mvp:function) and `api.call` (context.token
- *   confirmed tagged) are golden-verified. Still modeled/unverified:
- *   - `workspace_run_*` (cross-workspace calls) — no golden.
+ * @TODO(byte-verify): `function.run` (mvp:function), `api.call` (context.token
+ *   confirmed tagged), and — since the workflow-test capture — `function.call`
+ *   (mvp:workspace_run_function) are golden-verified. Still modeled/unverified:
+ *   - the remaining `workspace_run_*` (task/tool/trigger/middleware/addon) — no
+ *     golden, but they share the single-key `id` context two goldens now pin.
  *   - `workflow_test` → context.{datasource,id} — decode-accurate, no golden.
  *   - action / action_package — EXCLUDED from byte-verify: they need an
  *     action-identity model first (action id currently resolves via the "function"

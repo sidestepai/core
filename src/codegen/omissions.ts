@@ -114,7 +114,6 @@ export const UNSUPPORTED_SECTIONS: Readonly<Record<string, OmissionPolicy>> = {
     reason: "instance-owned",
     detail: "action-package installs are owned by the instance",
   },
-  workflow_test: { reason: "unmodeled", detail: "workflow tests are not modeled by this SDK" },
   service: { reason: "unmodeled", detail: "services are not modeled by this SDK" },
   branch: { reason: "server-managed", detail: "branches are instance state, not workspace source" },
 };

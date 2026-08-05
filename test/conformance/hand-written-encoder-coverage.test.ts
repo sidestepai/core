@@ -36,16 +36,16 @@ const FIXTURE_DIR = fileURLToPath(new URL("../fixtures/", import.meta.url));
  * a `?=` risk. Every entry was checked against the engine's own class.
  */
 const UNCOVERED_BY_DESIGN: Readonly<Record<string, string>> = {
-  // The engine's WorkspaceRun* subclasses all extend WorkspaceRunBase and
-  // override only display/name/type plus id migration — the stored context is a
-  // single required `id`, so there is no optional to write unconditionally. The
-  // shared shape is proven by `mvp:workspace_run_endpoint`, which IS covered.
-  "mvp:workspace_run_function": "shares WorkspaceRunBase's single-key `id` context with the covered workspace_run_endpoint",
-  "mvp:workspace_run_task": "shares WorkspaceRunBase's single-key `id` context",
-  "mvp:workspace_run_tool": "shares WorkspaceRunBase's single-key `id` context",
-  "mvp:workspace_run_trigger": "shares WorkspaceRunBase's single-key `id` context",
-  "mvp:workspace_run_middleware": "shares WorkspaceRunBase's single-key `id` context",
-  "mvp:workspace_run_addon": "shares WorkspaceRunBase's single-key `id` context",
+  // The engine's workspace-run statements all share one base and override only
+  // display/name/type plus id migration — the stored context is a single
+  // required `id`, so there is no optional to write unconditionally. The shared
+  // shape is proven by `mvp:workspace_run_endpoint` AND, since the workflow-test
+  // capture, by `mvp:workspace_run_function` — both now have real fixtures.
+  "mvp:workspace_run_task": "shares the workspace-run base's single-key `id` context",
+  "mvp:workspace_run_tool": "shares the workspace-run base's single-key `id` context",
+  "mvp:workspace_run_trigger": "shares the workspace-run base's single-key `id` context",
+  "mvp:workspace_run_middleware": "shares the workspace-run base's single-key `id` context",
+  "mvp:workspace_run_addon": "shares the workspace-run base's single-key `id` context",
   "mvp:workspace_run_workflow_test": "decode-accurate, no golden; single-key `id` context",
 
   // All five external-SQL engines are one `dbExternalQuery` encoder differing
