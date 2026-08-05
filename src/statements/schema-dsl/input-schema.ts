@@ -11,6 +11,22 @@
  * spellings — an author (or an agent) writes a plausible-but-wrong value and
  * only finds out after deploy.
  *
+ * ## What it assumes about the source
+ *
+ * As little as possible, and nothing about its host language. A source declares
+ * a stored statement name as a quoted `mvp:*` literal — the same name this SDK
+ * already writes into every bundle — and carries its schema as one or more
+ * single-quoted blocks of indented `field: type` lines. Those two facts are the
+ * whole contract; the surrounding file could be anything.
+ *
+ * A source may hold several blocks and several names. Rather than reaching for
+ * a particular declaration (which would bake in the layout of a checkout that
+ * is not this repo's to record), it reads EVERY block and resolves the name
+ * against the statement catalog: a source naming exactly one known statement is
+ * that statement's, and an ambiguous one is skipped. Blocks that are not the
+ * input schema are harmless — their fields are not stored input names, so the
+ * join in {@link ./enums.ts} drops them.
+ *
  * Deliberately narrow, matching the posture of the transform parser: it reads
  * the one declaration shape it understands and SKIPS everything else rather
  * than guessing. Skips are silent because they are the common case (most fields
@@ -41,37 +57,34 @@ export interface InputSchemaEnums {
  */
 const EXCLUDED_FIELDS = new Set(["tag"]);
 
-/** The stored name a statement declares for itself. */
-const STORED_NAME = /function getName\(\)[^{]*\{\s*return\s*"([^"]+)"\s*;/;
+/** A quoted stored-statement name. */
+const STORED_NAME = /"(mvp:[a-z0-9_]+)"/g;
 
-/** The start of the runtime input schema declaration. */
-const INPUT_SCHEMA_MARKER = "function getInputSchema";
-/** The start of the next declaration — the input schema never runs past it. */
-const OUTPUT_SCHEMA_MARKER = "function getOutputSchema";
+/**
+ * The start of a schema block. Single-quoted ONLY, by design: every
+ * enum-bearing schema is declared that way, and the alternative delimiter
+ * cannot be sliced unambiguously here — the values lists are themselves
+ * double-quoted, so finding the block's real end would take a full
+ * string-literal parser for a form that does not occur.
+ */
+const BLOCK_START = /decode\(\s*'/g;
 
 /** The constraint spelling, as it appears at the end of a field's type. */
 const ENUM_MARKER = ": enum|values(";
 
-/**
- * Extract the schema block a declaration passes as a single-quoted literal.
- *
- * Single-quoted ONLY, by design. Every enum-bearing input schema is declared
- * that way, and the alternative delimiter cannot be sliced unambiguously here:
- * the values lists are themselves double-quoted, so finding the block's real
- * end would take a full string-literal parser for a form that does not occur.
- * Anything else — another delimiter, a dynamically built block — returns null
- * and is skipped rather than guessed at.
- */
-function schemaLiteral(src: string): string | null {
-  const open = src.match(/decode\(\s*'/);
-  if (!open || open.index === undefined) return null;
-  const start = open.index + open[0].length;
-  const end = src.indexOf("'", start);
-  return end === -1 ? null : src.slice(start, end);
+/** Every single-quoted schema block in a source, in order. */
+function schemaBlocks(src: string): string[] {
+  const blocks: string[] = [];
+  for (const open of src.matchAll(BLOCK_START)) {
+    const start = open.index + open[0].length;
+    const end = src.indexOf("'", start);
+    if (end !== -1) blocks.push(src.slice(start, end));
+  }
+  return blocks;
 }
 
 /**
- * The lines at the block's OUTERMOST indentation — the statement's own top-level
+ * The lines at a block's OUTERMOST indentation — the statement's own top-level
  * fields. Nested blocks (a value's `{value,tag,filters}` members, a sort spec's
  * `{field,order}`) are intentionally out of reach: their names are not stored
  * `input[]` names, so they have nothing to join against and would only produce
@@ -117,27 +130,27 @@ function fieldEnum(line: string): { field: string; values: string[] } | null {
 }
 
 /**
- * Harvest one statement source's enum-constrained input fields.
+ * Harvest one source's enum-constrained fields.
  *
- * Returns null when the source declares no stored name, no runtime input
- * schema, or no statically-readable schema block — all ordinary, and none of
- * them a reason to fail the run.
+ * `known` is the set of stored statement names the catalog carries; it is what
+ * resolves a source to a statement. Returns null when the source names no known
+ * statement, names more than one (ambiguous — skipped rather than guessed), or
+ * declares no enum-constrained field. All three are ordinary, and none of them
+ * is a reason to fail the run.
  */
-export function parseInputSchema(src: string): InputSchemaEnums | null {
-  const name = src.match(STORED_NAME)?.[1];
-  if (!name) return null;
-
-  const start = src.indexOf(INPUT_SCHEMA_MARKER);
-  if (start === -1) return null;
-  const stop = src.indexOf(OUTPUT_SCHEMA_MARKER, start);
-  const block = schemaLiteral(src.slice(start, stop === -1 ? undefined : stop));
-  if (block === null) return null;
+export function parseInputSchema(src: string, known: ReadonlySet<string>): InputSchemaEnums | null {
+  const named = [...new Set([...src.matchAll(STORED_NAME)].map((m) => m[1]!))].filter((n) =>
+    known.has(n),
+  );
+  if (named.length !== 1) return null;
 
   const enums: StatementEnums = {};
-  for (const line of topLevelLines(block)) {
-    const found = fieldEnum(line);
-    // First declaration wins, so a repeated field stays deterministic.
-    if (found && !(found.field in enums)) enums[found.field] = found.values;
+  for (const block of schemaBlocks(src)) {
+    for (const line of topLevelLines(block)) {
+      const found = fieldEnum(line);
+      // First declaration wins, so a repeated field stays deterministic.
+      if (found && !(found.field in enums)) enums[found.field] = found.values;
+    }
   }
-  return Object.keys(enums).length === 0 ? null : { name, enums };
+  return Object.keys(enums).length === 0 ? null : { name: named[0]!, enums };
 }

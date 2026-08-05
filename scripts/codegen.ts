@@ -102,13 +102,13 @@ function buildFixtureProfileIndex(dir: string): Map<string, FixtureProfile> {
  * An absent dir yields an empty index, which the committed floor in `main` then
  * fills from the catalog — regeneration without this source must not strip enums.
  */
-function buildEnumIndex(dir: string): Map<string, StatementEnums> {
+function buildEnumIndex(dir: string, known: ReadonlySet<string>): Map<string, StatementEnums> {
   const index = new Map<string, StatementEnums>();
   if (!existsSync(dir)) return index;
   // Files only — the source tree nests statement families in subdirectories.
   for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
     if (!entry.isFile()) continue;
-    const parsed = parseInputSchema(readFileSync(join(dir, entry.name), "utf8"));
+    const parsed = parseInputSchema(readFileSync(join(dir, entry.name), "utf8"), known);
     if (parsed) index.set(parsed.name, parsed.enums);
   }
   return index;
@@ -325,19 +325,6 @@ function main(): void {
     }
   }
 
-  // Enums follow the same floor rule, for the same reason: an absent or partial
-  // input-schema dir would otherwise silently strip a statement's committed
-  // constraints — un-narrowing its factory signature and disarming its guard —
-  // purely because this run saw fewer sources than the one that committed them.
-  const enumIndex = buildEnumIndex(INPUT_SCHEMA_DIR);
-  if (!REPIN) {
-    for (const spec of COMMITTED_SPECS) {
-      if (enumIndex.has(spec.name)) continue;
-      const carried = committedEnums(spec);
-      if (carried) enumIndex.set(spec.name, carried);
-    }
-  }
-
   const specs: StatementSpec[] = [];
   const entries: FactoryEntry[] = [];
   const skipped: { file: string; reason: string }[] = [];
@@ -353,9 +340,6 @@ function main(): void {
     }
     const spec = result.spec;
     applySpecOverrides(spec);
-    // AFTER the overrides — they synthesize and rename input rules, and the
-    // enum joins on the stored input name. See enums.ts.
-    attachEnums(spec, enumIndex);
     const { path, method } = namespaceOf(basename(file, ".yaml"));
     entries.push({ spec, path, method });
     const profile = fixtureProfiles.get(spec.name);
@@ -375,6 +359,26 @@ function main(): void {
     }
     specs.push(spec);
   }
+
+  // Enums attach in a SECOND pass: resolving a source to its statement needs the
+  // full set of catalog names, which only exists once every schema has been read.
+  // Still after `applySpecOverrides` — that pass synthesizes and renames input
+  // rules, and the enum joins on the stored input name (see enums.ts).
+  //
+  // The same floor rule as the envelope profiles, for the same reason: an absent
+  // or partial input-schema dir would otherwise silently strip a statement's
+  // committed constraints — un-narrowing its factory signature and disarming its
+  // guard — purely because this run saw fewer sources than the one that
+  // committed them.
+  const enumIndex = buildEnumIndex(INPUT_SCHEMA_DIR, new Set(specs.map((s) => s.name)));
+  if (!REPIN) {
+    for (const spec of COMMITTED_SPECS) {
+      if (enumIndex.has(spec.name)) continue;
+      const carried = committedEnums(spec);
+      if (carried) enumIndex.set(spec.name, carried);
+    }
+  }
+  for (const spec of specs) attachEnums(spec, enumIndex);
 
   specs.sort((a, b) => a.name.localeCompare(b.name));
 

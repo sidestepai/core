@@ -25,12 +25,12 @@ const INPUT_SCHEMA_DIR = process.env.XANO_INPUT_SCHEMA_DIR ?? "";
  * index is empty and the committed enums are the floor — mirroring the codegen's
  * own rule — so the comparison stays honest either way.
  */
-function enumIndex(): Map<string, StatementEnums> {
+function enumIndex(known: ReadonlySet<string>): Map<string, StatementEnums> {
   const index = new Map<string, StatementEnums>();
   if (!existsSync(INPUT_SCHEMA_DIR)) return index;
   for (const entry of readdirSync(INPUT_SCHEMA_DIR, { withFileTypes: true })) {
     if (!entry.isFile()) continue;
-    const parsed = parseInputSchema(readFileSync(join(INPUT_SCHEMA_DIR, entry.name), "utf8"));
+    const parsed = parseInputSchema(readFileSync(join(INPUT_SCHEMA_DIR, entry.name), "utf8"), known);
     if (parsed) index.set(parsed.name, parsed.enums);
   }
   return index;
@@ -45,7 +45,7 @@ function structural(spec: StatementSpec): Omit<StatementSpec, "output" | "envelo
 }
 
 function regenerate(): StatementSpec[] {
-  const index = enumIndex();
+  const index = enumIndex(new Set(GENERATED_SPECS.map((s) => s.name)));
   // The committed floor, exactly as `scripts/codegen.ts` applies it: a statement
   // this run cannot see an input schema for keeps the enums already committed.
   for (const spec of GENERATED_SPECS) {
@@ -63,11 +63,12 @@ function regenerate(): StatementSpec[] {
     const result = schemaToSpec(parseYaml(readFileSync(join(SCHEMA_DIR, file), "utf8")));
     if ("spec" in result) {
       applySpecOverrides(result.spec);
-      // After the overrides — the ordering the codegen depends on (see enums.ts).
-      attachEnums(result.spec, index);
       specs.push(result.spec);
     }
   }
+  // Second pass, mirroring the codegen: after the overrides (which synthesize
+  // and rename input rules), and once every name is known.
+  for (const spec of specs) attachEnums(spec, index);
   return specs.sort((a, b) => a.name.localeCompare(b.name));
 }
 
