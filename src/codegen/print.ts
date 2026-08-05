@@ -51,6 +51,13 @@ export type Stmt =
       readonly exported?: boolean;
     }
   | { readonly kind: "exportDefault"; readonly value: Expr }
+  /**
+   * `export { a, b };` over symbols already in scope. The barrel imports every
+   * object to register it, so re-exporting the local bindings costs one
+   * statement — where `export … from` would restate every module specifier and
+   * double the file's import graph.
+   */
+  | { readonly kind: "exportNamed"; readonly symbols: readonly string[] }
   | { readonly kind: "blank" };
 
 /** An identifier or verbatim source expression (e.g. a symbol reference). */
@@ -196,6 +203,19 @@ export function printModule(stmts: readonly Stmt[]): string {
       case "exportDefault":
         lines.push(`export default ${printExpr(stmt.value)};`);
         break;
+      case "exportNamed": {
+        if (stmt.symbols.length === 0) break;
+        // Sorted for the same reason imports are: determinism is the printer's
+        // contract, independent of how the caller built the list.
+        const symbols = [...stmt.symbols].sort();
+        const single = `export { ${symbols.join(", ")} };`;
+        // One symbol per line past a screen width. A whole workspace's objects
+        // on one line is a 30 KB row no editor wraps usefully, and it makes
+        // every diff of the barrel a single changed line.
+        if (single.length <= 100) lines.push(single);
+        else lines.push("export {", ...symbols.map((s) => `  ${s},`), "};");
+        break;
+      }
     }
   }
   return `${lines.join("\n")}\n`;
