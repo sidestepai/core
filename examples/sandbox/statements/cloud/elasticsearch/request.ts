@@ -7,7 +7,7 @@ import { defineFunction, ref, s } from "@sidestep/core";
 export const cloudElasticsearchRequest = defineFunction({
   name: "ex_cloud_elasticsearch_request",
   stack: [
-    s.cloud.elasticsearch.request({ as: "result" }),
+    s.cloud.elasticsearch.request({ as: "result", auth_type: "API Key", method: "POST" }),
   ],
   response: ref("result"),
 });

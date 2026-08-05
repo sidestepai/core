@@ -29,6 +29,7 @@
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { decodeBundle, type GeneratedFile } from "../src/codegen/index.js";
+import { auditStoredJson, emptyAudit, formatAudit } from "./enum-audit.js";
 import { type ReportEntry } from "../src/codegen/report.js";
 
 function flag(name: string, fallback?: string): string | undefined {
@@ -109,6 +110,12 @@ let workspacesWithProblems = 0;
 const bySeverity = { error: 0, warning: 0, notice: 0 };
 /** Degraded references (see `countDegradedRefs`), the layout-fidelity metric. */
 const degraded = { inFile: 0, crossFile: 0 };
+/**
+ * Enum-constrained values as the engine actually stored them. Any `outOfSet`
+ * entry is a workspace whose own emitted source would refuse to re-encode —
+ * a re-encode break, not a style note. See ./enum-audit.ts.
+ */
+const enums = emptyAudit();
 const degradedByWorkspace: Array<{ workspace: string; inFile: number; crossFile: number }> = [];
 
 for (const entry of readdirSync(dir).sort()) {
@@ -119,6 +126,7 @@ for (const entry of readdirSync(dir).sort()) {
     continue; // not a captured workspace — the sweep writes other files here too
   }
   workspaces++;
+  auditStoredJson(bundle, entry, enums);
   let report;
   try {
     const project = decodeBundle(bundle);
@@ -167,6 +175,12 @@ console.log(
   `\n${workspaces} workspaces replayed, ${failed} threw, ` +
     `${workspacesWithProblems} carry at least one error or warning`,
 );
+console.log(`\n${formatAudit(enums)}`);
+if (enums.outOfSet > 0) {
+  // Loud on purpose: each of these needs either a widened accepted set (a
+  // legacy spelling the engine still honours) or an upstream-schema correction.
+  console.log(enums.offenders.map((o) => `  ${o}`).join("\n"));
+}
 console.log(
   `\n${String(degraded.inFile + degraded.crossFile).padStart(6)} DEGRADED REFS ` +
     `(${degraded.inFile} same-file, ${degraded.crossFile} cross-file) ` +

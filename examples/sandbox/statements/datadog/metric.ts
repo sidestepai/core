@@ -7,6 +7,6 @@ import { c, defineFunction, s } from "@sidestep/core";
 export const datadogMetric = defineFunction({
   name: "ex_datadog_metric",
   stack: [
-    s.datadog.metric({ value: c.text("example") }),
+    s.datadog.metric({ value: c.text("example"), type: "count" }),
   ],
 });

@@ -7,6 +7,6 @@ import { defineFunction, s } from "@sidestep/core";
 export const datadogLog = defineFunction({
   name: "ex_datadog_log",
   stack: [
-    s.datadog.log({}),
+    s.datadog.log({ status: "debug" }),
   ],
 });

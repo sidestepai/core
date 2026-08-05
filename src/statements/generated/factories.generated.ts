@@ -23,12 +23,12 @@ export const generated = {
     external: {
       mcp: {
         server_details: /** `mvp:mcp_server_details` — fields: as, url, bearer_token, connection_type */
-(a: { as?: string; url?: Value; bearer_token?: Value; connection_type?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:mcp_server_details", a),
+(a: { as?: string; url?: Value; bearer_token?: Value; connection_type?: "sse" | "stream" | Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:mcp_server_details", a),
         tool: {
           list: /** `mvp:mcp_list_tools` — fields: as, url, bearer_token, connection_type */
-(a: { as?: string; url?: Value; bearer_token?: Value; connection_type?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:mcp_list_tools", a),
+(a: { as?: string; url?: Value; bearer_token?: Value; connection_type?: "sse" | "stream" | Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:mcp_list_tools", a),
           run: /** `mvp:mcp_call_tool` — fields: as, url, bearer_token, connection_type, tool, args */
-(a: { as?: string; url?: Value; bearer_token?: Value; connection_type?: Value; tool?: Value; args?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:mcp_call_tool", a),
+(a: { as?: string; url?: Value; bearer_token?: Value; connection_type?: "sse" | "stream" | Value; tool?: Value; args?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:mcp_call_tool", a),
         },
       },
     },
@@ -37,9 +37,9 @@ export const generated = {
     lambda: /** `mvp:lambda` — fields: as, code, timeout */
 (a: { as?: string; code?: Value; timeout?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:lambda", a),
     microservice: /** `mvp:microservice_request` — fields: as, host, path, method, params, headers, timeout, follow_location */
-(a: { as?: string; host: Value; path: Value; method: Value; params: Value; headers: Value; timeout: Value; follow_location: Value; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:microservice_request", a),
+(a: { as?: string; host: Value; path: Value; method: "GET" | "POST" | "PUT" | "DELETE" | "HEAD" | "OPTIONS" | "PATCH" | Value; params: Value; headers: Value; timeout: Value; follow_location: Value; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:microservice_request", a),
     request: /** `mvp:api_request` — fields: as, url, method, params, headers, timeout, follow_location, verify_host, verify_peer, ca_certificate, certificate, certificate_pass, private_key, private_key_pass */
-(a: { as?: string; url?: Value; method?: Value; params?: Value; headers?: Value; timeout?: Value; follow_location?: Value; verify_host?: Value; verify_peer?: Value; ca_certificate?: Value; certificate?: Value; certificate_pass?: Value; private_key?: Value; private_key_pass?: Value; disabled?: boolean; description?: string; output?: OutputAuthored } = {}): Statement => fromSpec("mvp:api_request", a),
+(a: { as?: string; url?: Value; method?: "GET" | "POST" | "PUT" | "DELETE" | "HEAD" | "OPTIONS" | "PATCH" | Value; params?: Value; headers?: Value; timeout?: Value; follow_location?: Value; verify_host?: Value; verify_peer?: Value; ca_certificate?: Value; certificate?: Value; certificate_pass?: Value; private_key?: Value; private_key_pass?: Value; disabled?: boolean; description?: string; output?: OutputAuthored } = {}): Statement => fromSpec("mvp:api_request", a),
     stream: /** `mvp:streaming_api_response` — fields: value */
 (a: { value: Value; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:streaming_api_response", a),
   },
@@ -80,16 +80,16 @@ export const generated = {
   cloud: {
     algolia: {
       request: /** `mvp:algolia_request` — fields: as, application_id, api_key, url, method, payload */
-(a: { as?: string; application_id: Value; api_key: Value; url: Value; method: Value; payload: Value; disabled?: boolean; description?: string; output?: OutputAuthored }): Statement => fromSpec("mvp:algolia_request", a),
+(a: { as?: string; application_id: Value; api_key: Value; url: Value; method: "POST" | "GET" | "DELETE" | "PUT" | Value; payload: Value; disabled?: boolean; description?: string; output?: OutputAuthored }): Statement => fromSpec("mvp:algolia_request", a),
     },
     aws: {
       opensearch: {
         document: /** `mvp:amazon_opensearch_document` — fields: as, auth_type, key_id, access_key, region, base_url, method, index, doc_id, doc */
-(a: { as?: string; auth_type?: Value; key_id?: Value; access_key?: Value; region?: Value; base_url: Value; method?: Value; index?: Value; doc_id?: Value; doc?: Value; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:amazon_opensearch_document", a),
+(a: { as?: string; auth_type?: "IAM" | "master" | Value; key_id?: Value; access_key?: Value; region?: Value; base_url: Value; method?: "GET" | "POST" | "PUT" | "DELETE" | Value; index?: Value; doc_id?: Value; doc?: Value; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:amazon_opensearch_document", a),
         query: /** `mvp:amazon_opensearch_query` — fields: as, auth_type, key_id, access_key, region, base_url, index, payload, size, from, included_fields, return_type, expression, sort */
-(a: { as?: string; auth_type?: Value; key_id?: Value; access_key?: Value; region?: Value; base_url?: Value; index?: Value; payload?: Value; size?: Value; from?: Value; included_fields?: Value; return_type?: Value; expression?: Value; sort?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:amazon_opensearch_query", a),
+(a: { as?: string; auth_type?: "IAM" | "master" | Value; key_id?: Value; access_key?: Value; region?: Value; base_url?: Value; index?: Value; payload?: Value; size?: Value; from?: Value; included_fields?: Value; return_type?: "search" | "count" | Value; expression?: Value; sort?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:amazon_opensearch_query", a),
         request: /** `mvp:amazon_opensearch_request` — fields: as, auth_type, key_id, access_key, region, method, url, query */
-(a: { as?: string; auth_type?: Value; key_id?: Value; access_key?: Value; region?: Value; method?: Value; url?: Value; query?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:amazon_opensearch_request", a),
+(a: { as?: string; auth_type?: "IAM" | "master" | Value; key_id?: Value; access_key?: Value; region?: Value; method?: "GET" | "POST" | "PUT" | "DELETE" | "HEAD" | "OPTIONS" | "PATCH" | Value; url?: Value; query?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:amazon_opensearch_request", a),
       },
       s3: {
         delete_file: /** `mvp:amazon_s3_delete_file` — fields: as, bucket, region, key, secret, file_key */
@@ -103,7 +103,7 @@ export const generated = {
         sign_url: /** `mvp:amazon_s3_signed_url` — fields: as, bucket, region, key, secret, file_key, ttl */
 (a: { as?: string; bucket: Value; region: Value; key: Value; secret: Value; file_key: Value; ttl?: Value; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:amazon_s3_signed_url", a),
         upload_file: /** `mvp:amazon_s3_upload_file` — fields: as, bucket, region, key, secret, file_key, file, metadata, object_lock_mode, object_lock_retain_until */
-(a: { as?: string; bucket: Value; region: Value; key: Value; secret: Value; file_key?: Value; file: Value; metadata: Value; object_lock_mode?: Value; object_lock_retain_until?: Value; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:amazon_s3_upload_file", a),
+(a: { as?: string; bucket: Value; region: Value; key: Value; secret: Value; file_key?: Value; file: Value; metadata: Value; object_lock_mode?: "compliance" | "governance" | Value; object_lock_retain_until?: Value; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:amazon_s3_upload_file", a),
       },
     },
     azure: {
@@ -124,11 +124,11 @@ export const generated = {
     },
     elasticsearch: {
       document: /** `mvp:elasticsearch_document` — fields: as, auth_type, key_id, access_key, base_url, index, method, doc_id, doc */
-(a: { as?: string; auth_type?: Value; key_id: Value; access_key: Value; base_url: Value; index: Value; method?: Value; doc_id: Value; doc: Value; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:elasticsearch_document", a),
+(a: { as?: string; auth_type?: "Basic" | "Bearer" | "API Key" | Value; key_id: Value; access_key: Value; base_url: Value; index: Value; method?: "GET" | "POST" | "PUT" | "DELETE" | Value; doc_id: Value; doc: Value; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:elasticsearch_document", a),
       query: /** `mvp:elasticsearch_query` — fields: as, auth_type, key_id, access_key, base_url, index, payload, size, from, included_fields, return_type, expression, sort */
-(a: { as?: string; auth_type?: Value; key_id?: Value; access_key?: Value; base_url?: Value; index?: Value; payload?: Value; size?: Value; from?: Value; included_fields?: Value; return_type?: Value; expression?: Value; sort?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:elasticsearch_query", a),
+(a: { as?: string; auth_type?: "Basic" | "Bearer" | "API Key" | Value; key_id?: Value; access_key?: Value; base_url?: Value; index?: Value; payload?: Value; size?: Value; from?: Value; included_fields?: Value; return_type?: "search" | "count" | Value; expression?: Value; sort?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:elasticsearch_query", a),
       request: /** `mvp:elasticsearch_request` — fields: as, auth_type, key_id, access_key, method, url, payload */
-(a: { as?: string; auth_type?: Value; key_id?: Value; access_key?: Value; method?: Value; url?: Value; payload?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:elasticsearch_request", a),
+(a: { as?: string; auth_type?: "Basic" | "Bearer" | "API Key" | Value; key_id?: Value; access_key?: Value; method?: "POST" | "GET" | "PUT" | "DELETE" | "PATCH" | Value; url?: Value; payload?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:elasticsearch_request", a),
     },
     google: {
       storage: {
@@ -141,7 +141,7 @@ export const generated = {
         read_file: /** `mvp:google_cloud_storage_create_var_from_file_resource` — fields: as, service_account, bucket, filePath */
 (a: { as?: string; service_account: Value; bucket: Value; filePath: Value; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:google_cloud_storage_create_var_from_file_resource", a),
         sign_url: /** `mvp:google_cloud_storage_signed_url` — fields: as, service_account, bucket, filePath, method, ttl */
-(a: { as?: string; service_account: Value; bucket: Value; filePath: Value; method: Value; ttl: Value; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:google_cloud_storage_signed_url", a),
+(a: { as?: string; service_account: Value; bucket: Value; filePath: Value; method: "GET" | "POST" | Value; ttl: Value; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:google_cloud_storage_signed_url", a),
         upload_file: /** `mvp:google_cloud_storage_upload_file` — fields: as, service_account, bucket, filePath, file, metadata */
 (a: { as?: string; service_account: Value; bucket: Value; filePath: Value; file: Value; metadata: Value; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:google_cloud_storage_upload_file", a),
       },
@@ -149,11 +149,11 @@ export const generated = {
   },
   datadog: {
     log: /** `mvp:datadog_log` — fields: message, status, attributes, service, source, env, hostname, tags, timestamp, connection */
-(a: { message?: Value; status?: Value; attributes?: Value; service?: Value; source?: Value; env?: Value; hostname?: Value; tags?: Value; timestamp?: Value; connection?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:datadog_log", a),
+(a: { message?: Value; status?: "debug" | "info" | "notice" | "warn" | "error" | "critical" | "alert" | "emergency" | Value; attributes?: Value; service?: Value; source?: Value; env?: Value; hostname?: Value; tags?: Value; timestamp?: Value; connection?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:datadog_log", a),
     log_bulk: /** `mvp:datadog_log_bulk` — fields: entries, connection */
 (a: { entries: Value; connection?: Value; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:datadog_log_bulk", a),
     metric: /** `mvp:datadog_metric` — fields: metric, value, type, tags, service, source, env, hostname, timestamp, connection */
-(a: { metric?: Value; value: Value; type?: Value; tags?: Value; service?: Value; source?: Value; env?: Value; hostname?: Value; timestamp?: Value; connection?: Value; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:datadog_metric", a),
+(a: { metric?: Value; value: Value; type?: "count" | "gauge" | "rate" | "histogram" | "distribution" | Value; tags?: Value; service?: Value; source?: Value; env?: Value; hostname?: Value; timestamp?: Value; connection?: Value; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:datadog_metric", a),
     metric_bulk: /** `mvp:datadog_metric_bulk` — fields: entries, connection */
 (a: { entries: Value; connection?: Value; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:datadog_metric_bulk", a),
   },
@@ -275,27 +275,27 @@ export const generated = {
     check_password: /** `mvp:check_pass` — fields: as, text_password, hash_password */
 (a: { as?: string; text_password?: Value; hash_password?: Value; disabled?: boolean; description?: string; output?: OutputAuthored } = {}): Statement => fromSpec("mvp:check_pass", a),
     create_curve_key: /** `mvp:crypto_create_ec_key` — fields: as, curve, format */
-(a: { as?: string; curve?: Value; format?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:crypto_create_ec_key", a),
+(a: { as?: string; curve?: "P-256" | "P-384" | "P-521" | Value; format?: "object" | "base64" | Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:crypto_create_ec_key", a),
     create_password: /** `mvp:generate_pass` — fields: as, character_count, require_lowercase, require_uppercase, require_digit, require_symbol, symbol_whitelist */
 (a: { as?: string; character_count?: Value; require_lowercase?: Value; require_uppercase?: Value; require_digit?: Value; require_symbol?: Value; symbol_whitelist?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:generate_pass", a),
     create_rsa_key: /** `mvp:crypto_create_rsa_key` — fields: as, bits, format */
-(a: { as?: string; bits?: Value; format?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:crypto_create_rsa_key", a),
+(a: { as?: string; bits?: Value; format?: "object" | "base64" | Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:crypto_create_rsa_key", a),
     create_secret_key: /** `mvp:crypto_create_octet_key` — fields: as, bits, format */
-(a: { as?: string; bits?: Value; format?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:crypto_create_octet_key", a),
+(a: { as?: string; bits?: Value; format?: "object" | "base64" | Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:crypto_create_octet_key", a),
     create_uuid: /** `mvp:uuid4` — fields: as */
 (a: { as?: string; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:uuid4", a),
     decrypt: /** `mvp:crypto_decrypt` — fields: as, data, algorithm, key, iv */
-(a: { as?: string; data?: Value; algorithm?: Value; key?: Value; iv?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:crypto_decrypt", a),
+(a: { as?: string; data?: Value; algorithm?: "aes-128-cbc" | "aes-192-cbc" | "aes-256-cbc" | "aes-128-gcm" | "aes-192-gcm" | "aes-256-gcm" | Value; key?: Value; iv?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:crypto_decrypt", a),
     encrypt: /** `mvp:crypto_encrypt` — fields: as, data, algorithm, key, iv */
-(a: { as?: string; data?: Value; algorithm?: Value; key?: Value; iv?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:crypto_encrypt", a),
+(a: { as?: string; data?: Value; algorithm?: "aes-128-cbc" | "aes-192-cbc" | "aes-256-cbc" | "aes-128-gcm" | "aes-192-gcm" | "aes-256-gcm" | Value; key?: Value; iv?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:crypto_encrypt", a),
     jwe_decode: /** `mvp:crypto_jwe_decode2` — fields: as, token, key, check_claims, key_algorithm, content_algorithm, timeDrift */
-(a: { as?: string; token?: Value; key?: Value; check_claims?: Value; key_algorithm?: Value; content_algorithm?: Value; timeDrift?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:crypto_jwe_decode2", a),
+(a: { as?: string; token?: Value; key?: Value; check_claims?: Value; key_algorithm?: "A128KW" | "A192KW" | "A256KW" | "A128GCMKW" | "A192GCMKW" | "A256GCMKW" | "ECDH-ES+A128KW" | "ECDH-ES+A192KW" | "ECDH-ES+A256KW" | Value; content_algorithm?: "A128GCM" | "A192GCM" | "A256GCM" | "A128CBC-HS256" | "A192CBC-HS384" | "A256CBC-HS512" | Value; timeDrift?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:crypto_jwe_decode2", a),
     jwe_encode: /** `mvp:crypto_jwe_encode3` — fields: as, headers, claims, key, key_algorithm, content_algorithm, ttl */
-(a: { as?: string; headers?: Value; claims?: Value; key?: Value; key_algorithm?: Value; content_algorithm?: Value; ttl?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:crypto_jwe_encode3", a),
+(a: { as?: string; headers?: Value; claims?: Value; key?: Value; key_algorithm?: "A128KW" | "A192KW" | "A256KW" | "A128GCMKW" | "A192GCMKW" | "A256GCMKW" | "ECDH-ES+A128KW" | "ECDH-ES+A192KW" | "ECDH-ES+A256KW" | Value; content_algorithm?: "A128GCM" | "A192GCM" | "A256GCM" | "A128CBC-HS256" | "A192CBC-HS384" | "A256CBC-HS512" | Value; ttl?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:crypto_jwe_encode3", a),
     jws_decode: /** `mvp:crypto_jws_decode2` — fields: as, token, key, check_claims, signature_algorithm, timeDrift */
-(a: { as?: string; token?: Value; key?: Value; check_claims?: Value; signature_algorithm?: Value; timeDrift?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:crypto_jws_decode2", a),
+(a: { as?: string; token?: Value; key?: Value; check_claims?: Value; signature_algorithm?: "PS256" | "PS384" | "PS512" | "RS256" | "RS384" | "RS512" | "HS256" | "HS384" | "HS512" | "ES256" | "ES384" | "ES512" | Value; timeDrift?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:crypto_jws_decode2", a),
     jws_encode: /** `mvp:crypto_jws_encode2` — fields: as, headers, claims, key, signature_algorithm, ttl */
-(a: { as?: string; headers?: Value; claims?: Value; key?: Value; signature_algorithm?: Value; ttl?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:crypto_jws_encode2", a),
+(a: { as?: string; headers?: Value; claims?: Value; key?: Value; signature_algorithm?: "PS256" | "PS384" | "PS512" | "RS256" | "RS384" | "RS512" | "HS256" | "HS384" | "HS512" | "ES256" | "ES384" | "ES512" | Value; ttl?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:crypto_jws_encode2", a),
     random_bytes: /** `mvp:random_bytes` — fields: as, length */
 (a: { as?: string; length?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:random_bytes", a),
     random_number: /** `mvp:rand` — fields: as, min, max */
@@ -365,7 +365,7 @@ export const generated = {
     ip_lookup: /** `mvp:ipaddress_lookup` — fields: as, value */
 (a: { as?: string; value: Value; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:ipaddress_lookup", a),
     send_email: /** `mvp:send_email` — fields: as, api_key, service_provider, subject, message, to, bcc, cc, from, reply_to, scheduled_at */
-(a: { as?: string; api_key?: Value; service_provider?: Value; subject?: Value; message?: Value; to?: Value; bcc?: Value; cc?: Value; from?: Value; reply_to?: Value; scheduled_at?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:send_email", a),
+(a: { as?: string; api_key?: Value; service_provider?: "resend" | "xano" | Value; subject?: Value; message?: Value; to?: Value; bcc?: Value; cc?: Value; from?: Value; reply_to?: Value; scheduled_at?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:send_email", a),
     set_header: /** `mvp:setheader` — fields: value, duplicates */
 (a: { value: Value; duplicates?: string; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:setheader", a),
     sleep: /** `mvp:sleep` — fields: value */
@@ -381,7 +381,7 @@ export const generated = {
     add_to_archive: /** `mvp:zip_add_file_resource` — fields: file, filename, zip, password, password_encryption */
 (a: { file: Value; filename: Value; zip: Value; password?: Value; password_encryption?: Value; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:zip_add_file_resource", a),
     create_archive: /** `mvp:zip_create_file_resource` — fields: as, filename, password, password_encryption */
-(a: { as?: string; filename: Value; password?: Value; password_encryption?: Value; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:zip_create_file_resource", a),
+(a: { as?: string; filename: Value; password?: Value; password_encryption?: "standard" | "AES-128" | "AES-192" | "AES-256" | Value; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:zip_create_file_resource", a),
     delete_from_archive: /** `mvp:zip_delete_file_resource` — fields: filename, zip, password */
 (a: { filename: Value; zip: Value; password?: Value; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:zip_delete_file_resource", a),
     extract: /** `mvp:zip_extract_file_resource` — fields: as, zip, password */

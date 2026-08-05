@@ -48,7 +48,9 @@ function synthesize(spec: StatementSpec): Record<string, unknown> {
         authored[rule.field] = rule.default ?? (rule.route.kind === "as" ? "result" : "x");
         break;
       case "value":
-        authored[rule.field] = c.text("v");
+        // An enum-constrained field takes one of its declared members — the
+        // probe must synthesize a statement the engine would actually accept.
+        authored[rule.field] = c.text(rule.enum ? rule.enum[0]! : "v");
         break;
       case "comparison":
         authored[rule.field] = { left: ref("item"), op: "=", right: c.int(1) };

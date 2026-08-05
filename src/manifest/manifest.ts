@@ -60,6 +60,12 @@ export interface ManifestField {
   type: StatementSpec["rules"][number]["type"];
   optional: boolean;
   default?: string;
+  /**
+   * The field's closed set of legal values, where the engine declares one. Both
+   * a bare literal and the `c.text(...)` spelling are accepted, and a constant
+   * outside the set is rejected at authoring time.
+   */
+  enum?: string[];
 }
 
 /** One statement authoring surface. */
@@ -652,6 +658,7 @@ function fieldsOf(spec: StatementSpec): ManifestField[] {
       optional: r.optional || r.default !== undefined,
     };
     if (r.default !== undefined) f.default = r.default;
+    if (r.enum !== undefined) f.enum = r.enum;
     return f;
   });
 }
@@ -743,7 +750,12 @@ const DEFAULT_KEEP = new Set<string>([
 
 const fieldLine = (f: ManifestField, sPath: string): string => {
   const keepDefault = f.default !== undefined && DEFAULT_KEEP.has(`${sPath}:${f.name}`);
-  return `${f.name}${f.optional ? "?" : ""}: ${f.type}${keepDefault ? ` = ${JSON.stringify(f.default)}` : ""}`;
+  // A constrained field renders as its legal values rather than the opaque
+  // `value`. This is the whole point of carrying the constraint: an agent
+  // reading `connection_type?: value` has no way to know the two spellings the
+  // engine accepts, and guessing a plausible third one fails only after deploy.
+  const type = f.enum ? f.enum.map((v) => JSON.stringify(v)).join(" | ") : f.type;
+  return `${f.name}${f.optional ? "?" : ""}: ${type}${keepDefault ? ` = ${JSON.stringify(f.default)}` : ""}`;
 };
 
 /**

@@ -7,7 +7,7 @@ import { c, defineFunction, ref, s } from "@sidestep/core";
 export const cloudAlgoliaRequest = defineFunction({
   name: "ex_cloud_algolia_request",
   stack: [
-    s.cloud.algolia.request({ as: "result", application_id: c.text("example"), api_key: c.text("••••"), url: c.text("example"), method: c.text("example"), payload: c.obj({}) }),
+    s.cloud.algolia.request({ as: "result", application_id: c.text("example"), api_key: c.text("••••"), url: c.text("example"), method: "POST", payload: c.obj({}) }),
   ],
   response: ref("result"),
 });

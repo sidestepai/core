@@ -10,7 +10,11 @@
 import type { Value } from "../../values/value.js";
 import { c, filter, withFilters, isTaggedValue } from "../../values/value.js";
 
-/** The HTTP verbs the engine's runtime input schema accepts (suggested, not enforced). */
+/**
+ * The HTTP verbs the engine's runtime input schema accepts. Enforced: the
+ * wrapper coerces to a `Value` and delegates to the generated factory, whose
+ * spec now carries the same set and rejects a constant outside it.
+ */
 export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "HEAD" | "OPTIONS" | "PATCH";
 
 /**

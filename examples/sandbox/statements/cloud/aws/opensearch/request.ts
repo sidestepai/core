@@ -7,7 +7,7 @@ import { defineFunction, ref, s } from "@sidestep/core";
 export const cloudAwsOpensearchRequest = defineFunction({
   name: "ex_cloud_aws_opensearch_request",
   stack: [
-    s.cloud.aws.opensearch.request({ as: "result" }),
+    s.cloud.aws.opensearch.request({ as: "result", auth_type: "IAM", method: "GET" }),
   ],
   response: ref("result"),
 });

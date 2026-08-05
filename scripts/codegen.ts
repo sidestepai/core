@@ -8,11 +8,15 @@
  * Run (regenerates the committed output):
  *   npm run codegen
  *
- * Sources — both REQUIRED, and pointed at a local engine checkout by the person
- * running this. There is no default: the layout of that checkout is not this
- * repo's to record.
- *   XANO_SCHEMA_DIR  — dir of per-statement schema YAMLs (the codegen input)
- *   XANO_FIXTURE_DIR — dir of persisted transform goldens (pins the `output` flag)
+ * Sources — pointed at a local engine checkout by the person running this. There
+ * is no default: the layout of that checkout is not this repo's to record.
+ *   XANO_SCHEMA_DIR       — REQUIRED. Dir of per-statement schema YAMLs (the codegen input)
+ *   XANO_FIXTURE_DIR      — dir of persisted transform goldens (pins the `output` flag)
+ *   XANO_INPUT_SCHEMA_DIR — dir of per-statement runtime input schemas (pins field `enum`s)
+ *
+ * Only the first is required. The other two PIN facts the transform schema does
+ * not carry, and each already-committed fact is a floor: a run that cannot see
+ * the source carries it forward rather than silently unpinning it (see main).
  *
  * Codegen is reproducible: re-running on the same sources produces identical
  * output (specs sorted by name; deterministic serialization).
@@ -22,12 +26,16 @@ import { join, basename } from "node:path";
 import { parseYaml } from "../src/statements/schema-dsl/parse.ts";
 import { schemaToSpec } from "../src/statements/schema-dsl/generate.ts";
 import { applySpecOverrides } from "../src/statements/schema-dsl/overrides.ts";
+import { attachEnums } from "../src/statements/schema-dsl/enums.ts";
+import { parseInputSchema } from "../src/statements/schema-dsl/input-schema.ts";
+import type { StatementEnums } from "../src/statements/schema-dsl/input-schema.ts";
 import type { EnvelopeProfile, StatementSpec } from "../src/statements/schema-dsl/interpret.ts";
 import { GENERATED_SPECS as COMMITTED_SPECS } from "../src/statements/generated/specs.generated.ts";
 
 const SCHEMA_DIR = process.env.XANO_SCHEMA_DIR ?? "";
 const FIXTURE_DIR = process.env.XANO_FIXTURE_DIR ?? "";
-/** Allow this run's fixtures to REMOVE a committed envelope profile (see main). */
+const INPUT_SCHEMA_DIR = process.env.XANO_INPUT_SCHEMA_DIR ?? "";
+/** Allow this run's fixtures to REMOVE a committed envelope profile or enum (see main). */
 const REPIN = process.argv.includes("--repin");
 const OUT_SPECS = join(import.meta.dirname, "../src/statements/generated/specs.generated.ts");
 const OUT_FACTORIES = join(import.meta.dirname, "../src/statements/generated/factories.generated.ts");
@@ -89,6 +97,32 @@ function buildFixtureProfileIndex(dir: string): Map<string, FixtureProfile> {
   return index;
 }
 
+/**
+ * Index the runtime input schemas: statement name → its enum-constrained fields.
+ * An absent dir yields an empty index, which the committed floor in `main` then
+ * fills from the catalog — regeneration without this source must not strip enums.
+ */
+function buildEnumIndex(dir: string, known: ReadonlySet<string>): Map<string, StatementEnums> {
+  const index = new Map<string, StatementEnums>();
+  if (!existsSync(dir)) return index;
+  // Files only — the source tree nests statement families in subdirectories.
+  for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+    if (!entry.isFile()) continue;
+    const parsed = parseInputSchema(readFileSync(join(dir, entry.name), "utf8"), known);
+    if (parsed) index.set(parsed.name, parsed.enums);
+  }
+  return index;
+}
+
+/** Read the enums already committed for a statement, as an index entry. */
+function committedEnums(spec: StatementSpec): StatementEnums | undefined {
+  const entry: StatementEnums = {};
+  for (const rule of spec.rules) {
+    if (rule.route.kind === "input" && rule.enum) entry[rule.route.name] = rule.enum;
+  }
+  return Object.keys(entry).length === 0 ? undefined : entry;
+}
+
 /** True when an envelope profile carries no flags (a lean statement). */
 function isLeanEnvelope(env: EnvelopeProfile): boolean {
   return Object.keys(env).length === 0;
@@ -117,6 +151,7 @@ function serializeSpec(spec: StatementSpec): string {
     if ("name" in r.route) route.name = r.route.name;
     const rule: Record<string, unknown> = { field: r.field, type: r.type, optional: r.optional };
     if (r.default !== undefined) rule.default = r.default;
+    if (r.enum !== undefined) rule.enum = r.enum;
     rule.route = route;
     return rule;
   });
@@ -146,11 +181,24 @@ function namespaceOf(base: string): { path: string[]; method: string } {
 
 const TS_TYPE: Record<string, string> = { string: "string", value: "Value", comparison: "Condition" };
 
+/**
+ * The authored type for one field. An enum-constrained field renders as its
+ * legal values (in the engine's declared order — the editor's dropdown order,
+ * which reads as intentional) plus `Value`: the literal spelling puts the legal
+ * set in autocomplete at the call site and makes a typo a compile error, while
+ * `Value` keeps the dynamic-binding escape hatch open. Both spellings encode to
+ * the same bytes (see `encodeFromSpec`).
+ */
+function fieldType(r: StatementSpec["rules"][number]): string {
+  if (!r.enum) return TS_TYPE[r.type]!;
+  return [...r.enum.map((v) => JSON.stringify(v)), TS_TYPE[r.type]!].join(" | ");
+}
+
 /** TS arg-object type + whether the whole object can default to `{}`. */
 function argSignature(spec: StatementSpec): { type: string; allOptional: boolean } {
   const fields = spec.rules.map((r) => {
     const optional = r.optional || r.default !== undefined;
-    return `${r.field}${optional ? "?" : ""}: ${TS_TYPE[r.type]}`;
+    return `${r.field}${optional ? "?" : ""}: ${fieldType(r)}`;
   });
   // Reserved envelope authoring keys (always optional). `disabled` and
   // `description` are on EVERY statement — they annotate the stack item rather
@@ -311,6 +359,26 @@ function main(): void {
     }
     specs.push(spec);
   }
+
+  // Enums attach in a SECOND pass: resolving a source to its statement needs the
+  // full set of catalog names, which only exists once every schema has been read.
+  // Still after `applySpecOverrides` — that pass synthesizes and renames input
+  // rules, and the enum joins on the stored input name (see enums.ts).
+  //
+  // The same floor rule as the envelope profiles, for the same reason: an absent
+  // or partial input-schema dir would otherwise silently strip a statement's
+  // committed constraints — un-narrowing its factory signature and disarming its
+  // guard — purely because this run saw fewer sources than the one that
+  // committed them.
+  const enumIndex = buildEnumIndex(INPUT_SCHEMA_DIR, new Set(specs.map((s) => s.name)));
+  if (!REPIN) {
+    for (const spec of COMMITTED_SPECS) {
+      if (enumIndex.has(spec.name)) continue;
+      const carried = committedEnums(spec);
+      if (carried) enumIndex.set(spec.name, carried);
+    }
+  }
+  for (const spec of specs) attachEnums(spec, enumIndex);
 
   specs.sort((a, b) => a.name.localeCompare(b.name));
 

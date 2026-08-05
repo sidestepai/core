@@ -10,6 +10,10 @@
  * against the built `dist`, whose internal types aren't all re-exported).
  */
 import { describe, it, expect, beforeAll } from "vitest";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { GENERATED_SPECS } from "../src/statements/generated/specs.generated.js";
+import { STATEMENT_SURFACES } from "../src/statements/surfaces.js";
 
 const INDEX = "../examples/sandbox/index.js";
 
@@ -68,5 +72,34 @@ describe("examples/sandbox", () => {
       (st) => (st as { name?: string }).name === "mvp:call_agent",
     ) as { context: { toolset: { id: string } } };
     expect(callAgent.context.toolset.id).toBe(agentObj.guid);
+  });
+});
+
+describe("enum-constrained fields in the sandbox examples", () => {
+  it("every example that can show a legal enum value does", () => {
+    // The examples are what an agent copies, so an example that omits a
+    // constrained field teaches nothing about its legal spellings — and one
+    // that passes a placeholder teaches the wrong thing outright.
+    const missing: string[] = [];
+    for (const [surface, stored] of STATEMENT_SURFACES) {
+      const spec = GENERATED_SPECS.find((s) => s.name === stored);
+      const constrained = spec?.rules.filter((r) => r.enum) ?? [];
+      if (constrained.length === 0) continue;
+      const path = join(
+        "examples/sandbox/statements",
+        `${surface.replace(/^stack\|/, "").replace(/\./g, "/")}.ts`,
+      );
+      if (!existsSync(path)) continue;
+      const src = readFileSync(path, "utf8");
+      for (const rule of constrained) {
+        const match = src.match(new RegExp(`\\b${rule.field}:\\s*("[^"]*")`));
+        if (!match) {
+          missing.push(`${path}: ${rule.field} not shown`);
+        } else if (!rule.enum!.includes(JSON.parse(match[1]!) as string)) {
+          missing.push(`${path}: ${rule.field} = ${match[1]} is not a legal value`);
+        }
+      }
+    }
+    expect(missing, missing.join("\n")).toEqual([]);
   });
 });

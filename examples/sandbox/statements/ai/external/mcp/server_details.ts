@@ -7,7 +7,7 @@ import { defineFunction, ref, s } from "@sidestep/core";
 export const aiExternalMcpServerDetails = defineFunction({
   name: "ex_ai_external_mcp_server_details",
   stack: [
-    s.ai.external.mcp.server_details({ as: "result" }),
+    s.ai.external.mcp.server_details({ as: "result", connection_type: "sse" }),
   ],
   response: ref("result"),
 });

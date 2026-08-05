@@ -5,6 +5,7 @@ import {
   objectKeys,
   GENERATED_STATEMENT_NAMES,
 } from "../../src/statements/generated/catalog.js";
+import { generated } from "../../src/statements/generated/factories.generated.js";
 import { encodeFromSpec } from "../../src/statements/schema-dsl/interpret.js";
 import type { StatementSpec } from "../../src/statements/schema-dsl/interpret.js";
 import { encodeStatement, getStatementFactory, isRegisteredStatement } from "../../src/statements/statement.js";
@@ -260,5 +261,64 @@ describe("generated envelope authoring — description + output (U2)", () => {
     const mathAddFactory = getStatementFactory("mvp:math_add");
     const encoded = encodeStatement(mathAddFactory({ name: "x1", value: c.int(1) }));
     expect(encoded.description).toBe("");
+  });
+});
+
+describe("enum-constrained field signatures", () => {
+  it("accepts the bare literal spelling", () => {
+    const encoded = encodeStatement(generated.ai.external.mcp.tool.run({ connection_type: "stream" }));
+    expect(encoded.input).toContainEqual(
+      expect.objectContaining({ name: "connection_type", value: "stream", tag: "const" }),
+    );
+  });
+
+  it("still accepts the explicit Value spelling", () => {
+    const encoded = encodeStatement(
+      generated.ai.external.mcp.tool.run({ connection_type: c.text("stream") }),
+    );
+    expect(encoded.input).toContainEqual(
+      expect.objectContaining({ name: "connection_type", value: "stream", tag: "const" }),
+    );
+  });
+
+  it("rejects a wrong literal at compile time AND at encode time", () => {
+    expect(() =>
+      // @ts-expect-error "streaming" is not one of the engine's two legal values
+      generated.ai.external.mcp.tool.run({ connection_type: "streaming" }),
+    ).toThrow(/accepts only "sse" \| "stream"/);
+  });
+
+  it("keeps the dynamic escape hatch open at compile time", () => {
+    // A ref must remain assignable — the union is additive, never a narrowing
+    // of what the field could already take.
+    const encoded = encodeStatement(
+      generated.ai.external.mcp.tool.run({ connection_type: ref("cfg.mode") }),
+    );
+    expect(encoded.input).toContainEqual(
+      expect.objectContaining({ name: "connection_type", value: "cfg.mode", tag: "var" }),
+    );
+  });
+
+  it("renders values carrying spaces and punctuation as usable literals", () => {
+    // The generated union is only useful if these survive quoting intact.
+    const withSpace = encodeStatement(generated.cloud.elasticsearch.query({ auth_type: "API Key" }));
+    expect(withSpace.input).toContainEqual(
+      expect.objectContaining({ name: "auth_type", value: "API Key" }),
+    );
+    const withPunct = encodeStatement(
+      generated.security.jwe_encode({ key_algorithm: "ECDH-ES+A128KW" }),
+    );
+    expect(withPunct.input).toContainEqual(
+      expect.objectContaining({ name: "key_algorithm", value: "ECDH-ES+A128KW" }),
+    );
+  });
+
+  it("leaves an unconstrained field on the same statement taking any Value", () => {
+    const encoded = encodeStatement(
+      generated.ai.external.mcp.tool.run({ tool: c.text("anything-at-all") }),
+    );
+    expect(encoded.input).toContainEqual(
+      expect.objectContaining({ name: "tool_name", value: "anything-at-all" }),
+    );
   });
 });

@@ -884,9 +884,9 @@ Auth & calls:
 ### ai
 
 - `s.ai.agent.run` [special]
-- `s.ai.external.mcp.server_details({ as?: string; url?: value; bearer_token?: value; connection_type?: value })`
-- `s.ai.external.mcp.tool.list({ as?: string; url?: value; bearer_token?: value; connection_type?: value })`
-- `s.ai.external.mcp.tool.run({ as?: string; url?: value; bearer_token?: value; connection_type?: value; tool?: value; args?: value })`
+- `s.ai.external.mcp.server_details({ as?: string; url?: value; bearer_token?: value; connection_type?: "sse" | "stream" })`
+- `s.ai.external.mcp.tool.list({ as?: string; url?: value; bearer_token?: value; connection_type?: "sse" | "stream" })`
+- `s.ai.external.mcp.tool.run({ as?: string; url?: value; bearer_token?: value; connection_type?: "sse" | "stream"; tool?: value; args?: value })`
 
 ### api
 
@@ -918,30 +918,30 @@ Auth & calls:
 
 ### cloud
 
-- `s.cloud.algolia.request({ as?: string; application_id: value; api_key: value; url: value; method: value; payload: value })` [output]
-- `s.cloud.aws.opensearch.document({ as?: string; auth_type?: value; key_id?: value; access_key?: value; region?: value; base_url: value; method?: value; index?: value; doc_id?: value; doc?: value })`
-- `s.cloud.aws.opensearch.query({ as?: string; auth_type?: value; key_id?: value; access_key?: value; region?: value; base_url?: value; index?: value; payload?: value; size?: value; from?: value; included_fields?: value; return_type?: value; expression?: value; sort?: value })`
-- `s.cloud.aws.opensearch.request({ as?: string; auth_type?: value; key_id?: value; access_key?: value; region?: value; method?: value; url?: value; query?: value })`
+- `s.cloud.algolia.request({ as?: string; application_id: value; api_key: value; url: value; method: "POST" | "GET" | "DELETE" | "PUT"; payload: value })` [output]
+- `s.cloud.aws.opensearch.document({ as?: string; auth_type?: "IAM" | "master"; key_id?: value; access_key?: value; region?: value; base_url: value; method?: "GET" | "POST" | "PUT" | "DELETE"; index?: value; doc_id?: value; doc?: value })`
+- `s.cloud.aws.opensearch.query({ as?: string; auth_type?: "IAM" | "master"; key_id?: value; access_key?: value; region?: value; base_url?: value; index?: value; payload?: value; size?: value; from?: value; included_fields?: value; return_type?: "search" | "count"; expression?: value; sort?: value })`
+- `s.cloud.aws.opensearch.request({ as?: string; auth_type?: "IAM" | "master"; key_id?: value; access_key?: value; region?: value; method?: "GET" | "POST" | "PUT" | "DELETE" | "HEAD" | "OPTIONS" | "PATCH"; url?: value; query?: value })`
 - `s.cloud.aws.s3.delete_file({ as?: string; bucket: value; region: value; key: value; secret: value; file_key: value })`
 - `s.cloud.aws.s3.get_file_info({ as?: string; bucket: value; region: value; key: value; secret: value; file_key: value })`
 - `s.cloud.aws.s3.list_directory({ as?: string; bucket: value; region: value; key: value; secret: value; prefix?: value; next_page_token?: value })`
 - `s.cloud.aws.s3.read_file({ as?: string; bucket: value; region: value; key: value; secret: value; file_key: value })`
 - `s.cloud.aws.s3.sign_url({ as?: string; bucket: value; region: value; key: value; secret: value; file_key: value; ttl?: value })`
-- `s.cloud.aws.s3.upload_file({ as?: string; bucket: value; region: value; key: value; secret: value; file_key?: value; file: value; metadata: value; object_lock_mode?: value; object_lock_retain_until?: value })`
+- `s.cloud.aws.s3.upload_file({ as?: string; bucket: value; region: value; key: value; secret: value; file_key?: value; file: value; metadata: value; object_lock_mode?: "compliance" | "governance"; object_lock_retain_until?: value })`
 - `s.cloud.azure.storage.delete_file({ as?: string; account_name: value; account_key: value; container_name: value; filePath: value })`
 - `s.cloud.azure.storage.get_file_info({ as?: string; account_name: value; account_key: value; container_name: value; filePath: value })`
 - `s.cloud.azure.storage.list_directory({ as?: string; account_name: value; account_key: value; container_name: value; path: value })`
 - `s.cloud.azure.storage.read_file({ as?: string; account_name: value; account_key: value; container_name: value; filePath: value })`
 - `s.cloud.azure.storage.sign_url({ as?: string; account_name: value; account_key: value; container_name: value; path: value; ttl: value })`
 - `s.cloud.azure.storage.upload_file({ as?: string; account_name: value; account_key: value; container_name: value; filePath: value; file: value; metadata: value })`
-- `s.cloud.elasticsearch.document({ as?: string; auth_type?: value; key_id: value; access_key: value; base_url: value; index: value; method?: value; doc_id: value; doc: value })`
-- `s.cloud.elasticsearch.query({ as?: string; auth_type?: value; key_id?: value; access_key?: value; base_url?: value; index?: value; payload?: value; size?: value; from?: value; included_fields?: value; return_type?: value; expression?: value; sort?: value })`
-- `s.cloud.elasticsearch.request({ as?: string; auth_type?: value; key_id?: value; access_key?: value; method?: value; url?: value; payload?: value })`
+- `s.cloud.elasticsearch.document({ as?: string; auth_type?: "Basic" | "Bearer" | "API Key"; key_id: value; access_key: value; base_url: value; index: value; method?: "GET" | "POST" | "PUT" | "DELETE"; doc_id: value; doc: value })`
+- `s.cloud.elasticsearch.query({ as?: string; auth_type?: "Basic" | "Bearer" | "API Key"; key_id?: value; access_key?: value; base_url?: value; index?: value; payload?: value; size?: value; from?: value; included_fields?: value; return_type?: "search" | "count"; expression?: value; sort?: value })`
+- `s.cloud.elasticsearch.request({ as?: string; auth_type?: "Basic" | "Bearer" | "API Key"; key_id?: value; access_key?: value; method?: "POST" | "GET" | "PUT" | "DELETE" | "PATCH"; url?: value; payload?: value })`
 - `s.cloud.google.storage.delete_file({ as?: string; service_account: value; bucket: value; filePath: value })`
 - `s.cloud.google.storage.get_file_info({ as?: string; service_account: value; bucket: value; filePath: value })`
 - `s.cloud.google.storage.list_directory({ as?: string; service_account: value; bucket: value; path: value })`
 - `s.cloud.google.storage.read_file({ as?: string; service_account: value; bucket: value; filePath: value })`
-- `s.cloud.google.storage.sign_url({ as?: string; service_account: value; bucket: value; filePath: value; method: value; ttl: value })`
+- `s.cloud.google.storage.sign_url({ as?: string; service_account: value; bucket: value; filePath: value; method: "GET" | "POST"; ttl: value })`
 - `s.cloud.google.storage.upload_file({ as?: string; service_account: value; bucket: value; filePath: value; file: value; metadata: value })`
 - `s.cloud.job.await` [special]
 - `s.cloud.job.status` [special]
@@ -950,9 +950,9 @@ Auth & calls:
 ### datadog
 
 - `s.datadog.log_bulk({ entries: value; connection?: value })`
-- `s.datadog.log({ message?: value; status?: value; attributes?: value; service?: value; source?: value; env?: value; hostname?: value; tags?: value; timestamp?: value; connection?: value })`
+- `s.datadog.log({ message?: value; status?: "debug" | "info" | "notice" | "warn" | "error" | "critical" | "alert" | "emergency"; attributes?: value; service?: value; source?: value; env?: value; hostname?: value; tags?: value; timestamp?: value; connection?: value })`
 - `s.datadog.metric_bulk({ entries: value; connection?: value })`
-- `s.datadog.metric({ metric?: value; value: value; type?: value; tags?: value; service?: value; source?: value; env?: value; hostname?: value; timestamp?: value; connection?: value })`
+- `s.datadog.metric({ metric?: value; value: value; type?: "count" | "gauge" | "rate" | "histogram" | "distribution"; tags?: value; service?: value; source?: value; env?: value; hostname?: value; timestamp?: value; connection?: value })`
 
 ### db
 
@@ -1062,18 +1062,18 @@ Assertions. These belong in a `workflowTest({...})` stack — assert on what a `
 
 - `s.security.check_password({ as?: string; text_password?: value; hash_password?: value })` [output] → as: boolean (true when the plaintext matches the stored hash. ⚠ input.password double-hashes — pass input.text() plaintext)
 - `s.security.create_auth_token` [special]
-- `s.security.create_curve_key({ as?: string; curve?: value; format?: value })`
+- `s.security.create_curve_key({ as?: string; curve?: "P-256" | "P-384" | "P-521"; format?: "object" | "base64" })`
 - `s.security.create_guid` [special]
 - `s.security.create_password({ as?: string; character_count?: value; require_lowercase?: value; require_uppercase?: value; require_digit?: value; require_symbol?: value; symbol_whitelist?: value })`
-- `s.security.create_rsa_key({ as?: string; bits?: value; format?: value })`
-- `s.security.create_secret_key({ as?: string; bits?: value; format?: value })`
+- `s.security.create_rsa_key({ as?: string; bits?: value; format?: "object" | "base64" })`
+- `s.security.create_secret_key({ as?: string; bits?: value; format?: "object" | "base64" })`
 - `s.security.create_uuid({ as?: string })`
-- `s.security.decrypt({ as?: string; data?: value; algorithm?: value; key?: value; iv?: value })`
-- `s.security.encrypt({ as?: string; data?: value; algorithm?: value; key?: value; iv?: value })`
-- `s.security.jwe_decode({ as?: string; token?: value; key?: value; check_claims?: value; key_algorithm?: value; content_algorithm?: value; timeDrift?: value })`
-- `s.security.jwe_encode({ as?: string; headers?: value; claims?: value; key?: value; key_algorithm?: value; content_algorithm?: value; ttl?: value })`
-- `s.security.jws_decode({ as?: string; token?: value; key?: value; check_claims?: value; signature_algorithm?: value; timeDrift?: value })`
-- `s.security.jws_encode({ as?: string; headers?: value; claims?: value; key?: value; signature_algorithm?: value; ttl?: value })`
+- `s.security.decrypt({ as?: string; data?: value; algorithm?: "aes-128-cbc" | "aes-192-cbc" | "aes-256-cbc" | "aes-128-gcm" | "aes-192-gcm" | "aes-256-gcm"; key?: value; iv?: value })`
+- `s.security.encrypt({ as?: string; data?: value; algorithm?: "aes-128-cbc" | "aes-192-cbc" | "aes-256-cbc" | "aes-128-gcm" | "aes-192-gcm" | "aes-256-gcm"; key?: value; iv?: value })`
+- `s.security.jwe_decode({ as?: string; token?: value; key?: value; check_claims?: value; key_algorithm?: "A128KW" | "A192KW" | "A256KW" | "A128GCMKW" | "A192GCMKW" | "A256GCMKW" | "ECDH-ES+A128KW" | "ECDH-ES+A192KW" | "ECDH-ES+A256KW"; content_algorithm?: "A128GCM" | "A192GCM" | "A256GCM" | "A128CBC-HS256" | "A192CBC-HS384" | "A256CBC-HS512"; timeDrift?: value })`
+- `s.security.jwe_encode({ as?: string; headers?: value; claims?: value; key?: value; key_algorithm?: "A128KW" | "A192KW" | "A256KW" | "A128GCMKW" | "A192GCMKW" | "A256GCMKW" | "ECDH-ES+A128KW" | "ECDH-ES+A192KW" | "ECDH-ES+A256KW"; content_algorithm?: "A128GCM" | "A192GCM" | "A256GCM" | "A128CBC-HS256" | "A192CBC-HS384" | "A256CBC-HS512"; ttl?: value })`
+- `s.security.jws_decode({ as?: string; token?: value; key?: value; check_claims?: value; signature_algorithm?: "PS256" | "PS384" | "PS512" | "RS256" | "RS384" | "RS512" | "HS256" | "HS384" | "HS512" | "ES256" | "ES384" | "ES512"; timeDrift?: value })`
+- `s.security.jws_encode({ as?: string; headers?: value; claims?: value; key?: value; signature_algorithm?: "PS256" | "PS384" | "PS512" | "RS256" | "RS384" | "RS512" | "HS256" | "HS384" | "HS512" | "ES256" | "ES384" | "ES512"; ttl?: value })`
 - `s.security.random_bytes({ as?: string; length?: value })`
 - `s.security.random_number({ as?: string; min?: value; max?: value })`
 
@@ -1130,7 +1130,7 @@ Assertions. These belong in a `workflowTest({...})` stack — assert on what a `
 - `s.util.get_vars({ as?: string })`
 - `s.util.ip_lookup({ as?: string; value: value })`
 - `s.util.post_process` [special]
-- `s.util.send_email({ as?: string; api_key?: value; service_provider?: value; subject?: value; message?: value; to?: value; bcc?: value; cc?: value; from?: value; reply_to?: value; scheduled_at?: value })`
+- `s.util.send_email({ as?: string; api_key?: value; service_provider?: "resend" | "xano"; subject?: value; message?: value; to?: value; bcc?: value; cc?: value; from?: value; reply_to?: value; scheduled_at?: value })`
 - `s.util.set_header({ value: value; duplicates?: string })`
 - `s.util.sleep({ value: value })`
 - `s.util.template_engine({ as?: string; value: value })`
@@ -1148,7 +1148,7 @@ Run another workflow test from inside one. Pass the `workflowTest()` def handle,
 ### zip
 
 - `s.zip.add_to_archive({ file: value; filename: value; zip: value; password?: value; password_encryption?: value })`
-- `s.zip.create_archive({ as?: string; filename: value; password?: value; password_encryption?: value })`
+- `s.zip.create_archive({ as?: string; filename: value; password?: value; password_encryption?: "standard" | "AES-128" | "AES-192" | "AES-256" })`
 - `s.zip.delete_from_archive({ filename: value; zip: value; password?: value })`
 - `s.zip.extract({ as?: string; zip: value; password?: value })`
 - `s.zip.view_contents({ as?: string; zip: value; password?: value })`

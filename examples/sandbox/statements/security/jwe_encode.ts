@@ -7,7 +7,7 @@ import { defineFunction, ref, s } from "@sidestep/core";
 export const securityJweEncode = defineFunction({
   name: "ex_security_jwe_encode",
   stack: [
-    s.security.jwe_encode({ as: "result" }),
+    s.security.jwe_encode({ as: "result", key_algorithm: "A128KW", content_algorithm: "A128GCM" }),
   ],
   response: ref("result"),
 });

@@ -591,7 +591,11 @@
           "name": "connection_type",
           "type": "value",
           "optional": true,
-          "default": "sse"
+          "default": "sse",
+          "enum": [
+            "sse",
+            "stream"
+          ]
         }
       ]
     },
@@ -623,7 +627,11 @@
           "name": "connection_type",
           "type": "value",
           "optional": true,
-          "default": "sse"
+          "default": "sse",
+          "enum": [
+            "sse",
+            "stream"
+          ]
         }
       ]
     },
@@ -655,7 +663,11 @@
           "name": "connection_type",
           "type": "value",
           "optional": true,
-          "default": "sse"
+          "default": "sse",
+          "enum": [
+            "sse",
+            "stream"
+          ]
         },
         {
           "name": "tool",
@@ -1223,7 +1235,13 @@
         {
           "name": "method",
           "type": "value",
-          "optional": false
+          "optional": false,
+          "enum": [
+            "POST",
+            "GET",
+            "DELETE",
+            "PUT"
+          ]
         },
         {
           "name": "payload",
@@ -1249,7 +1267,11 @@
           "name": "auth_type",
           "type": "value",
           "optional": true,
-          "default": "IAM"
+          "default": "IAM",
+          "enum": [
+            "IAM",
+            "master"
+          ]
         },
         {
           "name": "key_id",
@@ -1278,7 +1300,13 @@
           "name": "method",
           "type": "value",
           "optional": true,
-          "default": "GET"
+          "default": "GET",
+          "enum": [
+            "GET",
+            "POST",
+            "PUT",
+            "DELETE"
+          ]
         },
         {
           "name": "index",
@@ -1317,7 +1345,11 @@
           "name": "auth_type",
           "type": "value",
           "optional": true,
-          "default": "IAM"
+          "default": "IAM",
+          "enum": [
+            "IAM",
+            "master"
+          ]
         },
         {
           "name": "key_id",
@@ -1377,7 +1409,11 @@
           "name": "return_type",
           "type": "value",
           "optional": true,
-          "default": "search"
+          "default": "search",
+          "enum": [
+            "search",
+            "count"
+          ]
         },
         {
           "name": "expression",
@@ -1410,7 +1446,11 @@
           "name": "auth_type",
           "type": "value",
           "optional": true,
-          "default": "IAM"
+          "default": "IAM",
+          "enum": [
+            "IAM",
+            "master"
+          ]
         },
         {
           "name": "key_id",
@@ -1434,7 +1474,16 @@
           "name": "method",
           "type": "value",
           "optional": true,
-          "default": "GET"
+          "default": "GET",
+          "enum": [
+            "GET",
+            "POST",
+            "PUT",
+            "DELETE",
+            "HEAD",
+            "OPTIONS",
+            "PATCH"
+          ]
         },
         {
           "name": "url",
@@ -1712,7 +1761,11 @@
         {
           "name": "object_lock_mode",
           "type": "value",
-          "optional": true
+          "optional": true,
+          "enum": [
+            "compliance",
+            "governance"
+          ]
         },
         {
           "name": "object_lock_retain_until",
@@ -1963,7 +2016,12 @@
           "name": "auth_type",
           "type": "value",
           "optional": true,
-          "default": "API Key"
+          "default": "API Key",
+          "enum": [
+            "Basic",
+            "Bearer",
+            "API Key"
+          ]
         },
         {
           "name": "key_id",
@@ -1989,7 +2047,13 @@
           "name": "method",
           "type": "value",
           "optional": true,
-          "default": "GET"
+          "default": "GET",
+          "enum": [
+            "GET",
+            "POST",
+            "PUT",
+            "DELETE"
+          ]
         },
         {
           "name": "doc_id",
@@ -2020,7 +2084,12 @@
           "name": "auth_type",
           "type": "value",
           "optional": true,
-          "default": "API Key"
+          "default": "API Key",
+          "enum": [
+            "Basic",
+            "Bearer",
+            "API Key"
+          ]
         },
         {
           "name": "key_id",
@@ -2074,7 +2143,11 @@
           "name": "return_type",
           "type": "value",
           "optional": true,
-          "default": "search"
+          "default": "search",
+          "enum": [
+            "search",
+            "count"
+          ]
         },
         {
           "name": "expression",
@@ -2107,7 +2180,12 @@
           "name": "auth_type",
           "type": "value",
           "optional": true,
-          "default": "API Key"
+          "default": "API Key",
+          "enum": [
+            "Basic",
+            "Bearer",
+            "API Key"
+          ]
         },
         {
           "name": "key_id",
@@ -2125,7 +2203,14 @@
           "name": "method",
           "type": "value",
           "optional": true,
-          "default": "POST"
+          "default": "POST",
+          "enum": [
+            "POST",
+            "GET",
+            "PUT",
+            "DELETE",
+            "PATCH"
+          ]
         },
         {
           "name": "url",
@@ -2292,7 +2377,11 @@
         {
           "name": "method",
           "type": "value",
-          "optional": false
+          "optional": false,
+          "enum": [
+            "GET",
+            "POST"
+          ]
         },
         {
           "name": "ttl",
@@ -2419,7 +2508,17 @@
         {
           "name": "status",
           "type": "value",
-          "optional": true
+          "optional": true,
+          "enum": [
+            "debug",
+            "info",
+            "notice",
+            "warn",
+            "error",
+            "critical",
+            "alert",
+            "emergency"
+          ]
         },
         {
           "name": "attributes",
@@ -2504,7 +2603,14 @@
         {
           "name": "type",
           "type": "value",
-          "optional": true
+          "optional": true,
+          "enum": [
+            "count",
+            "gauge",
+            "rate",
+            "histogram",
+            "distribution"
+          ]
         },
         {
           "name": "tags",
@@ -3586,12 +3692,21 @@
         {
           "name": "curve",
           "type": "value",
-          "optional": true
+          "optional": true,
+          "enum": [
+            "P-256",
+            "P-384",
+            "P-521"
+          ]
         },
         {
           "name": "format",
           "type": "value",
-          "optional": true
+          "optional": true,
+          "enum": [
+            "object",
+            "base64"
+          ]
         }
       ]
     },
@@ -3668,7 +3783,11 @@
         {
           "name": "format",
           "type": "value",
-          "optional": true
+          "optional": true,
+          "enum": [
+            "object",
+            "base64"
+          ]
         }
       ]
     },
@@ -3693,7 +3812,11 @@
         {
           "name": "format",
           "type": "value",
-          "optional": true
+          "optional": true,
+          "enum": [
+            "object",
+            "base64"
+          ]
         }
       ]
     },
@@ -3733,7 +3856,15 @@
         {
           "name": "algorithm",
           "type": "value",
-          "optional": true
+          "optional": true,
+          "enum": [
+            "aes-128-cbc",
+            "aes-192-cbc",
+            "aes-256-cbc",
+            "aes-128-gcm",
+            "aes-192-gcm",
+            "aes-256-gcm"
+          ]
         },
         {
           "name": "key",
@@ -3768,7 +3899,15 @@
         {
           "name": "algorithm",
           "type": "value",
-          "optional": true
+          "optional": true,
+          "enum": [
+            "aes-128-cbc",
+            "aes-192-cbc",
+            "aes-256-cbc",
+            "aes-128-gcm",
+            "aes-192-gcm",
+            "aes-256-gcm"
+          ]
         },
         {
           "name": "key",
@@ -3813,12 +3952,31 @@
         {
           "name": "key_algorithm",
           "type": "value",
-          "optional": true
+          "optional": true,
+          "enum": [
+            "A128KW",
+            "A192KW",
+            "A256KW",
+            "A128GCMKW",
+            "A192GCMKW",
+            "A256GCMKW",
+            "ECDH-ES+A128KW",
+            "ECDH-ES+A192KW",
+            "ECDH-ES+A256KW"
+          ]
         },
         {
           "name": "content_algorithm",
           "type": "value",
-          "optional": true
+          "optional": true,
+          "enum": [
+            "A128GCM",
+            "A192GCM",
+            "A256GCM",
+            "A128CBC-HS256",
+            "A192CBC-HS384",
+            "A256CBC-HS512"
+          ]
         },
         {
           "name": "timeDrift",
@@ -3858,12 +4016,31 @@
         {
           "name": "key_algorithm",
           "type": "value",
-          "optional": true
+          "optional": true,
+          "enum": [
+            "A128KW",
+            "A192KW",
+            "A256KW",
+            "A128GCMKW",
+            "A192GCMKW",
+            "A256GCMKW",
+            "ECDH-ES+A128KW",
+            "ECDH-ES+A192KW",
+            "ECDH-ES+A256KW"
+          ]
         },
         {
           "name": "content_algorithm",
           "type": "value",
-          "optional": true
+          "optional": true,
+          "enum": [
+            "A128GCM",
+            "A192GCM",
+            "A256GCM",
+            "A128CBC-HS256",
+            "A192CBC-HS384",
+            "A256CBC-HS512"
+          ]
         },
         {
           "name": "ttl",
@@ -3903,7 +4080,21 @@
         {
           "name": "signature_algorithm",
           "type": "value",
-          "optional": true
+          "optional": true,
+          "enum": [
+            "PS256",
+            "PS384",
+            "PS512",
+            "RS256",
+            "RS384",
+            "RS512",
+            "HS256",
+            "HS384",
+            "HS512",
+            "ES256",
+            "ES384",
+            "ES512"
+          ]
         },
         {
           "name": "timeDrift",
@@ -3943,7 +4134,21 @@
         {
           "name": "signature_algorithm",
           "type": "value",
-          "optional": true
+          "optional": true,
+          "enum": [
+            "PS256",
+            "PS384",
+            "PS512",
+            "RS256",
+            "RS384",
+            "RS512",
+            "HS256",
+            "HS384",
+            "HS512",
+            "ES256",
+            "ES384",
+            "ES512"
+          ]
         },
         {
           "name": "ttl",
@@ -5097,7 +5302,11 @@
         {
           "name": "service_provider",
           "type": "value",
-          "optional": true
+          "optional": true,
+          "enum": [
+            "resend",
+            "xano"
+          ]
         },
         {
           "name": "subject",
@@ -5295,7 +5504,13 @@
         {
           "name": "password_encryption",
           "type": "value",
-          "optional": true
+          "optional": true,
+          "enum": [
+            "standard",
+            "AES-128",
+            "AES-192",
+            "AES-256"
+          ]
         }
       ]
     },
