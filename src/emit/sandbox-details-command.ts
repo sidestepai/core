@@ -22,6 +22,7 @@
  */
 import type { ParsedArgs } from "./cli.js";
 import { getAccessToken } from "../auth/token.js";
+import { printMicroserviceSection, readMicroservices } from "./microservice-view.js";
 import { stdoutStyle, formatFields } from "./ui.js";
 
 /** Bound the metadata fetch so a stalled endpoint can't hang the CLI. */
@@ -116,10 +117,15 @@ function prettyDetails(d: SandboxDetails): string {
 
 export async function runSandboxDetailsCommand(args: ParsedArgs): Promise<void> {
   const details = await fetchSandboxDetails(args);
+  // The sandbox is its own environment at its own base URL with internal
+  // workspace 1 — the same pair `deploy --dest sandbox` imports to.
+  const auth = await getAccessToken(args);
+  const microservices = await readMicroservices(auth, details.baseUrl);
   // A TTY gets the human summary; a pipe (agent/jq/CI) gets stable JSON.
   if (process.stdout.isTTY) {
     process.stdout.write(prettyDetails(details));
+    printMicroserviceSection(microservices);
   } else {
-    process.stdout.write(JSON.stringify(details, null, 2) + "\n");
+    process.stdout.write(JSON.stringify({ ...details, microservices }, null, 2) + "\n");
   }
 }

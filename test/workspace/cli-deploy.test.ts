@@ -39,6 +39,11 @@ function res(body: unknown, status = 200): Response {
 function seq(...responses: Response[]) {
   const m = vi.spyOn(globalThis, "fetch");
   for (const r of responses) m.mockResolvedValueOnce(r);
+  // Backstop so an unscripted call can never fall through to the REAL network.
+  // Deploy now ends with a microservice readiness read, and a test that doesn't
+  // care about it should neither have to script it nor make a live request.
+  // Shaped as an empty microservice page, which every caller reads as "none".
+  m.mockResolvedValue(res({ curPage: 1, nextPage: null, prevPage: null, items: [] }));
   return m;
 }
 
@@ -105,13 +110,16 @@ describe("sidestep deploy", () => {
     const m = seq(
       res(EPH), // GET existing → alive
       res({ id: 1 }), // import
+      res({ curPage: 1, nextPage: null, items: [] }), // post-import microservice read
     );
     await run(["deploy", "--bundle", bundleFile(dir), "--config", authFile]);
 
-    // no create call — first call is the GET, second the import
+    // no create call — first call is the GET, second the import, third the
+    // post-import microservice readiness read (against the same base URL)
     expect(m.mock.calls[0]![0]).toBe(`${INSTANCE}/api:meta/workspace/114/tenant/e4f2-9ab1`);
     expect(m.mock.calls[1]![0]).toBe("https://e4f2-9ab1.xano.io/api:meta/workspace/1/import");
-    expect(m).toHaveBeenCalledTimes(2);
+    expect(m.mock.calls[2]![0]).toBe("https://e4f2-9ab1.xano.io/api:meta/workspace/1/microservice?page=1");
+    expect(m).toHaveBeenCalledTimes(3);
     expect(stderr.join("")).toMatch(/Refreshed e4f2-9ab1 \(URL unchanged\)/);
     expect(JSON.parse(stdout.join("")).created).toBe(false);
   });
@@ -201,12 +209,13 @@ describe("sidestep deploy", () => {
       res(EPH), // create
       res(EPH), // ready
       res({ id: 1 }), // backend import
+      res({ curPage: 1, nextPage: null, items: [] }), // post-import microservice read
       res({ dev: { host: "my-app.xano.io" } }), // static build
     );
     await run(["deploy", "--bundle", bundleFile(dir), "--config", authFile, "--static", site]);
     // backend import + static build both target the ephemeral base URL / workspace 1
     expect(m.mock.calls[2]![0]).toBe("https://e4f2-9ab1.xano.io/api:meta/workspace/1/import");
-    expect(m.mock.calls[3]![0]).toBe("https://e4f2-9ab1.xano.io/api:meta/workspace/1/static_host/default/build");
+    expect(m.mock.calls[4]![0]).toBe("https://e4f2-9ab1.xano.io/api:meta/workspace/1/static_host/default/build");
   });
 
   it("ephemeral --static preserves a /tenant/{name} base-URL prefix on the static build path", async () => {
@@ -222,12 +231,14 @@ describe("sidestep deploy", () => {
       res(noDomain), // create
       res(noDomain), // ready
       res({ id: 1 }), // backend import
+      res({ curPage: 1, nextPage: null, items: [] }), // post-import microservice read
       res({ dev: { host: "my-app.xano.io" } }), // static build
     );
     await run(["deploy", "--bundle", bundleFile(dir), "--config", authFile, "--static", site]);
-    // both hit the tenant-prefixed base URL, prefix intact
+    // all three hit the tenant-prefixed base URL, prefix intact
     expect(m.mock.calls[2]![0]).toBe(`${INSTANCE}/tenant/e4f2-9ab1/api:meta/workspace/1/import`);
-    expect(m.mock.calls[3]![0]).toBe(`${INSTANCE}/tenant/e4f2-9ab1/api:meta/workspace/1/static_host/default/build`);
+    expect(m.mock.calls[3]![0]).toBe(`${INSTANCE}/tenant/e4f2-9ab1/api:meta/workspace/1/microservice?page=1`);
+    expect(m.mock.calls[4]![0]).toBe(`${INSTANCE}/tenant/e4f2-9ab1/api:meta/workspace/1/static_host/default/build`);
   });
 
   // ── sandbox dest ──────────────────────────────────────────────────────────
@@ -236,11 +247,15 @@ describe("sidestep deploy", () => {
     const m = seq(
       res({ name: "sbx", xano_domain: "sbx.dev.xano.io" }), // sandbox/me
       res({ id: 1 }), // import
+      res({ curPage: 1, nextPage: null, items: [] }), // post-import microservice read
     );
     await run(["deploy", "--dest", "sandbox", "--bundle", bundleFile(dir), "--config", authFile]);
 
     expect(m.mock.calls[0]![0]).toBe(`${INSTANCE}/api:meta/sandbox/me`);
     expect(m.mock.calls[1]![0]).toBe("https://sbx.dev.xano.io/api:meta/workspace/1/import");
+    // the sandbox gets the same readiness read as an ephemeral, at its own base URL
+    expect(m.mock.calls[2]![0]).toBe("https://sbx.dev.xano.io/api:meta/workspace/1/microservice?page=1");
+    expect(m).toHaveBeenCalledTimes(3);
     expect(existsSync(statePath(dir))).toBe(false); // no local state for sandbox
     expect(JSON.parse(stdout.join(""))).toMatchObject({ dest: "sandbox", url: "https://sbx.dev.xano.io" });
   });

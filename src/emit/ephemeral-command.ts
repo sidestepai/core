@@ -33,6 +33,7 @@ import { openBrowser } from "../auth/loopback.js";
 import { readEphemeralState, getEnvironment, clearEnvironment } from "../deploy/ephemeral-state.js";
 import { exportWorkspaceBundle, type ExportedBundle } from "../deploy/workspace-export.js";
 import { resolveOutputTarget } from "./sandbox-export-command.js";
+import { printMicroserviceSection, readMicroservices } from "./microservice-view.js";
 import { step, success, warn, detail, info, formatFields, formatExpiration, stdoutStyle, style } from "./ui.js";
 import { unknownSubcommand } from "./errors.js";
 
@@ -130,9 +131,13 @@ async function runGet(args: ParsedArgs): Promise<void> {
   const auth = await getAccessToken(args);
   const parentWorkspaceId = auth.workspaceId;
   const summary = await resolveLive(auth, parentWorkspaceId, name);
+  // Read the env's microservices from its OWN base URL (internal workspace 1),
+  // the same pair `deploy` imports to. Best-effort: this verb's job is to report
+  // the env, and a microservice read failing must not take that answer away.
+  const microservices = summary.url === undefined ? [] : await readMicroservices(auth, summary.url);
 
   if (!process.stdout.isTTY) {
-    process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
+    process.stdout.write(JSON.stringify({ ...summary, microservices }, null, 2) + "\n");
     return;
   }
   const s = stdoutStyle();
@@ -145,6 +150,7 @@ async function runGet(args: ParsedArgs): Promise<void> {
   if (summary.state) rows.push(["State", summary.state]);
   rows.push(["Expires", s.dim(formatExpiration(summary.expiresAt))]);
   process.stdout.write("\n" + formatFields(rows));
+  printMicroserviceSection(microservices);
 }
 
 // ── delete ──────────────────────────────────────────────────────────────────

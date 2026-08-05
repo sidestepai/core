@@ -33,6 +33,11 @@ function res(body: unknown, status = 200): Response {
 function seq(...responses: Response[]) {
   const m = vi.spyOn(globalThis, "fetch");
   for (const r of responses) m.mockResolvedValueOnce(r);
+  // Backstop so an unscripted call can never fall through to the REAL network.
+  // `ephemeral get` now also reads the env's microservices; a test that doesn't
+  // care should neither script it nor make a live request. Shaped as an empty
+  // microservice page, which every caller reads as "none".
+  m.mockResolvedValue(res({ curPage: 1, nextPage: null, prevPage: null, items: [] }));
   return m;
 }
 const LIVE = { id: 7, name: "e4f2", display: "PR 1", xano_domain: "e4f2.xano.io", state: "ok", ephemeral_expires_at: "2999-01-01 00:00:00+0000" };
@@ -108,7 +113,26 @@ describe("sidestep ephemeral", () => {
     const m = seq(res(LIVE));
     await run(["ephemeral", "get", "e4f2", "--config", authFile]);
     expect(m.mock.calls[0]![0]).toBe(`${INSTANCE}/api:meta/workspace/114/tenant/e4f2`);
-    expect(m.mock.calls).toHaveLength(1);
+    // Exactly two calls: the tenant read, then the env's own microservice read.
+    // No `/auth/me` or workspace-resolution hop in between.
+    expect(m.mock.calls).toHaveLength(2);
+    expect(m.mock.calls[1]![0]).toBe("https://e4f2.xano.io/api:meta/workspace/1/microservice?page=1");
+    expect(m.mock.calls.map((c) => String(c[0]))).not.toContain(`${INSTANCE}/api:meta/auth/me`);
+  });
+
+  it("get reports the env's microservices alongside it", async () => {
+    seq(
+      res(LIVE),
+      res({
+        curPage: 1,
+        nextPage: null,
+        items: [{ id: 1, name: "echo", tenant_deploy: "auto", status: "ok", kind: "builtin" }],
+      }),
+    );
+    await run(["ephemeral", "get", "e4f2", "--config", authFile]);
+    const out = JSON.parse(stdout.join(""));
+    expect(out.microservices).toHaveLength(1);
+    expect(out.microservices[0]).toMatchObject({ name: "echo", disposition: "ready" });
   });
 
   it("drives a real command off a hand-authored meta API token credential", async () => {
