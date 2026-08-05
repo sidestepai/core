@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { buildManifest } from "../../src/manifest/manifest.js";
+import {
+  buildManifest,
+  ENGINE_OBJECT_KINDS,
+  PUBLISHED_AUTHOR_FACTORIES,
+} from "../../src/manifest/manifest.js";
 import { COMMANDS, liveCommandNames, liveSubcommandNames } from "../../src/emit/commands.js";
 import { registeredKinds } from "../../src/kinds/kind.js";
 
@@ -146,5 +150,40 @@ describe("manifest.json object kinds resolve", () => {
       .filter((k) => byName.get(k.kind) !== k.payloadKey)
       .map((k) => `${k.kind}: manifest=${k.payloadKey} registry=${byName.get(k.kind)}`);
     expect(mismatched, mismatched.join("; ")).toHaveLength(0);
+  });
+});
+
+/**
+ * The engine catalog is the coverage denominator, so a factory named there that
+ * no descriptor publishes would inflate the numerator, and a published factory
+ * missing from the catalog would deflate it. Pinning both directions is what
+ * makes the ratio a measurement instead of a claim.
+ */
+describe("the engine kind catalog and the SDK descriptors pin each other", () => {
+  it("every factory the catalog maps to is a published author factory", () => {
+    const unknown = ENGINE_OBJECT_KINDS.filter(
+      (k) => k.authorFactory !== null && !PUBLISHED_AUTHOR_FACTORIES.has(k.authorFactory),
+    ).map((k) => `${k.kind} -> ${k.authorFactory}`);
+    expect(unknown, `catalog names a factory no kind publishes: ${unknown.join(", ")}`).toHaveLength(0);
+  });
+
+  it("every published author factory appears in the engine catalog", () => {
+    const mapped = new Set(
+      ENGINE_OBJECT_KINDS.map((k) => k.authorFactory).filter((f): f is string => f !== null),
+    );
+    const orphaned = [...PUBLISHED_AUTHOR_FACTORIES].filter((f) => !mapped.has(f));
+    expect(orphaned, `published but not in the engine catalog: ${orphaned.join(", ")}`).toHaveLength(0);
+  });
+
+  it("every unmapped kind says why it is absent", () => {
+    const silent = ENGINE_OBJECT_KINDS.filter((k) => k.authorFactory === null && !k.absence).map(
+      (k) => k.kind,
+    );
+    expect(silent, `absent with no reason: ${silent.join(", ")}`).toHaveLength(0);
+  });
+
+  it("names each engine kind exactly once", () => {
+    const names = ENGINE_OBJECT_KINDS.map((k) => k.kind);
+    expect(new Set(names).size).toBe(names.length);
   });
 });

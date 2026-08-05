@@ -300,7 +300,7 @@ export default workspace("blog")
 
 Tab-complete `s.` to discover the entire statement catalog — `s.db.*`, `s.math.*`,
 `s.array.*`, `s.text.*`, `s.storage.*`, `s.api.*`, `s.cloud.*`, control flow, AI agent
-runs, and more. **All 214 engine statement surfaces are authorable** — every field name
+runs, and more. **All 215 engine statement surfaces are authorable** — every field name
 matches the Xano engine, and the output is proven byte-for-byte against the engine's own
 golden fixtures.
 
@@ -544,6 +544,17 @@ bundle with `sidestep paths`.
 
 ## Reference
 
+**Where the exhaustive reference lives.** Every kind, statement, filter, and field type is
+typed, so your editor's autocomplete is the fastest lookup — tab-complete `s.`, `f.`, `c.`,
+`fl.`, `input.`. For the written catalog, the package ships two machine-readable files that
+are generated from the SDK's own sources and can never drift from it: **`llms.txt`** (the
+canonical tour — every signature, plus the engine behavior each one depends on) and
+**`manifest.json`** (per-entry detail: full field schemas with engine defaults, filter
+argument lists, stored-name mappings). Both are readable by people too.
+
+What follows is the part neither of those replaces: the shape of a project, and the
+behavior that will bite you.
+
 <details open>
 <summary><b>Project structure</b></summary>
 
@@ -576,8 +587,10 @@ Paths are lower case throughout — an HTTP verb is the one exception, because i
 the method rather than a word. Bindings keep the object's own casing, so a file name
 and the symbol it exports can differ.
 
-That is the shape `sidestep codegen` writes. Hand-authored projects are free to use
-any other — only `index.ts` registering the objects matters.
+That is the shape `sidestep codegen` writes, and its `index.ts` re-exports every object
+by name — import from the tree's root rather than from a file, since a file path moves
+when an object's parent or its `_shared.ts` placement changes. Hand-authored projects are
+free to use any other layout; only `index.ts` registering the objects matters.
 
 `workspace("my-app")` is the natural entry point — sugar for
 `new Xano().registerWorkspace({ name: "my-app" })`, returning the same chainable registry.
@@ -591,38 +604,20 @@ builder. `xano.export()` returns the importable `packageExport` bundle, and
 <summary><b>Object kinds</b></summary>
 
 Every top-level Xano object is a registered kind with a factory and a `Xano.register*`
-method. Payload keys use the engine's singular names.
+method: `defineFunction`, `table`, `query`, `apiGroup`, `tool`, `mcpServer`, `agent`,
+`task`, `middleware`, `addon`, `realtimeServer`, `realtimeChannel`, `realtimeMessage`,
+`microservice`, `workspaceConfig`, and the seven trigger factories below. Signatures and
+payload keys are in `llms.txt`; what follows is what the types don't tell you.
 
-| Author with | `Xano` method | Payload key |
-|---|---|---|
-| `defineFunction({...})` | `registerFunctions` | `function` |
-| `table({ schema, index, ... })` | `registerTables` | `dbo` |
-| `query({ verb, apiGroup, ... })` | `registerQueries` | `query` |
-| `apiGroup({ canonical, cors, ... })` | `registerApiGroups` | `app` |
-| `{tableTrigger,realtimeServerTrigger,realtimeChannelTrigger,mcpServerTrigger,agentTrigger,workspaceTrigger,errorTrigger}(...)` | `registerTriggers` | `trigger` |
-| `tool({...})` | `registerTools` | `tool` |
-| `mcpServer({...})` | `registerMcpServers` | `toolset` |
-| `agent({ llm, ... })` | `registerAgents` | `toolset` |
-| `task({ schedule, ... })` | `registerTasks` | `task` |
-| `middleware({ resultStrategy, ... })` | `registerMiddleware` | `middleware` |
-| `addon({...})` | `registerAddons` | `addon` |
-| `realtimeServer({ enabled, ... })` | `registerRealtimeServers` | `realtime_server` |
-| `realtimeChannel({ server, ... })` | `registerRealtimeChannels` | `channel` |
-| `realtimeMessage({ channel, ... })` | `registerRealtimeMessages` | `message` |
-| `microservice({ deployment, ... })` | `registerMicroservices` | `microservice` |
-| `workspaceConfig({...})` | `registerWorkspace` | `workspace` |
-
-**Triggers** — seven first-class root factories that share one envelope discriminated by
-`obj_type` + a per-type `meta`: `tableTrigger` (db), `realtimeServerTrigger`,
-`realtimeChannelTrigger`, `mcpServerTrigger`, `agentTrigger`, `workspaceTrigger`,
-`errorTrigger`. **A trigger's `stack` is a callback — `stack: (t) => [...]`,
-not the plain `stack: []` array the other kinds use.** A trigger's inputs are **implied by type**
-(fixed by Xano, not editable) and injected automatically — so triggers take no `input` field, and
-the typed stack handle `t` is the only way to reference them (`response: (t) => ...` on
-response-bearing types). `t` exposes exactly that type's inputs:
+**Triggers take a callback stack.** `stack: (t) => [...]`, not the plain array every other
+kind uses — because a trigger's inputs are **implied by its type** (fixed by Xano, not
+editable) and injected automatically. So triggers take no `input` field, and the typed
+handle `t` is the only way to read them (`response: (t) => ...` on response-bearing types).
+The seven types are `tableTrigger`, `realtimeServerTrigger`, `realtimeChannelTrigger`,
+`mcpServerTrigger`, `agentTrigger`, `workspaceTrigger`, and `errorTrigger`; they share one
+stored envelope discriminated by `obj_type`.
 
 ```ts
-// Database trigger — t.new/t.old typed against the bound table's row.
 tableTrigger({
   name: "on-user-insert",
   table: users,
@@ -636,53 +631,14 @@ tableTrigger({
     s.db.add({ table: auditLog, row: { email: t.new("email"), event: t.action } }),
   ],
 });
-
-// Realtime channel trigger — response-bearing; a handle binds it unambiguously.
-realtimeChannelTrigger({
-  name: "on-room-join",
-  channel: room,
-  actions: { join: true },          // gating: the return admits or denies the join
-  stack: (t) => [s.debug.log({ value: t.client("permissions.dbo_id") })],
-});
 ```
 
-Per-type inputs: **table** `new`/`old`/`action`/`datasource`; **realtimeServer** `action`/`realtime_server`/`client`; **realtimeChannel** `action`/`channel`/`payload`/`client`; **mcpServer**/**agent** `toolset`/`tools`; **workspace** `to_branch`/`from_branch`/`action`; **error** `event`/`id`/`signature`/`error`/`caller`/`statement`/`actor`/`count`/`first_seen`/`last_seen`/`fixed_at`.
-
-**Realtime** — the websocket family, and the only three-level containment chain in the
-SDK: `realtimeServer` owns `realtimeChannel`s, which own `realtimeMessage` handlers (a
-message is the realtime analogue of a query — its own typed payload and stack). Pass the
-**handle**, not a name: a channel path is unique only within its server, so
-`realtimeChannel({ server: chatServer })` and `realtimeMessage({ channel: roomChannel })`
-are what make the binding unambiguous. A channel's `input` types its **path** params
+**Realtime** — the only three-level containment chain in the SDK: `realtimeServer` owns
+`realtimeChannel`s, which own `realtimeMessage` handlers (a message is the realtime
+analogue of a query — its own typed payload and stack). Pass the **handle**, not a name: a
+channel path is unique only within its server. A channel's `input` types its **path** params
 (`rooms/{room_id}`); a message's `input` types the message **payload**. A server is off
-until `enabled: true`. Lifecycle events are triggers: `realtimeServerTrigger` (client
-connect/disconnect) and `realtimeChannelTrigger` (join/leave/deliver). Those actions do
-not share a posture, and the posture decides what your stack should return:
-
-- **`connect` and `join` gate.** `connect` really does refuse the socket — an error frame,
-  then a close with code 4401, before the connection is ever ready — and `join` runs before
-  the client becomes a member, so a denial means it never sees a fan-out. Return
-  `{ allowed: true }` (an optional `reason` reaches the client) or any truthy value to
-  admit. **An empty or falsy return denies**, so a stack that just falls through — or a
-  gating trigger with no `response` at all — refuses everyone. Note that a *crash* does the
-  opposite: gating actions fail **open**, so a broken stack admits rather than locking
-  everyone out over a workspace bug. It is the clean-but-empty return that shuts the door.
-- **`disconnect` and `leave` are observational** — the return is ignored and a throw is
-  swallowed, because the connection is already gone and cleanup has to complete regardless.
-- **`deliver` gates per recipient.** It runs once for each client a message is about to
-  reach, which makes it the per-viewer redaction tool ("hide the author's address from
-  everyone but the author") and also the most expensive action of the five: a stack per
-  recipient per message. It needs `delivery: { perRecipient: true }` on the channel to run
-  at all.
-
-  **Its return values don't read like a filter, and this is the easiest thing to get
-  backwards in the whole family.** Only an explicit **null** drops the message for that
-  recipient. An **object** replaces that recipient's payload. *Everything else* — including
-  `false`, `0`, and `""` — delivers the message unchanged, as does a crash. So a yes/no
-  redaction check that returns `false` sends the very message it was written to suppress;
-  return null instead. Two more details: the delivered payload arrives nested, so read
-  `inp("payload").<field>`, and `t.client` is the **sender** while
-  `s.realtime.get_session` describes the **recipient** this run is for.
+until `enabled: true`.
 
 ```ts
 const chat = realtimeServer({ name: "chat", enabled: true });
@@ -692,8 +648,7 @@ const room = realtimeChannel({
   server: chat,
   input: { room_id: input.int() },
   publish: { who: "authenticated" },
-  // The client-visible transcript a rejoining client is sent.
-  conversation: { enabled: true, limit: 50 },
+  conversation: { enabled: true, limit: 50 },   // client-visible transcript
 });
 
 realtimeMessage({
@@ -703,453 +658,93 @@ realtimeMessage({
   deliverTo: "channel",              // or "sender" (request/response) / "others"
   stack: [s.debug.log({ value: inp("body") })],
 });
-
-realtimeChannelTrigger({
-  name: "on-room-join",
-  channel: room,                     // a handle — a bare path is ambiguous
-  actions: { join: true },           // gating: the return admits or denies the join
-  stack: (t) => [s.debug.log({ value: t.channel })],
-});
-
-realtimeChannelTrigger({
-  name: "on-room-deliver",
-  channel: room,
-  actions: { deliver: true },        // runs once PER RECIPIENT, not per event
-  stack: (t) => [s.debug.log({ value: t.action })],
-});
 ```
 
-**The client side is derived too** — the same "import the def, don't hardcode the URL"
-contract `query().getPath()` and `mcpServer().getUrl()` give. A server handle builds the
-socket URL; a channel handle builds the path a client joins:
+The client side is derived too, the same way `query().getPath()` works — `chat.getUrl(BASE)`
+builds the socket URL (`wss://…/ws/<canonical>`, with a tenant base URL translated into the
+socket's `/ws/<tenant>:<canonical>` form) and `room.getChannel({ room_id: 42 })` builds the
+path a client joins. Both throw rather than guess.
+
+Five traps account for most realtime bugs. The full wire protocol — every server frame,
+the presence roster shape, the at-least-once client contract — is in `llms.txt`.
+
+- **An empty return denies.** `connect` and `join` are gates: return `{ allowed: true }` or
+  any truthy value to admit. A stack that falls through, or a gating trigger with no
+  `response`, refuses everyone. A *crash* does the opposite — gating fails **open**.
+- **Only `null` drops a message.** In a `deliver` trigger (per recipient) and in a message
+  handler, `false`/`0`/`""` all deliver the message unchanged, and a crash broadcasts the
+  sender's original unvalidated payload. Return `null` to suppress. So a redaction check
+  written as a boolean sends the very message it was meant to hide.
+- **`conversation: { enabled: true }` alone stores nothing.** `limit` defaults to `0`, and
+  `0` means retain none. Always pass a `limit`. What a handler broadcasts *is* the stored
+  row, so broadcast everything a future joiner needs to render it.
+- **An idle socket is reaped after ~10 minutes.** A listen-only client (feed, dashboard,
+  presence sidebar) must send `{ action: "ping" }` or any frame periodically, or it silently
+  drops and reconnects forever.
+- **`s.realtime.publish` is the push direction, and it is fail-soft.** It bypasses the
+  channel's `publish.who` (authorization belongs in your stack), does not invoke the named
+  message's handler, and swallows a missing or disabled server — a mis-targeted publish is
+  silent. Pass the server handle and a filled-in path (`room.getChannel({ room_id: 42 })`),
+  never the template.
+
+**The superseded realtime layer.** Xano has had two realtime generations and they reuse the
+same words. `realtimeTrigger(...)` and `s.api.realtime_event(...)` belong to the old
+workspace-global layer; they are supported only so `codegen` can bring back a workspace that
+holds them, and they are named under `## Legacy` in `llms.txt` rather than in its catalogs.
+Aiming `s.api.realtime_event` at a current-layer channel publishes into the void — use
+`s.realtime.publish({ server, channel, data })`, which names the owning server and so can
+resolve the channel.
+
+**MCP servers & agents** — both persist under the `toolset` payload key, so an `mcpServer`
+and an `agent` **sharing a name collide**. A `tool({...})` is its own kind, referenced by
+handle from either.
 
 ```ts
-chat.getUrl("https://your-instance.xano.io");        // wss://your-instance.xano.io/ws/<canonical>
-chat.getUrl("https://host/tenant/xxxx-xxxx-xxxx");   // wss://host/ws/<tenant>:<canonical> — lifted
-chat.getUrl(BASE, { tenant: "xxxx-xxxx-xxxx" });     // wss://…/ws/<tenant>:<canonical>
-room.getChannel({ room_id: 42 });                    // "rooms/42"
-```
-
-`getUrl` takes the instance base URL you already have and normalizes the scheme
-(`https`→`wss`, `http`→`ws`); a remote host must end up `wss://` or the socket fails as an
-opaque 1006. Both accessors throw rather than guess — the `canonical` comes from the def,
-or from `xano.lock` once `sidestep export --lock` has minted it. `getChannel` also throws
-on a missing, unknown, or slash-bearing param, so a typo can't silently address a
-different channel.
-
-**On a tenant instance, both halves of the client must name the tenant — the URL is all
-either half needs, but they spell it differently.** The socket glues it onto the canonical
-with a colon *inside one path segment* — `/ws/<tenant>:<canonical>` — which is unlike every
-other tenant-addressed URL: HTTP calls take a separate leading segment,
-`https://<host>/tenant/<tenant>/api:<canonical>/…`. No request header is required for
-either.
-
-Because the two shapes differ, **`getUrl` translates a tenant base URL rather than
-concatenating it**: hand it the `https://<host>/tenant/<name>` that `sidestep sandbox
-details` prints (and that deploy injects as `window.XANO_HOST`) and the tenant is lifted
-into the socket's form, so `chat.getUrl(window.XANO_HOST)` alone reaches the right
-database. Pass a *different* `{ tenant }` alongside such a base URL and it throws rather
-than pick a winner. One case still needs `{ tenant }` explicitly: a tenant served on **its
-own domain**, where HTTP resolves the tenant from the hostname but the websocket tier
-cannot — the connection hash is all it reads.
-
-Tokens are tenant-scoped, so one minted through the instance workspace is rejected by a
-tenant's realtime server — authenticate and dial through the same tenant. (The `/ws` segment belongs to the instance ingress and is stripped
-before the websocket tier reads the rest of the path as the connection hash — only a direct
-dial at a local dev websocket port, which bypasses the ingress, wants the bare canonical
-with no `/ws`.)
-
-Auth is a bearer token passed as the websocket **subprotocol** (`new WebSocket(url,
-token)`); no token means an anonymous client, admitted only where
-`anonymousClients: true` — and anonymous access is gated twice, once by the server at
-connect and again by the channel at join, so setting it on the channel alone is not enough.
-Frames are JSON — `{ action, channel, type, payload, options? }`, where `action` is
-`join` | `leave` | `broadcast` | `ack` | `ping` | `presence` and `type` is the
-`realtimeMessage` name — and you must `join` before you may `broadcast`:
-
-```ts
-const ws = new WebSocket(chat.getUrl(BASE), TOKEN);
-const channel = room.getChannel({ room_id: 42 });
-ws.onopen = () => setTimeout(() => {          // the server finishes its handshake first
-  ws.send(JSON.stringify({ action: "join", channel }));
-  ws.send(JSON.stringify({ action: "broadcast", channel, type: "send", payload: { body: "hi" } }));
-}, 500);
-setInterval(() => ws.send(JSON.stringify({ action: "ping" })), 60_000);  // see below
-```
-
-**An idle socket is reaped after about ten minutes, so a listen-only client has to say
-something.** That is the common shape — a notification feed, a dashboard, a presence
-sidebar: it joins, then never publishes again, and gets disconnected for it. `{ action:
-"ping" }` (answered `pong`) exists for exactly this, and any frame resets the clock. A
-chatty client never notices; a passive one silently drops off and reconnects forever.
-
-Server frames arrive as `action: join` (the ack — `{ joined: true, params }`, plus
-`cursor`/`resumed` on an at-least-once channel), `message`, `replay`, `broadcast`,
-`presence_full`/`presence_join`/`presence_leave`,
-`conversation_start`/`conversation_end` (replayed transcript frames are flagged
-`conversation: true`, so history is distinguishable from live traffic), `pong`, `ack`, and
-`error`. Two of those are easy to misread:
-
-- **`broadcast` comes back as a receipt**, not just a verb you send. Its
-  `payload.delivered_local` counts recipients on the *answering node only* — it is not a
-  delivery confirmation for the channel. It also carries `dropped: true` when the handler
-  declined to emit, and `id` on an at-least-once channel.
-- **`replay` is not the transcript.** The `conversation_*` frames are the shared "what was
-  said before I arrived"; `replay` is the per-client "what I missed while disconnected",
-  resumed from that client's own cursor. Both can be on at once, and they are configured by
-  different options.
-
-An `error` carries `payload.message` — plus `code`, `limit` and `retry_after` when rate
-limited, which is the only error that carries a `code`, so don't switch on it. An `error` is
-a per-frame refusal rather than a disconnect, with two exceptions: a failed handshake and a
-refused `connect` trigger each send one and *then* close the socket with code 4401.
-
-`options` on a frame carries `{ socketId?, client_id?, channel? }`. `socketId` addresses
-another client directly and requires `publish.direct` on the channel (off by default, and
-checked *before* `publish.who`). `client_id` is the at-least-once cursor handle described
-below — unrelated to the `client_id` on a realtime session.
-
-**The transcript hydrates the client — don't build a hydration endpoint.** On a
-`conversation` channel the replay is *pushed* at join, unasked: `conversation_start`
-(carrying `payload.count`), then the last `limit` messages as ordinary `action: "message"`
-frames — original `type` and `payload`, plus `conversation: true` and the original `ts` —
-then `conversation_end`. A client that renders `message` frames is already hydrated; there
-is no `GET /messages` to write and no table to read before painting the first view.
-
-**But `enabled: true` on its own does nothing at all.** `limit` defaults to `0`, and `0`
-means *retain none* rather than *retain everything* — so `conversation: { enabled: true }`
-records nothing, replays nothing, and reports no error. Always pass a `limit`. Three more
-consequences worth knowing before you rely on it:
-
-- **What a handler broadcasts *is* the transcript row.** It stores the post-handler payload
-  keyed by message type, so broadcast everything a past message needs to render (author
-  name, id, `created_at`) — nothing else comes back. And only `deliverTo: "channel"` and
-  `"others"` are recorded: a `"sender"` response is invisible to every future joiner by
-  construction.
-- **`ttl` expires the whole transcript at once, and only when the channel goes quiet.** It is
-  an idle timer on the transcript as a unit, refreshed by every write — not a per-message
-  age cap. An active channel's transcript never ages out; a silent one loses all of it
-  together. `ttl: 0` means no expiry.
-- **The transcript is a capped ring, not storage.** Write messages to a table when you want
-  durability, search, moderation, or paging *older* than the window — not to backfill a
-  joiner.
-
-Presence frames (a `presence: true` channel only) carry the roster: `presence_full` holds
-`payload.members`, an array of the whole roster including the receiving client, and
-`presence_join`/`presence_leave` hold a single `payload.member`. A member is
-`{ id, dbo_id, authenticated, extras, joined_at }` — `id` is the auth row id as a string
-(`""` when anonymous), `dbo_id` the auth table's id (`0` when anonymous), `extras` the
-connection's extras, `joined_at` epoch seconds. Render from `presence_full` and apply the
-deltas; the count is members, not connections, since the roster is refcounted per identity
-(a user's second tab fires no second `presence_join`). On join the order is `join` ack →
-`presence_full` → (everyone else gets `presence_join`) → conversation replay, and a joined
-client can re-request the snapshot with `{ action: "presence", channel }`.
-
-**`delivery: { guarantee: "at_least_once" }` is a contract with the client, not a switch on
-the channel.** Setting it changes the transport — a briefly disconnected client can replay
-what it missed instead of losing it — but only if the client holds up its end:
-
-```ts
-// the client must identify itself durably at join, then acknowledge what it receives
-ws.send(JSON.stringify({ action: "join", channel, options: { client_id: DEVICE_ID } }));
-// …for each `message`/`replay` frame carrying an `id`:
-ws.send(JSON.stringify({ action: "ack", channel, id }));
-```
-
-An **authenticated** client is keyed by its identity and needs no `client_id`. An
-**anonymous** one has nothing stable to key on, so without `options.client_id` it gets no
-cursor, its `ack` frames are ignored, and it quietly falls back to at-most-once — the
-guarantee you configured is simply absent, with nothing on the wire to say so. Send the
-`client_id` once, in the join frame; later `ack`s don't need to repeat it. The server
-confirms each ack with `{ action: "ack", channel, payload: { cursor } }`, the join ack
-reports `cursor` and `resumed`, and the gap arrives as `replay` frames, oldest first.
-
-How far back that gap can reach is set by **`conversation`**, even on a channel with no
-transcript enabled: `conversation.ttl` if present (here a genuine per-message age cut, and
-it wins over `limit`), else `conversation.limit`, else a default of 1000 messages. It is the
-one place the two options reach outside the transcript, and the one place `ttl` means
-something different than it does above.
-
-Inside a handler, both input surfaces read with `inp()`: `inp("body")` for the message
-payload, `inp("room_id")` for the channel's `{room_id}` path param — bound once at join and
-read from the connection thereafter, so a sender cannot post into a room it never joined.
-
-**What the handler returns decides what is delivered, and the failure directions are not
-symmetric.** A returned value is fanned out to `deliverTo` and stored as the transcript row.
-Returning **null** delivers nothing — that is the supported way for a handler to veto its
-own message, and the sender is told it was dropped. A payload rejected by the declared
-`input` also delivers nothing, with the validation detail going only to the sender. But a
-handler that **crashes** fails *open*: the sender's original, unvalidated payload is
-broadcast to the channel unchanged, so that one workspace bug cannot black-hole a channel.
-A handler doing redaction or authorization should therefore not be the only thing standing
-between client input and subscribers.
-
-`s.realtime.get_session({ as })` binds the connection itself for the "who is this sender"
-question on an anonymous-client channel. It works in a realtime message stack and in
-channel *and* server triggers, and returns a flat object: `authenticated`, `client_id` (the
-authed row id as text, `""` when anonymous), `dbo_id`, `socket_id` (the transport id),
-`channel`, `params` (bound path params, `{}` when none), `extras`, and `opened_at`. Note
-that three different things are called a client id and they are unrelated:
-`session.client_id` is the app-facing identity, `session.socket_id` is the transport, and
-`options.client_id` on a frame is the at-least-once cursor handle above.
-
-Channel path matching is stricter than it looks, which is what `getChannel()`'s throws are
-protecting you from: segment counts must match exactly (so `rooms/{room_id}` does not match
-`rooms/42/edit`, which is what lets `org/{org_id}/room/{room_id}` be its own channel),
-literal segments are case-sensitive, and an empty segment is rejected rather than collapsed,
-so a stray leading or doubled `/` matches nothing at all. A channel that is merely
-*inactive* reports the same "no settings for channel name" as one that never existed — by
-design, so deactivating doesn't leak that a channel is there.
-
-`rateLimit: { messagesPerMinute }` is checked before the handler runs, so a throttled frame
-costs no stack execution, and `0` means unlimited. Treat it as a cost guardrail rather than
-a security control: an anonymous client is bucketed per connection, so reconnecting resets
-its budget, and the limiter fails *open* if its backing store is unavailable.
-
-Everything above is the *pull* direction — a client sends a frame, a handler answers. For
-the *push* direction, `s.realtime.publish({ server, channel, data, message?, authTable?,
-authId? })` originates a server-authored event onto a channel from any ordinary stack: "the
-auction closed", "the import finished". Pass the `realtimeServer()` handle and the filled-in
-path (`channel.getChannel({ room_id: 42 })`, never the template). Three things to know
-before you reach for it, because each one bites:
-
-- It is **delivery-only**. The payload is fanned out as-is; naming a `message` type does not
-  invoke that handler. A channel `deliver` trigger still runs, because that belongs to the
-  channel rather than the message.
-- It is **server-authoritative** — it bypasses the channel's `publish.who`, which governs
-  clients. Any stack that can run it can publish, so the authorization belongs in your stack.
-- It is **fail-soft**. A missing or disabled server, or an unreachable bus, is swallowed by
-  the engine: nothing throws, nothing is returned, and a mis-targeted publish is silent.
-  SideStep throws on the two references it can actually check, `server` and `channel`, which
-  is the only loud failure available.
-
-`authTable`/`authId` stamp an **asserted** identity on the frame for a client to render. They
-are attribution, not a credential — nothing validates them and no auth gate reads them.
-
-**The superseded realtime layer.** Xano has had two realtime generations, and they reuse
-the same words — "realtime", "channel" — for different objects. Everything above is the
-current one. Two superseded surfaces are still supported, because `sidestep codegen` has to
-be able to bring back a workspace that holds them:
-
-- `realtimeTrigger({ objId, actions: { message?, join? } })` — a trigger against the old
-  workspace-global realtime config. Its `join` action is now
-  `realtimeChannelTrigger({ actions: { join: true } })`; its `message` action is now a
-  `realtimeMessage()` handler, because a message is an authored unit rather than a trigger
-  action.
-- `s.api.realtime_event({ channel, data, ... })` — publishes to the old layer. It is **not**
-  a way to publish to a `realtimeChannel()`: its `channel` is a string against that layer, so
-  aiming it at a current-layer channel path publishes into the void. Reach for
-  `s.realtime.publish({ server, channel, data, ... })` instead — it names the owning
-  `realtimeServer()`, which is what makes the channel resolvable.
-
-Both are **absent from the `## Object kinds` and `## Statements` catalogs in `llms.txt`** and
-named only under `## Legacy` — the same treatment `c.expressionLegacy` gets. The point is
-that an agent recognizes them in pulled code without ever reaching for one, and never
-mistakes a name match for the two generations being the same object.
-
-**MCP servers & agents** — two first-class root primitives. Both persist under the
-`toolset` payload key (obj_type=`toolset`), so an `mcpServer` and an `agent` **sharing a
-name collide** (both derive `md5("toolset:"+name)`). A `tool({...})` is its own kind — a
-function-like operation both reference by handle.
-
-```ts
-// An MCP server exposes tools over the MCP protocol. Auth is PER-TOOL and works
-// exactly like a query's auth — name an auth table({ auth: true }); it resolves
-// to the table's guid (Xano has no server-level auth gate).
+// Auth is PER-TOOL and works like a query's: name an auth table({ auth: true }).
 mcpServer({ name: "books", tools: [{ tool: searchTool, auth: users }] });
 
-// An agent is an LLM orchestrator. The typed `llm` block maps onto the engine's
-// real agent_settings wire shape (provider config nested under configs.<provider>).
-// `xano-free` needs no API key.
 const assistant = agent({
   name: "assistant",
   llm: { type: "xano-free", systemPrompt: "Be helpful.", prompt: "Answer the question." },
   tools: [{ tool: searchTool }],
 });
 
-// Agents have no public endpoint — you invoke them IN-STACK with `s.ai.agent.run`
-// from any host that has a stack: a query, function, task, tool, or trigger
-// (bound by handle, remapped on import like the call family).
+// Agents have NO public endpoint — invoke them in-stack from any host with a stack.
 query({
   name: "ask", verb: "POST", apiGroup: api,
   input: { question: input.text({ required: true }) },
   stack: [s.ai.agent.run({ agent: assistant, args: obj({ question: inp("question") }), as: "answer" })],
-  // The completion is at `.result` — a dotted ref projects it, and `InferResponse`
-  // types `text` to `string` (no `responseShape` needed). See "Agent run result".
   response: { text: ref("answer.result") },
 });
 ```
 
-`llm` is a provider-discriminated union — `anthropic` / `openai` / `google-genai` /
-`xano-free` — each with its provider's typed fields (`apiKey`, `model`, `temperature`,
-`reasoningEffort`, `thinkingTokens`, `searchGrounding`, …), mapped to the engine's
-camelCase `configs.<provider>` keys. A connection trigger binds its target with
-`mcpServerTrigger({ mcpServer })` / `agentTrigger({ agent })`.
+- **The run result is an envelope, not the completion.** The model's text is at **`.result`**
+  — `ref("answer")` is the whole metadata object (`finishReason`, `steps`, …). Both are
+  typed, so `InferResponse` reflects either.
+- **`llm` is a provider-discriminated union** — `anthropic` / `openai` / `google-genai` /
+  `xano-free` (which needs no API key) — each with its provider's typed fields.
+- **Structured output types the call site.** Author `output: { schema: { … } }` on the agent
+  with the `input.*` catalog and `.result` is typed from it wherever the handle is passed —
+  no second witness. The type-only `resultShape` is only for overriding that, or for an
+  agent referenced by bare name.
+- **String settings are Twig-templated at run time.** The `args` you pass to
+  `s.ai.agent.run` become `{{ $args }}` (env vars are `{{ $env.NAME }}`), which is how an
+  endpoint's inputs reach the prompt. Numeric and boolean fields are not templated. Build a
+  dynamic arg with `obj({...})`, not `c.obj`.
+- **`mcpServer().getUrl(HOST)`** derives the Streamable-HTTP endpoint from the def, the same
+  contract as `query.getPath()`. Agents expose only `getCanonical()`.
 
-**Agent run result.** The `as` variable of `s.ai.agent.run` is a **rich envelope**, not
-the bare completion — the model's text is nested under **`.result`**:
-
-```ts
-// shape of the `answer` var:
-{ result, finishReason, providerMetadata, reasoningDetails, steps, /* toolCalls?, usage?, … */ }
-```
-
-So `ref("answer.result")` returns the text; a bare `ref("answer")` returns the whole
-metadata object. Both are typed: `ref("answer")` is `AgentRunResult` and the dotted
-`ref("answer.result")` projects its `.result` field, so `InferResponse` reflects the real
-shape either way (neither is `unknown`). `result` is a `string` for a text agent; for a
-structured-output agent it is inferred from the agent's `output.schema` — pass the agent
-*handle* to `s.ai.agent.run` and `ref("answer.result")` types to that schema's shape with no
-extra hint (see below). The type-only `resultShape` witness is only for overriding that
-inference, or for typing an agent referenced by bare name:
-`s.ai.agent.run({ agent: "classifier", as: "answer", resultShape: {} as { sentiment: string } })`.
-
-**Structured outputs.** Constrain what the model returns by authoring `output.schema` on
-the agent — a named-field record built with the `input.*` catalog, exactly like a function
-`input:` map (the engine stores it as `structuredOutputsSchema`):
-
-```ts
-const classifier = agent({
-  name: "classifier",
-  llm: { type: "xano-free", prompt: "Ticket: {{ $args.body }}" },
-  output: { schema: { priority: input.enum(["low", "high"]), summary: input.text() } },
-});
-
-// The schema is declared once. Pass the handle and `.result` is typed from it:
-query({
-  name: "classify", verb: "POST", apiGroup: api,
-  input: { body: input.text({ required: true }) },
-  stack: [s.ai.agent.run({ agent: classifier, args: obj({ body: inp("body") }), as: "answer" })],
-  response: ref("answer.result"),  // typed { priority: "low" | "high"; summary: string }
-});
-```
-
-The authored schema both constrains the model's output *and* types the call site's `.result`
-— no second `resultShape` witness needed.
-
-**MCP endpoint URL.** An `mcpServer()` handle derives its endpoint from the def — no
-hardcoding, the same contract `query.getPath()` gives API endpoints:
-
-```ts
-const books = mcpServer({ name: "books", canonical: "books", tools: [/* … */] });
-books.getUrl(HOST);  // https://<host>/x2/mcp/books/mcp/stream   (Streamable HTTP)
-books.getPath();     // /x2/mcp/books/mcp/stream
-```
-
-It targets **Streamable HTTP** (the deprecated HTTP+SSE transport is not surfaced). The
-`mcp` path segment is the token slot — the literal `mcp` means "no URL auth" (pass a
-`Authorization: Bearer …` header, or embed a token via `getUrl(HOST, { token })`). The
-`canonical` resolves from the def (or `xano.lock`), exactly like a query's. Agents have no
-public endpoint (they run in-stack via `s.ai.agent.run`), so `agent()` exposes only
-`getCanonical()`, not a URL.
-
-**Run inputs → agent (Twig templating).** At run time Xano renders the agent's **string**
-settings through Twig before the LLM call. The `args` you pass to `s.ai.agent.run({ args })`
-become the `{{ $args }}` namespace (env vars are `{{ $env.NAME }}`) — this is how an
-endpoint's inputs reach the prompt. Templatable: `systemPrompt`, `prompt`/`messages`,
-`model`, `maxSteps`, and every **string** provider-config field. Numeric/boolean fields
-(e.g. `temperature`) are not templated. Pass a dynamic object arg with **`obj({...})`**
-(the dynamic sibling of `c.obj` — it allows nested `inp`/`ref`/… values):
-`s.ai.agent.run({ agent, args: obj({ name: inp("name") }) })` reaches `{{ $args.name }}`.
-
-**Background execution (`runtime`).** `s.function.run` and `s.ai.agent.run` both accept a
-`runtime` block that moves the call off the request path:
-
-```ts
-s.function.run({ fn: sendDigest, runtime: { mode: "async-shared" } });
-s.function.run({ fn: rebuildIndex, runtime: { mode: "async-dedicated", cpu: "250m", memory: "512Mi" } });
-```
-
-This is **not** a performance knob — it changes what the statement gives you. Xano rewrites
-an async call to a different statement that *dispatches and continues*, so it does **not**
-return the function's result; don't bind `as` expecting a value. Collect results later with
-`s.await({ ids })`. `cpu`/`memory`/`timeout`/`maxRetry` are read at `async-dedicated` only.
-Omit `runtime` entirely for a normal synchronous call.
-
-**Middleware attachment** — a `middleware({...})` is reusable logic (`input`/`stack`/
-`response` + `resultStrategy: "merge"|"replace"` + `exceptionPolicy: "silent"|"rethrow"|
-"critical"`). To run one, *attach* it with a host's `middleware: { pre, post }` field on
-`query`/`apiGroup`/`defineFunction`/`task`/`tool` (not triggers):
-
-```ts
-const rateLimit = middleware({ name: "rate_limit", resultStrategy: "merge", /* ... */ });
-const audit = middleware({ name: "audit", /* ... */ });
-
-query({
-  name: "get_user", verb: "GET", apiGroup: blog,
-  middleware: { pre: [rateLimit], post: [audit] }, // runs rateLimit before, audit after
-  stack: [/* ... */], response: ref("user"),
-});
-```
-
-Prefer a def handle (`[rateLimit]`); a bare name (`["rate_limit"]`) only matches when the target
-middleware uses its name-derived guid — pass the handle when the middleware pins an explicit
-`guid` (same rule as `auth`/`apiGroup` references). Use `{ middleware: mw, active: false }` to
-keep an entry but disabled. **Inheritance:** providing a phase **overrides** it (sets the stored
-`pre_customize`/`post_customize` flag); omitting a phase **inherits** the parent tier's chain.
-Xano resolves the fallback at request time — **Query → API Group → Workspace** (override, not
-merge; the API-Group tier applies to queries — functions, tasks, and tools have no API-group
-binding, so they inherit straight from the workspace). `pre: middleware.clear()` overrides a
-phase with nothing (stop inheriting). Workspace-level defaults are the terminal tier:
-
-```ts
-workspaceConfig({
-  name: "my-app",
-  middleware: { query: { pre: [rateLimit] }, function: { post: [audit] } }, // {host}_{phase} map
-});
-```
-
-**`workspaceConfig.middleware` is the whole workspace map.** Omit the field and SideStep leaves
-the workspace's existing (e.g. UI-configured) middleware untouched. But once you set it, the full
-`{host}_{phase}` map is emitted — any host/phase you don't list is emitted empty, which **clears**
-that tier on deploy (the workspace tier has no per-key customize flag, so empty means "none").
-Declare every workspace-level chain you want to keep.
-
-**The same wholesale rule applies to `datasources`.** `workspaceConfig` also carries
-`defaults` (e.g. `{ db_primary_key: "uuid" }`), `use_custom_names`, `datasources`, and
-`datasource_live`. Each is emitted **only when you set it**, so omitting one leaves the
-tenant's existing value untouched — but once you set `datasources`, the full list is emitted
-and any datasource you don't list is dropped. Secrets and instance-assigned values (crypto
-material, integration keys, `domain_prefix`, usage counters) are never emitted; `codegen`
-reports them as deliberate omissions rather than round-trip failures.
-
-**Three fields are server-shaped, not authoring surfaces.** `realtime`, `documentation`, and
-`swagger` are carried **verbatim**: SideStep models none of their members, so whatever the engine
-stored round-trips unchanged — including members this SDK has never heard of. They exist so a
-pulled workspace is honest, not to be authored, so omit them. `realtime` in particular is the
-**legacy** workspace-level block; the realtime primitives you actually author are
-`realtimeServer` / `realtimeChannel` / `realtimeMessage`, each its own object.
-
-SideStep emits each tier's lists + the customize flags; it does not compute the fallback (the
-engine does). A `resultStrategy: "replace"` middleware attached `post` rewrites the response at
-runtime, which `InferResponse` can't see — declare `responseShape` on the endpoint in that case.
-Distinct from `s.middleware.call` (invoke a middleware inline from a stack). Branch-tier
-middleware is not modeled — SideStep does not touch branches.
-
-**`exceptionPolicy` — what a throw does to the request.** SideStep passes the value through; Xano
-interprets it. `"silent"` **(the default)** swallows the throw — the host continues as if the
-middleware succeeded, so a guard (rate limit, auth check) authored without an explicit policy is
-**not enforced**. `"rethrow"` aborts the request and surfaces the authored `error`/status (a
-tripped `s.redis.ratelimit` → HTTP 429); the `post` chain still runs — this is what a guard wants.
-`"critical"` is like `"rethrow"` (same status) but additionally **skips the entire `post` chain**.
-The only difference between the two is whether `post` runs.
-
-**Request context & the `auth()` guard.** A `pre` middleware runs *after* auth resolution, so
-`auth("id")` is the caller's id when the host is authenticated (its `auth` names an auth table) and
-`null` on a public host. That `null` is the footgun: a rate limit keyed by `auth("id")` on a public
-endpoint collapses every caller into one shared bucket, silently. `export()` **warns** (never blocks)
-when an `auth()`-keyed middleware is directly attached to a host where `auth()` may be null — a
-`query` with no auth table, a `task`, or a `function`/`tool` (caller-dependent auth). An
-authenticated query is skipped. The check is direct-attachment only; tier-inherited attachment is
-not caught. It warns rather than throws because a bare `auth()` reference isn't proof of a collapse
-(an IP-disambiguated key uses `auth()` where null is fine).
+**Background execution.** `s.function.run` and `s.ai.agent.run` take a `runtime` block
+(`{ mode: "async-shared" }`, or `"async-dedicated"` with `cpu`/`memory`/`timeout`/`maxRetry`)
+that moves the call off the request path. This is **not** a performance knob: Xano rewrites
+an async call to a statement that dispatches and continues, so it does not return the
+function's result — don't bind `as` expecting a value. Collect results later with
+`s.await({ ids })`.
 
 **Microservices** — a container workload deployed alongside the workspace, called from a
 stack with `s.api.microservice`. Two mutually exclusive shapes chosen by `kind`: `builtin`
 declares containers (image/ports/resources/env/command/args) plus optional `ingresses`, and
-`helm` points at a chart and its `values`. Passing both throws at the authoring site, because
-the engine serializes them as exclusive groups. `command`/`args` take plain strings and
-`containerPort` defaults to `servicePort`, matching what the platform's own scaffold does.
+`helm` points at a chart and its `values`; passing both throws.
 
 ```ts
 export const echo = microservice({
@@ -1166,82 +761,54 @@ export const echo = microservice({
 });
 ```
 
-**This surface is early and expected to change**, and two things are worth knowing before you
-lean on it. `configs` and `volumes` are typed but **unconfirmed** — authoring either currently
-fails upstream, so nothing has shown what a populated one persists as. And **two fields carry
-secrets into a pulled tree verbatim**: `chart.values` and `registryAuth.dockerconfigjson`. They
-have to, or a pulled microservice could not be redeployed — so a tree holding a
-private-registry microservice holds a live credential. `codegen` reports every one it carries;
-prefer leaving `dockerconfigjson` unset and supplying it out of band.
+**This surface is early and expected to change.** `configs` and `volumes` are typed but
+unconfirmed against a live engine. And two fields carry secrets into a pulled tree
+verbatim — `chart.values` and `registryAuth.dockerconfigjson` — because otherwise a pulled
+microservice could not be redeployed. Prefer leaving `dockerconfigjson` unset and supplying
+it out of band.
 
-### Request history
+</details>
 
-Every primitive captures **request history** — the per-object execution trace behind Xano's
-request/task/trigger debugger. Like middleware, it inherits down a tier chain; author it with a
-single scalar `history` field:
+<details>
+<summary><b>Middleware, request history &amp; env vars</b></summary>
 
-```ts
-query({ name: "get_user", verb: "GET", history: 100 });   // capture, depth cap 100
-task({ name: "nightly", history: false });                // off
-tool({ name: "search", history: "all" });                 // unlimited depth
-function({ name: "helper" /* history omitted */ });        // inherit from the workspace
-```
-
-The scalar maps to Xano's stored block: `false` off, `true` on at the default depth, a **number** =
-capture depth (how many statement executions are recorded in each history record — *not* how many
-records are retained), `"all"` = unlimited depth. **Omitting `history` inherits**; any value stops
-inheriting for that object.
-
-**Inheritance** resolves at request time — **object → container → workspace**. A query inherits from
-its API group, a tool from its toolset/agent, and everything else straight from the workspace.
-Author the container defaults too:
+A `middleware({...})` is reusable logic (`input`/`stack`/`response` + `resultStrategy:
+"merge"|"replace"` + `exceptionPolicy`). To run one, *attach* it with a host's
+`middleware: { pre, post }` field on `query`/`apiGroup`/`defineFunction`/`task`/`tool`
+(not triggers). Prefer a def handle over a bare name, the same rule as `auth`/`apiGroup`
+references; `{ middleware: mw, active: false }` keeps an entry but disables it.
 
 ```ts
-apiGroup({ name: "blog", history: false });                     // default for its queries (query_*)
-agent({ name: "assistant", history: 100, llm });                // default for its tools (tool_*)
-
-workspaceConfig({
-  name: "my-app",
-  history: { query: 100, function: true, trigger: "all" },      // terminal {objType}_* map
+query({
+  name: "get_user", verb: "GET", apiGroup: blog,
+  middleware: { pre: [rateLimit], post: [audit] },
+  stack: [/* ... */], response: ref("user"),
 });
 ```
 
-Per-kind defaults when inheriting: **query / task / tool capture ON; function / trigger / middleware
-OFF**; default depth 100. `workspaceConfig.history` is **wholesale** — once set, every object type
-is emitted (an unlisted type falls back to its engine default), so declare every default you want to
-keep; omit the field to leave the workspace's existing history untouched. SideStep emits each tier's
-stored values + the inherit flag only; the engine computes the fallback. Branch-tier history is not
-modeled — SideStep does not touch branches.
+- **`exceptionPolicy` decides whether a guard is a guard.** `"silent"` **is the default**
+  and swallows the throw, so a rate limit or auth check authored without an explicit policy
+  is **not enforced**. `"rethrow"` aborts the request and surfaces the authored
+  `error`/status (a tripped `s.redis.ratelimit` → 429) while still running `post`;
+  `"critical"` is the same but skips the `post` chain. That is the only difference.
+- **Inheritance is override, not merge.** Providing a phase overrides it; omitting a phase
+  inherits the parent tier's chain, resolved at request time **Query → API Group →
+  Workspace**. `pre: middleware.clear()` overrides a phase with nothing.
+- **Setting `workspaceConfig.middleware` at all emits the whole map.** Any host/phase you
+  don't list is emitted empty, which **clears** that tier on deploy. Omit the field entirely
+  to leave the workspace's existing middleware untouched. The same wholesale rule applies to
+  `datasources`.
+- **`auth()` is `null` on a public host**, and a `pre` middleware runs after auth resolution.
+  A rate limit keyed by `auth("id")` on a public endpoint collapses every caller into one
+  bucket, silently. `export()` warns on direct attachment of an `auth()`-keyed middleware to
+  a host where `auth()` may be null.
+- A `resultStrategy: "replace"` middleware attached `post` rewrites the response at runtime,
+  which `InferResponse` can't see — declare `responseShape` on the endpoint.
+- `workspaceConfig` also carries `realtime`, `documentation`, and `swagger`, which are
+  server-shaped and carried verbatim rather than authored. `realtime` there is the **legacy**
+  workspace-level block, not the realtime primitives you author.
 
-### Workspace environment variables
-
-Set a tenant's env vars through the workspace object. Author them as a name→value map; read them at
-request time with `env("NAME")` (→ `$env.NAME`):
-
-```ts
-workspaceConfig({
-  name: "my-app",
-  env: {
-    STRIPE_KEY: process.env.STRIPE_KEY!,          // sourced from the deploy environment
-    APP_BASE_URL: "https://my-app.example.com",   // a plain config value
-  },
-});
-
-// …read it back inside any stack:
-query({ name: "charge", verb: "POST", stack: [
-  s.http.request({ url: env("STRIPE_KEY") /* … */ }),
-] });
-```
-
-**Values are secrets.** Prefer sourcing them from the deploy environment (`process.env.X`) over
-committing literals, and don't commit a compiled bundle that contains real values. The
-`workspaceConfig({ env })` map is the **setter**; the `env(name)` value helper is the **reader**.
-Under the hood a workspace env var is a *setting* (`$env.NAME` compiles to `tag:"setting"` with the
-plain name) — the same tag the `sys.*` built-ins use, they just carry `$`-prefixed names
-(`sys.apiBaseUrl()` → `$env.$api_baseurl`). Deploying sets the vars you declare; omit the field to leave the
-workspace's existing env untouched.
-
-**Rate-limit recipe (the canonical middleware).** Build the per-user key with the filter chain
+**The canonical rate-limit middleware.** Build the per-user key with the filter chain
 (`"prefix" + auth("id")` doesn't exist):
 
 ```ts
@@ -1256,79 +823,79 @@ const writeRl = middleware({
   ],
 });
 
-query({ name: "create_post", verb: "POST", apiGroup: blog, auth: users, // authed ⇒ auth("id") is per-user
+query({ name: "create_post", verb: "POST", apiGroup: blog, auth: users, // authed ⇒ per-user
   middleware: { pre: [writeRl] }, stack: [/* ... */], response: ref("post") });
 ```
 
-**Shared-bucket rule:** co-attaching one middleware object to N hosts means all N share the *same*
-key ⇒ *one* counter — `max: 10` is a global per-user budget across them, not 10-per-host. Vary the
-key (fold the host/action name into the prefix) for an independent limit per host.
+On a **public** endpoint key off the client IP instead — `sys.remoteIp()` — since
+`auth("id")` is null there. And note the **shared-bucket rule**: co-attaching one middleware
+object to N hosts means all N share the same key and therefore one counter, so `max: 10` is
+a global budget across them. Vary the key (fold the host name into the prefix) for an
+independent limit per host.
 
-**Public-endpoint variant.** On a host with no auth table `auth("id")` is `null`, so an
-`auth("id")`-keyed limit silently collapses every anonymous caller into one bucket. Key off the
-client IP instead — `sys.remoteIp()` (Xano's `$env.$remote_ip`):
+**Reading the request body in a `pre` middleware.** It does receive the host's inputs, via
+`s.util.get_all_input({ as: "payload" })` — but the result is **wrapped as `{ type, vars }`**,
+so a body field lives at `ref("payload.vars.<field>")`. The un-nested path is the usual cause
+of an `Unable to locate var` 500.
+
+**Request history** — the per-object execution trace behind Xano's debugger, authored as a
+single scalar `history` field: `false` off, `true` on at the default depth, a **number** =
+capture depth (statement executions recorded per record, *not* records retained), `"all"` =
+unlimited. **Omitting it inherits**; any value stops inheriting. Inheritance resolves
+**object → container → workspace** (a query from its API group, a tool from its
+toolset/agent, everything else straight from the workspace). Per-kind defaults when
+inheriting: query / task / tool capture **on**; function / trigger / middleware **off**.
+`workspaceConfig.history` is wholesale in the same way the middleware map is.
 
 ```ts
-const publicRl = middleware({
-  name: "public_rl",
-  exceptionPolicy: "rethrow",
-  stack: [
-    s.redis.ratelimit({
-      key: withFilters(c.text("rl:public:"), fl.concat(sys.remoteIp())), // per-IP, not per-user
-      max: c.int(20), ttl: c.int(60), error: c.text("Too many requests."),
-    }),
-  ],
-});
-
-query({ name: "signup", verb: "POST", apiGroup: blog, // public (no auth) ⇒ key by IP
-  middleware: { pre: [publicRl] }, stack: [/* ... */] });
+query({ name: "get_user", verb: "GET", history: 100 });   // capture, depth cap 100
+apiGroup({ name: "blog", history: false });               // default for its queries
+workspaceConfig({ name: "my-app", history: { query: 100, trigger: "all" } });
 ```
 
-**Reading the request body in a `pre` middleware.** A `pre` middleware *does* receive the host's
-request inputs. Read them with `s.util.get_all_input({ as: "payload" })` — but the result is
-**wrapped as `{ type, vars }`**, so a body field lives at `ref("payload.vars.<field>")`, not
-`ref("payload.<field>")` (the un-nested path is the usual cause of a `Unable to locate var` 500).
-To key a public limit off a submitted field: `get_all_input({ as: "payload" })`, then
-`withFilters(c.text("rl:apply:"), fl.concat(ref("payload.vars.candidate_email")))`.
+**Workspace environment variables** — author them as a name→value map on the workspace
+object; read them at request time with `env("NAME")`:
+
+```ts
+workspaceConfig({
+  name: "my-app",
+  env: {
+    STRIPE_KEY: process.env.STRIPE_KEY!,          // sourced from the deploy environment
+    APP_BASE_URL: "https://my-app.example.com",   // a plain config value
+  },
+});
+```
+
+**Values are secrets.** Prefer sourcing them from the deploy environment over committing
+literals, and don't commit a compiled bundle holding real ones. Deploying sets the vars you
+declare; omit the field to leave the workspace's existing env untouched.
 
 </details>
 
 <details>
 <summary><b>Tables &amp; fields</b></summary>
 
-**Field types** — a typed catalog `f.*` covers the full surface: scalars
-(`f.text`/`f.int`/`f.decimal`/`f.bool`/`f.uuid`/`f.date`/`f.email`/`f.password`/`f.json`),
-`f.timestamp`, the four file resources (`f.image`/`f.video`/`f.audio`/`f.attachment`), the
-six `f.geo.*` types, `f.enum(values)`, `f.vector(size)`, and `f.object(children)`. Foreign
-keys are `f.tableRef(table)` — an `int` (or `{ type: "uuid" }`) column whose link resolves
-to the target table's guid at export. `f.tableRef` also takes the standard field options as
-its second arg (`f.tableRef(users, { required: true })`). Any scalar `f.*` becomes a **list
-column** with `{ array: true }` — `f.text({ array: true })` surfaces as `string[]` in
-`InferRow<typeof table>` (the column analogue of `input.list`). Tables accept a named-map
-schema (`{ email: f.email({ required: true }) }`), filter methods carry args (`"min:8"`), and
-`views[]` (expression/sort/hiddenCols) encode via the shared comparison encoder. Byte-exact
-vs the engine's column type map. A column **`default` must stay within the BMP** — a 4-byte
-character (codepoint > U+FFFF, e.g. an emoji) is mangled into invalid UTF-8 by the engine's
-default pipeline and is rejected at export rather than 500ing at deploy with Postgres `22021`;
-BMP defaults (accents, `€`, most CJK) are fine, or put the value on an endpoint input
-(`input.text({ default })`), applied at runtime bind (issue #45).
+`f.*` covers the full column catalog — scalars, `f.timestamp`, the four file resources, the
+six `f.geo.*` types, `f.enum(values)`, `f.vector(size)`, `f.object(children)`. Foreign keys
+are `f.tableRef(table)`, whose link resolves to the target table's guid at export. Any
+scalar becomes a **list column** with `{ array: true }`, surfacing as `string[]` in
+`InferRow`. Tables take a named-map schema, filter methods carry args (`"min:8"`), and
+`views[]` encode through the shared comparison encoder.
 
-**System columns & indexes** — `id` (int primary key; `idType:"uuid"` for a uuid key) and
-`created_at` (`epochms`, `default:"now"`, `access:"private"`) auto-inject at the head of
-the schema unless `system:false` or you declared them. Both are usable wherever a column
-name is expected — a `db.query` `sort`/`output`, a `db.get`/`edit`/`del` `fieldName` — and
-both appear in `InferRow<typeof table>`. Declare your own indexes with the shape
-`{ type, fields: [{ name, op? }] }`, e.g. a unique email index
-(`index: [{ type: "unique", fields: [{ name: "email" }] }]` — `"unique"` is shorthand for
-`"btree|unique"`). The matching standard indexes (`primary(id)`, `btree(created_at desc)`,
-plus `gin(xdo)` only when the table stores fields as JSON) auto-prepend, de-duped so
-author-declared ones aren't doubled.
-
-**`use_xdo` storage mode** — a table either stores every field as JSON under the internal
-`xdo` column (`use_xdo:true`, adds the `gin(xdo)` index) or gives each field a real Postgres
-column (`use_xdo:false`). It's a workspace setting (`registerWorkspace({ use_xdo })`,
-default `false`) each table mirrors; `table({ useXdo })` overrides per-table. Resolved at
-`export()`, so workspace and tables register in any order.
+- **A column `default` must stay within the BMP.** A 4-byte character (codepoint > U+FFFF,
+  e.g. an emoji) is mangled into invalid UTF-8 by the engine's default pipeline, so it is
+  rejected at export rather than 500ing at deploy with Postgres `22021`. Accents, `€`, and
+  most CJK are fine; otherwise put the value on an endpoint input, applied at runtime bind.
+- **`id` and `created_at` auto-inject** at the head of the schema unless `system: false` or
+  you declare them (`idType: "uuid"` for a uuid key). Both are usable wherever a column name
+  is expected and both appear in `InferRow`. The standard indexes — `primary(id)`,
+  `btree(created_at desc)`, plus `gin(xdo)` when the table stores fields as JSON —
+  auto-prepend, de-duped against your own. Declare yours as
+  `{ type, fields: [{ name, op? }] }`; `"unique"` is shorthand for `"btree|unique"`.
+- **`use_xdo` picks the storage mode** — every field as JSON under the internal `xdo` column,
+  or a real Postgres column per field. It is a workspace setting (default `false`) each table
+  mirrors, overridable per table with `table({ useXdo })`, resolved at `export()` so the two
+  can register in any order.
 
 </details>
 
@@ -1339,8 +906,6 @@ The `stack` of a function/query/tool is a list of statements, all reachable thro
 discoverable, typed namespace — `s`:
 
 ```ts
-import { s, c, ref, expr } from "@sidestep/core";
-
 stack: [
   s.set_var("total", c.int(0)),
   s.math.add({ name: "total", value: c.int(5) }),
@@ -1350,333 +915,158 @@ stack: [
 ]
 ```
 
-Tab-complete `s.` to explore: `s.math.*`, `s.array.*`, `s.text.*`, `s.object.*`,
-`s.expect.*`, `s.storage.*`, `s.security.*`, `s.api.*`, `s.cloud.*`, … Each declarative
-statement takes one typed args object; control-flow specials (`s.set_var`, `s.conditional`,
-`s.for`, `s.foreach`, `s.while`, `s.group`, `s.switch`, `s.try_catch`, `s.return`, …) keep
-their authored signatures.
+Tab-complete `s.` to explore. Each declarative statement takes one typed args object;
+control-flow specials (`s.set_var`, `s.conditional`, `s.for`, `s.foreach`, `s.while`,
+`s.group`, `s.switch`, `s.try_catch`, `s.return`, …) keep their authored signatures. **Every
+statement also carries `description` and `disabled`** — inline on the object-arg factories,
+a trailing options object on the positional specials. `disabled: true` is Xano's
+commented-out state: the step stays in the stack and the engine skips it.
 
-**Every statement can carry `description` and `disabled`.** They annotate the stack item rather
-than argue the statement, so they are ordinary optional arguments on all of them — inline on the
-object-arg factories, and a trailing options object on the positional specials:
+**The db family.** Single-record reads and mutations match one field
+(`{ fieldName, fieldValue }`, defaulting to `id`) — there is no composite `(a, b)` form; for
+a two-column lookup use `s.db.query` with a `where` array. Writes take a partial `row: {…}`,
+and an `s.db.edit` writes **only** the columns you list, leaving every unmentioned column at
+its stored value. Only `s.db.query` takes a `where`, and its `where`/`sort`/`paging`/`output`
+are applied **by the engine**, not in your stack.
 
-```ts
-s.db.add({ table: users, data: [...], disabled: true, description: "backfill, off for now" })
-s.set_var("draft", c.int(1), { disabled: true })
-```
+What each op binds decides your response type: `s.db.get` binds **`null`** on a miss (it does
+not throw — null-check it), `s.db.add`/`edit`/`patch` bind the **full written row** including
+auto-assigned `id`/`created_at`, `s.db.del` binds `null`, and `edit`/`del` **throw**
+`NotFound` (404) when nothing matches. `InferResponse` derives all of that automatically.
 
-`disabled: true` is Xano's commented-out state — the step stays in the stack and the run engine
-skips it, so a pull of a workspace with disabled steps keeps them as readable source instead of
-opaque blobs. `description` is the note shown beside the step in the editor. Both default to
-absent, and both round-trip.
+`s.db.query` mirrors the whole Xano query builder — `returnType`, `bind` joins, computed
+`eval` columns, `aggregate` groups, `distinct`, and the full operator set via
+`cmp(left, op, right)` with `and(...)`/`or(...)` for boolean groups. Signatures are in
+`llms.txt`; three behaviors are worth knowing here:
 
-The **call family** (`s.function.run`, `s.api.call`, `s.task.call`, `s.tool.call`, …)
-invokes another workspace object — pass the target's def handle (or name) and SideStep
-resolves the cross-object reference at export. The **db family** (`s.db.add`/`s.db.edit`/
-`s.db.get`/`s.db.query`/`s.db.del`/…) reads and mutates records. Single-record
-reads/mutations match one field (`{ fieldName, fieldValue }`, defaulting to `id`); writes
-take a partial `row: { … }` — an `s.db.edit` writes **only** the columns you list and leaves
-every unmentioned column at its stored value (a `{ votes }` edit bumps `votes` alone, it does
-not null the rest). A **nested** cell writes sub-keys of an object column
-(`row: { magic_link: { token: inp("token"), used: c.bool(true) } }`); to also set the
-column's own value, use `data: [{ name, value, children: [...] }]`. Only `s.db.query` takes a `where` comparison built with
-`expr(...)` (plus `sort: [{ sortBy, dir? }]` and `paging: { page?, per_page?, offset? }`).
-`s.db.query`'s `where`, `additionalWhere`, `sort`, `paging`, and `output` are all
-**applied by the engine** — the filter narrows the read, sort orders it, paging
-pages it (`sort`/`paging` land in `context.return.list`; `dir` is `asc`/`desc`/`rand`,
-and paging numbers are plain ints). The field-match ops take a **single** field — there's no composite `(a, b)` form. For a
-two-column lookup (e.g. dedupe a `(habit, date)` check-in), use `s.db.query` with a `where`
-array (ANDed) and branch on the result, rather than pushing the check to the client.
+- **Paging changes the response shape.** Supplying `paging` with metadata on (the default)
+  returns a **paging envelope** — `{ items, curPage, nextPage, prevPage, offset, perPage,
+  itemsReceived }`, plus totals when `totals: true` — instead of a bare `Row[]`, and
+  `InferResponse` reflects that. Pass `metadata: false` to keep the bare array. Read
+  `nextPage` (`number | null`) as the typed has-next signal.
+- **Don't author `mixed(...)` conditions.** Xano's editor allows a container whose terms
+  don't all join the same way, so pulled workspaces contain it and it round-trips — but the
+  stored form doesn't record the intended grouping, and the two places it can appear
+  disagree: a branch folds terms strictly left to right (`a OR b AND c` = `(a OR b) AND c`)
+  while a `db.query` filter inherits SQL's AND-before-OR precedence (`a OR (b AND c)`). Write
+  `and(or(a, b), c)` or `or(a, and(b, c))` — each says exactly one thing in every context.
+- **An aggregate `name` is written bare** (`"status"`) and alias-qualified on emit; the
+  engine rejects a bare column in an aggregate, and an already-dotted joined column passes
+  through.
 
-**Query parity — the full "Query All Records" surface.** Beyond a simple `where`,
-`s.db.query` mirrors the whole Xano query builder:
-
-- **Operators & boolean groups.** `expr(...)` stays the narrow comparison; for the
-  full operator set use `cmp(left, op, right, { ignoreEmpty? })` — `op` is `in`/`not in`/
-  `like`/`ilike`/`between`/`contains`/`includes`/`overlaps`/`@>`/`~`/`search`/… (plus the
-  `expr` comparisons). Compose nested logic with `and(...)` / `or(...)`: `where:
-  and(cmp(col("tags"), "overlaps", inp("t")), or(expr(col("a"), "=", …), expr(col("b"), "=", …)))`.
-  The same surface is available on `addon()` `where`. An array is ANDed, and a bare
-  `or(...)` at the top level ORs the top-level clauses rather than nesting them —
-  the shape the engine itself stores.
-
-  There is also `mixed(a, { or: b }, { and: c })`, for a container whose terms do
-  **not** all join the same way. Xano's editor allows that — every condition row
-  after the first carries its own AND/OR choice — so pulled workspaces contain it
-  and it has to round-trip. **Don't write new conditions with it.** The stored form
-  doesn't record the intended grouping, and the two places such a condition can
-  appear disagree about it: a branch (`s.conditional`/`s.while`/`precondition`)
-  folds the terms strictly left to right, so `a OR b AND c` means `(a OR b) AND c`,
-  while a `db.query` filter inherits the database's AND-before-OR precedence and
-  selects `a OR (b AND c)`. Write `and(or(a, b), c)` or `or(a, and(b, c))` — each
-  says exactly one of those, in every context. `sidestep pull` reports every mixed
-  container it recovers under `ambiguous-condition`.
-- **`returnType`** (`"list"` default | `"single"` | `"count"` | `"exists"` | `"stream"` |
-  `"aggregate"`) drives `context.return.type` and the `InferResponse` shape — `count`→`number`,
-  `exists`→`boolean`, `single`→`Row | null`, `stream`→`Row[]` (pageable, no envelope),
-  `aggregate`→rows keyed by the group/eval aliases.
-- **`bind: [{ table, as?, join?, where? }]`** adds joins (`context.bind[]`; `join` defaults to
-  `"inner"`). Joined columns are addressable by **dotted path** in `where`/`sort`/`eval`; `as`
-  defaults to the table name, and two joins to the same table need distinct aliases.
-- **`eval: [{ name, as, filters? }]`** adds computed columns (`context.eval[]`); each `as`
-  grafts onto the row as an `unknown` key in `InferResponse` (shadowing a column throws).
-- **`aggregate: { group?, eval?, sort?, paging? }`** (with `returnType: "aggregate"`) builds
-  `context.return.aggregate` — `group`/`eval` are `{ name, as, filters? }` (an aggregator like
-  `sum`/`count` rides `filters`). Write each `name` as a **bare column** (`"status"`) — it is
-  alias-qualified to `"<table>.status"` on emit (the engine rejects a bare column in an
-  aggregate); an already-dotted `name` (a `bind`ed/joined column) passes through. Byte-verified
-  against a live engine.
-
-  ```ts
-  s.db.query({
-    table: posts,
-    returnType: "aggregate",
-    aggregate: {
-      group: [{ name: "published", as: "published" }],
-      eval: [
-        { name: "id", as: "count", filters: [{ name: "count" }] },
-        { name: "score", as: "total", filters: [{ name: "sum" }] },
-      ],
-    },
-    as: "rollup",
-  })
-  ```
-- **`distinct`** (`"auto"` default | `"yes"` | `"no"`) rides `context.return.<list|stream>.distinct`.
-
-**Paging changes the response shape.** Supplying `paging` with metadata on (the
-default) makes `s.db.query` return a **paging envelope** — `{ items: Row[], curPage,
-nextPage, prevPage, offset, perPage, itemsReceived }`, plus `itemsTotal`/`pageTotal`
-when `totals: true` — instead of a bare `Row[]`, and `InferResponse` reflects that
-(issue #58). Pass `paging: { …, metadata: false }` to keep the bare array. Without
-`paging` at all, the result stays a bare `Row[]`. Read `nextPage` (`number | null`) as
-the typed has-next signal.
-
-**Input-bound paging (#66).** `paging.page`/`per_page`/`offset` also accept a `Value`
-(e.g. `inp("page")`) — the dynamic value rides `context.simpleExternal` while a static
-block stays the engine gate (`enabled: true`). `paging.search`/`sort` are `Value` dynamic
-overrides; a `search`/`sort`-only `paging` (no numeric field) does **not** paginate.
-`external: { value, permissions? }` is the classic whole-config paging blob (forces the
-gate on). It combines with input-bound `paging` as a **fallback chain**: the engine uses
-the blob when it resolves to something non-empty and the per-field binds when it does not,
-so a blob fed from an *optional* input with per-field paging behind it is a working
-configuration, not a conflict.
-
-**Addons** — enrich each returned row with related data by attaching addons to
-`s.db.query`/`get`/`add`/`edit`/`patch` (the row-returning ops).
-
-*Authoring an addon.* An addon is a single table-bound db query (not a statement
-stack) — Xano executes it straight off its `context`. Use `addon({ table, where,
-output })`: the `table` handle auto-fills the `context.dbo` binding, `where` (the
-same `expr(...)` surface as `s.db.query`) is the predicate binding the addon to
-the parent row, and `output` names the columns it returns. `sort` orders the
-result. `tableAlias` sets that binding's SQL alias (`context.dbo.as`) — the name
-`where`/`sort` qualify columns with (`col("merchant.id")`); absent unless set, and
-never derived from the table, since Xano sanitizes it and keeps it after a rename. `cardinality` shapes it — `"single"` (one object), `"list"` (array, the
-default), `"count"` (a number), `"exists"` (a boolean), or `"aggregate"` (grouped
-rows; pass typed `group`/`eval` `{ name, as, filters? }` columns and the graft is an
-array keyed by those aliases). Register it with `.registerAddons([...])`:
+**Addons** enrich each returned row with related data, attached to the row-returning ops
+(`query`/`get`/`add`/`edit`/`patch`). An addon is a single table-bound db query rather than a
+statement stack: `addon({ table, where, output, cardinality })`, where `where` binds it to
+the parent row and `cardinality` shapes the graft (`"single"` object, the default `"list"`,
+`"count"`, `"exists"`, `"aggregate"`).
 
 ```ts
-import { addon, input, expr, col, inp } from "@sidestep/core";
-import { userTable } from "@sidestep/auth";
-
 export const authorAddon = addon({
   name: "author",
-  table: userTable,                          // → context.dbo binding
-  where: expr(col("id"), "=", inp("user_id")), // → context.search (bind to parent row)
-  output: ["id", "name"],                    // → typed graft, restricted columns
-  cardinality: "single",                     // → one object, not a 1-element array
+  table: userTable,
+  where: expr(col("id"), "=", inp("user_id")),   // bind to the parent row
+  output: ["id", "name"],
+  cardinality: "single",
   input: { user_id: input.int({ required: true }) },
+});
+
+s.db.query({
+  table: post,
+  addon: [{ addon: authorAddon, as: "_author", input: { user_id: out("author") } }],
+  as: "rows",
 });
 ```
 
-Rarer context (`bind`, `lock`, external paging) stays raw `context`
-passthrough; an explicit `context.search`/`sort`/`return` wins over `where`/
-`sort`/`cardinality`.
+Attaching a typed handle merges the graft onto the row shape in `InferResponse` with no cast;
+a **bare-name** reference grafts `unknown`. Author `as` relative to a row (`_author`) — when
+the query returns a paging envelope the `items[]` offset is added for you. If an alias
+**shadows an existing column** the build throws, because the engine would silently overwrite
+that column at runtime (Xano convention: prefix with `_`).
 
-*Attaching it.* Reference the addon by its handle (or a bare name), map its
-inputs (bind a parent-row column with `out(col)`), and land it on the row at an
-`as` destination — a bare alias (`_author`) or a dotted `offset.alias`, authored
-**relative to a row**. Addons nest via `children`:
+**Values** — `c.int/text/bool/decimal/null/obj/array`, `c.now()`, `ref(var)`, `inp(input)`,
+`col(name)`, the context refs `auth(path?)`/`env(name)`/`setting(name)`/`sys.*()`, and
+`out(name)` for a parent-row column in an addon input. `withFilters(value, fl.a(), fl.b())`
+attaches the value pipeline from a typed catalog of filters generated from the engine's own
+sources.
 
-```ts
-s.db.query({
-  table: post,
-  paging: { per_page: 20 },
-  addon: [
-    { addon: authorAddon, as: "_author", input: { user_id: out("author") } },
-  ],
-  as: "rows",
-}),
-```
+- **`c.obj`/`c.array` take plain JSON literals only.** A nested tagged value
+  (`inp`/`ref`/`auth`/`c.*`) is a compile error. For a computed object — a response, or an
+  `api.request` `params` — use a record of values (`{ count: ref("count") }`). For a dynamic
+  object argument use `obj({...})`, which builds a checked expression.
+- **`col()` does not resolve to a stored value inside a `db.edit` `row`.** To
+  read-modify-write a column — incrementing a counter — `db.get` the row first and pipe its
+  bound value through a filter. `col()` evaluates to `null` there, so `fl.add(1)` computes
+  `null + 1` and the engine aborts.
 
-When you attach a typed `addon({ table, output })` handle, its **alias** (the
-last segment of its `as` — here `_author`) is merged onto the row shape in
-`InferResponse` with the addon's **graft shape** (`{ id; name }` for `single`,
-`{ id; name }[]` for the default list, `number` for `count`, `boolean` for
-`exists`, and an array keyed by the declared `group`/`eval` aliases for
-`aggregate`) — no cast needed. An attachment-level
-`output` narrows an object/array graft further (`output: ["name"]` → `{ name }[]`). A
-**bare-name** reference still grafts `unknown` (the SDK can't shape it), so
-narrow it at the call site. Author `as` relative to a row (`_author`); when the
-query returns a metadata paging envelope (any `paging` with metadata on), the
-`items[]` offset is prefixed for you so the addon grafts onto each `items[]`
-element — without paging it lands on each bare row. (Writing `items[]` yourself
-is tolerated and not double-prefixed.)
+  ```ts
+  s.db.get({ table, fieldValue: inp("id"), as: "current" }),
+  s.db.edit({ table, fieldValue: inp("id"), row: { clicks: withFilters(ref("current.clicks"), fl.add(c.int(1))) } }),
+  ```
 
-If an addon's alias **shadows an existing column** on the queried table, the
-build throws — the engine would silently overwrite that column at runtime.
-Rename the alias (Xano convention: a `_` prefix). The
-`s.db.add_or_edit`/`del`/`has`/`truncate` ops do not take an `addon` (no row to
-enrich / lean envelope).
+  That pair is **not atomic** — concurrent writers can lose an increment, and no atomic
+  increment statement exists. A genuinely safe counter needs the arithmetic in the database
+  via `s.db.direct_query`, which in turn needs the table's *physical* Postgres name; that
+  name is assigned at import and is not knowable from a `table()` def, so it has to be
+  hardcoded after inspecting the deployed table. A typed path requires an engine change
+  ([issue #35](https://github.com/sidestepai/core/issues/35)).
+- **`c.expression("…")` is carried through verbatim and NOT validated.** SideStep does not
+  parse it or type-check it; nothing inside participates in `InferResponse`, so a var named
+  there is invisible to a rename that updates every typed `ref()`. A malformed expression
+  fails at runtime; one that is merely wrong (`$var.tota1`) returns a wrong answer. Reach for
+  it only for syntax the typed surfaces can't express — `~` concatenation, inline arithmetic,
+  conditionals — and note it is **not** the `expr()` condition builder.
+  (`c.expressionLegacy` exists only so `codegen` can return an older stored form.)
 
-**Runtime behavior.** Knowing what these return matters for typing your endpoint responses:
+**System / request variables (`sys.*`).** Xano's built-in request context reads as
+`$env.$remote_ip` in XanoScript — note the **second `$`**: these are settings with a
+`$`-prefixed name, the same tag `env()` emits. That prefix is the footgun, because
+`env("remote_ip")` reads a workspace env var literally named `remote_ip` (almost always
+unset → null) rather than the caller's IP. `sys.*` spells the prefixed names for you:
 
-- `s.db.get` binds **`null`** when no row matches — it does *not* throw. So its response type
-  is `InferRow<typeof table> | null`; null-check it. On a hit it binds the full row.
-  (`s.db.has` is the boolean existence test.)
-- `s.db.edit` binds the **full, post-mutation row** (the freshly-written values) and `s.db.add`
-  the **full inserted row** (including the auto-assigned `id`/`created_at`). So
-  `InferRow<typeof table>` is the correct response type for those two — and `InferResponse`
-  derives it automatically when the query returns that bound variable, no `responseShape` needed
-  (issue #48). `s.db.del` **binds `null`** (the engine deletes and returns no value), so it stays
-  `unknown`. Unlike `get`, `edit`/`del` **throw** `NotFound` (404) when nothing matches.
+| accessor | var | | accessor | var |
+|---|---|---|---|---|
+| `sys.remoteIp()` | `$remote_ip` | | `sys.datasource()` | `$datasource` |
+| `sys.requestMethod()` | `$request_method` | | `sys.branch()` | `$branch` |
+| `sys.requestUri()` | `$request_uri` | | `sys.tenant()` | `$tenant` |
+| `sys.requestQueryString()` | `$request_querystring` | | `sys.release()` | `$release` |
+| `sys.httpHeaders()` | `$http_headers` | | `sys.platform()` | `$platform` |
+| `sys.requestAuthToken()` | `$request_auth_token` | | `sys.isDebugger()` | `$debugger` |
+| `sys.apiBaseUrl()` | `$api_baseurl` | | | |
 
-**Values** — `c.int/text/bool/decimal/null/obj/array`, `c.now()` (current time as
-epoch-ms — the engine-native constant; valid inline in a `where`/`cmp`),
-`c.expression("…")` (a raw Xano Expression Engine expression — **not validated**, see below),
-`ref(var)`, `inp(input)`,
-`col(name)`, plus context refs `auth(path?)`, `env(name)`, `setting(name)`, `sys.*()`
-(built-in request/system vars — see below), `out(name)`
-(a parent-row column, for addon inputs). `c.obj`/`c.array`
-take **plain JSON literals only** — a nested tagged value (`inp`/`ref`/`auth`/`c.*`) is a
-compile error; for a computed object — a response, or an `api.request` `params` — use a record
-of values (`{ count: ref("count") }`), not `c.obj` (issues #42, #74/#75).
-`withFilters(value, fl.a(), fl.b())` attaches the value pipeline via a typed catalog `fl.*`
-(377 filters generated from the engine's own sources; pass filters spread — the array form
-`withFilters(v, [fl.a(), fl.b()])` also works but the spread form is canonical). To
-**read-modify-write a column from its current value** — e.g. increment a counter — you must
-**`db.get` the row first** and pipe its bound value through a filter; `col()` does *not*
-resolve to the stored value inside a `db.edit` `row` (it evaluates to `null`, so
-`fl.add(1)` computes `null + 1` and the engine aborts — see issue #32):
-
-```ts
-s.db.get({ table, fieldValue: inp("id"), as: "current" }),
-s.db.edit({ table, fieldValue: inp("id"), row: { clicks: withFilters(ref("current.clicks"), fl.add(c.int(1))) } }),
-```
-
-**Raw expressions (`c.expression`)** — the Xano Expression Engine, as a string carried
-through verbatim to `tag:"const:expr2"` (what the expression editor writes):
-
-```ts
-s.set_var("greeting", c.expression('"Hello, " ~ $input.first_name')),
-s.set_var("total", c.expression("$input.qty * $input.unit_price")),
-```
-
-⚠️ **The string is NOT validated.** SideStep does not parse it, does not type-check it,
-and cannot tell a working expression from a typo. Nothing inside it participates in
-`InferResponse`, so a var referenced in the string is invisible to the type system — a
-rename that updates every typed `ref()` will not touch it. A malformed expression fails at
-**runtime**; one that is merely wrong (`$var.tota1`) returns a wrong answer rather than an
-error. Play at your own risk until validation exists.
-
-Reach for the typed surfaces first — `ref`/`inp`/`col` for references, `withFilters(...,
-fl.*)` for transforms, and `obj({...})` for a dynamic object (it *builds* a checked
-expression for you). Use `c.expression` only for syntax those cannot express: `~` string
-concatenation, inline arithmetic, conditionals. It is **not** the `expr()` condition
-builder — `expr(col("id"), "=", inp("id"))` builds a comparison for a `where`, while this
-builds a value from raw source.
-
-`c.expressionLegacy(...)` is the same passthrough for the older `const:expr` form. It
-exists so `sidestep codegen` can bring back a workspace that still holds one — **do not
-author it**. It is deliberately absent from the `## Values` catalog in `llms.txt` and named
-only under `## Legacy`, so an agent recognizes it in pulled code without ever picking it
-for new code.
-
-Note this read-modify-write is **not atomic** — concurrent writers can lose an increment;
-there's no dedicated atomic-increment statement, and one can't be synthesized in the SDK
-(it would still compile to this same `get` + `edit` pair). For a genuinely concurrency-safe
-counter, push the arithmetic into the database with a single `s.db.direct_query`
-`UPDATE … SET clicks = clicks + 1 WHERE …`.
-
-⚠ **`direct_query` needs the table's *physical* Postgres name, which the typed surface does
-not expose.** The engine assigns each table a physical name derived from its workspace and
-table ids (of the form `x<workspace_id>_<table_id>`, e.g. `x6_203970`); those numeric ids are
-assigned at import, so the physical name isn't knowable from a `table()` def (whose identity
-is a name + guid, neither of which is the engine's numeric id), and `sql_name` is persisted
-empty. There is currently
-no typed way to reach that name, so the "safe" counter drops you out of the typed surface
-entirely: you must hardcode the physical name after inspecting the deployed table. A typed
-atomic path — either a dedicated increment statement or a table-reference token the engine
-substitutes into `direct_query` SQL — requires an **engine change** (tracked in
-[issue #35](https://github.com/sidestepai/core/issues/35)).
-
-**System / request variables (`sys.*`).** Xano exposes built-in request context — client IP,
-HTTP method, data source, and so on. In XanoScript these read as `$env.$remote_ip` — note the
-**second `$`**: they are *settings* with a `$`-prefixed name, the same tag `env()` and `setting()`
-emit (a workspace env var is just a setting with a plain name). That prefix is the footgun:
-`env("remote_ip")` does **not** read the caller's IP — it reads a workspace env var literally named
-`remote_ip` (almost always unset → null). `sys.*` spells the `$`-prefixed names for you:
-
-| accessor | var | type | | accessor | var | type |
-|---|---|---|---|---|---|---|
-| `sys.remoteIp()` | `$remote_ip` | text | | `sys.datasource()` | `$datasource` | text |
-| `sys.requestMethod()` | `$request_method` | text | | `sys.branch()` | `$branch` | text |
-| `sys.requestUri()` | `$request_uri` | text | | `sys.tenant()` | `$tenant` | text |
-| `sys.requestQueryString()` | `$request_querystring` | text | | `sys.release()` | `$release` | int |
-| `sys.httpHeaders()` | `$http_headers` | object | | `sys.platform()` | `$platform` | int |
-| `sys.requestAuthToken()` | `$request_auth_token` | text | | `sys.isDebugger()` | `$debugger` | bool |
-| `sys.apiBaseUrl()` | `$api_baseurl` | text | | | | |
-
-`setting("$<name>")` remains the escape hatch for anything `sys` doesn't cover. The one that
-matters most in practice is `sys.remoteIp()` — the rate-limit key for **public** endpoints,
-where `auth("id")` is null (see the rate-limit recipe above).
+`setting("$<name>")` covers anything `sys` doesn't. The one that matters most in practice is
+`sys.remoteIp()`, the rate-limit key for public endpoints.
 
 **Inputs** — `input.*` mirrors `f.*` exactly: every engine-legal field type is a valid
-function/query input. Use `input.object(children)` and `input.list(element)` for structured
-shapes. `input.url()` names a URL-typed text field. **Comparisons** use `= != > < >= <=`
-(JS `== === !==` are normalized).
+function/query input, with `input.object(children)` and `input.list(element)` for structured
+shapes. Comparisons use `= != > < >= <=`.
 
-**Validate input at the boundary.** Field types don't enforce arbitrary rules, so reject
-bad input in the stack with `s.precondition` — it raises a **status-bearing** error
-(`error_type: "badrequest"` → HTTP 400) a client can detect via `res.ok`, unlike `s.throw`,
-which returns 200 with an error body. Its `error` takes a plain string for a fixed message
-(`error: "url must start with http"`) or a `Value` when the message is computed. Example: a link shortener stores user URLs and later
-navigates to them, so a `javascript:`/`data:` URL is a stored-XSS / open-redirect vector —
-guard the scheme before persisting:
+**Validate input at the boundary.** Field types don't enforce arbitrary
+rules, and `s.precondition` raises a **status-bearing** error (`error_type: "badrequest"` →
+HTTP 400) a client can detect via `res.ok` — unlike `s.throw`, which returns 200 with an
+error body:
 
 ```ts
-import { s, c, inp, expr, withFilters, fl } from "@sidestep/core";
-
 s.precondition({
-  // `fl.regex_test` runs PHP `preg_match(pattern, subject)`. It is PATTERN-piped:
-  // the piped value is the regex, the arg is the text tested — the REVERSE of
-  // `istarts_with`, whose piped value is the subject (#22). Build the pattern with
-  // `c.regex(...)` — it delimiter-wraps for you (a bare `c.text("^…")` is an invalid
-  // PCRE that matches nothing, so `withFilters` rejects it, #128). `^https?://`
-  // matches http/https and rejects `javascript:`, `data:`, `httpfoo://` alike.
+  // `fl.regex_test` is PATTERN-piped: the piped value is the regex and the arg is the
+  // text tested — the reverse of `istarts_with`. Build the pattern with `c.regex(...)`,
+  // which delimiter-wraps it (a bare `c.text("^…")` is an invalid PCRE matching nothing).
   expr: expr(withFilters(c.regex("^https?://", "i"), fl.regex_test(inp("url"))), "=", c.bool(true)),
-  error_type: "badrequest",                       // → HTTP 400 (not a 200 throw)
+  error_type: "badrequest",
   error: c.text("url must be an http(s) URL"),
 })
 ```
 
-**Normalize on the input, not in the stack.** `methods` run at bind, before your stack — so
-`input.email({ methods: ["lower"] })` / `input.text({ methods: ["trim"] })` make `inp("email")` /
-`inp("name")` read already-normalized. Don't reroll the transform into a `var` (`inp("name")|trim`);
-put `trim`/`lower`/`upper` on the input and read the clean value directly.
+**Normalize on the input, not in the stack.** `methods` run at bind, before your stack, so
+`input.email({ methods: ["lower"] })` makes `inp("email")` read already-normalized. Don't
+reroll `trim`/`lower`/`upper` into a var.
 
-**Email/password auth (signup + login).** The trap: `input.password()` **hashes on bind**, so a
-password typed that way is already a hash before your stack runs — `check_password` then compares
-hash-vs-hash and login *always* fails. The fix is to take the password as **plain text** and let
-the `f.password` *column* do the hashing on write; `check_password` compares the plaintext
-submission against the stored hash.
+**Email/password auth.** The trap: `input.password()` **hashes on bind**, so a password
+typed that way is already a hash before your stack runs, and `check_password` then compares
+hash against hash — login always fails. Take the password as **plain text** and let the
+`f.password` *column* hash it on write; `check_password` compares the plaintext submission
+against the stored hash.
 
 ```ts
-const usersTbl = table({ name: "users", schema: {
-  email: f.email({ required: true }), name: f.text(), password: f.password(),
-} });
-
 // Signup — plaintext in; the f.password COLUMN hashes on write.
 query({ name: "signup", verb: "POST", apiGroup: authApi,
   input: { email: input.email({ required: true }), name: input.text(),
@@ -1706,8 +1096,8 @@ query({ name: "login", verb: "POST", apiGroup: authApi,
   response: ref("token") });
 ```
 
-Reach for `input.password()` only when you specifically want its bind-time hash **and** are not
-also feeding it to `check_password` (issue #109).
+Reach for `input.password()` only when you specifically want its bind-time hash **and** are
+not also feeding it to `check_password`.
 
 </details>
 
@@ -2065,23 +1455,28 @@ the real Xano engine golden fixtures, and a coverage report prints on every test
 
 | Surface | Coverage |
 |---|---|
-| Object kinds | **12 / 30** — `function`, `table`, `query`, `api_group`, all 6 `trigger`s, `tool`, `mcp_server`, `agent`, `task`, `middleware`, `addon`, `workspace` |
-| Statements (via `s`) | **214 / 214 (100%)** — every engine statement surface has a factory |
+| Object kinds | **23 / 30** — counted over the engine's catalog, where each trigger type is its own kind |
+| Statements (via `s`) | **215 / 215 (100%)** — every engine statement surface has a factory |
 
-The statement catalog is generated from the engine's own schema YAMLs (`npm run codegen`),
-with the non-declarative remainder hand-authored. **Reachable ≠ byte-verified**: all 214
-surfaces are authorable, but structural specials without a persisted golden yet
-(`db.query`/external SQL, `ai.agent.run`, `cloud.job*`, `array.map`/`union`, …) emit a
-shape *modeled* on the engine schema, to be deep-equal'd against fixtures as they're
-vendored.
+The seven engine kinds you cannot author here are `workflow_test`, `tablemap`, `run.job`,
+`run.service`, the superseded `realtime_channel`, and — correctly, since they are instance
+state rather than workspace source — `branch` and `market_item`. `llms.txt` names them with
+their reasons, and both numbers are regenerated from the SDK's own catalogs rather than
+written down, so this table cannot drift from what the code does.
+
+The statement catalog is generated from the engine's own schemas (`npm run codegen`), with
+the non-declarative remainder hand-authored. **Reachable ≠ byte-verified**: every surface is
+authorable, but a structural special without a persisted golden yet emits a shape *modeled*
+on the engine schema, to be deep-equal'd against fixtures as they are captured.
 
 **Out of scope** — reimplementing the engine's XanoScript parser, executing objects at
 runtime (SideStep only compiles), and generating engine-side numeric ids/timestamps.
 (Object guids and canonicals *are* handled — deterministically derived or frozen via
 `xano.lock`.)
 
-**Deferred (by design)** — folder auto-discovery, round-trip/decompile (bundle → TS), and
-the `workflow_test` / `service` / `vault` / `branch` payload sections. `InferResponse`
+**Deferred (by design)** — folder auto-discovery, and the `workflow_test` / `service` /
+`vault` / `branch` payload sections. (Round-trip decompile is no longer deferred: that is
+`sidestep codegen`, above.) `InferResponse`
 auto-derivation covers the object-literal and single-`db`-variable cases (matching the engine's
 static walk); multi-hop tracing (a response variable produced inside control flow, `set_var`, or
 a nested function call) and addon/related-field keys resolve to `unknown` — declare

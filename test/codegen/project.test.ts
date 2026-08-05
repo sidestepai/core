@@ -101,6 +101,12 @@ function objectSymbols(project: GeneratedProject): string[] {
     .sort();
 }
 
+/** The barrel's `export { … };` list, single-line or one-per-line. */
+function exportedSymbols(barrel: string): string[] {
+  const block = /export \{([^}]*)\};/.exec(barrel);
+  return block ? block[1]!.split(",").map((s) => s.trim()).filter(Boolean) : [];
+}
+
 describe("symbol naming", () => {
   it("turns a name that is not an identifier into one", () => {
     expect(toSymbol("My Table-2")).toBe("My_Table_2");
@@ -687,6 +693,30 @@ describe("generated tree contents", () => {
       .filter(Boolean);
     expect(new Set(registered).size).toBe(registered.length);
     expect(registered.sort()).toEqual(objectSymbols(project));
+  });
+
+  // The barrel is the tree's public surface. Without this, a caller has to know
+  // which generated path a symbol landed at — and those paths move whenever an
+  // object's parent or its shared-file placement changes.
+  it("re-exports every registered object by name", () => {
+    const barrel = file(project, "index.ts");
+    const exported = exportedSymbols(barrel);
+    for (const symbol of objectSymbols(project)) expect(exported).toContain(symbol);
+  });
+
+  it("re-exports nothing it has not imported", () => {
+    const barrel = file(project, "index.ts");
+    const imported = new Set(
+      [...barrel.matchAll(/import \{ ([^}]*) \} from/g)].flatMap((m) =>
+        m[1]!.split(",").map((s) => s.trim()),
+      ),
+    );
+    // `workspace` is the one import that is called rather than re-exported.
+    for (const symbol of exportedSymbols(barrel)) expect(imported).toContain(symbol);
+  });
+
+  it("re-exports the workspace settings alongside the objects", () => {
+    expect(exportedSymbols(file(project, "index.ts"))).toContain("workspaceSettings");
   });
 
   it("states the disposable / full-replace / schema-only warnings unconditionally", () => {

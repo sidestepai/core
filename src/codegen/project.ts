@@ -988,7 +988,21 @@ function workspaceFile(
   };
 }
 
-/** The barrel: registers every decoded object under its `register*` bucket. */
+/**
+ * The barrel: registers every decoded object under its `register*` bucket, and
+ * re-exports every one of them by name.
+ *
+ * The re-export is what makes a pulled tree importable as a package rather than
+ * only runnable as a whole. Every object is already imported here to be
+ * registered, so `import { getUser } from "./xano/index.js"` costs one statement
+ * — without it, a caller has to know which of ~40 generated paths a symbol
+ * happens to live at, and that path moves whenever the object's parent or its
+ * shared-file placement changes.
+ *
+ * Symbols are globally disambiguated before placement, so this scope cannot
+ * collide by construction — the same property that lets the register calls
+ * import them all into one file.
+ */
 function barrel(
   ctx: DecodeContext,
   payload: Record<string, unknown>,
@@ -1006,6 +1020,12 @@ function barrel(
     lines.push(`  .registerWorkspace(${settings.symbol})`);
   }
 
+  // Only what this file actually imports may be re-exported, so it is collected
+  // in the register loop rather than from `placements` — a placement whose kind
+  // has no decoder is never imported here, and exporting that name would not
+  // compile.
+  const exported: string[] = settings ? [settings.symbol] : [];
+
   for (const decoder of KIND_DECODERS) {
     if (decoder.name === "workspace") continue;
     // Register in PAYLOAD order, not placement order. `placements` is grouped by
@@ -1019,6 +1039,7 @@ function barrel(
     if (members.length === 0) continue;
     for (const member of members) {
       imports.use(`./${member.path.replace(/\.ts$/, ".js")}`, member.symbol);
+      exported.push(member.symbol);
     }
     lines.push(`  .${decoder.register}([${members.map((m) => m.symbol).join(", ")}])`);
   }
@@ -1028,6 +1049,12 @@ function barrel(
     ...imports.toStatements(),
     { kind: "blank" },
     { kind: "exportDefault", value: { kind: "id", text: lines.join("\n") } as Expr },
+    { kind: "blank" },
+    {
+      kind: "comment",
+      text: "Every object in the tree, by name — import from here rather than from its file,\nwhich moves when its parent or its shared-file placement changes.",
+    },
+    { kind: "exportNamed", symbols: exported },
   ]);
 }
 
@@ -1076,6 +1103,10 @@ function readme(ctx: DecodeContext, placements: readonly Placement[]): string {
     "Every table has its own file under `table/`. Anything else referenced from more " +
       "than one file lives in `_shared.ts`. A query sits under its API group, and a " +
       "trigger under the object it fires on.",
+    "",
+    "`index.ts` re-exports all of it by name, so import from the tree's root rather " +
+      "than from a file — a path here moves when an object's parent or its `_shared.ts` " +
+      "placement changes, and the root does not.",
     "",
   );
 

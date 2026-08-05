@@ -44,10 +44,20 @@ describe("manifest", () => {
 
   it("reports honest coverage", () => {
     expect(m.coverage.statements).toEqual({ implemented: TOTAL_STATEMENTS, total: TOTAL_STATEMENTS });
-    // 16 published kinds — the realtime family (server/channel/message) shipped,
-    // so nothing is withheld any more, and `microservice` joined them.
-    // 30 = the engine catalog after the realtime kinds landed upstream (was 24).
-    expect(m.coverage.objectKinds).toEqual({ implemented: 16, total: 30 });
+    // 23 of the engine's 30 object kinds. Counted over the ENGINE catalog, where
+    // each trigger type is its own kind — counting SDK kinds instead reported 16,
+    // because one `trigger` kind answers for seven engine kinds.
+    expect(m.coverage.objectKinds.implemented).toBe(23);
+    expect(m.coverage.objectKinds.total).toBe(30);
+    expect(m.coverage.objectKinds.unmodeled.map((k) => k.kind)).toEqual([
+      "branch",
+      "market_item",
+      "realtime_channel",
+      "run.job",
+      "run.service",
+      "tablemap",
+      "workflow_test",
+    ]);
   });
 
   it("every statement sPath resolves to a real callable leaf under s", () => {

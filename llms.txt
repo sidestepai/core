@@ -1,4 +1,4 @@
-# sidestep v4.1.28
+# sidestep v4.1.29
 
 > TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.
 
@@ -6,7 +6,8 @@ Author a Xano workspace in TypeScript: build typed objects, register them on a
 `new Xano()` instance, and call `.export()` to get one importable bundle. Compile
 with `sidestep export ./xano/index.js`.
 
-Coverage: object kinds 16/30, statement surfaces 215/215, filters 225 (129 typed).
+Coverage: object kinds 23/30, statement surfaces 215/215, filters 225 (129 typed).
+Not authorable here: branch, market_item, realtime_channel, run.job, run.service, tablemap, workflow_test — these cannot be authored and do not survive a pull; see `coverage.objectKinds.unmodeled` in `manifest.json`.
 
 Full reference: this doc shows the authoring signature for every kind, statement, and
 filter. For exhaustive per-entry detail NOT shown here — a statement's full field schema
