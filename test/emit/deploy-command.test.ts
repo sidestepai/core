@@ -234,6 +234,21 @@ describe("verifyMicroservices — post-import readiness reporting", () => {
     expect(process.exitCode).toBe(0);
   });
 
+  // The wait renders its own progress through a caller-invisible `onPoll`; a
+  // caller that supplies one (a test, a future progress consumer) must still get
+  // it, since the two are composed rather than one overwriting the other.
+  it("still calls a caller-supplied onPoll while rendering progress", async () => {
+    const { fn } = reads([ms({ status: "deploying" })], [ms({ status: "ok" })]);
+    const seen: number[] = [];
+    await verifyMicroservices(auth, BASE, false, {
+      fetchFn: fn,
+      ...clock(),
+      pollIntervalMs: 1_000,
+      onPoll: (rows) => seen.push(rows.length),
+    });
+    expect(seen).toEqual([1, 1]);
+  });
+
   it("carries no secret-bearing field into the summary", async () => {
     const { fn } = reads([ms({ registry_auth: { dockerconfigjson: "SECRET" }, chart: { values: "SECRET" } })]);
     const res = await verifyMicroservices(auth, BASE, false, { fetchFn: fn, ...clock() });

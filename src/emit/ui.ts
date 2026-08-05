@@ -122,6 +122,83 @@ export function blank(): void {
   process.stderr.write("\n");
 }
 
+/** A live progress line. Calls are safe (and silent) after {@link Spinner.stop}. */
+export interface Spinner {
+  /** Replace the label shown next to the frame (e.g. a readiness ratio). */
+  update(msg: string): void;
+  /** Erase the line (TTY) and stop animating. Idempotent. */
+  stop(): void;
+}
+
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const SPINNER_FRAME_MS = 80;
+
+/**
+ * Show an animated, self-erasing progress line for an operation that would
+ * otherwise sit silent — a poll loop with a multi-minute budget (a fresh
+ * ephemeral provisioning, microservices coming up) reads as a hung CLI without
+ * one. The elapsed seconds are part of the point: they're what tells you the
+ * wait is progressing rather than stuck.
+ *
+ * Animates only on a real terminal. Anywhere else (a pipe, CI, a test) it prints
+ * the label once as a {@link detail} line and nothing further, so logs keep the
+ * same single-line record they had before and never accumulate frames.
+ *
+ * `stop()` erases the line, so the caller's own outcome line — `✓ …` / `! …` —
+ * is what remains. Always stop in a `finally`: an escaping error must not leave
+ * a stray frame or a live interval behind.
+ */
+export function spinner(msg: string): Spinner {
+  let text = msg;
+
+  if (process.stderr.isTTY !== true) {
+    detail(msg);
+    return { update: () => {}, stop: () => {} };
+  }
+
+  const start = Date.now();
+  let frame = 0;
+  let live = true;
+
+  const clear = () => process.stderr.write("\r\x1b[2K");
+  const render = () => {
+    const secs = Math.round((Date.now() - start) / 1000);
+    const suffix = secs >= 1 ? ` ${style.dim(`(${secs}s)`)}` : "";
+    clear();
+    process.stderr.write(`${style.cyan(SPINNER_FRAMES[frame % SPINNER_FRAMES.length] as string)} ${style.dim(text)}${suffix}`);
+    frame += 1;
+  };
+
+  render();
+  const timer = setInterval(render, SPINNER_FRAME_MS);
+  // Never hold the process open on the animation alone: whatever we're waiting
+  // for owns the event loop, and an un-unref'd interval would outlive a caller
+  // that forgot to stop it.
+  timer.unref();
+
+  return {
+    update(next: string): void {
+      text = next;
+    },
+    stop(): void {
+      if (!live) return;
+      live = false;
+      clearInterval(timer);
+      clear();
+    },
+  };
+}
+
+/** Run `work` under a {@link spinner}, erasing the line however it settles. */
+export async function withSpinner<T>(msg: string, work: () => Promise<T>): Promise<T> {
+  const spin = spinner(msg);
+  try {
+    return await work();
+  } finally {
+    spin.stop();
+  }
+}
+
 /**
  * Render an ephemeral expiry (the API serializes it as `"2026-07-24 20:49:15+0000"`,
  * or tolerate a raw unix-epoch number) as a human "in Xh Ym" string, or "expired"
