@@ -14,9 +14,10 @@
  * array_map, array_union, get_input, and test_expect_to_throw are now
  * golden-verified against live engine captures (see the conformance corpus);
  * post_process is parser-verified. Remaining unverified spots:
- *   (1) array_map — the scalar `transform_value` path is byte-exact; the
- *       object-literal form (engine `transform_object` + `output_type:"object"`)
- *       is still UNSUPPORTED here (a feature gap, not a verification gap).
+ *   (1) array_map — the scalar `transform_value` path is byte-exact. The
+ *       object-literal form (`transform_object` + `output_type:"object"`) is now
+ *       authorable and round-trips through codegen, but is modeled from the
+ *       engine's declared context schema rather than a capture: no golden yet.
  *   (2) create_auth — input order is `id/dbtable/extras/expiration`, read from the
  *       engine's own input schema; `extras`/`expiration` are `?=` optionals and
  *       are omitted when unset. Only the `dbtable` const tag is unverified.
@@ -26,6 +27,7 @@
 import type { Statement, AsShapeBrand } from "../statement.js";
 import { encodeStatement, registerStatement } from "../statement.js";
 import type { Value } from "../../values/value.js";
+import { c, isTaggedValue } from "../../values/value.js";
 import { resolveRef } from "../../refs/guid.js";
 import type { ObjectRef } from "../../refs/guid.js";
 import { annotate } from "../statement.js";
@@ -46,21 +48,76 @@ export interface ArrayMapArgs extends StatementAnnotations {
   /** The source array → stored `collection`. */
   source: Value;
   as?: string;
-  /** Per-item mapping expression → stored `transform_value`. */
-  transform?: Value;
+  /**
+   * How each item maps. Two forms, and the form picks the engine's `output_type`:
+   * - a single {@link Value} → each item maps to that scalar expression
+   *   (`output_type:"value"`, stored `transform_value`);
+   * - a record of values → each item maps to an OBJECT with those keys
+   *   (`output_type:"object"`, stored `transform_object[]`).
+   *
+   * Use `ref("$this")` for the current item and `ref("$index")` for its position.
+   * An empty record is rejected — the engine's object branch iterates
+   * `transform_object` and would map every item to `{}`.
+   */
+  transform?: Value | Record<string, Value>;
+}
+
+/** A `transform` record (object form) rather than a single tagged value. */
+function isTransformRecord(t: Value | Record<string, Value>): t is Record<string, Value> {
+  return !isTaggedValue(t);
 }
 
 /**
  * `array.map <source>` — map each element through an expression (`mvp:array_map`).
  *
- * The scalar `transform_value` path is golden-verified (live capture). The
- * object-literal mapping form (engine `transform_object` + `output_type:"object"`)
- * is NOT supported here — only the scalar path; `output_type` is hard-coded
- * `"value"`. @TODO(byte-verify): the object-literal form remains unimplemented.
+ * Both engine output modes are authorable. The scalar path
+ * (`output_type:"value"` + `transform_value`) is golden-verified against a live
+ * capture. The object path (`output_type:"object"` + `transform_object[]`) is
+ * modeled on three agreeing sources rather than a capture: the statement's
+ * declared context schema, the engine's own transform decoder, and the editor
+ * that writes it. Each entry is `{attribute_key, attribute_value}` and the key
+ * is a plain `const` text triple — what the decoder builds for a static object
+ * key, and what the editor's text-typed key field writes.
+ *
+ * Only the LIVE branch is emitted: the engine's object branch never reads
+ * `transform_value`, so it is omitted, matching what the engine's own transform
+ * writes. The editor disagrees — it builds its form from the whole context
+ * schema and saves every control, so an editor-saved object-mode statement also
+ * carries `transform_value` at its schema defaults (and a value-mode one carries
+ * `transform_object: []`). Both spellings are one state; `liveArrayMapContext`
+ * in validate/normalize.ts is where that equivalence lives, so a stored
+ * statement in either spelling still reads back to this factory.
+ *
+ * @TODO(byte-verify): no golden for the object path yet; capture one.
+ *
+ * ```ts
+ * // scalar: ["a","b"] → ["A","B"]
+ * s.array.map({ source: ref("names"), as: "upper", transform: withFilters(ref("$this"), fl.upper()) })
+ * // object: [1,2] → [{id:1, pos:0}, {id:2, pos:1}]
+ * s.array.map({ source: ref("ids"), as: "rows", transform: { id: ref("$this"), pos: ref("$index") } })
+ * ```
  */
 export function arrayMap(a: ArrayMapArgs): Statement {
   const context: Record<string, unknown> = { output_type: "value", collection: vf(a.source) };
-  if (a.transform) context.transform_value = vf(a.transform);
+  if (a.transform !== undefined) {
+    if (isTransformRecord(a.transform)) {
+      const entries = Object.entries(a.transform);
+      if (entries.length === 0) {
+        throw new Error(
+          "array.map: an object `transform` needs at least one key — the engine's object branch " +
+            "iterates `transform_object` and an empty one maps every item to `{}`. Pass a record " +
+            "of values (`{ id: ref('$this') }`) or a single value for the scalar form.",
+        );
+      }
+      context.output_type = "object";
+      context.transform_object = entries.map(([key, value]) => ({
+        attribute_key: vf(c.text(key)),
+        attribute_value: vf(value),
+      }));
+    } else {
+      context.transform_value = vf(a.transform);
+    }
+  }
   return annotate({ name: "mvp:array_map", context, as: a.as ?? "", input: [] }, a);
 }
 

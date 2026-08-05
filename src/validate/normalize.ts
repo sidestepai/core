@@ -1368,6 +1368,58 @@ function blankValue(tag: string): Record<string, unknown> {
 }
 
 /**
+ * The mapping `transform_value` an editor save writes into an `mvp:array_map`
+ * that is NOT in value mode — the statement schema's own `?=` defaults
+ * (`value?="$this"`, `tag?=var`), materialized by the form builder.
+ */
+const INERT_ARRAY_MAP_TRANSFORM: Readonly<Record<string, unknown>> = {
+  value: "$this",
+  tag: "var",
+  filters: [],
+};
+
+/**
+ * An `mvp:array_map` context with the branch its `output_type` does NOT select
+ * dropped, or `undefined` when there is nothing to drop.
+ *
+ * The statement has two mapping branches and reads exactly one: `output_type`
+ * `"value"` reads `transform_value`, `"object"` reads `transform_object[]`.
+ * Which members are PERSISTED depends on who saved it, and both writers are
+ * authoritative for their own generation:
+ *
+ *  - the engine's XanoScript transform writes only the live branch, which is
+ *    what this SDK emits;
+ *  - the editor builds its form from the whole context schema and saves the
+ *    entire form value, so an object-mode save also carries `transform_value`
+ *    at its schema defaults, and a value-mode save carries `transform_object: []`.
+ *
+ * Neither spelling can change what the statement does — the engine's object
+ * branch never reads `transform_value`, and its value branch never reads
+ * `transform_object` — so this is one state stored two ways, the same shape as
+ * the `return`-section and trigger-`meta` rules above.
+ *
+ * Deliberately narrow: only the INERT spellings go. An object-mode
+ * `transform_value` that is anything other than the schema default, or a
+ * value-mode `transform_object` with entries in it, is left in place and still
+ * compares — a decoder that cannot represent it should decline, not drop it.
+ */
+export function liveArrayMapContext(stored: unknown): Record<string, unknown> | undefined {
+  if (stored === null || typeof stored !== "object") return undefined;
+  const { name, context } = stored as { name?: unknown; context?: unknown };
+  if (name !== "mvp:array_map") return undefined;
+  if (context === null || typeof context !== "object" || Array.isArray(context)) return undefined;
+  const block = context as Record<string, unknown>;
+
+  const dead =
+    (block.output_type ?? "value") === "object"
+      ? deepEqual(block.transform_value, INERT_ARRAY_MAP_TRANSFORM) && "transform_value"
+      : isEmptyArray(block.transform_object) && "transform_object";
+  if (!dead) return undefined;
+
+  return Object.fromEntries(Object.entries(block).filter(([k]) => k !== dead));
+}
+
+/**
  * The `context` the engine's optional-schema pass would produce for `stored`,
  * or null when this statement has no such fill.
  *
@@ -1511,6 +1563,9 @@ export function normalize<T>(value: T): T {
     // the members the engine's optional-schema pass supplies. Substitute them so
     // that spelling compares equal to the explicit one (see {@link filledContext}).
     const contextFill = filledContext(value);
+    // An `array.map` whose stored context carries BOTH mapping branches — what an
+    // editor save writes — reduced to the one its `output_type` reads.
+    const arrayMapContext = liveArrayMapContext(value);
     // An expression node whose live branch is the nested group: its `statement`
     // member is scaffolding the engine never reads (see
     // {@link isBlankGroupStatement}).
@@ -1666,6 +1721,12 @@ export function normalize<T>(value: T): T {
           out[k] = normalize(unbound);
           continue;
         }
+      }
+      // An `mvp:array_map` carrying the branch its `output_type` does not select:
+      // editor exhaust the engine never reads (see {@link liveArrayMapContext}).
+      if (k === "context" && arrayMapContext) {
+        out[k] = normalize(arrayMapContext);
+        continue;
       }
       if (k === "context" && contextFill) {
         out[k] = normalize(contextFill);

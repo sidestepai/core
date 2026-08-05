@@ -1601,6 +1601,105 @@ describe("miscellaneous specials", () => {
     roundTrip(s.array.union({ source: ref("a"), with: ref("b"), transform: ref("$$"), as: "u" }));
   });
 
+  it("round-trips array.map's OBJECT mode back to the record transform", () => {
+    const emitted = roundTrip(
+      s.array.map({ source: ref("items"), as: "rows", transform: { id: ref("$this"), n: ref("$index") } }),
+    );
+    expect(emitted).toContain("transform: {");
+    expect(emitted).toContain('id: ref("$this")');
+    expect(emitted).toContain('n: ref("$index")');
+  });
+
+  it("reads an EDITOR-saved array.map, which stores both mapping branches", () => {
+    // The editor builds its form from the whole context schema and saves the
+    // entire form value, so it persists the branch `output_type` does not select:
+    // an object-mode save also carries `transform_value` at the schema defaults
+    // (`value?="$this"`, `tag?=var`), and a value-mode save carries
+    // `transform_object: []`. The engine reads neither. Without this the SDK's
+    // minimal spelling would not match the stored one and both would ride raw().
+    const objectMode = {
+      name: "mvp:array_map",
+      as: "rows",
+      input: [],
+      output: { filters: [] },
+      context: {
+        output_type: "object",
+        collection: { value: "items", tag: "var", filters: [] },
+        transform_value: { value: "$this", tag: "var", filters: [] },
+        transform_object: [
+          {
+            attribute_key: { value: "id", tag: "const", filters: [] },
+            attribute_value: { value: "$this", tag: "var", filters: [] },
+          },
+        ],
+      },
+    } as unknown as StackItemXdo;
+    const objectSource = printExpr(decodeStatement(new DecodeContext(), EMPTY_REFS, objectMode));
+    expect(objectSource).not.toContain("raw(");
+    expect(objectSource).toContain('id: ref("$this")');
+    expect(normalize(encodeStatement(evaluate(objectSource)))).toEqual(normalize(objectMode));
+
+    const valueMode = {
+      name: "mvp:array_map",
+      as: "doubled",
+      input: [],
+      output: { filters: [] },
+      context: {
+        output_type: "value",
+        collection: { value: "items", tag: "var", filters: [] },
+        transform_value: { value: "$this", tag: "var", filters: [] },
+        transform_object: [],
+      },
+    } as unknown as StackItemXdo;
+    const valueSource = printExpr(decodeStatement(new DecodeContext(), EMPTY_REFS, valueMode));
+    expect(valueSource).not.toContain("raw(");
+    expect(normalize(encodeStatement(evaluate(valueSource)))).toEqual(normalize(valueMode));
+  });
+
+  it("declines an object-mode array.map whose dead branch holds something REAL", () => {
+    // Only the inert spelling is exhaust. A `transform_value` that is not the
+    // schema default is a shape the SDK cannot write back, so it rides raw()
+    // intact rather than being silently dropped.
+    const stored = {
+      name: "mvp:array_map",
+      as: "rows",
+      input: [],
+      context: {
+        output_type: "object",
+        collection: { value: "items", tag: "var", filters: [] },
+        transform_value: { value: "leftover", tag: "var", filters: [] },
+        transform_object: [
+          {
+            attribute_key: { value: "id", tag: "const", filters: [] },
+            attribute_value: { value: "$this", tag: "var", filters: [] },
+          },
+        ],
+      },
+    } as unknown as StackItemXdo;
+    const source = printExpr(decodeStatement(new DecodeContext(), EMPTY_REFS, stored));
+    expect(source).toContain("raw(");
+    expect(normalize(encodeStatement(evaluate(source)))).toEqual(normalize(stored));
+  });
+
+  it("declines array.map object mode with a COMPUTED key rather than inventing one", () => {
+    // A record key has to be a literal. The engine allows a tagged value there,
+    // so a filtered or non-const `attribute_key` has no authoring surface —
+    // riding `raw()` keeps it byte-intact instead of silently renaming it.
+    const stored = structuredClone(
+      encodeStatement(
+        s.array.map({ source: ref("items"), as: "rows", transform: { id: ref("$this") } }),
+      ),
+    ) as StackItemXdo;
+    const attributes = (stored.context as { transform_object: Array<{ attribute_key: { tag: string } }> })
+      .transform_object;
+    attributes[0]!.attribute_key.tag = "var";
+
+    const source = printExpr(decodeStatement(new DecodeContext(), EMPTY_REFS, stored));
+    expect(source).toContain("raw(");
+    // Still byte-exact — declining is what fidelity looks like here.
+    expect(normalize(encodeStatement(evaluate(source)))).toEqual(normalize(stored));
+  });
+
   it("round-trips a realtime event with and without an auth table", () => {
     roundTrip(s.api.realtime_event({ channel: c.text("room"), data: ref("payload"), authId: c.int(0) }));
     dbRoundTrip(

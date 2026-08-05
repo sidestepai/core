@@ -22,6 +22,22 @@ describe("control-flow special statements — validated vs persisted fixtures", 
     expect(returnValue(c.int(7))).toEqual(returnValue({ value: c.int(7) }));
   });
 
+  it("return spreads a TEXT value into context the same way as the null golden", () => {
+    // The worklist tracked a separate `return-null-text` golden. It does not
+    // need one: `mvp:return` context is a value SPREAD, so the statement shape
+    // is fixed by the null golden above and the only thing that varies is the
+    // tagged value dropped into it — and a `const` text triple is pinned by its
+    // own goldens elsewhere in the corpus. Asserting the composition here is
+    // what a second golden of the same statement would have bought.
+    const golden = loadFixture<{ context: unknown }>("statements/return-null.json");
+    const encoded = encodeStatement(returnValue(c.text("hello"))) as { context: unknown };
+    expect(normalize(encoded.context)).toEqual({ value: "hello", tag: "const" });
+    // Same envelope as the golden — only the spread value differs.
+    expect(Object.keys(normalize(encoded.context) as object)).toEqual(
+      Object.keys(normalize(golden.context) as object),
+    );
+  });
+
   it("die deep-equals fixture", () => {
     expect(normalize(encodeStatement(die(c.int(123))))).toEqual(
       normalize(loadFixture("statements/die.json")),

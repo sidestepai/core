@@ -130,6 +130,52 @@ function make<V, N extends string = never>(type: string, defaults?: Partial<Fiel
     descriptor(type, { ...defaults, ...options } as FieldOptions) as FieldDescriptor & TypeBrand<V, O>;
 }
 
+/**
+ * The referenced table's primary-key type, or `undefined` when the reference
+ * carries no schema to read it from (a bare name, or a `{name, guid}` ref).
+ *
+ * Three spellings reach here and all three are answered from the target itself
+ * rather than assumed: an authored `table()` def states `idType`; a def that
+ * omits it may still declare its own `id` column, in either the field-map or the
+ * `ColumnDef[]` schema form; an already-encoded table payload only has the
+ * column. Only a target that actually carries a `schema` is inspected, so
+ * nothing is inferred from a reference that never had one.
+ */
+function targetKeyType(table: ObjectRef): "int" | "uuid" | undefined {
+  if (typeof table === "string") return undefined;
+  const def = table as { idType?: unknown; schema?: unknown };
+  if (def.idType === "int" || def.idType === "uuid") return def.idType;
+  if (def.schema === undefined || def.schema === null) return undefined;
+  const idType = Array.isArray(def.schema)
+    ? (def.schema as Array<{ name?: unknown; type?: unknown }>).find((col) => col?.name === "id")
+        ?.type
+    : (def.schema as Record<string, { type?: unknown } | undefined>).id?.type;
+  if (idType === "uuid") return "uuid";
+  // A schema-bearing target with no declared `id` gets the engine's default key.
+  return idType === undefined || idType === "int" ? "int" : undefined;
+}
+
+/**
+ * Throw when an `f.tableRef` column's type contradicts the referenced table's
+ * primary-key type.
+ *
+ * The engine requires the two to match, and rejects the import when they do not
+ * — the slowest place to learn it. Whenever the reference carries enough to
+ * answer the question ({@link targetKeyType}) it is answered here instead. A
+ * bare-name target (the documented self-reference spelling) carries nothing, so
+ * it passes through rather than being guessed at.
+ */
+function assertTableRefKeyType(table: ObjectRef, columnType: "int" | "uuid"): void {
+  const idType = targetKeyType(table);
+  if (idType === undefined || idType === columnType) return;
+  const name = (typeof table === "string" ? table : table.name) || "<unnamed>";
+  throw new Error(
+    `f.tableRef("${name}"): the column is "${columnType}" but that table's primary key is ` +
+      `"${idType}". The engine requires a reference column to match the target's key type, so ` +
+      `this fails at import. Use f.tableRef(${name}, { type: "${idType}" }).`,
+  );
+}
+
 /** Convert a named field map into the encoder's `NestedField[]` form. */
 export function toNestedFields(map: FieldMap): NestedField[] {
   return Object.entries(map).map(([name, d]) => ({ name, type: d.type, ...d.options }));
@@ -239,16 +285,17 @@ export const f = {
    *   instead: `f.tableRef("tweets", { type: "int" })`. Identity guids derive
    *   from `(type, name)`, so the name form resolves to the same guid.
    *
-   * @TODO(byte-verify): MODELED on the engine's tableref schema. Round-trip-tested
-   *   (the `@` arg guid equals the target table's payload guid) but the exact stored
-   *   method shape (does `@` carry `disabled:false`? is it always last?) is
-   *   unconfirmed. Blocked on an object-level capture: `sidestep validate --capture`
-   *   round-trips FUNCTIONS, so it yields statement goldens but not a persisted TABLE
-   *   schema — a tableref golden needs a table-object readback the capture path
-   *   doesn't emit yet. The engine also asserts the referenced table's PK type
-   *   matches (int↔int, uuid↔uuid); sidestep does NOT validate that here (no access
-   *   to the target's schema), so a mismatched f.tableRef(uuidTable) on an int
-   *   column would only fail at import.
+   * Byte-verified whole-object against a persisted table readback
+   * (`test/fixtures/tables/ex_field_table_ref.json`, asserted in
+   * `test/conformance/kinds-corpus.test.ts`): the `@` method carries
+   * `disabled:false`, sits last in `methods`, and its `dbo=` arg is the target
+   * table's payload guid.
+   *
+   * The engine asserts the referenced table's primary-key type matches
+   * (int↔int, uuid↔uuid). When the target is passed as a **def handle** its
+   * `idType` is in hand, so a mismatch throws here instead of surfacing as an
+   * import failure. The bare-name form (self-references) carries no schema —
+   * there is nothing to check against, and it is not guessed at.
    */
   tableRef<
     const O extends ConstMethodOpts<TableRefMethod> & { type?: "int" | "uuid" } = Record<string, never>,
@@ -256,6 +303,7 @@ export const f = {
     const { type = "int", methods = [], ...rest } = options as ConstMethodOpts<TableRefMethod> & {
       type?: "int" | "uuid";
     };
+    assertTableRefKeyType(table, type);
     const guid = resolveRef("dbo", table);
     return descriptor(type, {
       ...rest,

@@ -109,15 +109,31 @@ const emptyObj = () => ({ value: "", tag: "const:obj", filters: [] });
  *   - zip_{add,create,delete,extract,view}_file_resource, create_var_from_file_resource
  *     — the source goldens are degenerate (empty context while the spec needs
  *     non-optional fields); capture non-trivial authorings before wiring.
- *   - array_every / object_values-array / return-null-text — share array_find's
- *     numeric inline-array-filter-arg value-layer gap (generated.test.ts asserts
- *     only the compare slice).
- *   - f.tableRef — DONE. The persisted TABLE-object readback is captured and
+ *   - array_map OBJECT mode (`output_type:"object"` + `transform_object[]`) — now
+ *     authorable and codegen-round-tripped, and modeled from three agreeing
+ *     sources (context schema, engine transform decoder, editor component), but
+ *     not from a capture. The value-mode golden below covers only the scalar
+ *     path. A capture would settle two things the sources only imply: the
+ *     `attribute_key` tag on an editor-authored static key, and whether an
+ *     editor save really persists the dead branch that `liveArrayMapContext`
+ *     now treats as exhaust.
+ *   - action / action_package — EXCLUDED: need an action-identity model first.
+ *
+ *   CLOSED (kept because the worklist named them as open):
+ *   - array_every / object_values-array / return-null-text — these were filed
+ *     behind array_find's "numeric inline-array-filter-arg value-layer gap".
+ *     There is no such gap: `normalize()` already canonicalizes a numeric tagged
+ *     `value`/`arg`, which is the right direction (the engine's filter-arg schema
+ *     declares `arg[].value` as text and coerces to it), so array_find now
+ *     byte-verifies WHOLE-OBJECT in generated.test.ts rather than compare-slice
+ *     only. The three siblings needed no goldens of their own: each is one
+ *     already-golden statement envelope holding one already-golden value shape,
+ *     and the compositions are asserted in generated.test.ts / control-flow.test.ts.
+ *   - f.tableRef — the persisted TABLE-object readback is captured and
  *     byte-verified whole-object in test/conformance/kinds-corpus.test.ts
  *     (fixture tables/ex_field_table_ref.json), alongside every other authored
  *     kind (query/trigger/task/toolset/tool/middleware/addon). See that file
  *     and src/validate/kinds.ts.
- *   - action / action_package — EXCLUDED: need an action-identity model first.
  */
 const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
   { fixture: "math_add", build: () => encodeStatement(mathAdd("x1", c.int(1))) },

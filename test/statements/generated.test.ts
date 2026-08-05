@@ -164,16 +164,66 @@ describe("!inline:array + !compare directives (array-predicate family)", () => {
     });
   });
 
-  it("array_find's !compare output deep-equals the persisted fixture's context.expr", () => {
-    // The comparison operands are byte-exact against the golden fixture; the
-    // inline-array filter args use numeric values (a value-layer detail tracked
-    // for the field-type unit), so only the compare slice is asserted here.
-    const fixture = loadFixture<{ context: { expr: unknown } }>("statements/array_find.json");
-    const encoded = encodeStatement(
-      getStatementFactory("mvp:array_find")({ as: "test", if: expr(ref("$this"), "=", c.int(1)) }),
+  /** The golden's inline array: `[]` grown by one `array_push` per element. */
+  const inlineArray = (...ints: number[]) =>
+    withFilters(
+      c.array([]),
+      ints.map((n) => filter("array_push", c.int(n))),
     );
-    const ctx = (encoded as { context: { expr: unknown } }).context;
-    expect(normalize(ctx.expr)).toEqual(normalize(fixture.context.expr));
+
+  it("array_find deep-equals the persisted fixture WHOLE-OBJECT", () => {
+    // Whole-object, not just the compare slice. The inline-array filter args are
+    // the reason it used to be sliced: the golden stores each `const:int` arg as
+    // a JSON NUMBER (`1`) while the SDK writes the declared string (`"1"`).
+    //
+    // That is a storage-vintage artifact, not a divergence. The engine's own
+    // filter-arg schema declares `arg[].value` as TEXT, and its text coercion
+    // casts a non-string scalar to its string form before anything reads it — so
+    // `1` and `"1"` are one stored value, and the string is the form a
+    // schema-validated write persists. `normalize()` already canonicalizes the
+    // numeric spelling for exactly this reason, which makes the full object
+    // comparable and leaves nothing for a slice to protect.
+    const fixture = loadFixture("statements/array_find.json");
+    const encoded = encodeStatement(
+      getStatementFactory("mvp:array_find")({
+        as: "test",
+        expr: inlineArray(1, 2, 3),
+        if: expr(ref("$this"), "=", c.int(1)),
+      }),
+    );
+    expect(normalize(encoded)).toEqual(normalize(fixture));
+  });
+
+  it("array_every encodes identically to array_find apart from the statement name", () => {
+    // The two share one generated spec (same three rules, same routes), so the
+    // array_find golden pins array_every's shape too. Asserted rather than
+    // assumed: a spec regeneration that drifted one and not the other would
+    // otherwise pass unnoticed until an import failed.
+    const args = {
+      as: "test",
+      expr: inlineArray(1, 2, 3),
+      if: expr(ref("$this"), "=", c.int(1)),
+    };
+    const every = encodeStatement(getStatementFactory("mvp:array_every")({ ...args }));
+    const find = encodeStatement(getStatementFactory("mvp:array_find")({ ...args }));
+    expect(normalize({ ...every, name: "mvp:array_find" })).toEqual(normalize(find));
+  });
+
+  it("object_values nests an INLINE-ARRAY source the same way as its json_decode golden", () => {
+    // The worklist tracked a separate `object_values-array` golden. Like
+    // `return-null-text`, it does not need one: `context.object` is a
+    // context-nest of one tagged value, so the golden fixes the envelope and the
+    // inline-array triple it would carry is itself pinned by the array_find
+    // golden asserted above. This composes the two proven halves.
+    const golden = loadFixture<{ context: { object: unknown } }>("statements/object_values.json");
+    const encoded = encodeStatement(
+      getStatementFactory("mvp:object_values")({ as: "x2", value: inlineArray(1, 2, 3) }),
+    ) as { context: { object: unknown } };
+    const arrayGolden = loadFixture<{ context: { array: unknown } }>("statements/array_find.json");
+    expect(normalize(encoded.context.object)).toEqual(normalize(arrayGolden.context.array));
+    expect(Object.keys(normalize(encoded.context) as object)).toEqual(
+      Object.keys(normalize(golden.context) as object),
+    );
   });
 
   it("context-nest stores an inline-array Value's fields under the target path", () => {
