@@ -30,6 +30,7 @@ import { registerStatement, annotate } from "../statement.js";
 import type { Value } from "../../values/value.js";
 import { leanInput } from "../lean-input.js";
 import { isIgnored } from "../../values/ignored.js";
+import { resolveEnumValue } from "./enum-guard.js";
 import { encodeComparison } from "../conditional.js";
 import type { Condition } from "../conditional.js";
 
@@ -225,9 +226,16 @@ export function encodeFromSpec(spec: StatementSpec, authored: Authored): Stateme
       case "context-compare":
         setPath(context, rule.route.path, encodeComparison(provided as Condition));
         break;
-      case "input":
-        input.push(inputEntry(rule.route.name, provided as Value, env?.inputFull ?? false));
+      case "input": {
+        // An enum-constrained field takes the bare-literal shorthand and is
+        // checked when the authored value is statically decidable; every other
+        // field passes straight through. See ./enum-guard.ts.
+        const value = rule.enum
+          ? resolveEnumValue(spec.name, rule.field, rule.enum, provided)
+          : (provided as Value);
+        input.push(inputEntry(rule.route.name, value, env?.inputFull ?? false));
         break;
+      }
     }
   }
 

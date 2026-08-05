@@ -181,11 +181,24 @@ function namespaceOf(base: string): { path: string[]; method: string } {
 
 const TS_TYPE: Record<string, string> = { string: "string", value: "Value", comparison: "Condition" };
 
+/**
+ * The authored type for one field. An enum-constrained field renders as its
+ * legal values (in the engine's declared order — the editor's dropdown order,
+ * which reads as intentional) plus `Value`: the literal spelling puts the legal
+ * set in autocomplete at the call site and makes a typo a compile error, while
+ * `Value` keeps the dynamic-binding escape hatch open. Both spellings encode to
+ * the same bytes (see `encodeFromSpec`).
+ */
+function fieldType(r: StatementSpec["rules"][number]): string {
+  if (!r.enum) return TS_TYPE[r.type]!;
+  return [...r.enum.map((v) => JSON.stringify(v)), TS_TYPE[r.type]!].join(" | ");
+}
+
 /** TS arg-object type + whether the whole object can default to `{}`. */
 function argSignature(spec: StatementSpec): { type: string; allOptional: boolean } {
   const fields = spec.rules.map((r) => {
     const optional = r.optional || r.default !== undefined;
-    return `${r.field}${optional ? "?" : ""}: ${TS_TYPE[r.type]}`;
+    return `${r.field}${optional ? "?" : ""}: ${fieldType(r)}`;
   });
   // Reserved envelope authoring keys (always optional). `disabled` and
   // `description` are on EVERY statement — they annotate the stack item rather

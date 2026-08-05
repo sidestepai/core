@@ -37,7 +37,8 @@ function argsFor(spec: (typeof GENERATED_SPECS)[number]): Record<string, unknown
         ? "x"
         : rule.type === "comparison"
           ? expr(c.text("a"), "=", c.text("a"))
-          : c.text("x");
+          : // An enum-constrained field only accepts one of its declared members.
+            c.text(rule.enum ? rule.enum[0]! : "x");
   }
   return a;
 }
