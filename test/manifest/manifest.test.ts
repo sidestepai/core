@@ -304,3 +304,57 @@ describe("manifest", () => {
     expect(committed).toBe(renderLlmsTxt(m));
   });
 });
+
+describe("enum-constrained statement fields", () => {
+  const manifest = buildManifest();
+  const statement = (surface: string) =>
+    manifest.statements.find((s) => s.surface === surface);
+
+  it("carries the legal values as structured data", () => {
+    const field = statement("ai.external.mcp.tool.run")?.fields?.find(
+      (f) => f.name === "connection_type",
+    );
+    expect(field).toMatchObject({ type: "value", optional: true, enum: ["sse", "stream"] });
+  });
+
+  it("keeps the engine default alongside the set", () => {
+    const field = statement("ai.external.mcp.tool.run")?.fields?.find(
+      (f) => f.name === "connection_type",
+    );
+    // Informational: the SDK does not materialize it into the stored bytes.
+    expect(field?.default).toBe("sse");
+  });
+
+  it("leaves an unconstrained field on the same statement untouched", () => {
+    const field = statement("ai.external.mcp.tool.run")?.fields?.find((f) => f.name === "tool");
+    expect(field).toMatchObject({ type: "value" });
+    expect(field?.enum).toBeUndefined();
+  });
+
+  it("agrees with the spec catalog in both directions", () => {
+    const fromSpecs = new Set<string>();
+    for (const spec of GENERATED_SPECS) {
+      for (const rule of spec.rules) if (rule.enum) fromSpecs.add(`${spec.name}:${rule.field}`);
+    }
+    const fromManifest = new Set<string>();
+    for (const s of manifest.statements) {
+      for (const f of s.fields ?? []) if (f.enum) fromManifest.add(`${s.storedName}:${f.name}`);
+    }
+    // Overridden surfaces defer their signature to a hand-authored prose entry
+    // and carry no `fields`, so the manifest is a subset of the catalog.
+    for (const key of fromManifest) expect(fromSpecs, key).toContain(key);
+    expect(fromManifest.size).toBeGreaterThan(20);
+  });
+
+  it("renders the union in llms.txt instead of the opaque `value`", () => {
+    const llms = renderLlmsTxt(manifest);
+    expect(llms).toContain('connection_type?: "sse" | "stream"');
+    expect(llms).not.toContain("connection_type?: value");
+  });
+
+  it("renders a long algorithm set in full rather than truncating it", () => {
+    const llms = renderLlmsTxt(manifest);
+    expect(llms).toContain('signature_algorithm?: "PS256"');
+    expect(llms).toContain('"ES512"');
+  });
+});
