@@ -12,8 +12,7 @@
  * Xano UI labels "empty (recommended)". A non-empty value names a datasource
  * that the engine **clones** before running the test. Cloning a production-sized
  * datasource is slow enough to fail the run outright, so `""` is the only
- * default worth having and `"live"` earns a warning (see
- * {@link warnLiveDatasource}).
+ * default worth having and `"live"` warns at encode time.
  */
 import type { StackItemXdo } from "../types/xdo.js";
 import { encodeStatement } from "../statements/statement.js";
@@ -75,6 +74,7 @@ function warnLiveDatasource(name: string, datasource: string): void {
   );
 }
 
+/** Encode a `WorkflowTestDef` into the flattened importable `workflow_test` xdo. */
 export function encodeWorkflowTest(def: WorkflowTestDef): WorkflowTestXdo {
   if (!def.name) throw new Error("workflow test: `name` is required.");
   const datasource = def.datasource ?? "";
@@ -97,6 +97,24 @@ export const workflowTestKind: ObjectKind<WorkflowTestDef, WorkflowTestXdo> = {
 };
 registerKind(workflowTestKind);
 
+/**
+ * Declare an end-to-end test. Register it with `Xano.registerWorkflowTests`.
+ *
+ * The body is always the same shape: `.call` something and bind it with `as`,
+ * then assert on that variable. `s.expect.*` is only meaningful here.
+ *
+ * ```ts
+ * workflowTest({
+ *   name: "signup_works",
+ *   // datasource omitted — "" is an EMPTY datasource, and cloning a real one
+ *   // before every run is slow enough to fail the run.
+ *   stack: [
+ *     s.function.call({ fn: createUser, input: { email: "a@b.c" }, as: "created" }),
+ *     s.expect.to_equal({ expr: ref("created.status"), value: c.text("ok") }),
+ *   ],
+ * });
+ * ```
+ */
 export function workflowTest(def: WorkflowTestDef): WorkflowTestDef {
   return def;
 }

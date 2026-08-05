@@ -36,7 +36,7 @@ const FIXTURE_DIR = fileURLToPath(new URL("../fixtures/", import.meta.url));
  * a `?=` risk. Every entry was checked against the engine's own class.
  */
 const UNCOVERED_BY_DESIGN: Readonly<Record<string, string>> = {
-  // The engine's WorkspaceRun* subclasses all share one base and override only
+  // The engine's workspace-run statements all share one base and override only
   // display/name/type plus id migration — the stored context is a single
   // required `id`, so there is no optional to write unconditionally. The shared
   // shape is proven by `mvp:workspace_run_endpoint` AND, since the workflow-test

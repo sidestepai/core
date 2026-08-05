@@ -425,6 +425,20 @@ export const ENGINE_OBJECT_KINDS: ReadonlyArray<EngineObjectKind> = [
 export const TOTAL_OBJECT_KINDS = ENGINE_OBJECT_KINDS.length;
 
 /**
+ * Statement-namespace notes rendered under the catalog heading, for families
+ * whose surfaces are only meaningful inside a particular host object.
+ */
+const NAMESPACE_NOTES: Readonly<Record<string, string>> = {
+  expect:
+    "Assertions. These belong in a `workflowTest({...})` stack — assert on what a " +
+    "`.call` bound with `as`. An `s.expect.*` in a query/function/task stack is " +
+    "reachable but asserts nothing useful: nothing collects the result.",
+  workflow_test:
+    "Run another workflow test from inside one. Pass the `workflowTest()` def handle, " +
+    "not a name.",
+};
+
+/**
  * Author factories on the PUBLISHED surface — every descriptor factory, minus
  * anything withheld by `unpublished`, and taking a kind's sub-kind factories in
  * place of its grouped brace-list.
@@ -1136,6 +1150,8 @@ export function renderLlmsTxt(m: Manifest): string {
     "- `defineFunction`/`query`/`apiGroup` above cover the queries+tables core; the five below are the \"reach past that\" primitives (agents, tools, tasks, middleware, MCP servers). Same envelope conventions (`guid?`, `description?`, `docs?`, `tags?`, `history?`) unless noted.",
     "- `task({ name, guid?, description?, docs?, datasource?, active?, tags?, history?, schedule?, stack?, middleware? })` — a scheduled background job (function-like `stack`, no `input`/`response`).",
     "  - `schedule?`: a `ScheduleDef[]` (NOT a single object) — `{ startsOn, freq?, repeatEnabled?, endsOn?, endsEnabled? }`. `startsOn`/`endsOn` are **ISO-8601 string** timestamps (`\"2026-01-01T00:00:00Z\"`), not epoch numbers; `freq` is the repeat interval **in seconds** (default `86400` = daily); `endsOn` present ⇒ the schedule has an end. `endsEnabled?` defaults to that and is recovery-only — state it to reproduce a stored schedule that remembers an end date with the gate OFF. Fires on an ephemeral; does NOT fire in the sandbox (see Gotchas).",
+    "- `workflowTest({ name, guid?, description?, docs?, datasource?, active?, tags?, stack? })` — an end-to-end test. NO `input`/`response`: `.call` something with an `as`, then assert on that var — `s.function.call({ fn, input, as: \"r\" })`, `s.expect.to_equal({ expr: ref(\"r\"), value: c.int(42) })`. `s.expect.*` is only meaningful here. `active?` defaults `true`; chain tests with `s.workflow_test.call({ workflowTest: <def handle> })`.",
+    "  - `datasource?`: **the trap.** Default `\"\"` is an EMPTY datasource (recommended), not \"no datasource\". Any non-empty name makes the engine CLONE it before EVERY run — against production-sized data, slow enough to fail the run. `\"live\"` warns at compile time; other names don't.",
     "- `middleware({ name, guid?, description?, docs?, resultStrategy?, exceptionPolicy?, tags?, history?, input?, stack?, response? })` — a pre/post interceptor (function-like `stack`); attach it via a host's `middleware: { pre, post }`.",
     "  - `resultStrategy?`: `\"merge\" | \"replace\"` (default `merge`) — how the middleware `response` folds into the host's.",
     "  - `exceptionPolicy?`: `\"silent\" | \"rethrow\" | \"critical\"` (default `\"silent\"` — a throw is SWALLOWED, so a guard is NOT enforced). A rate-limit/auth guard wants `\"rethrow\"` (throw aborts the request, surfaces the status); `\"critical\"` also skips the `post` chain.",
@@ -1502,11 +1518,17 @@ export function renderLlmsTxt(m: Manifest): string {
     "- `s.webflow.request({ path?, method?, …tls, as? })` — Webflow API request (`mvp:connect_webflow_api_request`); like `s.api.request` but addressed by `path` (host is engine-supplied).",
     "- `s.api.microservice({ host, path, method, params, headers, timeout, follow_location, as? })` — in-cluster microservice call (`mvp:microservice_request`); typed, all request fields required, no TLS fields.",
     "- `s.task.call` / `s.tool.call` / `s.trigger.call` / `s.middleware.call` / `s.addon.call` — same `{ <target>, input?, as? }` shape against the named kind.",
+    "- `s.workflow_test.call({ workflowTest, datasource?, as? })` — run another workflow test from inside one. The odd one out: NO `input` (a workflow test takes none), and it carries `datasource?` instead — same clone caveat as the kind's own field.",
     "",
   );
 
   // Group by top-level namespace segment for readability. Legacy surfaces are
   // withheld here and named in the `## Legacy` index instead.
+  //
+  // A namespace whose statements are only meaningful in a particular HOST gets a
+  // one-line note under its heading. The catalog is otherwise a flat list of
+  // reachable surfaces, which reads as "callable anywhere" — true of nearly every
+  // family, and wrong for the ones below.
   const groups = new Map<string, ManifestStatement[]>();
   for (const s of m.statements) {
     if (s.legacy) continue;
@@ -1515,6 +1537,8 @@ export function renderLlmsTxt(m: Manifest): string {
   }
   for (const ns of [...groups.keys()].sort()) {
     lines.push(`### ${ns}`, "");
+    const note = NAMESPACE_NOTES[ns];
+    if (note) lines.push(note, "");
     for (const s of groups.get(ns)!) {
       const call = `s.${s.sPath}`;
       const flags = [s.declarative ? null : "special", s.registered ? null : "unregistered", s.output ? "output" : null]
