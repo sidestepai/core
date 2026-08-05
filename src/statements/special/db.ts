@@ -657,12 +657,12 @@ export interface DbDelArgs<T extends ObjectRef = ObjectRef> extends StatementAnn
  * throws `NotFound`/404 when nothing matches.
  *
  * Left **unbranded** (plain {@link Statement}), unlike the other single-record
- * writes: `dbo_delby` declares an empty `getOutputSchema` and its `process()`
- * returns nothing after `$inst->delete()`, so the bound `as` variable holds
- * **`null`**, not the deleted row. `InferResponse` therefore resolves a returned
- * del var to `unknown` — matching where the engine's own OpenAPI walk falls back
- * to `json`. (Contrast `db.add`/`edit`/`patch`/`add_or_edit`, which each
- * `return $inst->toArray()` and so bind the full row.)
+ * writes: the engine declares no output schema for this statement and returns
+ * nothing once the row is gone, so the bound `as` variable holds **`null`**, not
+ * the deleted row. `InferResponse` therefore resolves a returned del var to
+ * `unknown` — matching where the engine's own OpenAPI walk falls back to `json`.
+ * (Contrast `db.add`/`edit`/`patch`/`add_or_edit`, which each return the written
+ * row and so bind the full record.)
  */
 export function dbDel<T extends ObjectRef>(args: DbDelArgs<T>): Statement {
   return annotate(dboStatement(
@@ -1422,7 +1422,7 @@ export function dbBulkPatch<T extends ObjectRef, const As extends string = "">(
  * `db.bulk.update <table>` — replace many rows (`mvp:dbo_bulkupdate`).
  *
  * Left **unbranded** (plain {@link Statement}): the engine declares no output
- * schema for `dbo_bulkupdate`/`dbo_bulkadd` (empty `getOutputSchema`), so
+ * schema for `dbo_bulkupdate`/`dbo_bulkadd`, so
  * `InferResponse` faithfully resolves a returned bulk-add/update var to `unknown`
  * — matching where the engine's own OpenAPI walk falls back to `json`. Only
  * `bulk.patch` (row list) and `bulk.delete` (count) carry a static output schema.

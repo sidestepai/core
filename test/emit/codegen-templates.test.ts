@@ -23,9 +23,8 @@ import {
   renderCursorRules,
   renderPreset,
 } from "../../src/emit/init-ai-presets.js";
+import { templateLeaks } from "../helpers/source-leak.js";
 
-// Identifiers that would leak Xano source-internal naming (project CLAUDE.md R10).
-const BANNED = ["cloud-master", "cloud-client", "cloud-frontend", "x2 ", "orchestrator"];
 
 const VARS: TemplateVars = { appName: "pulled-app", coreVersion: "4.1.6" };
 const WORKSPACE: CodegenOrigin = { source: "workspace", origin: "42" };
@@ -101,7 +100,7 @@ describe("renderCodegenReadme", () => {
 
   it("leaks no Xano-internal identifiers (R10)", () => {
     const all = md + renderCodegenReadme(VARS, WORKSPACE, ["A"]);
-    for (const banned of BANNED) expect(all).not.toContain(banned);
+    expect(templateLeaks(all)).toEqual([]);
   });
 });
 
@@ -159,7 +158,7 @@ describe("AI presets — the generated variant", () => {
   it("leaks no Xano-internal identifiers (R10)", () => {
     const all =
       generated + renderAgentsMd("a", "generated") + renderCursorRules("a", "generated");
-    for (const banned of BANNED) expect(all).not.toContain(banned);
+    expect(templateLeaks(all)).toEqual([]);
   });
 
   it("renderPreset defaults to the authored body and honours the generated mode", () => {

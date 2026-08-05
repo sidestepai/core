@@ -22,10 +22,11 @@ import {
   renderAgentsMd,
   renderCursorRules,
 } from "../../src/emit/init-ai-presets.js";
+import { templateLeaks } from "../helpers/source-leak.js";
 
 // Identifiers that would leak Xano source-internal naming (project CLAUDE.md R10).
 // Kept deliberately small — asserts scaffold text stays third-party-neutral.
-const BANNED = ["cloud-master", "cloud-client", "cloud-frontend", "x2 ", "orchestrator"];
+
 
 describe("parseArgs — init flags (U1)", () => {
   it("defaults init flags", () => {
@@ -142,7 +143,7 @@ describe("AI presets (U4)", () => {
   });
   it("no preset leaks Xano-internal identifiers (R10)", () => {
     const all = renderClaudeMd("app") + renderAgentsMd("app") + renderCursorRules("app");
-    for (const banned of BANNED) expect(all).not.toContain(banned);
+    expect(templateLeaks(all)).toEqual([]);
   });
 });
 

@@ -55,13 +55,13 @@ const UNCOVERED_BY_DESIGN: Readonly<Record<string, string>> = {
   "mvp:dbo_external_oracle_query": "same dbExternalQuery encoder as the covered dbo_external_postgres_query",
   "mvp:dbo_external_snowflake_query": "same dbExternalQuery encoder as the covered dbo_external_postgres_query",
 
-  // Engine getInputSchema is empty — nothing optional to get wrong.
-  "mvp:comment": "engine getInputSchema is empty",
-  "mvp:placeholder": "engine getInputSchema is empty",
+  // The engine's input schema is empty — nothing optional to get wrong.
+  "mvp:comment": "engine input schema is empty",
+  "mvp:placeholder": "engine input schema is empty",
 
   // Already settled on this branch (cb07bb2): input order read from the
-  // engine's own getInputSchema, `extras`/`expiration` omitted when unset.
-  "mvp:create_auth": "?= optionals already settled against the engine getInputSchema in cb07bb2",
+  // engine's own input schema, `extras`/`expiration` omitted when unset.
+  "mvp:create_auth": "?= optionals already settled against the engine input schema in cb07bb2",
 
   // Writes `auth.dbo_id` only when an auth table is given, matching the
   // engine's `$data["auth"]["dbo_id"] ?? 0`.
