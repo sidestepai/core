@@ -4,6 +4,9 @@ import { join } from "node:path";
 import { parseYaml } from "../../../src/statements/schema-dsl/parse.js";
 import { schemaToSpec } from "../../../src/statements/schema-dsl/generate.js";
 import { applySpecOverrides } from "../../../src/statements/schema-dsl/overrides.js";
+import { attachEnums } from "../../../src/statements/schema-dsl/enums.js";
+import { parseInputSchema } from "../../../src/statements/schema-dsl/input-schema.js";
+import type { StatementEnums } from "../../../src/statements/schema-dsl/input-schema.js";
 import type { StatementSpec } from "../../../src/statements/schema-dsl/interpret.js";
 import { GENERATED_SPECS } from "../../../src/statements/generated/catalog.js";
 
@@ -15,6 +18,23 @@ import { GENERATED_SPECS } from "../../../src/statements/generated/catalog.js";
  * checkout to run it; it skips when that is unset, which is the CI case.
  */
 const SCHEMA_DIR = process.env.XANO_SCHEMA_DIR ?? "";
+const INPUT_SCHEMA_DIR = process.env.XANO_INPUT_SCHEMA_DIR ?? "";
+
+/**
+ * The enum index this run can prove. When `XANO_INPUT_SCHEMA_DIR` is unset the
+ * index is empty and the committed enums are the floor — mirroring the codegen's
+ * own rule — so the comparison stays honest either way.
+ */
+function enumIndex(): Map<string, StatementEnums> {
+  const index = new Map<string, StatementEnums>();
+  if (!existsSync(INPUT_SCHEMA_DIR)) return index;
+  for (const entry of readdirSync(INPUT_SCHEMA_DIR, { withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const parsed = parseInputSchema(readFileSync(join(INPUT_SCHEMA_DIR, entry.name), "utf8"));
+    if (parsed) index.set(parsed.name, parsed.enums);
+  }
+  return index;
+}
 
 /** Drop fixture-pinned fields (`output`, `envelope`) so the comparison is source-only. */
 function structural(spec: StatementSpec): Omit<StatementSpec, "output" | "envelope"> {
@@ -25,12 +45,26 @@ function structural(spec: StatementSpec): Omit<StatementSpec, "output" | "envelo
 }
 
 function regenerate(): StatementSpec[] {
+  const index = enumIndex();
+  // The committed floor, exactly as `scripts/codegen.ts` applies it: a statement
+  // this run cannot see an input schema for keeps the enums already committed.
+  for (const spec of GENERATED_SPECS) {
+    if (index.has(spec.name)) continue;
+    const carried: StatementEnums = {};
+    for (const rule of spec.rules) {
+      if (rule.route.kind === "input" && rule.enum) carried[rule.route.name] = rule.enum;
+    }
+    if (Object.keys(carried).length > 0) index.set(spec.name, carried);
+  }
+
   const specs: StatementSpec[] = [];
   for (const file of readdirSync(SCHEMA_DIR).sort()) {
     if (!file.endsWith(".yaml")) continue;
     const result = schemaToSpec(parseYaml(readFileSync(join(SCHEMA_DIR, file), "utf8")));
     if ("spec" in result) {
       applySpecOverrides(result.spec);
+      // After the overrides — the ordering the codegen depends on (see enums.ts).
+      attachEnums(result.spec, index);
       specs.push(result.spec);
     }
   }

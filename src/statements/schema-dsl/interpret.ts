@@ -81,6 +81,15 @@ export interface FieldRule {
   optional: boolean;
   /** Literal default for string fields when not provided (the schema's `?=X`). */
   default?: string;
+  /**
+   * The field's closed set of legal values, harvested from the engine's runtime
+   * input schema ({@link ./input-schema.ts}) and attached by
+   * {@link ./enums.ts attachEnums}. Absent on all but the ~36 constrained
+   * fields. Drives three things: the generated factory's literal-union
+   * signature, the bare-literal shorthand, and the encode-time guard in
+   * {@link encodeFromSpec}.
+   */
+  enum?: string[];
   /** Routing target. */
   route: Route;
 }
