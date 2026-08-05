@@ -605,8 +605,8 @@ builder. `xano.export()` returns the importable `packageExport` bundle, and
 
 Every top-level Xano object is a registered kind with a factory and a `Xano.register*`
 method: `defineFunction`, `table`, `query`, `apiGroup`, `tool`, `mcpServer`, `agent`,
-`task`, `middleware`, `addon`, `realtimeServer`, `realtimeChannel`, `realtimeMessage`,
-`microservice`, `workspaceConfig`, and the seven trigger factories below. Signatures and
+`task`, `workflowTest`, `middleware`, `addon`, `realtimeServer`, `realtimeChannel`,
+`realtimeMessage`, `microservice`, `workspaceConfig`, and the seven trigger factories below. Signatures and
 payload keys are in `llms.txt`; what follows is what the types don't tell you.
 
 **Triggers take a callback stack.** `stack: (t) => [...]`, not the plain array every other
@@ -629,6 +629,26 @@ tableTrigger({
   stack: (t) => [
     // t.new("email") is typed to the row; t.action is the op; t.old is null (insert-only).
     s.db.add({ table: auditLog, row: { email: t.new("email"), event: t.action } }),
+  ],
+});
+```
+
+**A workflow test is an end-to-end test, and its `datasource` is the trap.** `workflowTest`
+takes no `input` and no `response` — it calls other objects and asserts on what they bind.
+Leave `datasource` off: the default `""` runs against an **empty** datasource. Naming one
+makes the engine **clone** that datasource before every run, so pointing a test at
+production-sized data is slow enough to fail the run outright. `"live"` warns at compile
+time; every other name is your call.
+
+```ts
+workflowTest({
+  name: "signup_works",
+  tags: ["smoke"],
+  // datasource omitted on purpose — "" is an EMPTY datasource, not "no datasource".
+  stack: [
+    s.function.call({ fn: createUser, input: { email: "a@b.c" }, as: "created" }),
+    s.expect.to_be_defined({ expr: ref("created") }),
+    s.expect.to_equal({ expr: ref("created.status"), value: c.text("ok") }),
   ],
 });
 ```
@@ -1455,12 +1475,12 @@ the real Xano engine golden fixtures, and a coverage report prints on every test
 
 | Surface | Coverage |
 |---|---|
-| Object kinds | **23 / 30** — counted over the engine's catalog, where each trigger type is its own kind |
+| Object kinds | **24 / 30** — counted over the engine's catalog, where each trigger type is its own kind |
 | Statements (via `s`) | **215 / 215 (100%)** — every engine statement surface has a factory |
 
-The seven engine kinds you cannot author here are `workflow_test`, `tablemap`, `run.job`,
-`run.service`, the superseded `realtime_channel`, and — correctly, since they are instance
-state rather than workspace source — `branch` and `market_item`. `llms.txt` names them with
+The six engine kinds you cannot author here are `tablemap`, `run.job`, `run.service`, the
+superseded `realtime_channel`, and — correctly, since they are instance state rather than
+workspace source — `branch` and `market_item`. `llms.txt` names them with
 their reasons, and both numbers are regenerated from the SDK's own catalogs rather than
 written down, so this table cannot drift from what the code does.
 

@@ -2,10 +2,20 @@
   "run": [
     {
       "as": "doubled",
-      "name": "mvp:set_var",
-      "_xsid": "f:5e69eed6-304f-423d-add3-6fd612d689ac",
+      "name": "mvp:workspace_run_function",
+      "_xsid": "f:8af10653-9f40-4e63-ab14-27bb2c440951",
       "addon": [],
-      "input": [],
+      "input": [
+        {
+          "tag": "const:int",
+          "name": "n",
+          "value": "21",
+          "expand": false,
+          "ignore": false,
+          "filters": [],
+          "children": []
+        }
+      ],
       "mocks": {},
       "output": {
         "items": [],
@@ -13,9 +23,7 @@
         "customize": false
       },
       "context": {
-        "tag": "const:int",
-        "value": "42",
-        "filters": []
+        "id": "Zzk0NOigdW6a6RL7jxOV08GKwl4"
       },
       "runtime": null,
       "disabled": false,
@@ -25,7 +33,7 @@
     {
       "as": "",
       "name": "mvp:test_expect_to_be_defined",
-      "_xsid": "f:bc3a02d6-f295-489f-84eb-92a709c0f23d",
+      "_xsid": "f:c2e849e3-33a2-4fa4-b5d8-216c86230aab",
       "addon": [],
       "input": [],
       "mocks": {},
@@ -48,7 +56,7 @@
     {
       "as": "",
       "name": "mvp:test_expect_to_equal",
-      "_xsid": "f:ffb9a9f4-9afb-4d04-a8d8-85546d2a2a16",
+      "_xsid": "f:0bc30680-24e7-4ddc-8ac9-3c169b07e3e3",
       "addon": [],
       "input": [],
       "mocks": {},
@@ -76,19 +84,16 @@
   "tag": [
     {
       "tag": "smoke"
-    },
-    {
-      "tag": "release"
     }
   ],
   "docs": "",
-  "guid": "H60P-LhyPmKJd1YkZzA_SY2Y-4Q",
-  "name": "ex_kind_workflow_test",
+  "guid": "8HeyQB4lBuYsakMutDJADyUjmz8",
+  "name": "ex_kind_double_fn_test",
   "active": true,
   "branch": {
     "id": 0
   },
   "lastRun": null,
   "datasource": "",
-  "description": "asserts a computed value"
+  "description": "ex_shared_double returns its input doubled"
 }
