@@ -1,0 +1,97 @@
+{
+  "run": [
+    {
+      "as": "doubled",
+      "name": "mvp:set_var",
+      "_xsid": "",
+      "addon": [],
+      "input": [],
+      "mocks": {},
+      "output": {
+        "items": [],
+        "filters": [],
+        "customize": false
+      },
+      "context": {
+        "tag": "const:int",
+        "value": 42,
+        "filters": []
+      },
+      "runtime": null,
+      "disabled": false,
+      "description": "",
+      "settings_registry": null
+    },
+    {
+      "as": "",
+      "name": "mvp:test_expect_to_be_defined",
+      "_xsid": "",
+      "addon": [],
+      "input": [],
+      "mocks": {},
+      "output": {
+        "items": [],
+        "filters": [],
+        "customize": false
+      },
+      "context": {
+        "value1": {
+          "tag": "var",
+          "value": "doubled",
+          "filters": []
+        }
+      },
+      "runtime": null,
+      "disabled": false,
+      "description": "",
+      "settings_registry": null
+    },
+    {
+      "as": "",
+      "name": "mvp:test_expect_to_equal",
+      "_xsid": "",
+      "addon": [],
+      "input": [],
+      "mocks": {},
+      "output": {
+        "items": [],
+        "filters": [],
+        "customize": false
+      },
+      "context": {
+        "value1": {
+          "tag": "var",
+          "value": "doubled",
+          "filters": []
+        },
+        "value2": {
+          "tag": "const:int",
+          "value": 42,
+          "filters": []
+        }
+      },
+      "runtime": null,
+      "disabled": false,
+      "description": "",
+      "settings_registry": null
+    }
+  ],
+  "tag": [
+    {
+      "tag": "smoke"
+    },
+    {
+      "tag": "release"
+    }
+  ],
+  "docs": "",
+  "guid": "QA788QfyVxIuFic1q-Dar9z3bkM",
+  "name": "ex_kind_workflow_test",
+  "active": true,
+  "branch": {
+    "id": 0
+  },
+  "lastRun": null,
+  "datasource": "",
+  "description": "asserts a computed value"
+}

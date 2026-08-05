@@ -45,6 +45,11 @@ const KIND_CORPUS: Array<{ kind: string; payloadKey: string; name: string; fixtu
   { kind: "trigger (workspace)", payloadKey: "trigger", name: "ex_kind_trigger_on_branch_live", fixture: "triggers/ex_kind_trigger_on_branch_live.json" },
   // U4 — task (schedule with a timestamp canonicalized by normalize).
   { kind: "task", payloadKey: "task", name: "ex_kind_nightly_cleanup", fixture: "task/ex_kind_nightly_cleanup.json" },
+  // workflow_test — the envelope (active/datasource/docs/tag/run). Captured by
+  // authoring the object on a real engine and reading back its exported bundle,
+  // which is what pins `active: true` as the default and confirms the kind
+  // carries no middleware/history block.
+  { kind: "workflow_test", payloadKey: "workflow_test", name: "ex_kind_workflow_test", fixture: "workflow-test/ex_kind_workflow_test.json" },
   // U5 — toolset (mcp server + agent) and the nested-but-top-level-surfaced tool.
   { kind: "toolset (mcp server)", payloadKey: "toolset", name: "ex_kind_mcp_server", fixture: "toolset/ex_kind_mcp_server.json" },
   { kind: "toolset (agent)", payloadKey: "toolset", name: "ex_assistant", fixture: "toolset/ex_assistant.json" },

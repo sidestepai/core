@@ -81,6 +81,29 @@ describe("validate normalizer — per-kind default/serialization rules", () => {
     expect(normalize({ history: [] })).toEqual({});
   });
 
+  it("drops a workflow test's lastRun, which is an execution result not source", () => {
+    // Always present on a stored workflow test — `null` until the test has been
+    // run once, then the timing and per-statement pass/fail of the last run.
+    // Neither spelling is authored, so both must vanish or the whole kind reads
+    // as a failed round trip.
+    expect(normalize({ lastRun: null })).toEqual({});
+    expect(
+      normalize({
+        lastRun: {
+          date: 1754300000,
+          duration: 42,
+          status: "pass",
+          statements: [{ description: "step", status: "pass", error: "" }],
+        },
+      }),
+    ).toEqual({});
+    // …and it does not take the authored fields around it with it.
+    expect(normalize({ name: "t", active: true, lastRun: null })).toEqual({
+      name: "t",
+      active: true,
+    });
+  });
+
   it("drops an inheriting history block but keeps a customized one", () => {
     expect(normalize({ history: { inherit: true, tool_limit: 100, tool_enabled: true } })).toEqual({});
     const custom = { history: { inherit: false, limit: 5, enabled: true } };
