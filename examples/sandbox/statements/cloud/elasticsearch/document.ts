@@ -7,7 +7,7 @@ import { c, defineFunction, ref, s } from "@sidestep/core";
 export const cloudElasticsearchDocument = defineFunction({
   name: "ex_cloud_elasticsearch_document",
   stack: [
-    s.cloud.elasticsearch.document({ as: "result", key_id: c.text("••••"), access_key: c.text("••••"), index: c.text("example"), base_url: c.text("example"), doc_id: c.text("example"), doc: c.obj({}) }),
+    s.cloud.elasticsearch.document({ as: "result", auth_type: "API Key", key_id: c.text("••••"), access_key: c.text("••••"), base_url: c.text("example"), index: c.text("example"), method: "GET", doc_id: c.text("example"), doc: c.obj({}) }),
   ],
   response: ref("result"),
 });

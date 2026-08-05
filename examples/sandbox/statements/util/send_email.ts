@@ -7,7 +7,7 @@ import { defineFunction, ref, s } from "@sidestep/core";
 export const utilSendEmail = defineFunction({
   name: "ex_util_send_email",
   stack: [
-    s.util.send_email({ as: "result" }),
+    s.util.send_email({ as: "result", service_provider: "resend" }),
   ],
   response: ref("result"),
 });

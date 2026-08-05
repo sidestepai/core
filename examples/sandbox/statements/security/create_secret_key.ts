@@ -7,7 +7,7 @@ import { defineFunction, ref, s } from "@sidestep/core";
 export const securityCreateSecretKey = defineFunction({
   name: "ex_security_create_secret_key",
   stack: [
-    s.security.create_secret_key({ as: "result" }),
+    s.security.create_secret_key({ as: "result", format: "object" }),
   ],
   response: ref("result"),
 });

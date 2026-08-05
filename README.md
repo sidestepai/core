@@ -942,6 +942,20 @@ statement also carries `description` and `disabled`** — inline on the object-a
 a trailing options object on the positional specials. `disabled: true` is Xano's
 commented-out state: the step stays in the stack and the engine skips it.
 
+**Fields with a fixed set of values take a bare literal.** Where the engine accepts only
+certain spellings, the field's type is that set, so autocomplete offers them and a typo is a
+compile error rather than a runtime failure after deploy:
+
+```ts
+s.ai.external.mcp.tool.run({ url, tool, connection_type: "stream" }) // ✅ "sse" | "stream"
+s.ai.external.mcp.tool.run({ url, tool, connection_type: "streaming" }) // ❌ compile error, and throws
+s.ai.external.mcp.tool.run({ url, tool, connection_type: inp("mode") }) // ✅ resolved at runtime
+```
+
+`"stream"` and `c.text("stream")` encode identically — use whichever reads better. A value
+the SDK can't evaluate (an `inp`/`ref`, or anything with a filter chain) is never checked,
+so a computed field stays authorable.
+
 **The db family.** Single-record reads and mutations match one field
 (`{ fieldName, fieldValue }`, defaulting to `id`) — there is no composite `(a, b)` form; for
 a two-column lookup use `s.db.query` with a `where` array. Writes take a partial `row: {…}`,

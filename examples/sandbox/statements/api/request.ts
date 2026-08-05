@@ -7,7 +7,7 @@ import { defineFunction, ref, s } from "@sidestep/core";
 export const apiRequest = defineFunction({
   name: "ex_api_request",
   stack: [
-    s.api.request({ as: "result" }),
+    s.api.request({ as: "result", method: "GET" }),
   ],
   response: ref("result"),
 });

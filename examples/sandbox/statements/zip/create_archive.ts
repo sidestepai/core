@@ -7,7 +7,7 @@ import { c, defineFunction, ref, s } from "@sidestep/core";
 export const zipCreateArchive = defineFunction({
   name: "ex_zip_create_archive",
   stack: [
-    s.zip.create_archive({ as: "result", filename: c.text("example") }),
+    s.zip.create_archive({ as: "result", filename: c.text("example"), password_encryption: "standard" }),
   ],
   response: ref("result"),
 });

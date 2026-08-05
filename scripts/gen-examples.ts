@@ -21,6 +21,21 @@ for (const s of manifest.statements) {
 
 const NUMERIC_HINTS = /^(timeout|size|ttl|count|page|per_page|offset|limit|from|n|amount|decimals|expiration|cnt|len|length|precision|radius|width|height|quality)$/;
 
+/**
+ * Source text for an enum-constrained field: the bare literal, which is both
+ * the shorter spelling and the one worth copying. Prefers the schema's own
+ * default when that is a legal member, else the first declared member.
+ *
+ * These are emitted even when OPTIONAL, unlike every other optional field.
+ * Showing the legal spelling is the entire reason the constraint was carried
+ * this far — an example that omits the field teaches nothing about it.
+ */
+function enumExpr(rule: { default?: string; enum?: string[] }): string {
+  const values = rule.enum!;
+  const pick = rule.default !== undefined && values.includes(rule.default) ? rule.default : values[0]!;
+  return JSON.stringify(pick);
+}
+
 /** Pick a source-text Value constructor for a `value`-typed field. */
 function valueExpr(field: string, ns: string): string {
   if (NUMERIC_HINTS.test(field)) return "c.int(1)";
@@ -58,6 +73,7 @@ function build(spec: (typeof GENERATED_SPECS)[number], sPath: string): Emit | nu
     const { field, type } = rule as { field: string; type: string; optional?: boolean };
     const optional = (rule as { optional?: boolean }).optional ?? false;
     const routeKind = (rule as { route?: { kind?: string } }).route?.kind;
+    const constrained = (rule as { enum?: string[] }).enum;
 
     if (routeKind === "as") {
       e.args.push(`as: "result"`);
@@ -69,6 +85,11 @@ function build(spec: (typeof GENERATED_SPECS)[number], sPath: string): Emit | nu
       e.imports.add("c");
       e.pre.push(`s.set_var("acc", ${seedFor(ns)})`);
       e.args.push(`name: "acc"`);
+      continue;
+    }
+    // An enum-constrained field is always emitted, optional or not — see enumExpr.
+    if (constrained) {
+      e.args.push(`${field}: ${enumExpr(rule as { default?: string; enum?: string[] })}`);
       continue;
     }
     // Only emit required fields (keeps the example minimal + always valid);

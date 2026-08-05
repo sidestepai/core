@@ -7,7 +7,7 @@ import { defineFunction, ref, s } from "@sidestep/core";
 export const securityCreateCurveKey = defineFunction({
   name: "ex_security_create_curve_key",
   stack: [
-    s.security.create_curve_key({ as: "result" }),
+    s.security.create_curve_key({ as: "result", curve: "P-256", format: "object" }),
   ],
   response: ref("result"),
 });

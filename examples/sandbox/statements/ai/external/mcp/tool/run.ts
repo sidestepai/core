@@ -7,7 +7,7 @@ import { defineFunction, ref, s } from "@sidestep/core";
 export const aiExternalMcpToolRun = defineFunction({
   name: "ex_ai_external_mcp_tool_run",
   stack: [
-    s.ai.external.mcp.tool.run({ as: "result" }),
+    s.ai.external.mcp.tool.run({ as: "result", connection_type: "sse" }),
   ],
   response: ref("result"),
 });
