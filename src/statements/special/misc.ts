@@ -70,25 +70,20 @@ function isTransformRecord(t: Value | Record<string, Value>): t is Record<string
 /**
  * `array.map <source>` — map each element through an expression (`mvp:array_map`).
  *
- * Both engine output modes are authorable. The scalar path
- * (`output_type:"value"` + `transform_value`) is golden-verified against a live
- * capture. The object path (`output_type:"object"` + `transform_object[]`) is
- * modeled on three agreeing sources rather than a capture: the statement's
- * declared context schema, the engine's own transform decoder, and the editor
- * that writes it. Each entry is `{attribute_key, attribute_value}` and the key
- * is a plain `const` text triple — what the decoder builds for a static object
- * key, and what the editor's text-typed key field writes.
+ * Both engine output modes are golden-verified against live captures. The object
+ * path (`output_type:"object"` + `transform_object[]`) stores one
+ * `{attribute_key, attribute_value}` entry per record key, in authored order,
+ * and the key is a plain `const` text triple.
  *
- * Only the LIVE branch is emitted: the engine's object branch never reads
- * `transform_value`, so it is omitted, matching what the engine's own transform
- * writes. The editor disagrees — it builds its form from the whole context
- * schema and saves every control, so an editor-saved object-mode statement also
- * carries `transform_value` at its schema defaults (and a value-mode one carries
- * `transform_object: []`). Both spellings are one state; `liveArrayMapContext`
- * in validate/normalize.ts is where that equivalence lives, so a stored
- * statement in either spelling still reads back to this factory.
- *
- * @TODO(byte-verify): no golden for the object path yet; capture one.
+ * Only the LIVE branch is emitted, and the capture confirms the engine agrees:
+ * an imported object-mode statement stores NO `transform_value`, and a
+ * value-mode one stores no `transform_object`. The EDITOR is the exception — it
+ * builds its form from the whole context schema and saves every control, so an
+ * editor-saved object-mode statement also carries `transform_value` at its
+ * schema defaults. Both spellings are one state (the engine's object branch
+ * never reads `transform_value`); `liveArrayMapContext` in validate/normalize.ts
+ * is where that equivalence lives, so an editor-authored statement still reads
+ * back to this factory instead of falling to `raw()`.
  *
  * ```ts
  * // scalar: ["a","b"] → ["A","B"]

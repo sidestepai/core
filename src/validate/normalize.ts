@@ -1384,14 +1384,18 @@ const INERT_ARRAY_MAP_TRANSFORM: Readonly<Record<string, unknown>> = {
  *
  * The statement has two mapping branches and reads exactly one: `output_type`
  * `"value"` reads `transform_value`, `"object"` reads `transform_object[]`.
- * Which members are PERSISTED depends on who saved it, and both writers are
- * authoritative for their own generation:
+ * Which members are PERSISTED depends on who saved it:
  *
- *  - the engine's XanoScript transform writes only the live branch, which is
- *    what this SDK emits;
+ *  - the engine writes only the live branch. Live-captured, not inferred: an
+ *    imported object-mode statement comes back with no `transform_value` at all
+ *    (see test/fixtures/statements/array_map_object.json). That is what this SDK
+ *    emits, so this rule never fires on a round trip of our own output;
  *  - the editor builds its form from the whole context schema and saves the
  *    entire form value, so an object-mode save also carries `transform_value`
  *    at its schema defaults, and a value-mode save carries `transform_object: []`.
+ *    This rule exists for THAT writer. Its evidence is the editor source rather
+ *    than a capture — the round-trip path reads back what the SDK imported, so
+ *    it cannot produce the editor's spelling to be captured.
  *
  * Neither spelling can change what the statement does — the engine's object
  * branch never reads `transform_value`, and its value branch never reads

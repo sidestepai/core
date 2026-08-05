@@ -109,17 +109,15 @@ const emptyObj = () => ({ value: "", tag: "const:obj", filters: [] });
  *   - zip_{add,create,delete,extract,view}_file_resource, create_var_from_file_resource
  *     — the source goldens are degenerate (empty context while the spec needs
  *     non-optional fields); capture non-trivial authorings before wiring.
- *   - array_map OBJECT mode (`output_type:"object"` + `transform_object[]`) — now
- *     authorable and codegen-round-tripped, and modeled from three agreeing
- *     sources (context schema, engine transform decoder, editor component), but
- *     not from a capture. The value-mode golden below covers only the scalar
- *     path. A capture would settle two things the sources only imply: the
- *     `attribute_key` tag on an editor-authored static key, and whether an
- *     editor save really persists the dead branch that `liveArrayMapContext`
- *     now treats as exhaust.
  *   - action / action_package — EXCLUDED: need an action-identity model first.
  *
  *   CLOSED (kept because the worklist named them as open):
+ *   - array_map OBJECT mode — live-captured and wired below
+ *     (array_map_object, array_map_object_const). The capture settled both open
+ *     questions: `attribute_key` is a plain `const` triple, and the engine
+ *     stores NO dead branch on the import path. The `liveArrayMapContext` rule
+ *     in normalize.ts remains for EDITOR-saved objects, whose spelling this
+ *     round-trip path cannot produce — see the note on that function.
  *   - array_every / object_values-array / return-null-text — these were filed
  *     behind array_find's "numeric inline-array-filter-arg value-layer gap".
  *     There is no such gap: `normalize()` already canonicalizes a numeric tagged
@@ -393,6 +391,34 @@ const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
           source: intArr(),
           as: "x1",
           transform: ref("$this"),
+        }),
+      ),
+  },
+  // array_map's OBJECT mode, live-captured. The record `transform` becomes
+  // `output_type:"object"` + `transform_object[]` of {attribute_key,
+  // attribute_value}, key order preserved, and the engine stores NO
+  // `transform_value` — the dead branch is genuinely absent on the import path.
+  {
+    fixture: "array_map_object",
+    build: () =>
+      encodeStatement(
+        arrayMap({
+          source: intArr(),
+          as: "rows",
+          transform: { value: ref("$this"), position: ref("$index") },
+        }),
+      ),
+  },
+  // The same, with a CONSTANT attribute value — pins the `attribute_value` tag
+  // on something other than a var reference.
+  {
+    fixture: "array_map_object_const",
+    build: () =>
+      encodeStatement(
+        arrayMap({
+          source: intArr(),
+          as: "rows",
+          transform: { label: c.text("row"), n: ref("$this") },
         }),
       ),
   },
