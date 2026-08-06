@@ -22,5 +22,5 @@
     "server": "",
     "dockerconfigjson": ""
   },
-  "tenant_deploy": "auto"
+  "tenant_deploy": "manual"
 }

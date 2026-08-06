@@ -22,6 +22,7 @@ describe("microservice — engine-captured byte shape", () => {
   it("matches the builtin golden, containers and all", () => {
     const built = encodeMicroservice({
       name: "ex_kind_echo_service",
+      tenantDeploy: "manual",
       deployment: {
         replicas: 2,
         strategy: "RollingUpdate",
@@ -47,6 +48,7 @@ describe("microservice — engine-captured byte shape", () => {
     const built = encodeMicroservice({
       name: "ex_kind_helm_service",
       kind: "helm",
+      tenantDeploy: "manual",
       chart: {
         ref: "oci://registry-1.docker.io/bitnamicharts/nginx",
         version: "18.1.0",
