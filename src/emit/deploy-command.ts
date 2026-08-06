@@ -48,7 +48,7 @@ import {
   type WaitOptions,
 } from "../deploy/microservice-status.js";
 import { microserviceLine, readyRatio } from "./microservice-view.js";
-import { step, success, warn, detail, info, link, formatExpiration } from "./ui.js";
+import { step, success, warn, detail, info, link, spinner, withSpinner, formatExpiration } from "./ui.js";
 import { basename } from "node:path";
 
 /** Exit code for a post-commit static failure (the backend import itself succeeded). */
@@ -183,11 +183,26 @@ async function deploySandbox(
 ): Promise<DeploySummary> {
   step(`Deploying ${source} → sandbox (full replace)`);
   const baseUrl = await resolveSandboxBaseUrl(auth);
-  await importWorkspaceArchive(auth, { baseUrl, archive });
+  await withSpinner(IMPORTING_LABEL, () => importWorkspaceArchive(auth, { baseUrl, archive }));
   success("Backend deployed to sandbox");
   link(baseUrl);
   const microservices = await verifyMicroservices(auth, baseUrl, noVerify);
   return { dest: "sandbox", url: baseUrl, ...(microservices ? { microservices } : {}) };
+}
+
+/** The wait's opening label, before any read has said how many there are. */
+const WAITING_LABEL = "Waiting for microservices…";
+/** Shown while the import request is in flight — the deploy's longest silent leg. */
+const IMPORTING_LABEL = "Uploading and importing the workspace…";
+
+/**
+ * The spinner's label for a poll that just landed: the readiness ratio, so a long
+ * wait shows movement rather than a fixed sentence. Falls back to the bare label
+ * when nothing was startable (a ratio out of 0 would only confuse).
+ */
+function waitingLabel(microservices: MicroserviceSummary[]): string {
+  const { ready, startable } = readyRatio(microservices);
+  return startable === 0 ? WAITING_LABEL : `${WAITING_LABEL} (${ready}/${startable} ready)`;
 }
 
 /**
@@ -211,15 +226,27 @@ export async function verifyMicroservices(
 ): Promise<MicroserviceSummary[] | undefined> {
   if (noVerify) return undefined;
 
+  // The wait can run for minutes with nothing to print until it settles, so the
+  // spinner carries the progress: each poll refreshes the ratio in place, and
+  // `stop()` erases the line so only the outcome below survives.
+  const spin = spinner(WAITING_LABEL);
   let result;
   try {
     // An env's own internal workspace id is always 1 — the same pair the import
     // just used, so this reads exactly what was written.
-    result = await waitForMicroservices(auth, { baseUrl, workspaceId: 1 }, waitOpts);
+    result = await waitForMicroservices(auth, { baseUrl, workspaceId: 1 }, {
+      ...waitOpts,
+      onPoll: (rows) => {
+        spin.update(waitingLabel(rows));
+        waitOpts.onPoll?.(rows);
+      },
+    });
   } catch (err) {
     warn("Could not read microservice status (the backend deployed fine):");
     detail(err instanceof Error ? err.message : String(err));
     return undefined;
+  } finally {
+    spin.stop();
   }
 
   const { microservices, timedOut, hadFailure } = result;
@@ -275,8 +302,9 @@ async function deployEphemeral(
     const display = args.name ?? deriveDisplay(bundle, dir);
     step(`Deploying ${source} → new ephemeral "${display}"`);
     const fresh = await createEphemeral(auth, { parentWorkspaceId, display, expiresHours: args.expiresHours });
-    detail(`Waiting for ${fresh.name} to become ready…`);
-    target = await waitUntilReady(auth, { parentWorkspaceId, name: fresh.name });
+    target = await withSpinner(`Waiting for ${fresh.name} to become ready…`, () =>
+      waitUntilReady(auth, { parentWorkspaceId, name: fresh.name }),
+    );
   } else {
     step(`Deploying ${source} → ephemeral ${target.name} (refresh, full replace)`);
   }
@@ -295,7 +323,7 @@ async function deployEphemeral(
     expires_at: target.expiresAt,
   });
 
-  await importWorkspaceArchive(auth, { baseUrl, archive });
+  await withSpinner(IMPORTING_LABEL, () => importWorkspaceArchive(auth, { baseUrl, archive }));
 
   const urlChanged = created || (stored !== undefined && stored.url !== baseUrl);
   if (urlChanged) {
@@ -370,8 +398,10 @@ export async function deployStaticTo(
     return { url: sh.url };
   }
   const { verifyRollout } = await import("../deploy/verify-rollout.js");
-  step("Verifying the frontend is live…");
-  const { live } = await verifyRollout(sh.url, sh.canonical);
+  // Destructured out of `sh` because a closure doesn't keep the narrowing the
+  // early return above established on `sh.url`/`sh.canonical`.
+  const { url, canonical } = sh;
+  const { live } = await withSpinner("Verifying the frontend is live…", () => verifyRollout(url, canonical));
   if (live) {
     success("Frontend is live");
   } else {
