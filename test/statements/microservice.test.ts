@@ -18,6 +18,23 @@ import { microservice, type MicroserviceDef } from "../../src/kinds/microservice
 import type { InferResponse } from "../../src/responses/infer.js";
 import type { ApiRequestResult } from "../../src/statements/special/api-request.js";
 
+/** The sandbox's own echo service — the def the worked example addresses. */
+const echoService = microservice({
+  name: "ex_kind_echo_service",
+  tenantDeploy: "manual",
+  deployment: {
+    replicas: 2,
+    strategy: "RollingUpdate",
+    containers: [
+      {
+        name: "probe_c",
+        image: "ealen/echo-server:latest",
+        ports: [{ servicePort: "8080", containerPort: "80" }],
+      },
+    ],
+  },
+});
+
 /** Pull an input entry `{value, tag}` by name from an encoded statement. */
 function field(encoded: ReturnType<typeof encodeStatement>, name: string) {
   const entry = (encoded.input as Array<{ name: string; value: unknown; tag: string }>).find(
@@ -236,5 +253,107 @@ describe("s.microservice.request result typing (InferResponse)", () => {
     });
     expect(ms).toBeDefined();
     expectTypeOf<InferResponse<typeof ms>>().toEqualTypeOf<ApiRequestResult>();
+  });
+});
+
+/**
+ * The byte contract, pinned field for field.
+ *
+ * Captured from the encoder BEFORE microservices were moved out of the `api`
+ * namespace, and asserted here so the promotion stays provably byte-neutral:
+ * the stored name and the encoder never changed, only where the statement is
+ * reachable from. These are the three gates the sandbox example teaches, so a
+ * live deploy of `examples/sandbox` verifies exactly these bytes.
+ */
+describe("s.microservice.request byte contract (pre-rename capture)", () => {
+  /** Every emitted `input[]` entry, in order, as `[name, value, tag]`. */
+  const wire = (st: ReturnType<typeof encodeStatement>) =>
+    (st.input as Array<{ name: string; value: unknown; tag: string }>).map(
+      (e) => [e.name, e.value, e.tag] as const,
+    );
+
+  it("gate 1 — a def with one declared port resolves without naming it", () => {
+    const enc = encodeStatement(
+      s.microservice.request({ as: "result", host: echoService, path: "/health" }),
+    );
+    expect(enc.name).toBe("mvp:microservice_request");
+    expect(enc.as).toBe("result");
+    expect(wire(enc)).toEqual([
+      // One declared servicePort resolves without the caller naming it.
+      ["host", "ex_kind_echo_service:8080", "const"],
+      ["path", "/health", "const"],
+      ["method", "GET", "const"],
+      ["params", "{}", "const:obj"],
+      ["headers", "[]", "const:array"],
+      ["timeout", "10", "const:int"],
+      ["follow_location", "true", "const:bool"],
+    ]);
+  });
+
+  it("gate 2 — an explicit port folds into host, and all five defaults override", () => {
+    const enc = encodeStatement(
+      s.microservice.request({
+        as: "result",
+        host: echoService,
+        port: 8080,
+        path: "/ping",
+        method: "POST",
+        params: { probe: true },
+        headers: ["X-Probe: 1"],
+        timeout: 30,
+        follow_location: false,
+      }),
+    );
+    expect(wire(enc)).toEqual([
+      ["host", "ex_kind_echo_service:8080", "const"],
+      ["path", "/ping", "const"],
+      ["method", "POST", "const"],
+      ["params", '{"probe":true}', "const:obj"],
+      ["headers", '["X-Probe: 1"]', "const:array"],
+      ["timeout", "30", "const:int"],
+      ["follow_location", "false", "const:bool"],
+    ]);
+  });
+
+  it("gate 3 — a raw `name:port` string passes through for instance-level ones", () => {
+    const enc = encodeStatement(
+      s.microservice.request({ as: "result", host: "legacy:80", path: "/status" }),
+    );
+    expect(wire(enc)).toEqual([
+      ["host", "legacy:80", "const"],
+      ["path", "/status", "const"],
+      ["method", "GET", "const"],
+      ["params", "{}", "const:obj"],
+      ["headers", "[]", "const:array"],
+      ["timeout", "10", "const:int"],
+      ["follow_location", "true", "const:bool"],
+    ]);
+  });
+});
+
+/**
+ * The pull side of the rename: a stored `mvp:microservice_request` decodes to
+ * source naming the statement's NEW path, and that source re-encodes to the
+ * same bytes. Guards the round trip a pulled workspace depends on — the surface
+ * key and the `s.` path both moved, and codegen reads the latter.
+ */
+describe("s.microservice.request codegen round trip", () => {
+  it("decodes to `s.microservice.request(...)` that re-encodes identically", async () => {
+    const { DecodeContext } = await import("../../src/codegen/context.js");
+    const { decodeFromSpec } = await import("../../src/codegen/spec-inverse.js");
+    const { printExpr } = await import("../../src/codegen/print.js");
+
+    for (const authored of [
+      s.microservice.request({ as: "result", host: echoService, path: "/health" }),
+      s.microservice.request({ as: "result", host: "legacy:80", path: "/status" }),
+      s.microservice.request({ host: inp("h"), path: "/p" }),
+    ]) {
+      const stored = encodeStatement(authored);
+      const expr = decodeFromSpec(new DecodeContext(), stored);
+      expect(expr, "no spec-arm decode").not.toBeNull();
+      const source = printExpr(expr!);
+      expect(source).toContain("s.microservice.request(");
+      expect(source).not.toContain("api.microservice");
+    }
   });
 });

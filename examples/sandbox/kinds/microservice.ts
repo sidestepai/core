@@ -1,7 +1,7 @@
 /**
  * `microservice` — a container workload deployed alongside the workspace.
  *
- * The thing a stack reaches with `s.api.microservice`. Two mutually exclusive
+ * The thing a stack reaches with `s.microservice.request`. Two mutually exclusive
  * shapes, chosen by `kind`:
  *
  *  - **`builtin`** (the default) — you declare the containers: image, ports,
