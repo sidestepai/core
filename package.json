@@ -1,6 +1,6 @@
 {
   "name": "@sidestep/core",
-  "version": "4.1.33",
+  "version": "4.1.34",
   "description": "Sidestep — your Xano backend as TypeScript. `sidestep deploy` ships your typed workspace (and an optional static frontend) to a live, auto-expiring ephemeral environment and prints its URL. init → deploy → URL.",
   "keywords": [
     "sidestep",

@@ -1,6 +1,6 @@
 {
   "name": "sidestep",
-  "version": "4.1.33",
+  "version": "4.1.34",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
@@ -352,7 +352,7 @@
       "kind": "microservice",
       "payloadKey": "microservice",
       "authorFactory": "microservice",
-      "description": "A container workload deployed alongside the workspace, called from a stack with `s.api.microservice`. Two mutually exclusive shapes via `kind`: `builtin` declares containers (image/ports/resources/env/command/args) plus optional `ingresses`, and `helm` points at a chart and its `values` — passing both throws. EARLY SURFACE, expected to change: `configs`/`volumes` are typed but unconfirmed against a live engine. SECRETS RIDE ALONG — `chart.values` and `registryAuth.dockerconfigjson` are carried into a pulled tree verbatim (they must be, or a pulled microservice could not be redeployed), so a tree holding a private-registry microservice holds a live credential; prefer leaving `dockerconfigjson` unset and supplying it out of band.",
+      "description": "A container workload deployed alongside the workspace, called from a stack with `s.microservice.request`. Two mutually exclusive shapes via `kind`: `builtin` declares containers (image/ports/resources/env/command/args) plus optional `ingresses`, and `helm` points at a chart and its `values` — passing both throws. EARLY SURFACE, expected to change: `configs`/`volumes` are typed but unconfirmed against a live engine. SECRETS RIDE ALONG — `chart.values` and `registryAuth.dockerconfigjson` are carried into a pulled tree verbatim (they must be, or a pulled microservice could not be redeployed), so a tree holding a private-registry microservice holds a live credential; prefer leaving `dockerconfigjson` unset and supplying it out of band.",
       "registerMethod": "registerMicroservices",
       "registered": true
     },
