@@ -211,7 +211,41 @@ function resolveMicroserviceHost(
   );
 }
 
-export interface MicroserviceArgs extends StatementAnnotations {
+/**
+ * The literal `servicePort`s a def declares, at the type level — the type-side
+ * mirror of {@link declaredServicePorts}.
+ */
+type PortsOf<D> = D extends { deployment: { containers: readonly (infer C)[] } }
+  ? C extends { ports: readonly (infer P)[] }
+    ? P extends { servicePort: infer S extends string }
+      ? S
+      : never
+    : never
+  : never;
+
+/** `"8080"` → `8080`, so a port may be written as a number. */
+type AsNumber<S extends string> = S extends `${infer N extends number}` ? N : never;
+
+/**
+ * What `port` accepts for a given `host`.
+ *
+ * Constrained to the declared ports ONLY when they are known as literals. Two
+ * cases deliberately fall back to the open type rather than narrowing to
+ * `never`, because a false type error on valid code is worse than a missing
+ * one: a def whose ports widened to `string` (annotated `MicroserviceDef`,
+ * built dynamically), and a def that declares no ports at all (helm).
+ */
+type PortArg<D> = string extends PortsOf<D>
+  ? number | string
+  : [PortsOf<D>] extends [never]
+    ? number | string
+    : PortsOf<D> | AsNumber<PortsOf<D>>;
+
+/** Host spellings `s.api.microservice` accepts. */
+export type MicroserviceHost = MicroserviceDef | string | Value;
+
+export interface MicroserviceArgs<H extends MicroserviceHost = MicroserviceHost>
+  extends StatementAnnotations {
   /** Capture the response into this stack variable. */
   as?: string;
   /**
@@ -222,15 +256,17 @@ export interface MicroserviceArgs extends StatementAnnotations {
    * workspace, so there is no def to pass). It carries its own port:
    * `"legacy:80"`.
    */
-  host: MicroserviceDef | string | Value;
+  host: H;
   /**
    * Port to call, folded into `host` as `name:port`.
    *
    * Optional: a microservice declaring exactly one `servicePort` resolves to it.
    * One declaring several requires this field, and rejects a port it does not
-   * expose. Serialized as text, matching how `servicePort` is stored.
+   * expose — as a TYPE error when the def's ports are known as literals, and as
+   * a build-time throw otherwise. Serialized as text, matching how
+   * `servicePort` is stored.
    */
-  port?: number | string;
+  port?: H extends MicroserviceDef ? PortArg<H> : number | string;
   /** Request path. */
   path: string | Value;
   /** HTTP verb — the 7 engine verbs are suggested; any string or dynamic `Value` is accepted. */
@@ -261,8 +297,11 @@ export interface MicroserviceArgs extends StatementAnnotations {
  * this field by name too (a workspace-scoped lookup on the microservice's name).
  * A guid here would not be merely unconventional; it would be wrong.
  */
-export function microservice<const As extends string = "">(
-  a: MicroserviceArgs & { as?: As },
+export function microservice<
+  const As extends string = "",
+  const H extends MicroserviceHost = MicroserviceHost,
+>(
+  a: MicroserviceArgs<H> & { as?: As },
 ): Statement & AsShapeBrand<As, ApiRequestResult> {
   return generated.api.microservice({
     as: a.as,

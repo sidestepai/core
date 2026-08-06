@@ -6,7 +6,7 @@ import { coerceObj, coerceText } from "../../src/statements/special/coerce.js";
 import { encodeStatement } from "../../src/statements/statement.js";
 import { query } from "../../src/kinds/query.js";
 import { apiGroup } from "../../src/kinds/api-group.js";
-import { microservice } from "../../src/kinds/microservice.js";
+import { microservice, type MicroserviceDef } from "../../src/kinds/microservice.js";
 import type { InferResponse } from "../../src/responses/infer.js";
 import type { ApiRequestResult } from "../../src/statements/special/api-request.js";
 import { normalize, loadFixture } from "../conformance/harness.js";
@@ -387,7 +387,9 @@ describe("HTTP-request sibling wrappers (envelope broadening)", () => {
     });
     const base = { path: "/p", method: "GET", params: {}, headers: [], timeout: 3, follow_location: true } as const;
 
-    // A port the microservice does not expose — the message names the real ones.
+    // A port the microservice does not expose is caught twice: as a type error
+    // (the literal ports are known), and as a throw naming the real ones.
+    // @ts-expect-error 9000 is not one of one_port's declared servicePorts
     expect(() => s.api.microservice({ host: one, port: 9000, ...base })).toThrow(/does not expose port 9000.*8080/s);
     // Ambiguous without a port, resolvable with one.
     expect(() => s.api.microservice({ host: two, ...base })).toThrow(/declares 2 ports \(8080, 9090\)/);
@@ -418,6 +420,45 @@ describe("HTTP-request sibling wrappers (envelope broadening)", () => {
       value: "bare_svc",
       tag: "const",
     });
+  });
+
+  it("api.microservice types `port` against the def's declared ports (U5)", () => {
+    const one = microservice({
+      name: "one_port",
+      deployment: { containers: [{ name: "c", image: "i", ports: [{ servicePort: "8080" }] }] },
+    });
+    const two = microservice({
+      name: "two_port",
+      deployment: {
+        containers: [
+          { name: "a", image: "i", ports: [{ servicePort: "8080" }] },
+          { name: "b", image: "i", ports: [{ servicePort: "9090" }] },
+        ],
+      },
+    });
+    const helm = microservice({ name: "helm_svc", kind: "helm", chart: { ref: "oci://x/y" } });
+    // A def annotated with the wide type — its ports are `string`, not literals.
+    const widened: MicroserviceDef = one;
+    const base = { path: "/p", method: "GET", params: {}, headers: [], timeout: 3, follow_location: true } as const;
+
+    // Declared ports accept both spellings; a third is rejected.
+    expect(() => s.api.microservice({ host: one, port: 8080, ...base })).not.toThrow();
+    expect(() => s.api.microservice({ host: one, port: "8080", ...base })).not.toThrow();
+    expect(() => s.api.microservice({ host: two, port: 8080, ...base })).not.toThrow();
+    expect(() => s.api.microservice({ host: two, port: 9090, ...base })).not.toThrow();
+    // @ts-expect-error 7070 is declared by neither container
+    expect(() => s.api.microservice({ host: two, port: 7070, ...base })).toThrow(/does not expose/);
+
+    // Nothing declared and nothing inferable both fall back to the open type,
+    // so valid code never trips a false type error.
+    expect(() => s.api.microservice({ host: helm, port: 9000, ...base })).not.toThrow();
+    expect(() => s.api.microservice({ host: widened, port: 8080, ...base })).not.toThrow();
+    expect(() => s.api.microservice({ host: "legacy", port: 80, ...base })).not.toThrow();
+
+    // ...and where the type gave up, the runtime guard still holds the line —
+    // which is why U2 stays even with inference in place. No @ts-expect-error
+    // here: the widened type genuinely permits this, and only the throw catches it.
+    expect(() => s.api.microservice({ host: widened, port: 9000, ...base })).toThrow(/does not expose/);
   });
 
   it("passes dynamic Values through on siblings", () => {

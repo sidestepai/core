@@ -783,7 +783,8 @@ export const echo = microservice({
 
 Call it by passing the def itself. `port` folds into the single `"name:port"` host string
 the engine reads, and is optional — a microservice exposing exactly one `servicePort`
-resolves to it, and one exposing several requires it and rejects a port it doesn't expose:
+resolves to it, and one exposing several requires it. A port the microservice doesn't expose
+is a type error where the def's ports are known, and a build-time throw otherwise:
 
 ```ts
 s.api.microservice({ as: "res", host: echo, path: "/health", method: "GET",

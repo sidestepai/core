@@ -294,8 +294,15 @@ export function encodeMicroservice(def: MicroserviceDef): MicroserviceXdo {
   };
 }
 
-/** Author a microservice. See the module docstring for the two shapes. */
-export function microservice(def: MicroserviceDef): MicroserviceDef {
+/**
+ * Author a microservice. See the module docstring for the two shapes.
+ *
+ * The `const` generic preserves the literal `servicePort` strings so
+ * `s.api.microservice` can type-check a `port` against the ports this
+ * microservice actually exposes. `D extends MicroserviceDef` keeps the result
+ * assignable anywhere a `MicroserviceDef` is expected.
+ */
+export function microservice<const D extends MicroserviceDef>(def: D): D {
   encodeMicroservice(def); // validate eagerly, at the authoring site
   return def;
 }
