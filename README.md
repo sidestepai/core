@@ -808,13 +808,14 @@ nothing checks that spelling, so prefer the def wherever there is one.
 
 A container takes time to come up, so `sidestep deploy` waits for it: after the import it
 reads each microservice and reports whether it is ready, still starting, or failed, then
-lists them. `tenantDeploy: "manual"` rows are reported but never waited on — nothing starts
-them for you, which is what you want when the row should exist without a workload behind it
-(`examples/sandbox` uses it so deploying the examples doesn't wait on containers).
-A microservice that hasn't come up in time is a warning, not a failed deploy:
-the backend is already live and the container usually follows moments later. Skip the wait
-with `--no-verify`. The same report is available any time from `sidestep ephemeral get
-<env>`, `sidestep sandbox details`, and `sidestep workspace details`.
+lists them. A microservice that hasn't come up in time is a warning, not a failed deploy: the
+backend is already live and the container usually follows moments later. Skip the wait with
+`--no-verify`. The same report is available any time from `sidestep ephemeral get <env>`,
+`sidestep sandbox details`, and `sidestep workspace details`.
+
+`tenantDeploy: "manual"` rows are reported but never waited on — nothing starts them for you.
+Reach for it when the row should exist without a workload behind it; `examples/sandbox` uses
+it so deploying the examples doesn't wait on containers.
 
 **This surface is early and expected to change.** `configs` and `volumes` are typed but
 unconfirmed against a live engine. And two fields carry secrets into a pulled tree
