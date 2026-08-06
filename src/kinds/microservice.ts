@@ -1,6 +1,6 @@
 /**
  * Microservice (`microservice`) — a container workload deployed alongside the
- * workspace, addressed from a stack by `s.api.microservice`.
+ * workspace, addressed from a stack by `s.microservice.request`.
  *
  * Two mutually exclusive shapes, selected by {@link MicroserviceDef.kind}:
  *
@@ -174,7 +174,7 @@ export interface MicroserviceDef {
  *
  * This is the same list the Xano dashboard flattens to build the host dropdown
  * on a microservice-request statement (one entry per container port), so it is
- * exactly the set of ports `s.api.microservice` can legitimately address.
+ * exactly the set of ports `s.microservice.request` can legitimately address.
  * Returns `[]` for a `helm` microservice and for a builtin whose containers
  * expose nothing — neither declares ports, so neither constrains the caller.
  */
@@ -298,7 +298,7 @@ export function encodeMicroservice(def: MicroserviceDef): MicroserviceXdo {
  * Author a microservice. See the module docstring for the two shapes.
  *
  * The `const` generic preserves the literal `servicePort` strings so
- * `s.api.microservice` can type-check a `port` against the ports this
+ * `s.microservice.request` can type-check a `port` against the ports this
  * microservice actually exposes. `D extends MicroserviceDef` keeps the result
  * assignable anywhere a `MicroserviceDef` is expected. Same shape `agent()`
  * already uses.

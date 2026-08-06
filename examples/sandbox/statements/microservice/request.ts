@@ -1,5 +1,5 @@
 /**
- * `s.api.microservice` — call a container workload running alongside the
+ * `s.microservice.request` — call a container workload running alongside the
  * workspace.
  *
  * Address it by passing the `microservice()` def itself. The engine resolves
@@ -36,7 +36,7 @@ import { echoService } from "../../kinds/microservice.js";
  */
 export const apiMicroservice = defineFunction({
   name: "ex_api_microservice",
-  stack: [s.api.microservice({ as: "result", host: echoService, path: c.text("/health") })],
+  stack: [s.microservice.request({ as: "result", host: echoService, path: c.text("/health") })],
   response: ref("result"),
 });
 
@@ -50,7 +50,7 @@ export const apiMicroservice = defineFunction({
 export const apiMicroservicePort = defineFunction({
   name: "ex_api_microservice_port",
   stack: [
-    s.api.microservice({
+    s.microservice.request({
       as: "result",
       host: echoService,
       port: 8080,
@@ -73,6 +73,6 @@ export const apiMicroservicePort = defineFunction({
  */
 export const apiMicroserviceInstanceHost = defineFunction({
   name: "ex_api_microservice_instance_host",
-  stack: [s.api.microservice({ as: "result", host: "legacy:80", path: c.text("/status") })],
+  stack: [s.microservice.request({ as: "result", host: "legacy:80", path: c.text("/status") })],
   response: ref("result"),
 });

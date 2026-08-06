@@ -715,14 +715,6 @@
       ]
     },
     {
-      "surface": "api.microservice",
-      "storedName": "mvp:microservice_request",
-      "sPath": "api.microservice",
-      "registered": true,
-      "declarative": false,
-      "output": false
-    },
-    {
       "surface": "api.realtime_event",
       "storedName": "mvp:realtime_event",
       "sPath": "api.realtime_event",
@@ -3133,6 +3125,14 @@
       "sPath": "middleware.call",
       "registered": true,
       "declarative": false
+    },
+    {
+      "surface": "microservice.request",
+      "storedName": "mvp:microservice_request",
+      "sPath": "microservice.request",
+      "registered": true,
+      "declarative": false,
+      "output": false
     },
     {
       "surface": "object.entries",

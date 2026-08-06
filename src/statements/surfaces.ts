@@ -4,6 +4,16 @@
  * SDK metadata (it drives the agent-grounding manifest and the coverage report),
  * so it lives in `src` rather than the test tree.
  *
+ * A key normally mirrors the engine's own statement-schema filename, which
+ * keeps this catalog checkable against the engine one line at a time. One entry
+ * deliberately does not: `microservice.request` is stored as
+ * `mvp:microservice_request` and the engine files its schema under the `api`
+ * namespace, but a microservice is a first-class workspace object here — with
+ * its own def factory and deploy path — so its call statement is filed beside
+ * it. The same decision is recorded as a `NAMESPACE_OVERRIDES` entry in
+ * `scripts/codegen.ts`, which is what keeps the generated factory tree in
+ * agreement with this key.
+ *
  * One surface-pair shares a stored name (so the catalog has one fewer unique
  * stored name than surfaces): `util.get_raw_input`/`util.get_input` →
  * `mvp:get_input`.
@@ -24,7 +34,6 @@ export const STATEMENT_SURFACES: ReadonlyArray<readonly [string, string]> = [
   ["ai.external.mcp.tool.run", "mvp:mcp_call_tool"],
   ["api.call", "mvp:workspace_run_endpoint"],
   ["api.lambda", "mvp:lambda"],
-  ["api.microservice", "mvp:microservice_request"],
   ["api.realtime_event", "mvp:realtime_event"],
   ["api.request", "mvp:api_request"],
   ["api.stream", "mvp:streaming_api_response"],
@@ -122,6 +131,7 @@ export const STATEMENT_SURFACES: ReadonlyArray<readonly [string, string]> = [
   ["math.mul", "mvp:math_mul"],
   ["math.sub", "mvp:math_sub"],
   ["middleware.call", "mvp:workspace_run_middleware"],
+  ["microservice.request", "mvp:microservice_request"],
   ["object.entries", "mvp:object_entries"],
   ["object.keys", "mvp:object_keys"],
   ["object.values", "mvp:object_values"],

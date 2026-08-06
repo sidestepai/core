@@ -892,7 +892,6 @@ Auth & calls:
 
 - `s.api.call` [special]
 - `s.api.lambda({ as?: string; code?: value; timeout?: value })`
-- `s.api.microservice` [special]
 - `s.api.request` [special, output]
 - `s.api.stream({ value: value })`
 
@@ -1024,6 +1023,10 @@ Assertions. These belong in a `workflowTest({...})` stack — assert on what a `
 - `s.math.mod({ name?: string; value: value })`
 - `s.math.mul({ name?: string; value: value })`
 - `s.math.sub({ name?: string; value: value })`
+
+### microservice
+
+- `s.microservice.request` [special]
 
 ### middleware
 

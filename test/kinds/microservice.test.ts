@@ -116,7 +116,7 @@ describe("microservice — the authoring surface", () => {
   });
 
   describe("declaredServicePorts", () => {
-    // This is the list `s.api.microservice` validates a `port` against, and the
+    // This is the list `s.microservice.request` validates a `port` against, and the
     // same flattening the dashboard does to build its host dropdown.
     it("flattens every container's ports in declaration order", () => {
       const def = microservice({

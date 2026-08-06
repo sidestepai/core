@@ -26,10 +26,10 @@ function field(encoded: ReturnType<typeof encodeStatement>, name: string) {
   return entry && { value: entry.value, tag: entry.tag };
 }
 
-describe("s.api.microservice", () => {
+describe("s.microservice.request", () => {
   it("encodes host/path and coerces required fields", () => {
     const encoded = encodeStatement(
-      s.api.microservice({
+      s.microservice.request({
         as: "m1",
         host: "svc",
         path: "/health",
@@ -50,9 +50,9 @@ describe("s.api.microservice", () => {
     // The block schema declares method/params/headers/timeout/follow_location
     // REQUIRED (unlike api.request's, which defaults them), so they cannot be
     // omitted from the wire — they are defaulted to the engine's own values.
-    const minimal = encodeStatement(s.api.microservice({ as: "m", host: "svc", path: "/health" }));
+    const minimal = encodeStatement(s.microservice.request({ as: "m", host: "svc", path: "/health" }));
     const explicit = encodeStatement(
-      s.api.microservice({
+      s.microservice.request({
         as: "m",
         host: "svc",
         path: "/health",
@@ -83,7 +83,7 @@ describe("s.api.microservice", () => {
   it("honors an explicit falsy override rather than defaulting it", () => {
     // `??`, not `||` — `false` and `0`-ish values are real choices, not absences.
     const encoded = encodeStatement(
-      s.api.microservice({ host: "svc", path: "/p", follow_location: false, timeout: 1 }),
+      s.microservice.request({ host: "svc", path: "/p", follow_location: false, timeout: 1 }),
     );
     expect(field(encoded, "follow_location")).toEqual({ value: "false", tag: "const:bool" });
     expect(field(encoded, "timeout")).toEqual({ value: "1", tag: "const:int" });
@@ -98,9 +98,9 @@ describe("s.api.microservice", () => {
 
     // A single declared port resolves without `port`, and an explicit port —
     // number or string — produces byte-identical output.
-    const implicit = encodeStatement(s.api.microservice({ host: svc, ...base, follow_location: true }));
-    const num = encodeStatement(s.api.microservice({ host: svc, port: 8080, ...base, follow_location: true }));
-    const str = encodeStatement(s.api.microservice({ host: svc, port: "8080", ...base, follow_location: true }));
+    const implicit = encodeStatement(s.microservice.request({ host: svc, ...base, follow_location: true }));
+    const num = encodeStatement(s.microservice.request({ host: svc, port: 8080, ...base, follow_location: true }));
+    const str = encodeStatement(s.microservice.request({ host: svc, port: "8080", ...base, follow_location: true }));
 
     expect(field(implicit, "host")).toEqual({ value: "echo_svc:8080", tag: "const" });
     expect(field(num, "host")).toEqual(field(implicit, "host"));
@@ -111,12 +111,12 @@ describe("s.api.microservice", () => {
 
   it("joins a port onto a string host (U1)", () => {
     const base = { path: "/p", method: "GET", params: {}, headers: [], timeout: 3, follow_location: true } as const;
-    expect(field(encodeStatement(s.api.microservice({ host: "echo", port: 5678, ...base })), "host")).toEqual({
+    expect(field(encodeStatement(s.microservice.request({ host: "echo", port: 5678, ...base })), "host")).toEqual({
       value: "echo:5678",
       tag: "const",
     });
     // An already-joined string is the instance-level spelling — passed through.
-    expect(field(encodeStatement(s.api.microservice({ host: "legacy:80", ...base })), "host")).toEqual({
+    expect(field(encodeStatement(s.microservice.request({ host: "legacy:80", ...base })), "host")).toEqual({
       value: "legacy:80",
       tag: "const",
     });
@@ -125,11 +125,11 @@ describe("s.api.microservice", () => {
   it("rejects a port it cannot join (U1)", () => {
     const base = { path: "/p", method: "GET", params: {}, headers: [], timeout: 3, follow_location: true } as const;
     // Doubled port — ambiguous which one wins.
-    expect(() => s.api.microservice({ host: "echo:5678", port: 5678, ...base })).toThrow(/already carries a port/);
+    expect(() => s.microservice.request({ host: "echo:5678", port: 5678, ...base })).toThrow(/already carries a port/);
     // A dynamic host cannot be joined at build time.
-    expect(() => s.api.microservice({ host: inp("h"), port: 9000, ...base })).toThrow(/dynamic `host`/);
+    expect(() => s.microservice.request({ host: inp("h"), port: 9000, ...base })).toThrow(/dynamic `host`/);
     // ...but a dynamic host on its own still passes straight through.
-    const dyn = encodeStatement(s.api.microservice({ host: inp("h"), ...base }));
+    const dyn = encodeStatement(s.microservice.request({ host: inp("h"), ...base }));
     expect(field(dyn, "host")?.tag).toBe("input");
   });
 
@@ -152,10 +152,10 @@ describe("s.api.microservice", () => {
     // A port the microservice does not expose is caught twice: as a type error
     // (the literal ports are known), and as a throw naming the real ones.
     // @ts-expect-error 9000 is not one of one_port's declared servicePorts
-    expect(() => s.api.microservice({ host: one, port: 9000, ...base })).toThrow(/does not expose port 9000.*8080/s);
+    expect(() => s.microservice.request({ host: one, port: 9000, ...base })).toThrow(/does not expose port 9000.*8080/s);
     // Ambiguous without a port, resolvable with one.
-    expect(() => s.api.microservice({ host: two, ...base })).toThrow(/declares 2 ports \(8080, 9090\)/);
-    expect(field(encodeStatement(s.api.microservice({ host: two, port: 9090, ...base })), "host")).toEqual({
+    expect(() => s.microservice.request({ host: two, ...base })).toThrow(/declares 2 ports \(8080, 9090\)/);
+    expect(field(encodeStatement(s.microservice.request({ host: two, port: 9090, ...base })), "host")).toEqual({
       value: "two_port:9090",
       tag: "const",
     });
@@ -170,15 +170,15 @@ describe("s.api.microservice", () => {
     const base = { path: "/p", method: "GET", params: {}, headers: [], timeout: 3, follow_location: true } as const;
 
     // Nothing declared, nothing to contradict: bare name, or any port asked for.
-    expect(field(encodeStatement(s.api.microservice({ host: helm, ...base })), "host")).toEqual({
+    expect(field(encodeStatement(s.microservice.request({ host: helm, ...base })), "host")).toEqual({
       value: "helm_svc",
       tag: "const",
     });
-    expect(field(encodeStatement(s.api.microservice({ host: helm, port: 9000, ...base })), "host")).toEqual({
+    expect(field(encodeStatement(s.microservice.request({ host: helm, port: 9000, ...base })), "host")).toEqual({
       value: "helm_svc:9000",
       tag: "const",
     });
-    expect(field(encodeStatement(s.api.microservice({ host: portless, ...base })), "host")).toEqual({
+    expect(field(encodeStatement(s.microservice.request({ host: portless, ...base })), "host")).toEqual({
       value: "bare_svc",
       tag: "const",
     });
@@ -204,23 +204,23 @@ describe("s.api.microservice", () => {
     const base = { path: "/p", method: "GET", params: {}, headers: [], timeout: 3, follow_location: true } as const;
 
     // Declared ports accept both spellings; a third is rejected.
-    expect(() => s.api.microservice({ host: one, port: 8080, ...base })).not.toThrow();
-    expect(() => s.api.microservice({ host: one, port: "8080", ...base })).not.toThrow();
-    expect(() => s.api.microservice({ host: two, port: 8080, ...base })).not.toThrow();
-    expect(() => s.api.microservice({ host: two, port: 9090, ...base })).not.toThrow();
+    expect(() => s.microservice.request({ host: one, port: 8080, ...base })).not.toThrow();
+    expect(() => s.microservice.request({ host: one, port: "8080", ...base })).not.toThrow();
+    expect(() => s.microservice.request({ host: two, port: 8080, ...base })).not.toThrow();
+    expect(() => s.microservice.request({ host: two, port: 9090, ...base })).not.toThrow();
     // @ts-expect-error 7070 is declared by neither container
-    expect(() => s.api.microservice({ host: two, port: 7070, ...base })).toThrow(/does not expose/);
+    expect(() => s.microservice.request({ host: two, port: 7070, ...base })).toThrow(/does not expose/);
 
     // Nothing declared and nothing inferable both fall back to the open type,
     // so valid code never trips a false type error.
-    expect(() => s.api.microservice({ host: helm, port: 9000, ...base })).not.toThrow();
-    expect(() => s.api.microservice({ host: widened, port: 8080, ...base })).not.toThrow();
-    expect(() => s.api.microservice({ host: "legacy", port: 80, ...base })).not.toThrow();
+    expect(() => s.microservice.request({ host: helm, port: 9000, ...base })).not.toThrow();
+    expect(() => s.microservice.request({ host: widened, port: 8080, ...base })).not.toThrow();
+    expect(() => s.microservice.request({ host: "legacy", port: 80, ...base })).not.toThrow();
 
     // ...and where the type gave up, the runtime guard still holds the line —
     // which is why U2 stays even with inference in place. No @ts-expect-error
     // here: the widened type genuinely permits this, and only the throw catches it.
-    expect(() => s.api.microservice({ host: widened, port: 9000, ...base })).toThrow(/does not expose/);
+    expect(() => s.microservice.request({ host: widened, port: 9000, ...base })).toThrow(/does not expose/);
   });
 });
 
@@ -231,7 +231,7 @@ describe("s.microservice.request result typing (InferResponse)", () => {
       verb: "GET",
       apiGroup: grp,
       name: "ms",
-      stack: [s.api.microservice({ host: "svc", path: "/p", as: "r" })],
+      stack: [s.microservice.request({ host: "svc", path: "/p", as: "r" })],
       response: ref("r"),
     });
     expect(ms).toBeDefined();
