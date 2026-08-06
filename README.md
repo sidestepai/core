@@ -781,6 +781,20 @@ export const echo = microservice({
 });
 ```
 
+Call it by passing the def itself. `port` folds into the single `"name:port"` host string
+the engine reads, and is optional — a microservice exposing exactly one `servicePort`
+resolves to it, and one exposing several requires it and rejects a port it doesn't expose:
+
+```ts
+s.api.microservice({ as: "res", host: echo, path: "/health", method: "GET",
+                     params: {}, headers: [], timeout: 10, follow_location: true });
+```
+
+`host` binds by name, not by guid, because that is how the engine resolves it — so renaming
+a microservice fixes every call site at once. A plain `"name:port"` string is also accepted
+and is the only way to reach an instance-level microservice, which isn't a workspace object;
+nothing checks that spelling, so prefer the def wherever there is one.
+
 A container takes time to come up, so `sidestep deploy` waits for it: after the import it
 reads each microservice and reports whether it is ready, still starting, or failed, then
 lists them. `tenantDeploy: "manual"` rows are reported but never waited on — nothing starts
