@@ -37,7 +37,7 @@ const TIMEOUT_MS = 30_000;
 /** Poll cadence while at least one microservice is still coming up. */
 const POLL_INTERVAL_MS = 2_000;
 /** Hard stop for the whole wait. Past this the caller reports "not confirmed". */
-const WAIT_DEADLINE_MS = 180_000;
+const WAIT_DEADLINE_MS = 300_000;
 
 /**
  * What a microservice is doing, derived from its row. `inFlight` is the only
@@ -217,7 +217,7 @@ export interface WaitResult {
 export interface WaitOptions extends ListOptions {
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
-  /** Hard stop for the whole wait (default 180s). */
+  /** Hard stop for the whole wait (default 300s). */
   totalDeadlineMs?: number;
   pollIntervalMs?: number;
   /** Called after each read, for progress rendering. */
