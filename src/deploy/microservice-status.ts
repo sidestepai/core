@@ -7,7 +7,7 @@
  * carried but never started. The import call returns as soon as the objects
  * land, so a deploy that reported success can still be minutes away from a
  * microservice actually serving traffic — which is what a stack reaching
- * `s.api.microservice` depends on. This closes that gap the same way
+ * `s.microservice.request` depends on. This closes that gap the same way
  * {@link verifyRollout} closes it for the static host.
  *
  * ### Which route, and why it matters

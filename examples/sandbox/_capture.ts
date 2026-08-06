@@ -25,6 +25,11 @@ import { rateLimit } from "./kinds/middleware.js";
 import { authorAddon } from "./kinds/addon.js";
 import { echoService, helmService } from "./kinds/microservice.js";
 import {
+  microserviceRequest,
+  microserviceRequestPort,
+  microserviceRequestInstanceHost,
+} from "./statements/microservice/request.js";
+import {
   chatServer,
   lobbyChannel,
   roomChannel,
@@ -75,7 +80,7 @@ export default workspace("sidestep-capture-kinds")
   .registerTools(defs([searchTool]))
   .registerMcpServers(defs([exampleMcpServer]))
   .registerAgents(defs([assistant]))
-  .registerFunctions(defs([doubleFn]))
+  .registerFunctions(defs([doubleFn, microserviceRequest, microserviceRequestPort, microserviceRequestInstanceHost]))
   .registerTasks(defs([nightlyCleanup]))
   .registerWorkflowTests(defs([doubleFnTest, workflowTestGolden]))
   .registerMiddleware(defs([rateLimit]))

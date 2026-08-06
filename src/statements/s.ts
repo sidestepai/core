@@ -50,7 +50,8 @@ import {
   dbTransaction,
   dbExternalQuery,
 } from "./special/db.js";
-import { apiRequest, streamFromRequest, webflowRequest, microservice } from "./special/api-request.js";
+import { apiRequest, streamFromRequest, webflowRequest } from "./special/api-request.js";
+import { microserviceRequest } from "./special/microservice.js";
 import { aiAgentRun, cloudJob, cloudJobAwait, cloudJobStatus } from "./special/ai-cloud.js";
 import {
   arrayMap,
@@ -108,12 +109,17 @@ export const s = {
   foreach_remove: foreachRemove,
   // Call family — invoke another workspace object. `api.call`/`api.realtime_event`
   // merge into the generated `api` namespace; the rest are new namespaces.
-  // `api.request`/`api.microservice` (and `stream.from_request`/`webflow.request`
+  // `api.request` (and `stream.from_request`/`webflow.request`/`microservice.request`
   // below) are typed hand-authored overrides of their generated factories.
   function: { run: functionRun, call: functionCall },
   action: { call: actionCall, package: { call: actionPackageCall } },
   workflow_test: { call: workflowTestCall },
-  api: { ...generated.api, call: apiCall, realtime_event: realtimeEvent, request: apiRequest, microservice },
+  api: { ...generated.api, call: apiCall, realtime_event: realtimeEvent, request: apiRequest },
+  // Microservices are a top-level feature: the `microservice()` def and the
+  // statement that calls one live side by side. The override is load-bearing —
+  // `...generated` above already exposes the RAW generated factory here, and it
+  // has none of the defaulting that lets a call name only `host` and `path`.
+  microservice: { ...generated.microservice, request: microserviceRequest },
   // `realtime.publish` is the CURRENT-layer send statement (`api.realtime_event` is the
   // superseded one); `get_session` beside it is generated.
   realtime: { ...generated.realtime, publish: realtimePublish },

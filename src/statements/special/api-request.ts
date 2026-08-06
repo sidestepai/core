@@ -1,7 +1,7 @@
 /**
  * Hand-authored typed wrappers for the HTTP-request statement family — the
- * "External API Request" (`api.request`) and its siblings `stream.from_request`,
- * `webflow.request`, and `microservice`. Each has a generated bare-`Value`
+ * "External API Request" (`api.request`) and its siblings `stream.from_request`
+ * and `webflow.request`. Each has a generated bare-`Value`
  * factory because the codegen source YAML types every field as generic
  * `!kinds assign`; the engine's *runtime* schema is stricter (method enum, int
  * timeout, object params, string-array headers, booleans) and the frontend
@@ -26,10 +26,6 @@ import {
   type HttpMethod,
   type HttpRequestFields,
   coerceText,
-  coerceObj,
-  coerceArray,
-  coerceInt,
-  coerceBool,
   coerceHttpFields,
   assertSslConsistency,
 } from "./coerce.js";
@@ -38,7 +34,7 @@ export type { HttpMethod };
 
 /**
  * The `{request, response}` envelope every external-request statement binds to
- * its `as` variable (`api.request`, `webflow.request`, `api.microservice`). Shape
+ * its `as` variable (`api.request`, `webflow.request`, `microservice.request`). Shape
  * confirmed against the Xano engine and a live run: `headers` are
  * arrays of raw `"Name: value"` lines, `result` is the response body (JSON-decoded
  * when possible, else the raw string — hence `unknown`), `status` the HTTP code,
@@ -140,49 +136,6 @@ export function webflowRequest<const As extends string = "">(
     as: a.as,
     path: coerceText(a.path),
     ...coerceHttpFields(a),
-    disabled: a.disabled,
-    description: a.description,
-  }) as Statement & AsShapeBrand<As, ApiRequestResult>;
-}
-
-// ── api.microservice ─────────────────────────────────────────────────────────
-
-export interface MicroserviceArgs extends StatementAnnotations {
-  /** Capture the response into this stack variable. */
-  as?: string;
-  /** Target microservice host. */
-  host: string | Value;
-  /** Request path. */
-  path: string | Value;
-  /** HTTP verb — the 7 engine verbs are suggested; any string or dynamic `Value` is accepted. */
-  method: HttpMethod | (string & {}) | Value;
-  /** Request params — a key/value object. */
-  params: object | Value;
-  /** Headers — an array of full header-line strings. */
-  headers: readonly string[] | Value;
-  /** Request timeout in seconds. */
-  timeout: number | Value;
-  /** Follow HTTP redirects. */
-  follow_location: boolean | Value;
-}
-
-/**
- * `api.microservice` — call an in-cluster microservice (`mvp:microservice_request`).
- * Typed over the generated factory; no TLS/cert fields (the engine schema omits
- * them). All request fields are required, matching the engine contract.
- */
-export function microservice<const As extends string = "">(
-  a: MicroserviceArgs & { as?: As },
-): Statement & AsShapeBrand<As, ApiRequestResult> {
-  return generated.api.microservice({
-    as: a.as,
-    host: coerceText(a.host)!,
-    path: coerceText(a.path)!,
-    method: coerceText(a.method)!,
-    params: coerceObj(a.params)!,
-    headers: coerceArray(a.headers)!,
-    timeout: coerceInt(a.timeout)!,
-    follow_location: coerceBool(a.follow_location)!,
     disabled: a.disabled,
     description: a.description,
   }) as Statement & AsShapeBrand<As, ApiRequestResult>;

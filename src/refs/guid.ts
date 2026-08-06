@@ -66,7 +66,7 @@ export const REFERENCEABLE_KIND_PAYLOAD_KEYS: Readonly<Record<string, string>> =
   realtime_server: "realtime_server",
   channel: "channel",
   message: "message",
-  // A container workload. Nothing in a stack resolves it by guid — `s.api.microservice`
+  // A container workload. Nothing in a stack resolves it by guid — `s.microservice.request`
   // addresses one by NAME — but it is listed here because it is a top-level
   // guid-tracked object, and the codegen index only places objects it recognises.
   microservice: "microservice",

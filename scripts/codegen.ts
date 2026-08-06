@@ -172,9 +172,29 @@ interface FactoryEntry {
   method: string; // leaf, e.g. "add"
 }
 
+/**
+ * Schema basenames this SDK deliberately files under a DIFFERENT namespace than
+ * the engine's own layout implies.
+ *
+ * Distinct from the corrections in `src/statements/schema-dsl/overrides.ts`:
+ * those fix upstream schema DEFECTS, whereas nothing here is wrong upstream.
+ * These are SideStep authoring decisions about where a statement belongs on its
+ * own surface, and they live in codegen (rather than as a hand-edit of the
+ * generated file) so a regeneration reproduces them instead of reverting them.
+ *
+ * - `api.microservice` → `microservice.request`: a microservice is a
+ *   first-class workspace object with its own def factory and deploy path, so
+ *   the statement that calls one belongs beside it rather than filed under the
+ *   external-HTTP-request namespace it shares almost nothing with.
+ */
+const NAMESPACE_OVERRIDES: Readonly<Record<string, string>> = {
+  "api.microservice": "microservice.request",
+};
+
 /** Derive the namespace path + method from a schema filename basename. */
 function namespaceOf(base: string): { path: string[]; method: string } {
-  const segs = base.replace(/^stack\|/, "").split(".");
+  const bare = base.replace(/^stack\|/, "");
+  const segs = (NAMESPACE_OVERRIDES[bare] ?? bare).split(".");
   const method = segs.pop()!;
   return { path: segs, method };
 }

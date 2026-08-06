@@ -307,25 +307,6 @@ describe("HTTP-request sibling wrappers (envelope broadening)", () => {
     expect(field(encoded, "url")).toBeUndefined();
   });
 
-  it("api.microservice encodes host/path and coerces required fields", () => {
-    const encoded = encodeStatement(
-      s.api.microservice({
-        as: "m1",
-        host: "svc",
-        path: "/health",
-        method: "GET",
-        params: {},
-        headers: [],
-        timeout: 3,
-        follow_location: true,
-      }),
-    );
-    expect(encoded.name).toBe("mvp:microservice_request");
-    expect(field(encoded, "host")).toEqual({ value: "svc", tag: "const" });
-    expect(field(encoded, "params")).toEqual({ value: "{}", tag: "const:obj" });
-    expect(field(encoded, "follow_location")).toEqual({ value: "true", tag: "const:bool" });
-  });
-
   it("passes dynamic Values through on siblings", () => {
     const encoded = encodeStatement(s.stream.from_request({ url: inp("u"), method: inp("m") }));
     expect(field(encoded, "url")?.tag).toBe("input");
@@ -348,7 +329,7 @@ describe("api.request result typing (InferResponse)", () => {
     expectTypeOf<InferResponse<typeof q>>().toEqualTypeOf<ApiRequestResult>();
   });
 
-  it("webflow.request and api.microservice bind the same envelope", () => {
+  it("webflow.request binds the same envelope", () => {
     const wf = query({
       verb: "GET",
       apiGroup: grp,
@@ -359,26 +340,6 @@ describe("api.request result typing (InferResponse)", () => {
     expect(wf).toBeDefined();
     expectTypeOf<InferResponse<typeof wf>>().toEqualTypeOf<ApiRequestResult>();
 
-    const ms = query({
-      verb: "GET",
-      apiGroup: grp,
-      name: "ms",
-      stack: [
-        s.api.microservice({
-          host: "svc",
-          path: "/p",
-          method: "GET",
-          params: {},
-          headers: [],
-          timeout: 5,
-          follow_location: true,
-          as: "r",
-        }),
-      ],
-      response: ref("r"),
-    });
-    expect(ms).toBeDefined();
-    expectTypeOf<InferResponse<typeof ms>>().toEqualTypeOf<ApiRequestResult>();
   });
 
   it("status is a number and result is unknown on the resolved type", () => {

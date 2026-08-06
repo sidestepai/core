@@ -1,6 +1,6 @@
 /**
  * Microservice (`microservice`) — a container workload deployed alongside the
- * workspace, addressed from a stack by `s.api.microservice`.
+ * workspace, addressed from a stack by `s.microservice.request`.
  *
  * Two mutually exclusive shapes, selected by {@link MicroserviceDef.kind}:
  *
@@ -168,6 +168,26 @@ export interface MicroserviceDef {
   registryAuth?: MicroserviceRegistryAuth;
 }
 
+/**
+ * Every `servicePort` this microservice's containers declare, de-duplicated and
+ * in declaration order.
+ *
+ * This is the same list the Xano dashboard flattens to build the host dropdown
+ * on a microservice-request statement (one entry per container port), so it is
+ * exactly the set of ports `s.microservice.request` can legitimately address.
+ * Returns `[]` for a `helm` microservice and for a builtin whose containers
+ * expose nothing — neither declares ports, so neither constrains the caller.
+ */
+export function declaredServicePorts(def: MicroserviceDef): string[] {
+  const seen = new Set<string>();
+  for (const container of def.deployment?.containers ?? []) {
+    for (const port of container.ports ?? []) {
+      if (port.servicePort) seen.add(port.servicePort);
+    }
+  }
+  return [...seen];
+}
+
 /** The persisted envelope, exactly as the engine stores it. */
 export interface MicroserviceXdo {
   name: string;
@@ -274,8 +294,20 @@ export function encodeMicroservice(def: MicroserviceDef): MicroserviceXdo {
   };
 }
 
-/** Author a microservice. See the module docstring for the two shapes. */
-export function microservice(def: MicroserviceDef): MicroserviceDef {
+/**
+ * Author a microservice. See the module docstring for the two shapes.
+ *
+ * The `const` generic preserves the literal `servicePort` strings so
+ * `s.microservice.request` can type-check a `port` against the ports this
+ * microservice actually exposes. `D extends MicroserviceDef` keeps the result
+ * assignable anywhere a `MicroserviceDef` is expected. Same shape `agent()`
+ * already uses.
+ *
+ * One consequence: the returned def is READ-ONLY to the type checker, so
+ * mutating it after authoring is now an error. That is the right way round —
+ * validation runs here, once, and a post-hoc mutation would slip past it.
+ */
+export function microservice<const D extends MicroserviceDef>(def: D): D {
   encodeMicroservice(def); // validate eagerly, at the authoring site
   return def;
 }

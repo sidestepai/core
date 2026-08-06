@@ -15,13 +15,14 @@
  */
 import { describe, it, expect } from "vitest";
 import "../../src/index.js";
-import { microservice, encodeMicroservice } from "../../src/kinds/microservice.js";
+import { microservice, encodeMicroservice, declaredServicePorts } from "../../src/kinds/microservice.js";
 import { normalize, loadFixture } from "../conformance/harness.js";
 
 describe("microservice — engine-captured byte shape", () => {
   it("matches the builtin golden, containers and all", () => {
     const built = encodeMicroservice({
       name: "ex_kind_echo_service",
+      tenantDeploy: "manual",
       deployment: {
         replicas: 2,
         strategy: "RollingUpdate",
@@ -47,6 +48,7 @@ describe("microservice — engine-captured byte shape", () => {
     const built = encodeMicroservice({
       name: "ex_kind_helm_service",
       kind: "helm",
+      tenantDeploy: "manual",
       chart: {
         ref: "oci://registry-1.docker.io/bitnamicharts/nginx",
         version: "18.1.0",
@@ -113,5 +115,48 @@ describe("microservice — the authoring surface", () => {
     expect(() =>
       microservice({ name: "m", deployment: { containers: [{ name: "" }] } }),
     ).toThrow(/container/);
+  });
+
+  describe("declaredServicePorts", () => {
+    // This is the list `s.microservice.request` validates a `port` against, and the
+    // same flattening the dashboard does to build its host dropdown.
+    it("flattens every container's ports in declaration order", () => {
+      const def = microservice({
+        name: "m",
+        deployment: {
+          containers: [
+            { name: "a", ports: [{ servicePort: "8080" }, { servicePort: "8443" }] },
+            { name: "b", ports: [{ servicePort: "9090" }] },
+          ],
+        },
+      });
+      expect(declaredServicePorts(def)).toEqual(["8080", "8443", "9090"]);
+    });
+
+    it("de-duplicates a port two containers both expose", () => {
+      // Two containers on the same servicePort is one addressable port, not an
+      // ambiguous choice — so the statement must not demand the caller pick.
+      const def = microservice({
+        name: "m",
+        deployment: {
+          containers: [
+            { name: "a", ports: [{ servicePort: "8080" }] },
+            { name: "b", ports: [{ servicePort: "8080" }] },
+          ],
+        },
+      });
+      expect(declaredServicePorts(def)).toEqual(["8080"]);
+    });
+
+    it("returns nothing for shapes that declare no ports", () => {
+      expect(declaredServicePorts(microservice({ name: "m" }))).toEqual([]);
+      expect(declaredServicePorts(microservice({ name: "m", deployment: {} }))).toEqual([]);
+      expect(
+        declaredServicePorts(microservice({ name: "m", deployment: { containers: [{ name: "c" }] } })),
+      ).toEqual([]);
+      expect(
+        declaredServicePorts(microservice({ name: "m", kind: "helm", chart: { ref: "r" } })),
+      ).toEqual([]);
+    });
   });
 });

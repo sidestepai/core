@@ -13,7 +13,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { GENERATED_SPECS } from "../src/statements/generated/specs.generated.js";
-import { STATEMENT_SURFACES } from "../src/statements/surfaces.js";
+import { STATEMENT_SURFACES, sPathOf } from "../src/statements/surfaces.js";
 
 const INDEX = "../examples/sandbox/index.js";
 
@@ -85,10 +85,11 @@ describe("enum-constrained fields in the sandbox examples", () => {
       const spec = GENERATED_SPECS.find((s) => s.name === stored);
       const constrained = spec?.rules.filter((r) => r.enum) ?? [];
       if (constrained.length === 0) continue;
-      const path = join(
-        "examples/sandbox/statements",
-        `${surface.replace(/^stack\|/, "").replace(/\./g, "/")}.ts`,
-      );
+      // Derived from the `s.` PATH, not the surface key — the two can diverge,
+      // and `scripts/gen-examples.ts` writes the file at the sPath. Getting this
+      // wrong fails OPEN (the `existsSync` guard below skips a missing file), so
+      // the check would silently stop enforcing anything for that statement.
+      const path = join("examples/sandbox/statements", `${sPathOf(surface).replace(/\./g, "/")}.ts`);
       if (!existsSync(path)) continue;
       const src = readFileSync(path, "utf8");
       for (const rule of constrained) {

@@ -606,8 +606,9 @@ builder. `xano.export()` returns the importable `packageExport` bundle, and
 Every top-level Xano object is a registered kind with a factory and a `Xano.register*`
 method: `defineFunction`, `table`, `query`, `apiGroup`, `tool`, `mcpServer`, `agent`,
 `task`, `workflowTest`, `middleware`, `addon`, `realtimeServer`, `realtimeChannel`,
-`realtimeMessage`, `microservice`, `workspaceConfig`, and the seven trigger factories below. Signatures and
-payload keys are in `llms.txt`; what follows is what the types don't tell you.
+`realtimeMessage`, `microservice` (its own section below), `workspaceConfig`, and the seven
+trigger factories below. Signatures and payload keys are in `llms.txt`; what follows is what
+the types don't tell you.
 
 **Triggers take a callback stack.** `stack: (t) => [...]`, not the plain array every other
 kind uses — because a trigger's inputs are **implied by its type** (fixed by Xano, not
@@ -761,8 +762,13 @@ an async call to a statement that dispatches and continues, so it does not retur
 function's result — don't bind `as` expecting a value. Collect results later with
 `s.await({ ids })`.
 
-**Microservices** — a container workload deployed alongside the workspace, called from a
-stack with `s.api.microservice`. Two mutually exclusive shapes chosen by `kind`: `builtin`
+</details>
+
+<details>
+<summary><b>Microservices</b></summary>
+
+A microservice is a container workload deployed alongside the workspace and called from a
+stack with `s.microservice.request`. Two mutually exclusive shapes chosen by `kind`: `builtin`
 declares containers (image/ports/resources/env/command/args) plus optional `ingresses`, and
 `helm` points at a chart and its `values`; passing both throws.
 
@@ -781,13 +787,35 @@ export const echo = microservice({
 });
 ```
 
+Call it by passing the def itself. `port` folds into the single `"name:port"` host string
+the engine reads, and is optional — a microservice exposing exactly one `servicePort`
+resolves to it, and one exposing several requires it. A port the microservice doesn't expose
+is a type error where the def's ports are known, and a build-time throw otherwise:
+
+```ts
+s.microservice.request({ as: "res", host: echo, path: "/health" });
+```
+
+Only `host` and `path` are required. `method`, `params`, `headers`, `timeout`, and
+`follow_location` default to the engine's own values (`GET`, `{}`, `[]`, `10`, `true`) and are
+always written — this statement's schema requires them, so they can't be left off the wire;
+you just don't have to type them.
+
+`host` binds by name, not by guid, because that is how the engine resolves it — so renaming
+a microservice fixes every call site at once. A plain `"name:port"` string is also accepted
+and is the only way to reach an instance-level microservice, which isn't a workspace object;
+nothing checks that spelling, so prefer the def wherever there is one.
+
 A container takes time to come up, so `sidestep deploy` waits for it: after the import it
 reads each microservice and reports whether it is ready, still starting, or failed, then
-lists them. `tenantDeploy: "manual"` rows are reported but never waited on — nothing starts
-them for you. A microservice that hasn't come up in time is a warning, not a failed deploy:
-the backend is already live and the container usually follows moments later. Skip the wait
-with `--no-verify`. The same report is available any time from `sidestep ephemeral get
-<env>`, `sidestep sandbox details`, and `sidestep workspace details`.
+lists them. A microservice that hasn't come up in time is a warning, not a failed deploy: the
+backend is already live and the container usually follows moments later. Skip the wait with
+`--no-verify`. The same report is available any time from `sidestep ephemeral get <env>`,
+`sidestep sandbox details`, and `sidestep workspace details`.
+
+`tenantDeploy: "manual"` rows are reported but never waited on — nothing starts them for you.
+Reach for it when the row should exist without a workload behind it; `examples/sandbox` uses
+it so deploying the examples doesn't wait on containers.
 
 **This surface is early and expected to change.** `configs` and `volumes` are typed but
 unconfirmed against a live engine. And two fields carry secrets into a pulled tree

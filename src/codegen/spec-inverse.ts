@@ -10,7 +10,7 @@
  *
  * Proving through the real `s` leaf rather than through `encodeFromSpec` is what
  * makes this safe without a maintained exclusion list. Four surfaces
- * (`api.request`, `api.stream`, `webflow.request`, `api.microservice`) have
+ * (`api.request`, `api.stream`, `webflow.request`, `microservice.request`) have
  * hand-authored factories that shadow their generated ones with a different
  * argument shape; calling those with a spec-shaped record simply fails to
  * reproduce the bytes, so they fall through to the next dispatch arm instead of
