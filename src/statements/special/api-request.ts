@@ -22,9 +22,11 @@ import { generated } from "../generated/factories.generated.js";
 import type { OutputAuthored } from "../schema-dsl/interpret.js";
 import { annotate } from "../statement.js";
 import type { StatementAnnotations } from "../statement.js";
+import { declaredServicePorts, type MicroserviceDef } from "../../kinds/microservice.js";
 import {
   type HttpMethod,
   type HttpRequestFields,
+  isValue,
   coerceText,
   coerceObj,
   coerceArray,
@@ -147,11 +149,88 @@ export function webflowRequest<const As extends string = "">(
 
 // ── api.microservice ─────────────────────────────────────────────────────────
 
+/**
+ * Resolve `host` + `port` to the single `name:port` text field the engine reads.
+ *
+ * The engine splits `host` on the first `:`, resolves the name portion against
+ * the microservice row, and passes the port through into the request URL — so
+ * `port` is an authoring convenience that folds back into one string here, and
+ * never reaches the encoder. Everything this function can prove wrong, it
+ * throws on: an authored statement that names a port its own microservice does
+ * not expose would deploy clean and fail only at request time.
+ */
+function resolveMicroserviceHost(
+  host: MicroserviceDef | string | Value,
+  port: number | string | undefined,
+): string | Value {
+  // Order matters: a `Value` and a `MicroserviceDef` are both objects, so the
+  // tagged-Value test has to run first and be the explicit discriminator.
+  if (isValue(host)) {
+    if (port !== undefined) {
+      throw new Error(
+        "api.microservice: `port` cannot be joined onto a dynamic `host` at build time. " +
+          "Build the joined `\"name:port\"` string in the value itself instead.",
+      );
+    }
+    return host;
+  }
+
+  if (typeof host === "string") {
+    if (port !== undefined && host.includes(":")) {
+      throw new Error(
+        `api.microservice: \`host\` already carries a port ("${host}"), so \`port: ${String(port)}\` is ambiguous. ` +
+          "Pass the port once — either joined into `host` or as `port`.",
+      );
+    }
+    return port === undefined ? host : `${host}:${port}`;
+  }
+
+  const declared = declaredServicePorts(host);
+
+  if (port !== undefined) {
+    // A microservice declaring no ports (helm, or a builtin exposing nothing)
+    // has nothing to contradict, so any port is allowed through.
+    if (declared.length > 0 && !declared.includes(String(port))) {
+      throw new Error(
+        `api.microservice: microservice "${host.name}" does not expose port ${String(port)}. ` +
+          `It declares: ${declared.join(", ")}.`,
+      );
+    }
+    return `${host.name}:${port}`;
+  }
+
+  // One declared port is unambiguous — it is the only entry the dashboard's own
+  // host dropdown would offer for this microservice.
+  if (declared.length === 1) return `${host.name}:${declared[0]}`;
+  // No declared ports: the engine routes a bare name to `http://name/path`.
+  if (declared.length === 0) return host.name;
+
+  throw new Error(
+    `api.microservice: microservice "${host.name}" declares ${declared.length} ports ` +
+      `(${declared.join(", ")}), so \`port\` is required to pick one.`,
+  );
+}
+
 export interface MicroserviceArgs extends StatementAnnotations {
   /** Capture the response into this stack variable. */
   as?: string;
-  /** Target microservice host. */
-  host: string | Value;
+  /**
+   * Target microservice — the `microservice()` def to call.
+   *
+   * A plain string is also accepted, and is the only way to reach an
+   * instance-level microservice (those live in instance settings, not the
+   * workspace, so there is no def to pass). It carries its own port:
+   * `"legacy:80"`.
+   */
+  host: MicroserviceDef | string | Value;
+  /**
+   * Port to call, folded into `host` as `name:port`.
+   *
+   * Optional: a microservice declaring exactly one `servicePort` resolves to it.
+   * One declaring several requires this field, and rejects a port it does not
+   * expose. Serialized as text, matching how `servicePort` is stored.
+   */
+  port?: number | string;
   /** Request path. */
   path: string | Value;
   /** HTTP verb — the 7 engine verbs are suggested; any string or dynamic `Value` is accepted. */
@@ -170,13 +249,24 @@ export interface MicroserviceArgs extends StatementAnnotations {
  * `api.microservice` — call an in-cluster microservice (`mvp:microservice_request`).
  * Typed over the generated factory; no TLS/cert fields (the engine schema omits
  * them). All request fields are required, matching the engine contract.
+ *
+ * Address it by passing the `microservice()` def itself — its declared ports are
+ * then checked at the authoring site, and a rename fixes every call site at once:
+ *
+ * ```ts
+ * s.api.microservice({ host: echoService, path: "/health", ... })
+ * ```
+ *
+ * `host` binds by NAME, not by guid — deliberately, because the engine resolves
+ * this field by name too (a workspace-scoped lookup on the microservice's name).
+ * A guid here would not be merely unconventional; it would be wrong.
  */
 export function microservice<const As extends string = "">(
   a: MicroserviceArgs & { as?: As },
 ): Statement & AsShapeBrand<As, ApiRequestResult> {
   return generated.api.microservice({
     as: a.as,
-    host: coerceText(a.host)!,
+    host: coerceText(resolveMicroserviceHost(a.host, a.port))!,
     path: coerceText(a.path)!,
     method: coerceText(a.method)!,
     params: coerceObj(a.params)!,

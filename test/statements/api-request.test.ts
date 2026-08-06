@@ -6,6 +6,7 @@ import { coerceObj, coerceText } from "../../src/statements/special/coerce.js";
 import { encodeStatement } from "../../src/statements/statement.js";
 import { query } from "../../src/kinds/query.js";
 import { apiGroup } from "../../src/kinds/api-group.js";
+import { microservice } from "../../src/kinds/microservice.js";
 import type { InferResponse } from "../../src/responses/infer.js";
 import type { ApiRequestResult } from "../../src/statements/special/api-request.js";
 import { normalize, loadFixture } from "../conformance/harness.js";
@@ -324,6 +325,99 @@ describe("HTTP-request sibling wrappers (envelope broadening)", () => {
     expect(field(encoded, "host")).toEqual({ value: "svc", tag: "const" });
     expect(field(encoded, "params")).toEqual({ value: "{}", tag: "const:obj" });
     expect(field(encoded, "follow_location")).toEqual({ value: "true", tag: "const:bool" });
+  });
+
+  it("api.microservice addresses a microservice() def by name (U1)", () => {
+    const svc = microservice({
+      name: "echo_svc",
+      deployment: { containers: [{ name: "c", image: "i", ports: [{ servicePort: "8080" }] }] },
+    });
+    const base = { path: "/health", method: "GET", params: {}, headers: [], timeout: 3 } as const;
+
+    // A single declared port resolves without `port`, and an explicit port —
+    // number or string — produces byte-identical output.
+    const implicit = encodeStatement(s.api.microservice({ host: svc, ...base, follow_location: true }));
+    const num = encodeStatement(s.api.microservice({ host: svc, port: 8080, ...base, follow_location: true }));
+    const str = encodeStatement(s.api.microservice({ host: svc, port: "8080", ...base, follow_location: true }));
+
+    expect(field(implicit, "host")).toEqual({ value: "echo_svc:8080", tag: "const" });
+    expect(field(num, "host")).toEqual(field(implicit, "host"));
+    expect(field(str, "host")).toEqual(field(implicit, "host"));
+    // The rest of the envelope is untouched by the new field.
+    expect(num.input).toEqual(implicit.input);
+  });
+
+  it("api.microservice joins a port onto a string host (U1)", () => {
+    const base = { path: "/p", method: "GET", params: {}, headers: [], timeout: 3, follow_location: true } as const;
+    expect(field(encodeStatement(s.api.microservice({ host: "echo", port: 5678, ...base })), "host")).toEqual({
+      value: "echo:5678",
+      tag: "const",
+    });
+    // An already-joined string is the instance-level spelling — passed through.
+    expect(field(encodeStatement(s.api.microservice({ host: "legacy:80", ...base })), "host")).toEqual({
+      value: "legacy:80",
+      tag: "const",
+    });
+  });
+
+  it("api.microservice rejects a port it cannot join (U1)", () => {
+    const base = { path: "/p", method: "GET", params: {}, headers: [], timeout: 3, follow_location: true } as const;
+    // Doubled port — ambiguous which one wins.
+    expect(() => s.api.microservice({ host: "echo:5678", port: 5678, ...base })).toThrow(/already carries a port/);
+    // A dynamic host cannot be joined at build time.
+    expect(() => s.api.microservice({ host: inp("h"), port: 9000, ...base })).toThrow(/dynamic `host`/);
+    // ...but a dynamic host on its own still passes straight through.
+    const dyn = encodeStatement(s.api.microservice({ host: inp("h"), ...base }));
+    expect(field(dyn, "host")?.tag).toBe("input");
+  });
+
+  it("api.microservice guards `port` against the def's declared ports (U2)", () => {
+    const one = microservice({
+      name: "one_port",
+      deployment: { containers: [{ name: "c", image: "i", ports: [{ servicePort: "8080" }] }] },
+    });
+    const two = microservice({
+      name: "two_port",
+      deployment: {
+        containers: [
+          { name: "a", image: "i", ports: [{ servicePort: "8080" }] },
+          { name: "b", image: "i", ports: [{ servicePort: "9090" }] },
+        ],
+      },
+    });
+    const base = { path: "/p", method: "GET", params: {}, headers: [], timeout: 3, follow_location: true } as const;
+
+    // A port the microservice does not expose — the message names the real ones.
+    expect(() => s.api.microservice({ host: one, port: 9000, ...base })).toThrow(/does not expose port 9000.*8080/s);
+    // Ambiguous without a port, resolvable with one.
+    expect(() => s.api.microservice({ host: two, ...base })).toThrow(/declares 2 ports \(8080, 9090\)/);
+    expect(field(encodeStatement(s.api.microservice({ host: two, port: 9090, ...base })), "host")).toEqual({
+      value: "two_port:9090",
+      tag: "const",
+    });
+  });
+
+  it("api.microservice allows any port when the def declares none (U2)", () => {
+    const helm = microservice({ name: "helm_svc", kind: "helm", chart: { ref: "oci://x/y" } });
+    const portless = microservice({
+      name: "bare_svc",
+      deployment: { containers: [{ name: "c", image: "i" }] },
+    });
+    const base = { path: "/p", method: "GET", params: {}, headers: [], timeout: 3, follow_location: true } as const;
+
+    // Nothing declared, nothing to contradict: bare name, or any port asked for.
+    expect(field(encodeStatement(s.api.microservice({ host: helm, ...base })), "host")).toEqual({
+      value: "helm_svc",
+      tag: "const",
+    });
+    expect(field(encodeStatement(s.api.microservice({ host: helm, port: 9000, ...base })), "host")).toEqual({
+      value: "helm_svc:9000",
+      tag: "const",
+    });
+    expect(field(encodeStatement(s.api.microservice({ host: portless, ...base })), "host")).toEqual({
+      value: "bare_svc",
+      tag: "const",
+    });
   });
 
   it("passes dynamic Values through on siblings", () => {

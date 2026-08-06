@@ -168,6 +168,26 @@ export interface MicroserviceDef {
   registryAuth?: MicroserviceRegistryAuth;
 }
 
+/**
+ * Every `servicePort` this microservice's containers declare, de-duplicated and
+ * in declaration order.
+ *
+ * This is the same list the Xano dashboard flattens to build the host dropdown
+ * on a microservice-request statement (one entry per container port), so it is
+ * exactly the set of ports `s.api.microservice` can legitimately address.
+ * Returns `[]` for a `helm` microservice and for a builtin whose containers
+ * expose nothing — neither declares ports, so neither constrains the caller.
+ */
+export function declaredServicePorts(def: MicroserviceDef): string[] {
+  const seen = new Set<string>();
+  for (const container of def.deployment?.containers ?? []) {
+    for (const port of container.ports ?? []) {
+      if (port.servicePort) seen.add(port.servicePort);
+    }
+  }
+  return [...seen];
+}
+
 /** The persisted envelope, exactly as the engine stores it. */
 export interface MicroserviceXdo {
   name: string;

@@ -357,7 +357,12 @@ export { apiGroup, apiGroupKind, encodeApiGroup } from "./kinds/api-group.js";
 export type { ApiGroupDef, ApiGroupXdo, CorsConfig } from "./kinds/api-group.js";
 
 // --- microservice: a container workload deployed alongside the workspace ---
-export { microservice, microserviceKind, encodeMicroservice } from "./kinds/microservice.js";
+export {
+  microservice,
+  microserviceKind,
+  encodeMicroservice,
+  declaredServicePorts,
+} from "./kinds/microservice.js";
 export type {
   MicroserviceDef,
   MicroserviceXdo,
