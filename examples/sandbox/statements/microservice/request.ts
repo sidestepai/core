@@ -34,8 +34,8 @@ import { echoService } from "../../kinds/microservice.js";
  * `host: "ex_kind_echo_service:8080"` without naming a port. The five defaulted
  * fields are written for you at the engine's own values.
  */
-export const apiMicroservice = defineFunction({
-  name: "ex_api_microservice",
+export const microserviceRequest = defineFunction({
+  name: "ex_microservice_request",
   stack: [s.microservice.request({ as: "result", host: echoService, path: c.text("/health") })],
   response: ref("result"),
 });
@@ -47,8 +47,8 @@ export const apiMicroservice = defineFunction({
  * more than one. A number or a string is accepted; both serialize as text,
  * matching how `servicePort` is stored everywhere else.
  */
-export const apiMicroservicePort = defineFunction({
-  name: "ex_api_microservice_port",
+export const microserviceRequestPort = defineFunction({
+  name: "ex_microservice_request_port",
   stack: [
     s.microservice.request({
       as: "result",
@@ -71,8 +71,8 @@ export const apiMicroservicePort = defineFunction({
  * Accepted, but reach for it only when there is no def to pass: nothing checks
  * the name or the port, so a typo here deploys clean and fails at request time.
  */
-export const apiMicroserviceInstanceHost = defineFunction({
-  name: "ex_api_microservice_instance_host",
+export const microserviceRequestInstanceHost = defineFunction({
+  name: "ex_microservice_request_instance_host",
   stack: [s.microservice.request({ as: "result", host: "legacy:80", path: c.text("/status") })],
   response: ref("result"),
 });
