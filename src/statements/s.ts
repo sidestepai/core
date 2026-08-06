@@ -50,7 +50,8 @@ import {
   dbTransaction,
   dbExternalQuery,
 } from "./special/db.js";
-import { apiRequest, streamFromRequest, webflowRequest, microservice } from "./special/api-request.js";
+import { apiRequest, streamFromRequest, webflowRequest } from "./special/api-request.js";
+import { microserviceRequest } from "./special/microservice.js";
 import { aiAgentRun, cloudJob, cloudJobAwait, cloudJobStatus } from "./special/ai-cloud.js";
 import {
   arrayMap,
@@ -113,7 +114,7 @@ export const s = {
   function: { run: functionRun, call: functionCall },
   action: { call: actionCall, package: { call: actionPackageCall } },
   workflow_test: { call: workflowTestCall },
-  api: { ...generated.api, call: apiCall, realtime_event: realtimeEvent, request: apiRequest, microservice },
+  api: { ...generated.api, call: apiCall, realtime_event: realtimeEvent, request: apiRequest, microservice: microserviceRequest },
   // `realtime.publish` is the CURRENT-layer send statement (`api.realtime_event` is the
   // superseded one); `get_session` beside it is generated.
   realtime: { ...generated.realtime, publish: realtimePublish },
