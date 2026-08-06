@@ -149,6 +149,9 @@ export function webflowRequest<const As extends string = "">(
 
 // ── api.microservice ─────────────────────────────────────────────────────────
 
+/** Host spellings `s.api.microservice` accepts. */
+export type MicroserviceHost = MicroserviceDef | string | Value;
+
 /**
  * Resolve `host` + `port` to the single `name:port` text field the engine reads.
  *
@@ -160,7 +163,7 @@ export function webflowRequest<const As extends string = "">(
  * not expose would deploy clean and fail only at request time.
  */
 function resolveMicroserviceHost(
-  host: MicroserviceDef | string | Value,
+  host: MicroserviceHost,
   port: number | string | undefined,
 ): string | Value {
   // Order matters: a `Value` and a `MicroserviceDef` are both objects, so the
@@ -240,9 +243,6 @@ type PortArg<D> = string extends PortsOf<D>
   : [PortsOf<D>] extends [never]
     ? number | string
     : PortsOf<D> | AsNumber<PortsOf<D>>;
-
-/** Host spellings `s.api.microservice` accepts. */
-export type MicroserviceHost = MicroserviceDef | string | Value;
 
 export interface MicroserviceArgs<H extends MicroserviceHost = MicroserviceHost>
   extends StatementAnnotations {
