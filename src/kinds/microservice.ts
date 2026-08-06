@@ -300,7 +300,12 @@ export function encodeMicroservice(def: MicroserviceDef): MicroserviceXdo {
  * The `const` generic preserves the literal `servicePort` strings so
  * `s.api.microservice` can type-check a `port` against the ports this
  * microservice actually exposes. `D extends MicroserviceDef` keeps the result
- * assignable anywhere a `MicroserviceDef` is expected.
+ * assignable anywhere a `MicroserviceDef` is expected. Same shape `agent()`
+ * already uses.
+ *
+ * One consequence: the returned def is READ-ONLY to the type checker, so
+ * mutating it after authoring is now an error. That is the right way round —
+ * validation runs here, once, and a post-hoc mutation would slip past it.
  */
 export function microservice<const D extends MicroserviceDef>(def: D): D {
   encodeMicroservice(def); // validate eagerly, at the authoring site
