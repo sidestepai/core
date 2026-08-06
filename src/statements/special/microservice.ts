@@ -217,7 +217,7 @@ export function microserviceRequest<
 >(
   a: MicroserviceArgs<H> & { as?: As },
 ): Statement & AsShapeBrand<As, ApiRequestResult> {
-  return generated.api.microservice({
+  return generated.microservice.request({
     as: a.as,
     host: coerceText(resolveMicroserviceHost(a.host, a.port))!,
     path: coerceText(a.path)!,

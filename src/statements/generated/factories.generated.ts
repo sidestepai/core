@@ -36,8 +36,6 @@ export const generated = {
   api: {
     lambda: /** `mvp:lambda` — fields: as, code, timeout */
 (a: { as?: string; code?: Value; timeout?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:lambda", a),
-    microservice: /** `mvp:microservice_request` — fields: as, host, path, method, params, headers, timeout, follow_location */
-(a: { as?: string; host: Value; path: Value; method: "GET" | "POST" | "PUT" | "DELETE" | "HEAD" | "OPTIONS" | "PATCH" | Value; params: Value; headers: Value; timeout: Value; follow_location: Value; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:microservice_request", a),
     request: /** `mvp:api_request` — fields: as, url, method, params, headers, timeout, follow_location, verify_host, verify_peer, ca_certificate, certificate, certificate_pass, private_key, private_key_pass */
 (a: { as?: string; url?: Value; method?: "GET" | "POST" | "PUT" | "DELETE" | "HEAD" | "OPTIONS" | "PATCH" | Value; params?: Value; headers?: Value; timeout?: Value; follow_location?: Value; verify_host?: Value; verify_peer?: Value; ca_certificate?: Value; certificate?: Value; certificate_pass?: Value; private_key?: Value; private_key_pass?: Value; disabled?: boolean; description?: string; output?: OutputAuthored } = {}): Statement => fromSpec("mvp:api_request", a),
     stream: /** `mvp:streaming_api_response` — fields: value */
@@ -224,6 +222,10 @@ export const generated = {
 (a: { name?: string; value: Value; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:math_mul", a),
     sub: /** `mvp:math_sub` — fields: name, value */
 (a: { name?: string; value: Value; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:math_sub", a),
+  },
+  microservice: {
+    request: /** `mvp:microservice_request` — fields: as, host, path, method, params, headers, timeout, follow_location */
+(a: { as?: string; host: Value; path: Value; method: "GET" | "POST" | "PUT" | "DELETE" | "HEAD" | "OPTIONS" | "PATCH" | Value; params: Value; headers: Value; timeout: Value; follow_location: Value; disabled?: boolean; description?: string }): Statement => fromSpec("mvp:microservice_request", a),
   },
   object: {
     entries: /** `mvp:object_entries` — fields: as, value */

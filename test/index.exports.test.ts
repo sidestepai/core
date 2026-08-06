@@ -6,6 +6,9 @@ import {
   type InferInput,
   type InferRow,
   type InferResponse,
+  generatedStatements,
+  encodeStatement,
+  c,
 } from "../src/index.js";
 import { meQuery, login, getSnippet, fetchSnippet } from "./fixtures/consumer-example.js";
 import { createLink } from "./fixtures/validate-input-recipe.js";
@@ -88,5 +91,34 @@ describe("public consumer surface", () => {
     expectTypeOf<InferResponse<typeof getLinkOrNull>>().toEqualTypeOf<
       InferRow<typeof links> | null
     >();
+  });
+});
+
+/**
+ * The generated factory tree mirrors the engine's schema-file layout, EXCEPT
+ * where `NAMESPACE_OVERRIDES` in `scripts/codegen.ts` re-homes a statement onto
+ * the surface SideStep chose for it. The override lives in codegen so a
+ * regeneration reproduces it; this guards the committed result, which is what
+ * consumers of `generatedStatements` actually reach.
+ */
+describe("generated factory tree namespace overrides", () => {
+  it("files the microservice call under `microservice.request`, not `api`", () => {
+    expect(typeof generatedStatements.microservice.request).toBe("function");
+    expect("microservice" in generatedStatements.api).toBe(false);
+  });
+
+  it("re-homing moved the factory rather than duplicating it", () => {
+    const enc = encodeStatement(
+      generatedStatements.microservice.request({
+        host: c.text("svc"),
+        path: c.text("/p"),
+        method: "GET",
+        params: c.obj({}),
+        headers: c.array([]),
+        timeout: c.int(10),
+        follow_location: c.bool(true),
+      }),
+    );
+    expect(enc.name).toBe("mvp:microservice_request");
   });
 });
