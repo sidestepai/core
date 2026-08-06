@@ -269,22 +269,55 @@ export interface MicroserviceArgs<H extends MicroserviceHost = MicroserviceHost>
   port?: H extends MicroserviceDef ? PortArg<H> : number | string;
   /** Request path. */
   path: string | Value;
-  /** HTTP verb — the 7 engine verbs are suggested; any string or dynamic `Value` is accepted. */
-  method: HttpMethod | (string & {}) | Value;
-  /** Request params — a key/value object. */
-  params: object | Value;
-  /** Headers — an array of full header-line strings. */
-  headers: readonly string[] | Value;
-  /** Request timeout in seconds. */
-  timeout: number | Value;
-  /** Follow HTTP redirects. */
-  follow_location: boolean | Value;
+  /** HTTP verb — the 7 engine verbs are suggested; any string or dynamic `Value` is accepted. Defaults to `"GET"`. */
+  method?: HttpMethod | (string & {}) | Value;
+  /** Request params — a key/value object. Defaults to `{}`. */
+  params?: object | Value;
+  /** Headers — an array of full header-line strings. Defaults to `[]`. */
+  headers?: readonly string[] | Value;
+  /** Request timeout in seconds. Defaults to `10`. */
+  timeout?: number | Value;
+  /** Follow HTTP redirects. Defaults to `true`. */
+  follow_location?: boolean | Value;
 }
+
+/**
+ * Defaults for the five request fields a caller may omit.
+ *
+ * These MIRROR the engine's own declared defaults for this statement rather
+ * than inventing SideStep ones, so an omitted field produces exactly the bytes
+ * a fully-specified statement produces — and exactly what the Xano editor
+ * stores, since it saves the whole form.
+ *
+ * They are applied rather than omitted because this statement's block schema
+ * declares all five REQUIRED (no `?`), unlike its `api.request` sibling, which
+ * declares them optional-with-defaults and so may leave them out. Emitting a
+ * microservice call without them is rejected as a missing required argument.
+ *
+ * Restating a third party's defaults means they can drift. Kept in one place so
+ * a drift is a one-line fix.
+ */
+const MICROSERVICE_DEFAULTS = {
+  method: "GET",
+  params: {},
+  headers: [] as readonly string[],
+  timeout: 10,
+  follow_location: true,
+} as const;
 
 /**
  * `api.microservice` — call an in-cluster microservice (`mvp:microservice_request`).
  * Typed over the generated factory; no TLS/cert fields (the engine schema omits
- * them). All request fields are required, matching the engine contract.
+ * them).
+ *
+ * Only `host` and `path` are required. `method`, `params`, `headers`, `timeout`,
+ * and `follow_location` default to the engine's own values
+ * ({@link MICROSERVICE_DEFAULTS}) and are always EMITTED — this statement's
+ * block schema requires them, so they cannot simply be left out:
+ *
+ * ```ts
+ * s.api.microservice({ as: "result", host: echoService, path: "/health" })
+ * ```
  *
  * Address it by passing the `microservice()` def itself — its declared ports are
  * then checked at the authoring site, and a rename fixes every call site at once:
@@ -307,11 +340,12 @@ export function microservice<
     as: a.as,
     host: coerceText(resolveMicroserviceHost(a.host, a.port))!,
     path: coerceText(a.path)!,
-    method: coerceText(a.method)!,
-    params: coerceObj(a.params)!,
-    headers: coerceArray(a.headers)!,
-    timeout: coerceInt(a.timeout)!,
-    follow_location: coerceBool(a.follow_location)!,
+    // `??` (not `||`) so an explicit `false`/`0`/`""` is honored, not defaulted.
+    method: coerceText(a.method ?? MICROSERVICE_DEFAULTS.method)!,
+    params: coerceObj(a.params ?? MICROSERVICE_DEFAULTS.params)!,
+    headers: coerceArray(a.headers ?? MICROSERVICE_DEFAULTS.headers)!,
+    timeout: coerceInt(a.timeout ?? MICROSERVICE_DEFAULTS.timeout)!,
+    follow_location: coerceBool(a.follow_location ?? MICROSERVICE_DEFAULTS.follow_location)!,
     disabled: a.disabled,
     description: a.description,
   }) as Statement & AsShapeBrand<As, ApiRequestResult>;

@@ -174,8 +174,13 @@ describe("s.db.query signature is complete", () => {
 /**
  * Re-bloat guard, set from the measured floor. Like the def-shapes section, this
  * one is at its information floor — reshaping buys addressability, not tokens.
+ *
+ * Raised 5,700 → 5,800 when `s.api.microservice` gained `port?` and a
+ * defaulting contract across five fields. That is API growth, not prose
+ * creeping back: the entry was cut three times first, and every sentence left
+ * changes how the call gets written. Re-measure before raising it again.
  */
-const SPECIALS_CEILING = 5_700;
+const SPECIALS_CEILING = 5_800;
 
 describe("Specials block stays lean", () => {
   it(`is under ${SPECIALS_CEILING.toLocaleString()} tokens`, () => {

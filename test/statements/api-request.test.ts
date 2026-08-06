@@ -327,6 +327,49 @@ describe("HTTP-request sibling wrappers (envelope broadening)", () => {
     expect(field(encoded, "follow_location")).toEqual({ value: "true", tag: "const:bool" });
   });
 
+  it("api.microservice needs only host and path, and still emits all seven fields", () => {
+    // The block schema declares method/params/headers/timeout/follow_location
+    // REQUIRED (unlike api.request's, which defaults them), so they cannot be
+    // omitted from the wire — they are defaulted to the engine's own values.
+    const minimal = encodeStatement(s.api.microservice({ as: "m", host: "svc", path: "/health" }));
+    const explicit = encodeStatement(
+      s.api.microservice({
+        as: "m",
+        host: "svc",
+        path: "/health",
+        method: "GET",
+        params: {},
+        headers: [],
+        timeout: 10,
+        follow_location: true,
+      }),
+    );
+    expect(minimal.input).toEqual(explicit.input);
+    expect((minimal.input as Array<{ name: string }>).map((e) => e.name)).toEqual([
+      "host",
+      "path",
+      "method",
+      "params",
+      "headers",
+      "timeout",
+      "follow_location",
+    ]);
+    expect(field(minimal, "method")).toEqual({ value: "GET", tag: "const" });
+    expect(field(minimal, "params")).toEqual({ value: "{}", tag: "const:obj" });
+    expect(field(minimal, "headers")).toEqual({ value: "[]", tag: "const:array" });
+    expect(field(minimal, "timeout")).toEqual({ value: "10", tag: "const:int" });
+    expect(field(minimal, "follow_location")).toEqual({ value: "true", tag: "const:bool" });
+  });
+
+  it("api.microservice honors an explicit falsy override rather than defaulting it", () => {
+    // `??`, not `||` — `false` and `0`-ish values are real choices, not absences.
+    const encoded = encodeStatement(
+      s.api.microservice({ host: "svc", path: "/p", follow_location: false, timeout: 1 }),
+    );
+    expect(field(encoded, "follow_location")).toEqual({ value: "false", tag: "const:bool" });
+    expect(field(encoded, "timeout")).toEqual({ value: "1", tag: "const:int" });
+  });
+
   it("api.microservice addresses a microservice() def by name (U1)", () => {
     const svc = microservice({
       name: "echo_svc",

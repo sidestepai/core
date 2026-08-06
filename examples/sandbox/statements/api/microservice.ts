@@ -18,39 +18,34 @@
  * A plain string still works and is the only way to reach an INSTANCE-level
  * microservice (those live in instance settings, not the workspace, so there is
  * no def to pass). It carries its own port: `"legacy:80"` (Gate 3).
+ *
+ * Only `host` and `path` are required — `method`, `params`, `headers`,
+ * `timeout`, and `follow_location` default to the engine's own values. They are
+ * still WRITTEN, because this statement's schema requires them; omitting them
+ * from the call just means you don't have to type them.
  */
 import { c, defineFunction, ref, s } from "@sidestep/core";
 import { echoService } from "../../kinds/microservice.js";
 
 /**
- * Gate 1 — address the def; its single declared port is resolved for you.
+ * Gate 1 — the whole call: address the def, name a path.
  *
  * `echoService` exposes one `servicePort` ("8080"), so this emits
- * `host: "ex_kind_echo_service:8080"` without naming a port here.
+ * `host: "ex_kind_echo_service:8080"` without naming a port. The five defaulted
+ * fields are written for you at the engine's own values.
  */
 export const apiMicroservice = defineFunction({
   name: "ex_api_microservice",
-  stack: [
-    s.api.microservice({
-      as: "result",
-      host: echoService,
-      path: c.text("/health"),
-      method: "GET",
-      params: c.obj({}),
-      headers: [],
-      timeout: c.int(10),
-      follow_location: true,
-    }),
-  ],
+  stack: [s.api.microservice({ as: "result", host: echoService, path: c.text("/health") })],
   response: ref("result"),
 });
 
 /**
- * Gate 2 — name the port explicitly.
+ * Gate 2 — name the port, and override the defaulted fields.
  *
- * Always valid, and required once a microservice exposes more than one port.
- * A number or a string is accepted; both serialize as text, matching how
- * `servicePort` is stored everywhere else.
+ * An explicit `port` is always valid, and required once a microservice exposes
+ * more than one. A number or a string is accepted; both serialize as text,
+ * matching how `servicePort` is stored everywhere else.
  */
 export const apiMicroservicePort = defineFunction({
   name: "ex_api_microservice_port",
@@ -59,12 +54,12 @@ export const apiMicroservicePort = defineFunction({
       as: "result",
       host: echoService,
       port: 8080,
-      path: c.text("/health"),
-      method: "GET",
-      params: c.obj({}),
-      headers: [],
-      timeout: c.int(10),
-      follow_location: true,
+      path: c.text("/ping"),
+      method: "POST",
+      params: c.obj({ probe: true }),
+      headers: ["X-Probe: 1"],
+      timeout: c.int(30),
+      follow_location: false,
     }),
   ],
   response: ref("result"),
@@ -78,17 +73,6 @@ export const apiMicroservicePort = defineFunction({
  */
 export const apiMicroserviceInstanceHost = defineFunction({
   name: "ex_api_microservice_instance_host",
-  stack: [
-    s.api.microservice({
-      as: "result",
-      host: "legacy:80",
-      path: c.text("/status"),
-      method: "GET",
-      params: c.obj({}),
-      headers: [],
-      timeout: c.int(10),
-      follow_location: true,
-    }),
-  ],
+  stack: [s.api.microservice({ as: "result", host: "legacy:80", path: c.text("/status") })],
   response: ref("result"),
 });

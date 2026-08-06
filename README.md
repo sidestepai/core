@@ -787,9 +787,13 @@ resolves to it, and one exposing several requires it. A port the microservice do
 is a type error where the def's ports are known, and a build-time throw otherwise:
 
 ```ts
-s.api.microservice({ as: "res", host: echo, path: "/health", method: "GET",
-                     params: {}, headers: [], timeout: 10, follow_location: true });
+s.api.microservice({ as: "res", host: echo, path: "/health" });
 ```
+
+Only `host` and `path` are required. `method`, `params`, `headers`, `timeout`, and
+`follow_location` default to the engine's own values (`GET`, `{}`, `[]`, `10`, `true`) and are
+always written — this statement's schema requires them, so they can't be left off the wire;
+you just don't have to type them.
 
 `host` binds by name, not by guid, because that is how the engine resolves it — so renaming
 a microservice fixes every call site at once. A plain `"name:port"` string is also accepted
