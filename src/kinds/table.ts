@@ -239,7 +239,46 @@ export type SeedRowOf<
 export type SeedSource<Row = unknown> =
   | ReadonlyArray<SeedRow<Row>>
   | SeedFileSource
-  | (() => ReadonlyArray<SeedRow<Row>> | Promise<ReadonlyArray<SeedRow<Row>>>);
+  | (() => ReadonlyArray<LooseSeedRow<SeedRow<Row>>> | Promise<ReadonlyArray<LooseSeedRow<SeedRow<Row>>>>);
+
+/**
+ * Widen a literal type to its base. `"a" | "b"` → `string`, `1 | 2` → `number`;
+ * everything else (including `null`, `Date` and nested arrays) is preserved.
+ */
+type WidenSeedValue<T> = T extends string
+  ? string
+  : T extends number
+    ? number
+    : T extends boolean
+      ? boolean
+      : T extends ReadonlyArray<infer E>
+        ? ReadonlyArray<WidenSeedValue<E>>
+        : T;
+
+/**
+ * A seed row as a DEFERRED source can actually be typed (issue #209).
+ *
+ * A `.json` module's strings infer as `string`, never as the literal union an
+ * `f.enum` column brands — so `seed: () => import("./rows.json")` matched no
+ * `table()` overload the moment any column was an enum, and the diagnostic was
+ * a fourteen-level `TS2769` whose real cause sat on the last line. Almost every
+ * realistic table has a closed set somewhere, so the recommended form was
+ * broken for most real uses.
+ *
+ * Deferred rows are therefore typed with literals widened to their base type.
+ * Nothing is lost: a file's contents are invisible to the type system anyway,
+ * and membership is enforced at export by `coerceSeedRows`, where the value and
+ * the column's declared options are both in hand — an error naming the table,
+ * the row index, the column and the allowed values, which is a better
+ * diagnostic than the overload wall ever was.
+ *
+ * The INLINE form is untouched and stays strict: an invalid literal is still a
+ * compile error (reported at the `table(` call, since the overload is what
+ * fails to match).
+ *
+ * Homomorphic by construction, so optional and readonly modifiers survive.
+ */
+export type LooseSeedRow<Row> = { [K in keyof Row]: WidenSeedValue<Row[K]> };
 
 /** Brand for {@link seedFile}'s marker, so the deploy path can recognise it structurally. */
 export const SEED_FILE: unique symbol = Symbol.for("sidestep.seed.file") as never;
