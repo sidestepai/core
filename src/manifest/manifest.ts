@@ -191,8 +191,12 @@ export interface ManifestFilter {
   fl: string;
   /** Whether it carries named, typed args (vs. variadic-by-name). */
   typed: boolean;
-  /** Named, typed args (richly-specified filters only). */
-  args?: Array<{ name: string; type: string; optional?: boolean }>;
+  /**
+   * Named, typed args (richly-specified filters only). `enum` carries the exact
+   * accepted spellings where the arg has a closed set — printed in place of the
+   * bare word "enum", which told a reader nothing (#198).
+   */
+  args?: Array<{ name: string; type: string; optional?: boolean; enum?: string[] }>;
   /** Result type (richly-specified filters only). */
   result?: string;
   /** Group, e.g. `timestamp`, `vector` (richly-specified filters only). */
@@ -785,6 +789,15 @@ export const FILTER_NOTES: Record<string, string> = {
   some: "`code` is a JS boolean expression run per element (true for any?)",
   findIndex: "`code` is a JS boolean expression; returns the first matching index",
   lambda: "runs a JavaScript expression body",
+  // The sort mode is the whole behavior of this filter, and picking it wrong is
+  // SILENT — every unrecognized spelling falls through to `itext`, so the array
+  // comes back sorted as case-insensitive text with no error anywhere. That is
+  // how "top N by score/distance/recency" comes out wrong (#198).
+  fsort:
+    '`type` is the comparator, and ONLY "number" compares numerically — "text"/"itext" ' +
+    'are strcmp/strcasecmp, "natural"/"inatural" are the human-readable "a2 < a10" ' +
+    'orderings. Default "itext". Anything else silently sorts as text, so a numeric ' +
+    'sort MUST spell "number"; the path arg drills into each element',
   // Non-obvious names.
   epochms_transform: 'applies a relative shift (e.g. "+1 day") to the timestamp',
   unpick: "returns the object without the named keys (inverse of a pick)",
@@ -1405,7 +1418,16 @@ export function renderLlmsTxt(m: Manifest): string {
   );
   const typedFilters = m.filters.filter((fl) => fl.typed);
   for (const fl of typedFilters) {
-    const sig = (fl.args ?? []).map((a) => `${a.name}${a.optional ? "?" : ""}: ${a.type}`).join(", ");
+    // An enumerated arg prints its MEMBERS, not the word "enum". Printing the
+    // word is what made #198 expensive: the accepted set was discoverable only
+    // by trying spellings against a live engine, and the one that behaves
+    // differently from the rest is not guessable.
+    const sig = (fl.args ?? [])
+      .map((a) => {
+        const type = a.enum?.length ? a.enum.map((m) => JSON.stringify(m)).join("|") : a.type;
+        return `${a.name}${a.optional ? "?" : ""}: ${type}`;
+      })
+      .join(", ");
     const ret = fl.result ? `: ${fl.result}` : "";
     // Signature-first: render only a curated note (complete, non-truncated) where the
     // signature underspecifies; the raw source description is dropped from the primary

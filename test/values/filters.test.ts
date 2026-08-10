@@ -127,11 +127,39 @@ describe("fl.* filter catalog", () => {
     expect(fl.get(dyn).arg[0]).toBe(dyn);
   });
 
-  it("only the path arg is coerced — other args still require a Value (#76)", () => {
-    // @ts-expect-error — the value arg is not a coerced path; a bare string is rejected.
-    fl.set("count", "not-a-value");
-    // @ts-expect-error — get's `default` arg is a plain Value, not a coerced path.
-    fl.get("count", "not-a-value");
+  /**
+   * #229. The path-only coercion above used to be the WHOLE rule, and the
+   * asymmetry is what made it a bug: `fl.get("count")` worked first try, so an
+   * author learned "bare literals are fine", and then the argument sitting next
+   * to it rejected one. Every argument takes a bare scalar now.
+   */
+  it("accepts a bare scalar in EVERY argument position, not just the path (#229)", () => {
+    // The audit's exact example: identical bytes to the fully explicit form.
+    expect(fl.get("a.b", 0)).toEqual(fl.get(c.text("a.b"), c.int(0)));
+    // A non-path arg on a filter whose path is not first.
+    expect(fl.array_remove(ref("x"), "items", true).arg[2]).toEqual(c.bool(true));
+    // The variadic tail coerces too — otherwise the rule breaks at arg N+1.
+    expect(fl.concat("a", 1, false).arg).toEqual([c.text("a"), c.int(1), c.bool(false)]);
+  });
+
+  it("wraps each scalar as the constant an author would have typed (#229)", () => {
+    expect(fl.get("k", 7).arg[1]).toEqual(c.int(7));
+    // Integral vs fractional is the c.int/c.decimal split, keyed on the runtime
+    // value — a `decimal`-typed arg given `2` is still `const:int`, because that
+    // is what writing it by hand would produce.
+    expect(fl.get("k", 1.5).arg[1]).toEqual(c.decimal(1.5));
+    expect(fl.get("k", true).arg[1]).toEqual(c.bool(true));
+    expect(fl.get("k", "x").arg[1]).toEqual(c.text("x"));
+  });
+
+  it("still rejects a bare object or array — scalars only (#229)", () => {
+    // `c.obj`/`c.array` carry a deliberate type-level diagnostic the audit
+    // singled out as worth preserving (#230). Coercing these here would route
+    // around it.
+    // @ts-expect-error — an object literal is not a scalar.
+    fl.get("count", { a: 1 });
+    // @ts-expect-error — an array literal is not a scalar.
+    fl.get("count", [1, 2]);
   });
 
   /**
@@ -182,5 +210,43 @@ describe("fl.* filter catalog", () => {
     expect(out).toMatch(/Wrote .*filters\.generated\.ts/);
     const regenerated = readFileSync(join(ROOT, "src/values/generated/filters.generated.ts"), "utf8");
     expect(regenerated).toBe(committed);
+  });
+});
+
+/**
+ * #198. `fsort`'s comparator switch has five arms and its `default:` arm falls
+ * through to `itext`, so an unrecognized `type` sorts case-insensitively as TEXT
+ * and returns the wrong order with no error anywhere. That is how a "top N by
+ * score/distance/recency" endpoint built the natural way comes out wrong.
+ */
+describe("fl.fsort comparator modes (#198)", () => {
+  it("accepts each of the five modes the engine branches on", () => {
+    for (const mode of ["text", "itext", "natural", "inatural", "number"] as const) {
+      expect(fl.fsort("score", mode).arg[1]).toEqual(c.text(mode));
+    }
+  });
+
+  it("refuses the spellings that lie, at compile time", () => {
+    // Neither is in the engine's switch — both fall through to `itext` and sort
+    // as text. The failure is silent, so the type is the only place it can be
+    // caught.
+    // @ts-expect-error — "decimal" is not a comparator mode; a numeric sort is "number".
+    fl.fsort("score", "decimal");
+    // @ts-expect-error — "int" is not a comparator mode; a numeric sort is "number".
+    fl.fsort("score", "int");
+  });
+
+  it("still lets a Value through, so a pulled workspace round-trips", () => {
+    // The deliberate escape hatch, and the reason this is a typing change rather
+    // than a throw: codegen emits a stored `"decimal"` as `c.text("decimal")`,
+    // and a workspace holding one has to stay exportable.
+    expect(fl.fsort("score", c.text("decimal")).arg[1]).toEqual(c.text("decimal"));
+  });
+
+  it("names the accepted set in llms.txt rather than the word `enum`", () => {
+    // Printing "enum" is what made this expensive — the members were
+    // discoverable only by trying spellings against a live engine.
+    const llms = readFileSync(new URL("../../llms.txt", import.meta.url), "utf8");
+    expect(llms).toContain('"text"|"itext"|"natural"|"inatural"|"number"');
   });
 });

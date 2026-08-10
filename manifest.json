@@ -6878,7 +6878,14 @@
         {
           "name": "type",
           "type": "enum",
-          "optional": true
+          "optional": true,
+          "enum": [
+            "text",
+            "itext",
+            "natural",
+            "inatural",
+            "number"
+          ]
         },
         {
           "name": "asc",

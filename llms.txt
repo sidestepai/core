@@ -664,7 +664,7 @@ engine change.
 - `fl.findIndex(code: text, timeout?: int): any[]` — `code` is a JS boolean expression; returns the first matching index
 - `fl.first_notempty(value: any): any` — first value that is not empty ("", null, 0, "0", false, [], {})
 - `fl.first_notnull(value: any): any`
-- `fl.fsort(path?: text, type?: enum, asc?: bool): <T>[]`
+- `fl.fsort(path?: text, type?: "text"|"itext"|"natural"|"inatural"|"number", asc?: bool): <T>[]` — `type` is the comparator, and ONLY "number" compares numerically — "text"/"itext" are strcmp/strcasecmp, "natural"/"inatural" are the human-readable "a2 < a10" orderings. Default "itext". Anything else silently sorts as text, so a numeric sort MUST spell "number"; the path arg drills into each element
 - `fl.get(path: text, default?: json): any`
 - `fl.gt(value: <T>): bool`
 - `fl.gte(value: <T>): bool`

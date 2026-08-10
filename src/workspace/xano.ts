@@ -97,9 +97,24 @@ export class Xano {
     return this;
   }
 
-  /** Register the workspace settings object (singleton). */
+  /**
+   * Register the workspace settings object (singleton).
+   *
+   * A config with no `name` inherits the one already on the registry — which is
+   * what `workspace("my-app")` set — so the natural chain
+   * `workspace("my-app").registerWorkspace(workspaceConfig({ history }))` no
+   * longer makes an author restate a name this registry has held since its
+   * first call (#228). An explicit `name` still wins, and a rename this way is
+   * a rename of the workspace.
+   */
   registerWorkspace(def: unknown): this {
-    this.workspaceConfig = encodeObject<Record<string, unknown>>("workspace", def);
+    const authored = (def ?? {}) as { name?: unknown };
+    const inherited = this.workspaceConfig.name;
+    const withName =
+      authored.name === undefined && typeof inherited === "string"
+        ? { ...authored, name: inherited }
+        : authored;
+    this.workspaceConfig = encodeObject<Record<string, unknown>>("workspace", withName);
     return this;
   }
 

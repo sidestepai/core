@@ -4,7 +4,9 @@ import {
   DEFAULT_SETTINGS,
   encodeWorkspaceConfig,
   encodeWorkspaceEnv,
+  workspaceConfig,
 } from "../../src/kinds/workspace-config.js";
+import { Xano, workspace } from "../../src/workspace/xano.js";
 
 describe("encodeWorkspaceEnv", () => {
   it("maps a name→value map to the engine env[] array in declared order", () => {
@@ -162,5 +164,42 @@ describe("encodeWorkspaceConfig — presence-preserving optional blocks", () => 
     const first = encodeWorkspaceConfig({ name: "a" });
     (first.settings.ai_settings as Record<string, unknown>).default_provider = "openai";
     expect(encodeWorkspaceConfig({ name: "b" }).settings).toEqual(DEFAULT_SETTINGS);
+  });
+});
+
+/**
+ * #228. The config's `name` duplicated what `workspace("…")` already said, and
+ * there is exactly one config per workspace — so every documented example
+ * failed to typecheck on a field the registry had held since its first call.
+ */
+describe("workspaceConfig name is optional (#228)", () => {
+  it("inherits the name workspace(…) set", () => {
+    const bundle = workspace("my-app")
+      .registerWorkspace(workspaceConfig({ use_custom_names: true }))
+      .export();
+    expect((bundle.payload.workspace as { name: string }).name).toBe("my-app");
+  });
+
+  it("is byte-identical to the named form when a name IS supplied", () => {
+    // The load-bearing assertion: this is a TYPING change. Nothing about the
+    // emitted bundle moves for code that already compiled.
+    const named = workspace("my-app")
+      .registerWorkspace(workspaceConfig({ name: "my-app", use_custom_names: true }))
+      .export();
+    const inherited = workspace("my-app")
+      .registerWorkspace(workspaceConfig({ use_custom_names: true }))
+      .export();
+    expect(inherited.payload.workspace).toEqual(named.payload.workspace);
+  });
+
+  it("lets an explicit name override the inherited one", () => {
+    const bundle = workspace("from-entry")
+      .registerWorkspace(workspaceConfig({ name: "from-config" }))
+      .export();
+    expect((bundle.payload.workspace as { name: string }).name).toBe("from-config");
+  });
+
+  it("refuses a workspace nothing named at all", () => {
+    expect(() => new Xano().registerWorkspace(workspaceConfig({})).export()).toThrow(/no name/);
   });
 });

@@ -173,8 +173,13 @@ describe("workspace name", () => {
     expect(encodeWorkspaceConfig({ name: "" }).name).toBe("");
   });
 
-  it("still refuses a MISSING name, which is an authoring mistake", () => {
-    expect(() => encodeWorkspaceConfig({} as never)).toThrow(/`name` is required/);
+  it("still refuses a name NOTHING supplied, and names the two ways to give one", () => {
+    // `name` is optional on the def (#228) because `registerWorkspace` fills it
+    // from `workspace("…")`. Reaching the encoder without one means nothing
+    // named the workspace at all, and the bundle needs a name — so this stays an
+    // error, and says which of the two places to put it.
+    expect(() => encodeWorkspaceConfig({})).toThrow(/no name/);
+    expect(() => encodeWorkspaceConfig({})).toThrow(/workspace\("my-app"\)/);
   });
 });
 
