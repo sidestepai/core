@@ -25,7 +25,7 @@ import type { FunctionDef } from "../function/define.js";
 import type { TableDef } from "../kinds/table.js";
 import type { ObjectKind } from "../kinds/kind.js";
 import { DiagnosticBag } from "./diagnostics.js";
-import { checkReferences, checkTables } from "./guards.js";
+import { checkReferences, checkStacks, checkTables } from "./guards.js";
 
 /**
  * Cross-realm brand. `instanceof Xano` breaks when sidestep is loaded by two
@@ -238,6 +238,9 @@ export class Xano {
     // Every cross-object reference must name something this bundle carries.
     // Runs last so a more specific diagnostic (an unregistered auth table)
     // is reported in its own words rather than as a bare dangling guid.
+    // Shapes that succeed with HTTP 200 and the wrong result — warnings, so
+    // they never block a deploy.
+    checkStacks(this.tableDefs, sections, bag);
     checkReferences(this.bundleType, sections, this.workspaceConfig.guid, bag);
     bag.flush();
     if (lockCtx) this.applyLock(lockCtx, sections);

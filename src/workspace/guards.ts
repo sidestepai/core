@@ -23,6 +23,7 @@
  * them anyway. Source is the wrong oracle for this class of question.
  */
 import { tableColumns } from "../kinds/table.js";
+import { resolveRef } from "../refs/guid.js";
 import type { ColumnDef, TableDef } from "../kinds/table.js";
 import type { DiagnosticBag } from "./diagnostics.js";
 
@@ -81,6 +82,241 @@ function checkSeededNonScalar(def: TableDef, bag: DiagnosticBag): void {
 /** Run every hard guard over the registered tables. */
 export function checkTables(tables: readonly TableDef[], bag: DiagnosticBag): void {
   for (const def of tables) checkSeededNonScalar(def, bag);
+}
+
+// --- stack warnings: shapes that succeed with HTTP 200 and the wrong result ---
+
+/** Statement names the stack walk keys on. */
+const BULK_UPDATE = "mvp:dbo_bulkupdate";
+const DB_GET = "mvp:dbo_getby";
+
+/**
+ * Auto-injected columns an author is not expected to restate on a bulk item:
+ * `id` targets the row, and `created_at` carries an engine default.
+ */
+const SYSTEM_COLUMNS = new Set(["id", "created_at"]);
+
+/** One encoded statement, loosely typed — only the keys the walk reads. */
+interface EncodedStatement {
+  readonly name: string;
+  readonly as?: unknown;
+  readonly input?: unknown;
+  readonly context?: unknown;
+  readonly output?: unknown;
+}
+
+/**
+ * Every statement in an object, including those nested in a conditional or a
+ * loop. A statement is any object carrying a `mvp:`-prefixed `name`, which is
+ * the one marker every encoded statement shares regardless of where it sits.
+ */
+function collectStatements(node: unknown, out: EncodedStatement[]): void {
+  if (Array.isArray(node)) {
+    for (const item of node) collectStatements(item, out);
+    return;
+  }
+  if (!node || typeof node !== "object") return;
+  const name = (node as { name?: unknown }).name;
+  if (typeof name === "string" && name.startsWith("mvp:")) {
+    out.push(node as EncodedStatement);
+  }
+  for (const value of Object.values(node as Record<string, unknown>)) {
+    collectStatements(value, out);
+  }
+}
+
+/** The named entry of a statement's `input[]`, if present. */
+function statementInput(
+  statement: EncodedStatement,
+  name: string,
+): { tag?: unknown; value?: unknown } | undefined {
+  if (!Array.isArray(statement.input)) return undefined;
+  return statement.input.find(
+    (entry) => (entry as { name?: unknown })?.name === name,
+  ) as { tag?: unknown; value?: unknown } | undefined;
+}
+
+/** The table guid a db statement is bound to (`context.dbo.id`). */
+function statementTableGuid(statement: EncodedStatement): string | undefined {
+  const id = (statement.context as { dbo?: { id?: unknown } } | undefined)?.dbo?.id;
+  return typeof id === "string" ? id : undefined;
+}
+
+/**
+ * `s.db.bulk.update` is a full-row REPLACE, and nothing says so (#203).
+ *
+ * Confirmed in the engine: bulk update and bulk patch run the same code and
+ * differ by one argument to the input-schema builder — update keeps each
+ * column's default and writes it, patch strips defaults so an absent key
+ * contributes nothing. So an item shaped `{ id, status }` applies the status
+ * and writes every other column to its zero value: text to `""`, int to `0`.
+ * HTTP 200, no error, data gone.
+ *
+ * This warns rather than blocks: replacing a row IS the statement's job, and an
+ * author who supplies a deliberate subset may mean it. Only a STATIC items
+ * array can be checked — a `ref` is opaque at build time, which is a documented
+ * limit of the check rather than a silent gap.
+ */
+function checkBulkUpdate(
+  statement: EncodedStatement,
+  owner: string,
+  tablesByGuid: ReadonlyMap<string, TableDef>,
+  bag: DiagnosticBag,
+): void {
+  const guid = statementTableGuid(statement);
+  const def = guid === undefined ? undefined : tablesByGuid.get(guid);
+  if (!def) return;
+  const items = statementInput(statement, "items");
+  // A `ref`/`var` items list carries no keys to compare — say nothing.
+  if (typeof items?.tag !== "string" || !items.tag.startsWith("const")) return;
+  if (typeof items.value !== "string") return;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(items.value);
+  } catch {
+    return;
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0) return;
+
+  const supplied = new Set<string>();
+  for (const item of parsed) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return;
+    for (const key of Object.keys(item as Record<string, unknown>)) supplied.add(key);
+  }
+  if (supplied.size === 0) return;
+
+  const cleared = tableColumns(def)
+    .map((col) => col.name)
+    .filter((name) => !SYSTEM_COLUMNS.has(name) && !supplied.has(name));
+  if (cleared.length === 0) return;
+
+  bag.warn(
+    "db.bulk-update-partial-item",
+    `${owner}: \`s.db.bulk.update\` on table "${def.name}" is a full-row REPLACE, and these ` +
+      `items omit ${cleared.map((n) => `"${n}"`).join(", ")} — each omitted column is written ` +
+      `to its zero value ("" / 0 / null), not left alone, with an HTTP 200 and no error. Use ` +
+      `\`s.db.bulk.patch\` to write only the keys an item carries, or supply every column you ` +
+      `mean to preserve. (Only a static \`items\` array is checked; a \`ref\` cannot be.)`,
+  );
+}
+
+/** Column names a `db.get` will return, or `undefined` when it returns the default set. */
+function outputColumns(statement: EncodedStatement): Set<string> | undefined {
+  const output = statement.output as
+    | { items?: unknown; customize?: unknown }
+    | undefined;
+  if (!output || output.customize !== true || !Array.isArray(output.items)) return undefined;
+  const names = new Set<string>();
+  for (const item of output.items) {
+    const name = (item as { name?: unknown })?.name;
+    if (typeof name === "string") names.add(name);
+  }
+  return names;
+}
+
+/** Every `{ tag: "var", value: "<path>" }` reference inside an object. */
+function collectVarRefs(node: unknown, out: string[]): void {
+  if (Array.isArray(node)) {
+    for (const item of node) collectVarRefs(item, out);
+    return;
+  }
+  if (!node || typeof node !== "object") return;
+  const record = node as { tag?: unknown; value?: unknown };
+  if (record.tag === "var" && typeof record.value === "string") out.push(record.value);
+  for (const value of Object.values(node as Record<string, unknown>)) {
+    collectVarRefs(value, out);
+  }
+}
+
+/**
+ * Reading an `access: "internal"` column that the `db.get` did not return (#224).
+ *
+ * An internal column is absent from a `db.get` result unless `output` names it
+ * — `output` overrides column visibility. `f.password` defaults to
+ * `access: "internal"`, so the canonical login stack (the most-copied stack in
+ * the SDK) reads `ref("u.password")` against a row that has no `password` key
+ * and dies at runtime with `Unable to locate var: u.password`.
+ *
+ * Statically unambiguous, so it warns. Scoped to vars bound by `db.get`: a var
+ * bound by anything else is not something this can reason about, and guessing
+ * would produce exactly the false positives that train a warning away.
+ */
+function checkInternalColumnReads(
+  statements: readonly EncodedStatement[],
+  owner: string,
+  tablesByGuid: ReadonlyMap<string, TableDef>,
+  bag: DiagnosticBag,
+): void {
+  // var name -> the table it was bound from, and what the read returned.
+  const bindings = new Map<string, { def: TableDef; output: Set<string> | undefined }>();
+  for (const statement of statements) {
+    if (statement.name !== DB_GET) continue;
+    const as = statement.as;
+    if (typeof as !== "string" || as === "") continue;
+    const guid = statementTableGuid(statement);
+    const def = guid === undefined ? undefined : tablesByGuid.get(guid);
+    if (!def) continue;
+    bindings.set(as, { def, output: outputColumns(statement) });
+  }
+  if (bindings.size === 0) return;
+
+  const refs: string[] = [];
+  for (const statement of statements) collectVarRefs(statement, refs);
+
+  const reported = new Set<string>();
+  for (const path of refs) {
+    const dot = path.indexOf(".");
+    if (dot <= 0) continue;
+    const root = path.slice(0, dot);
+    const column = path.slice(dot + 1);
+    const binding = bindings.get(root);
+    if (!binding || binding.output?.has(column)) continue;
+    const col = tableColumns(binding.def).find((c) => c.name === column);
+    if (!col || col.access !== "internal") continue;
+    if (reported.has(path)) continue;
+    reported.add(path);
+    bag.warn(
+      "db.internal-column-read",
+      `${owner}: reads \`ref("${path}")\`, but "${column}" on table "${binding.def.name}" is ` +
+        `\`access: "internal"\` and a \`db.get\` does not return it — the row has no ` +
+        `"${column}" key, so this fails at runtime with \`Unable to locate var: ${path}\`. Name ` +
+        `the column in \`output\` on that \`db.get\` (\`output\` overrides column visibility), ` +
+        `e.g. \`output: ["id", "${column}"]\`.`,
+    );
+  }
+}
+
+/**
+ * Warn about the two shapes that return HTTP 200 while destroying data or
+ * reading nothing. Both are statically detectable and neither is ever
+ * blocked — see the individual checks for why each stays a warning.
+ */
+export function checkStacks(
+  tables: readonly TableDef[],
+  sections: Readonly<Record<string, unknown[] | undefined>>,
+  bag: DiagnosticBag,
+): void {
+  if (tables.length === 0) return;
+  const tablesByGuid = new Map<string, TableDef>();
+  for (const def of tables) tablesByGuid.set(resolveRef("dbo", def), def);
+
+  for (const [payloadKey, arr] of Object.entries(sections)) {
+    for (const obj of arr ?? []) {
+      if (!obj || typeof obj !== "object") continue;
+      const name = (obj as { name?: unknown }).name;
+      const owner = `${payloadKey} "${typeof name === "string" ? name : "?"}"`;
+      const statements: EncodedStatement[] = [];
+      collectStatements(obj, statements);
+      if (statements.length === 0) continue;
+      for (const statement of statements) {
+        if (statement.name === BULK_UPDATE) {
+          checkBulkUpdate(statement, owner, tablesByGuid, bag);
+        }
+      }
+      checkInternalColumnReads(statements, owner, tablesByGuid, bag);
+    }
+  }
 }
 
 /** An engine object guid: 32 lowercase hex characters. */

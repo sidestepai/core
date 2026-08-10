@@ -24,7 +24,7 @@ import { task } from "../../src/kinds/task.js";
 import { defineFunction } from "../../src/function/define.js";
 import { s } from "../../src/statements/s.js";
 import { f } from "../../src/fields/catalog.js";
-import { c } from "../../src/values/value.js";
+import { c, ref } from "../../src/values/value.js";
 import "../../src/kinds/workspace-config.js"; // side-effect: register the "workspace" kind
 import "../../src/kinds/function.js"; // side-effect: register the "function" kind
 
@@ -192,6 +192,155 @@ describe("seeded table with a non-scalar column (#195)", () => {
 
   it("does NOT fire on a scalar-only seeded table", () => {
     expect(() => seededWith({ label: f.text(), count: f.int() }).export()).not.toThrow();
+  });
+});
+
+describe("s.db.bulk.update with a partial item (#203)", () => {
+  // Confirmed at source: bulk update and bulk patch differ by one argument to
+  // the input-schema builder — update writes each omitted column's default,
+  // patch strips defaults so an absent key contributes nothing.
+  const doc = table({
+    name: "p_doc",
+    schema: { title: f.text(), owner: f.int(), status: f.text() },
+  });
+
+  const exportWith = (stack: unknown[]) =>
+    captureWarnings(() => {
+      new Xano()
+        .registerWorkspace({ name: "app" })
+        .registerTables([doc])
+        .registerFunctions([defineFunction({ name: "fn", stack: stack as never })])
+        .export();
+    });
+
+  it("warns and names exactly the columns that will be cleared", () => {
+    const seen = exportWith([
+      s.db.bulk.update({
+        table: doc,
+        items: c.array([{ id: 1, status: "archived" }]),
+        as: "res",
+      }),
+    ]);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.code).toBe("db.bulk-update-partial-item");
+    expect(seen[0]!.message).toContain('"title"');
+    expect(seen[0]!.message).toContain('"owner"');
+    // `status` is supplied, and the system columns are not the author's job.
+    expect(seen[0]!.message).not.toContain('"status"');
+    expect(seen[0]!.message).not.toContain('"created_at"');
+    expect(seen[0]!.message).toContain("s.db.bulk.patch");
+  });
+
+  it("takes the union of keys across items", () => {
+    const seen = exportWith([
+      s.db.bulk.update({
+        table: doc,
+        items: c.array([
+          { id: 1, status: "archived" },
+          { id: 2, title: "t" },
+        ]),
+        as: "res",
+      }),
+    ]);
+    expect(seen[0]!.message).toContain('"owner"');
+    expect(seen[0]!.message).not.toContain('"title"');
+  });
+
+  it("is silent when every writable column is supplied", () => {
+    const seen = exportWith([
+      s.db.bulk.update({
+        table: doc,
+        items: c.array([{ id: 1, title: "t", owner: 2, status: "open" }]),
+        as: "res",
+      }),
+    ]);
+    expect(seen).toHaveLength(0);
+  });
+
+  it("is silent for a dynamic items list — it cannot be read at build time", () => {
+    const seen = exportWith([
+      s.set_var("items", c.array([])),
+      s.db.bulk.update({ table: doc, items: ref("items"), as: "res" }),
+    ]);
+    expect(seen).toHaveLength(0);
+  });
+
+  it("is silent for bulk.patch with a partial item — that is the correct statement", () => {
+    const seen = exportWith([
+      s.db.bulk.patch({
+        table: doc,
+        items: c.array([{ id: 1, status: "archived" }]),
+        as: "res",
+      }),
+    ]);
+    expect(seen).toHaveLength(0);
+  });
+});
+
+describe("reading an internal column a db.get did not return (#224)", () => {
+  const users = table({
+    name: "p_user",
+    schema: { email: f.email(), password: f.password(), name: f.text() },
+  });
+
+  const exportWith = (stack: unknown[]) =>
+    captureWarnings(() => {
+      new Xano()
+        .registerWorkspace({ name: "app" })
+        .registerTables([users])
+        .registerFunctions([defineFunction({ name: "fn", stack: stack as never })])
+        .export();
+    });
+
+  it("warns on the canonical login read, naming the column and the fix", () => {
+    const seen = exportWith([
+      s.db.get({ table: users, fieldName: "email", fieldValue: c.text("a@b.co"), as: "u" }),
+      s.set_var("hash", ref("u.password")),
+    ]);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.code).toBe("db.internal-column-read");
+    expect(seen[0]!.message).toContain("Unable to locate var: u.password");
+    expect(seen[0]!.message).toContain("output");
+  });
+
+  it("is silent once the column is named in `output`", () => {
+    const seen = exportWith([
+      s.db.get({
+        table: users,
+        fieldName: "email",
+        fieldValue: c.text("a@b.co"),
+        output: ["id", "email", "password"],
+        as: "u",
+      }),
+      s.set_var("hash", ref("u.password")),
+    ]);
+    expect(seen).toHaveLength(0);
+  });
+
+  it("is silent when the column read is not internal", () => {
+    const seen = exportWith([
+      s.db.get({ table: users, fieldName: "email", fieldValue: c.text("a@b.co"), as: "u" }),
+      s.set_var("who", ref("u.name")),
+    ]);
+    expect(seen).toHaveLength(0);
+  });
+
+  it("is silent for a var bound by something other than db.get", () => {
+    // No false positives on a var this check cannot reason about.
+    const seen = exportWith([
+      s.set_var("u", c.text("not a row")),
+      s.set_var("hash", ref("u.password")),
+    ]);
+    expect(seen).toHaveLength(0);
+  });
+
+  it("reports a given reference once, not once per occurrence", () => {
+    const seen = exportWith([
+      s.db.get({ table: users, fieldName: "email", fieldValue: c.text("a@b.co"), as: "u" }),
+      s.set_var("a", ref("u.password")),
+      s.set_var("b", ref("u.password")),
+    ]);
+    expect(seen).toHaveLength(1);
   });
 });
 
