@@ -34,6 +34,17 @@ import type { DiagnosticBag } from "./diagnostics.js";
  * ephemeral: `{ array: true }`, `obj`, `json` and `vector` each fail the import
  * with `Array to string conversion`; `geo_*` and scalars deploy. The same
  * columns import fine on an UNSEEDED table, which is what scopes this guard.
+ *
+ * The seed path and the runtime write path do NOT agree, so do not merge the
+ * two lists. Inserting into an unseeded table (writing only a scalar column,
+ * never naming the non-scalar one) gives:
+ *
+ *   scalars 200 · `{ array: true }` 500 · `obj` 500 · `json` 500 (opaque
+ *   ERROR_FATAL, a different path) · `vector` **200** · `geo_*` 200
+ *
+ * So `vector` breaks the content import but writes fine at runtime, and the
+ * mere PRESENCE of an array/obj/json column is enough to fail an insert that
+ * does not mention it.
  */
 const NON_SCALAR_TYPES = new Set(["json", "obj", "vector"]);
 
