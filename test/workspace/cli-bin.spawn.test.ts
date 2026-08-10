@@ -17,12 +17,13 @@ import {
   existsSync,
   mkdtempSync,
   mkdirSync,
+  readdirSync,
   rmSync,
   symlinkSync,
   writeFileSync,
   readFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -45,14 +46,42 @@ function scaffold(pkgType: "module" | "commonjs", entryFile: string): string {
 }
 
 /** Run the bin; return status + streams without throwing on nonzero exit. */
-function runBin(args: string[], cwd?: string): { status: number; stdout: string; stderr: string } {
+function runBin(
+  args: string[],
+  cwd?: string,
+  nodeBin: string = process.execPath,
+): { status: number; stdout: string; stderr: string } {
   try {
-    const stdout = execFileSync(process.execPath, [binPath, ...args], { encoding: "utf8", cwd });
+    const stdout = execFileSync(nodeBin, [binPath, ...args], { encoding: "utf8", cwd });
     return { status: 0, stdout, stderr: "" };
   } catch (e) {
     const err = e as { status?: number; stdout?: string; stderr?: string };
     return { status: err.status ?? 1, stdout: String(err.stdout ?? ""), stderr: String(err.stderr ?? "") };
   }
+}
+
+/**
+ * Other Node majors installed on this machine, for the loader-ordering guard.
+ *
+ * Issue #197 is invisible on Node 24: the bug is that a REJECTED module
+ * resolution is cached, so registering tsx after the first failed `import()`
+ * cannot recover — and Node 24 happens not to cache it, so the old
+ * native-first-then-tsx ordering appeared to work. Node 22 (the LTS line most
+ * consumers run) does cache it, and fails.
+ *
+ * So the regression can only be observed on a second Node major. Opportunistic
+ * by design: discovers nvm-installed versions and skips silently when there are
+ * none, which keeps the suite green on a single-version machine while still
+ * catching the regression locally and on any CI matrix that installs Node 22.
+ */
+function otherNodeBinaries(): { version: string; bin: string }[] {
+  const root = join(homedir(), ".nvm", "versions", "node");
+  if (!existsSync(root)) return [];
+  const running = process.versions.node;
+  return readdirSync(root)
+    .filter((v) => v.replace(/^v/, "").split(".")[0] !== running.split(".")[0])
+    .map((v) => ({ version: v, bin: join(root, v, "bin", "node") }))
+    .filter((n) => existsSync(n.bin));
 }
 
 describe("sidestep bin (spawned subprocess against built dist)", () => {
@@ -135,6 +164,41 @@ describe("sidestep bin (spawned subprocess against built dist)", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("exports the `.js`-specifier layout on every installed Node major (issue #197)", () => {
+    const others = otherNodeBinaries();
+    if (others.length === 0) {
+      // Nothing to compare against — the always-on case above still covers the
+      // running major. See otherNodeBinaries() for why a second major matters.
+      return;
+    }
+    const dir = scaffold("module", "index.ts");
+    try {
+      writeFileSync(
+        join(dir, "thing.ts"),
+        `import { table, f } from "@sidestep/core";\n` +
+          `export const thing = table({ name: "thing", schema: { label: f.text() } });\n`,
+      );
+      writeFileSync(
+        join(dir, "index.ts"),
+        `import { workspace } from "@sidestep/core";\n` +
+          `import { thing } from "./thing.js";\n` +
+          `export default workspace("spawned").registerTables([thing]);\n`,
+      );
+      for (const { version, bin } of others) {
+        const out = join(dir, `bundle-${version}.json`);
+        const { status, stderr } = runBin(["export", join(dir, "index.ts"), "--out", out], dir, bin);
+        // Pre-fix this failed on Node 22 with exactly this message, naming a
+        // `.js` file the author deliberately wrote per the documented rule.
+        expect(stderr, version).not.toMatch(/Cannot find module/);
+        expect(status, version).toBe(0);
+        const bundle = JSON.parse(readFileSync(out, "utf8"));
+        expect(bundle.payload.workspace, version).toMatchObject({ name: "spawned" });
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
 
   it("gives an actionable error for a .ts entry in a CommonJS consumer", () => {
     const dir = scaffold("commonjs", "index.ts");

@@ -13,8 +13,10 @@
  * the browser-safe `export()` — that's what keeps seed VALUES out of any frontend
  * bundle (a table def's `seed` may be a deferred thunk resolved only here).
  */
+import { readFileSync } from "node:fs";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import type { TableDef, ColumnDef, SeedRow, SeedSource } from "../kinds/table.js";
-import { tableColumns } from "../kinds/table.js";
+import { SEED_FILE, isSeedFileSource, tableColumns } from "../kinds/table.js";
 import { resolveRef } from "../refs/guid.js";
 import { buildContentEnvelope } from "./export.js";
 
@@ -47,10 +49,58 @@ export const SEED_PAGE_TARGET_BYTES = 512 * 1024;
  * (issue #164) rather than making every author remember `.then(m => m.default)`.
  */
 export async function resolveSeedRows(source: SeedSource): Promise<SeedRow[]> {
+  if (isSeedFileSource(source)) return readSeedFile(source[SEED_FILE]);
   const resolved = typeof source === "function" ? await source() : source;
   const rows = Array.isArray(resolved) ? resolved : unwrapDefaultExport(resolved);
   if (!Array.isArray(rows)) {
     throw new Error(`seed source did not resolve to an array of rows (got ${typeof resolved}).`);
+  }
+  return rows as SeedRow[];
+}
+
+/**
+ * Read and parse a {@link seedFile} reference.
+ *
+ * Synchronous `node:fs` on purpose: this module is reached only from the
+ * deploy/compile path, never from the browser-safe entry, which is the whole
+ * point of naming the file by path instead of importing it.
+ *
+ * Every failure names the RESOLVED absolute path. `path` is written relative to
+ * the declaring module, so when it is wrong the author needs to see what it
+ * resolved to, not what they typed.
+ */
+function readSeedFile(ref: { path: string; base: string }): SeedRow[] {
+  const where = `seedFile("${ref.path}")`;
+  // `base` is `import.meta.url` in every documented use, but tolerate a plain
+  // filesystem path rather than failing on a URL parse the author can't read.
+  const base = /^[a-z][a-z0-9+.-]*:/i.test(ref.base) ? ref.base : pathToFileURL(ref.base).href;
+  const file = fileURLToPath(new URL(ref.path, base));
+
+  let text: string;
+  try {
+    text = readFileSync(file, "utf8");
+  } catch (cause) {
+    throw new Error(
+      `${where}: cannot read "${file}". The path is resolved relative to the module that ` +
+        `declares the table (the \`import.meta.url\` you passed as \`base\`).`,
+      { cause },
+    );
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (cause) {
+    throw new Error(`${where}: "${file}" is not valid JSON — ${(cause as Error).message}`, {
+      cause,
+    });
+  }
+
+  const rows = Array.isArray(parsed) ? parsed : unwrapDefaultExport(parsed);
+  if (!Array.isArray(rows)) {
+    throw new Error(
+      `${where}: "${file}" must hold an array of seed rows (got ${typeof parsed}).`,
+    );
   }
   return rows as SeedRow[];
 }
@@ -267,4 +317,59 @@ export async function buildSeedContentFiles(tableDefs: readonly TableDef[]): Pro
     });
   }
   return files;
+}
+
+/** A seed value the schema says is not public, and where it came from. */
+export interface NonPublicSeedValue {
+  table: string;
+  column: string;
+  value: string;
+}
+
+/**
+ * Minimum length for a value worth scanning a built frontend for.
+ *
+ * Below this the string is more likely to collide with ordinary bundle content
+ * (a status word, an initial) than to be the secret it came from, and a guard
+ * that cries wolf gets switched off.
+ */
+const MIN_SCANNABLE_LENGTH = 6;
+
+/**
+ * Seed values drawn from columns the schema itself declares non-public.
+ *
+ * Scoped deliberately. A PUBLIC column's seed value is already readable through
+ * the deployed API, so finding it in a static bundle discloses nothing new and
+ * refusing on it would be noise. What matters is a value the schema says never
+ * leaves the server:
+ *
+ *   • `access: "internal"` — omitted from API output entirely (`f.password`'s
+ *     default), so the plaintext exists ONLY in the seed file and in whatever a
+ *     bundler copied it into.
+ *   • `sensitive: true` — the author's explicit "do not surface this".
+ *
+ * `access: "private"` is NOT included: private columns are still returned in
+ * responses (the system `created_at` is private and comes back on every read),
+ * so they carry no additional exposure here.
+ */
+export async function collectNonPublicSeedValues(
+  tableDefs: readonly TableDef[],
+): Promise<NonPublicSeedValue[]> {
+  const found: NonPublicSeedValue[] = [];
+  for (const def of tableDefs) {
+    if (def.seed === undefined) continue;
+    const guarded = tableColumns(def).filter(
+      (col) => col.access === "internal" || col.sensitive === true,
+    );
+    if (guarded.length === 0) continue;
+    const rows = await resolveSeedRows(def.seed);
+    for (const row of rows) {
+      for (const col of guarded) {
+        const value = (row as Record<string, unknown>)[col.name];
+        if (typeof value !== "string" || value.length < MIN_SCANNABLE_LENGTH) continue;
+        found.push({ table: def.name, column: col.name, value });
+      }
+    }
+  }
+  return found;
 }

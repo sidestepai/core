@@ -281,6 +281,53 @@ function defaultEntry(options: FieldOptions): { default?: string } {
   return { default: options.default !== undefined ? String(options.default) : "" };
 }
 
+/**
+ * Stored types the engine creates as NULLABLE unless the author says otherwise.
+ *
+ * `nullable` is not one global default in Xano — its column-creation API sets it
+ * per type. Every type here is declared `nullable?=true` by the engine's own
+ * `schema/type/<type>` endpoint, and the same values come back on a real pulled
+ * table (`test/fixtures/tables/schema-table-all.json`, a live workspace export):
+ * blobs, geo and uuid all store `nullable: true` without anyone asking.
+ *
+ * Matching it matters beyond byte-fidelity. A `vector` column is the case where
+ * the divergence is fatal rather than cosmetic: the engine turns an empty
+ * default into SQL `NULL` only when the column is nullable, so a non-null
+ * `f.vector(N)` reaches PostgreSQL as `vector(8) not null default ''` and the
+ * table cannot be created at all — `''` is not a vector literal (issue #206).
+ *
+ * `epochms` is deliberately absent. The `timestamp` endpoint declares
+ * `nullable?=true`, but the only unambiguous stored evidence is the system
+ * `created_at`, which is `false` everywhere, and authored epochms columns in the
+ * corpus carry both values. Left at `false` rather than guessed at.
+ */
+const NULLABLE_BY_DEFAULT: ReadonlySet<string> = new Set([
+  "blob",
+  "blob_img",
+  "blob_video",
+  "blob_audio",
+  "geo_point",
+  "geo_multipoint",
+  "geo_linestring",
+  "geo_multilinestring",
+  "geo_polygon",
+  "geo_multipolygon",
+  "uuid",
+  "vector",
+]);
+
+/**
+ * Whether a stored type is nullable when the author says nothing.
+ *
+ * Exported because codegen has to elide against the SAME value: a geo column an
+ * author explicitly turned NOT-nullable is stored `nullable: false`, and eliding
+ * that against a blanket `false` would drop it from the regenerated source and
+ * re-encode it as `true`.
+ */
+export function defaultNullable(type: string): boolean {
+  return NULLABLE_BY_DEFAULT.has(type);
+}
+
 /** Encode a named field (input or column) into its full stored `FieldXdo`. */
 export function encodeField(
   name: string,
@@ -297,7 +344,7 @@ export function encodeField(
     name,
     type,
     _xsid: "",
-    nullable: options.nullable ?? false,
+    nullable: options.nullable ?? NULLABLE_BY_DEFAULT.has(type),
     ...defaultEntry(options),
     merge: options.merge ?? false,
     hidden: options.hidden !== undefined ? [...options.hidden] : [],

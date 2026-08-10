@@ -18,7 +18,7 @@
  */
 import type { FieldXdo, MethodXdo, ResultItemXdo, TaggedValue } from "../types/xdo.js";
 import type { FieldCustomization, FieldOptions, MethodSpec, NestedField } from "../fields/field.js";
-import { COLUMN_CONTEXT, INPUT_CONTEXT, encodeField } from "../fields/field.js";
+import { COLUMN_CONTEXT, INPUT_CONTEXT, defaultNullable, encodeField } from "../fields/field.js";
 import { f } from "../fields/catalog.js";
 import { FIELD_METHODS } from "../fields/generated/field-methods.generated.js";
 import type { FieldDescriptor } from "../fields/catalog.js";
@@ -304,7 +304,11 @@ function recoverOptions(
   if (stored.merge === true || !elide) options.merge = stored.merge === true;
   const hidden = Array.isArray(stored.hidden) ? (stored.hidden as string[]) : [];
   if (hidden.length > 0 || !elide) options.hidden = [...hidden];
-  if (stored.nullable || !elide) options.nullable = stored.nullable ?? false;
+  // Elided against the TYPE's default, not against `false`. Blob/geo/uuid/vector
+  // columns are nullable unless told otherwise, so for those it is the explicit
+  // `nullable: false` that has to survive into the regenerated source.
+  const nullable = stored.nullable ?? false;
+  if (nullable !== defaultNullable(String(stored.type ?? "")) || !elide) options.nullable = nullable;
   if (stored.required || !elide) options.required = stored.required ?? false;
   if (stored.sensitive || !elide) options.sensitive = stored.sensitive ?? false;
   // An ABSENT `default` is not the same stored shape as an empty one, and only a

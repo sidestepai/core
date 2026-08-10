@@ -216,7 +216,10 @@ describe("table kind", () => {
 
   it("auto-injects an int `id` system column by default", () => {
     const id = tableColumns({ schema: [] }).find((c) => c.name === "id");
-    expect(id).toEqual({ name: "id", type: "int", required: true });
+    // `nullable` is pinned rather than defaulted: a uuid `id` would otherwise
+    // pick up the nullable-by-default that blob/geo/uuid/vector columns get,
+    // and a primary key is never nullable.
+    expect(id).toEqual({ name: "id", type: "int", required: true, nullable: false });
   });
 
   it("auto-injects a uuid `id` when idType is 'uuid'", () => {

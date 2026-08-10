@@ -332,7 +332,7 @@ export type {
   GoogleGenAiLlm,
   XanoFreeLlm,
 } from "./kinds/agent.js";
-export { table, tableKind, encodeTable, encodeColumn, encodeIndex, encodeView } from "./kinds/table.js";
+export { table, tableKind, encodeTable, encodeColumn, encodeIndex, encodeView, seedFile } from "./kinds/table.js";
 export type {
   TableDef,
   TableXdo,
@@ -343,6 +343,7 @@ export type {
   InferRow,
   SeedRow,
   SeedSource,
+  SeedFileSource,
   IndexDef,
   IndexXdo,
   IndexType,

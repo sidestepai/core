@@ -332,10 +332,29 @@ const product = table({
 
 Deploy is a full replace, so re-deploying re-seeds cleanly — no duplicate rows. Seed
 data travels only in the deploy package (resolved at deploy time); it never enters the
-type-only workspace your frontend imports. For large or generated data, pass a loader
-instead of an inline array: `seed: () => import("./products.seed.json")` (a JSON module's
-`.default` is unwrapped for you). The loader form costs nothing in typing — the table's
-row type and column names stay inferred either way.
+compiled workspace bundle.
+
+For data in a file, use `seedFile`:
+
+```ts
+seed: seedFile("./products.seed.json", import.meta.url),
+```
+
+The path resolves against the file that declares the table, and it is read with `node:fs`
+at deploy time. A thunk (`seed: () => import("./products.seed.json")`) also works and is
+the right shape for *computed* seeds — but be aware it does **not** keep seed values out of
+a frontend build: the `import()` lives in your module, so a bundler emits the JSON as a
+served chunk, and any frontend that imports a def whose module graph reaches that table
+ships the seed to the browser. `seedFile` stores a path string, which a bundler has nothing
+to follow.
+
+Either way, keep secrets out of `seed` — it is throwaway fixture data for disposable
+environments. As a backstop, `sidestep deploy --static` refuses to publish a frontend build
+containing seed values from columns your schema marks `access: "internal"` or `sensitive`
+(pass `--allow-seed-in-static` if the data is deliberately public).
+
+Typing is unaffected by the form you choose — the table's row type and column names stay
+inferred.
 
 ---
 
@@ -533,12 +552,30 @@ separate `@sidestep/core/node` entry a frontend never pulls in.
 the SDK exports your frontend doesn't use. But importing a query **def** for its `getPath()`
 also pulls whatever its `stack` builds — the `s.*`/`c.*` factory *calls* run at module load
 to construct the def, so they can't be tree-shaken out. Types are free (`InferInput`/
-`InferRow` erase to nothing — use `import type`). To keep the client bundle lean, keep the
-route metadata a frontend needs (the handle for `getPath()`/`verb`, plus `type` imports)
-in a module separate from your stack-heavy authoring — and for a def whose stack builds a
-heavy graph (an agent + its tools via `s.ai.agent.run`), don't import it in the browser at
-all: declare its `{ path, verb }` as plain metadata and verify it against the compiled
-bundle with `sidestep paths`.
+`InferRow` erase to nothing — use `import type`). That cost is a **floor**, not a function of
+how lean the def is: on a trivial Vite app, one def imported for one `getPath()` measured
+37 kB minified against 784 B for a hand-written path string, and splitting modules reduces
+the incremental cost of further defs but never the floor.
+
+**Generate a route manifest instead.** It keeps the derived-not-hardcoded contract at
+almost no bundle cost:
+
+```bash
+sidestep routes ./xano/index.ts --emit xano/routes.gen.ts
+```
+
+The emitted file is plain data plus one interpolator and imports nothing at all — the same
+app builds to 1.7 kB. Route names and their `{param}` keys are still checked at compile
+time, so a backend rename is a compile error rather than a 404:
+
+```ts
+import { routePath, ROUTES } from "../xano/routes.gen";
+
+fetch(BASE + routePath("blog/{slug}", { slug }), { method: ROUTES["blog/{slug}"].verb });
+```
+
+Add `--strict` in CI to fail when the committed manifest is out of date. A hand-typed
+`ROUTES` table is the option that gives up both the bundle saving and the rename safety.
 
 ---
 

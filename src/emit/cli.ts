@@ -38,7 +38,12 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
 import { emit, serializeBundle } from "./emit.js";
-import { buildSeedContentFiles, type SeedContentFile } from "../workspace/seed.js";
+import {
+  buildSeedContentFiles,
+  collectNonPublicSeedValues,
+  type NonPublicSeedValue,
+  type SeedContentFile,
+} from "../workspace/seed.js";
 import { writeArtifact } from "./write.js";
 import { findUnresolvableFilters } from "../validate/filter-names.js";
 import type { FunctionDef } from "../function/define.js";
@@ -99,6 +104,12 @@ export interface ParsedArgs {
   dest: "sandbox" | "ephemeral" | undefined;
   /** `deploy --expires-hours <n>`: ephemeral create-time TTL (1–72, default 1 server-side). */
   expiresHours: number | undefined;
+  /**
+   * `routes --emit <path>`: write the generated route module there instead of
+   * printing the table. Plain data + one interpolator, importing nothing, so a
+   * frontend gets the typed path/verb contract without the SDK runtime.
+   */
+  emit: string | undefined;
   /** `deploy --static <dir>`: archive this directory and deploy it to the sandbox's static host. */
   static: string | undefined;
   /**
@@ -172,6 +183,13 @@ export interface ParsedArgs {
    * iterative deploys or when the deployed URL isn't reachable from the CLI host.
    */
   noVerify: boolean;
+  /**
+   * `deploy --allow-seed-in-static`: publish a static build even when it
+   * contains seed values the schema declares non-public. The refusal exists
+   * because the alternative is serving them at a public URL; this is the escape
+   * hatch for a workspace whose seed is deliberately demo data.
+   */
+  allowSeedInStatic: boolean;
   /**
    * Leading-dash tokens the parser doesn't recognize. They are collected HERE
    * rather than falling into {@link positionals} so an unknown flag can never be
@@ -248,12 +266,18 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let force = false;
   let noInstall = false;
   let noVerify = false;
+  let allowSeedInStatic = false;
+  let emit: string | undefined;
   const positionals: string[] = [];
   const unknownFlags: string[] = [];
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i]!;
     if (arg === "--out" || arg === "-o") {
       out = rest[++i];
+    } else if (arg === "--emit") {
+      emit = rest[++i];
+    } else if (arg.startsWith("--emit=")) {
+      emit = arg.slice("--emit=".length);
     } else if (arg === "--lock") {
       lock = true;
     } else if (arg.startsWith("--lock=")) {
@@ -351,6 +375,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
       force = true;
     } else if (arg === "--no-install") {
       noInstall = true;
+    } else if (arg === "--allow-seed-in-static") {
+      allowSeedInStatic = true;
     } else if (arg === "--no-verify") {
       noVerify = true;
     } else if (arg === "--profile" || arg.startsWith("--profile=")) {
@@ -435,6 +461,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
     force,
     noInstall,
     noVerify,
+    allowSeedInStatic,
+    emit,
     unknownFlags,
   };
 }
@@ -503,73 +531,134 @@ async function importTsxApi(file: string): Promise<{ register: () => () => void 
   }
 }
 
-/**
- * Load a `.ts` entry through `tsx` (when installed) for plain-Node invocations.
- *
- * Uses the global `register()` hook rather than the scoped `tsImport()`: the
- * latter resolves nested `.js`→`.ts` specifiers relative to *this* module's
- * location, so when the CLI runs from a symlinked install (`npx`, a `file:` dep)
- * the workspace's own relative imports (e.g. `index.ts` importing
- * `./tables/user.js`) fail to resolve. `register()` installs the loader
- * process-wide, so the whole module graph remaps consistently; we unregister
- * once the entry has loaded.
- */
-async function loadViaTsx(url: string, file: string, cause?: unknown): Promise<unknown> {
-  let register: () => () => void;
+/** {@link importTsxApi}, returning `undefined` instead of throwing when tsx isn't installed. */
+async function tryImportTsxApi(file: string): Promise<{ register: () => () => void } | undefined> {
   try {
-    ({ register } = await importTsxApi(file));
+    return await importTsxApi(file);
   } catch {
-    // tsx isn't installed (in the project OR beside the CLI), so we can't recover
-    // a TS entry bare Node rejected. Chain the original loader failure so a genuine
-    // (non-loader) error in the user's module isn't masked by the "install tsx" message.
-    throw new Error(
-      `Loading a TypeScript entry ("${file}") requires \`tsx\`. ` +
-        `Install it in your project (\`npm i -D tsx\`) or precompile the file to .js first.`,
-      cause !== undefined ? { cause } : undefined,
-    );
+    return undefined;
   }
-  const unregister = register();
-  try {
-    const mod = (await import(url)) as { default?: unknown };
-    return mod.default;
-  } finally {
-    unregister();
+}
+
+/**
+ * Whether a TypeScript entry will be evaluated as CommonJS.
+ *
+ * `.mts` is always ESM and `.cts` always CJS; a bare `.ts` follows the nearest
+ * package.json's `type`, where a missing `type` field (what `npm init -y`
+ * writes) means CommonJS.
+ *
+ * Decided by inspection rather than by catching a loader's error, because the
+ * error differs per loader: native Node raises a `SyntaxError` about an import
+ * statement outside a module, while tsx — which respects the same `type` —
+ * fails earlier, resolving `@sidestep/core` under `require` conditions and
+ * reporting a missing `exports` main. Neither message tells an author what to do.
+ *
+ * Answers only on POSITIVE evidence. An entry with no package.json above it
+ * anywhere is left alone: Node's own rule would call it CommonJS, but a host
+ * with an active loader (vitest, a bundler's dev server) happily treats it as
+ * ESM, and a false "add type: module" on a file that loads fine is worse than
+ * the raw loader error on a genuinely broken one.
+ */
+function entryIsCommonJs(file: string): boolean {
+  const path = resolve(file);
+  if (/\.mts$/.test(path)) return false;
+  if (/\.cts$/.test(path)) return true;
+
+  let dir = dirname(path);
+  for (;;) {
+    const manifest = join(dir, "package.json");
+    if (existsSync(manifest)) {
+      try {
+        const pkg = JSON.parse(readFileSync(manifest, "utf8")) as { type?: unknown };
+        return pkg.type !== "module";
+      } catch {
+        // An unreadable/non-JSON package.json is not evidence of anything.
+        return false;
+      }
+    }
+    const parent = dirname(dir);
+    if (parent === dir) return false; // no manifest anywhere — don't guess
+    dir = parent;
   }
+}
+
+/**
+ * The actionable error for an entry in a CommonJS module graph. sidestep defs
+ * are ESM-only, so no loader can bridge this — the entry itself has to be ESM.
+ */
+function commonJsEntryError(file: string, cause?: unknown): Error {
+  return new Error(
+    `Cannot load "${file}": it is being evaluated as CommonJS, but sidestep ` +
+      `workspace files are ES modules. Add \`"type": "module"\` to the nearest ` +
+      `package.json, or rename the entry to \`.mts\`.`,
+    cause !== undefined ? { cause } : undefined,
+  );
 }
 
 export async function loadDefault(file: string): Promise<unknown> {
   const url = pathToFileURL(resolve(file)).href;
+  const isTypeScript = /\.[mc]?ts$/.test(file);
+
+  // Register tsx BEFORE the first import of a TypeScript entry, rather than as
+  // a recovery step after one fails (issue #197).
+  //
+  // Node's native type stripping loads a `.ts` entry but does NOT remap a `.js`
+  // specifier to its `.ts` source, so a workspace's own intra-workspace imports
+  // (`./tables/user.js` — the form the docs mandate) fail to resolve. The
+  // native loader is therefore never the right loader for a sidestep entry.
+  //
+  // Recovering after the fact is not possible: Node CACHES the rejected module
+  // resolution, so re-importing the same URL with tsx registered returns the
+  // same failure, and cache-busting the entry URL does not help either because
+  // the unresolvable specifier is a nested one. Reproduced on Node 22.19
+  // (Node 24 happens not to cache it, which is why this hid for so long).
+  //
+  // Uses the global `register()` hook rather than the scoped `tsImport()`: the
+  // latter resolves nested `.js`→`.ts` specifiers relative to *this* module's
+  // location, so when the CLI runs from a symlinked install (`npx`, a `file:`
+  // dep) the workspace's own relative imports fail to resolve. `register()`
+  // installs the loader process-wide, so the whole module graph remaps
+  // consistently; we unregister once the entry has loaded.
+  if (isTypeScript) {
+    // Check this before loading: under tsx the CommonJS failure surfaces as an
+    // unrelated resolution error, so there is nothing recognisable to translate
+    // afterwards.
+    if (entryIsCommonJs(file)) throw commonJsEntryError(file);
+
+    const tsx = await tryImportTsxApi(file);
+    if (tsx) {
+      const unregister = tsx.register();
+      try {
+        const mod = (await import(url)) as { default?: unknown };
+        return mod.default;
+      } finally {
+        unregister();
+      }
+    }
+  }
+
   try {
-    // A plain dynamic import works whenever a TS loader is already active
-    // (vitest, `node --import tsx`, etc.) and keeps a single module instance.
+    // Either a plain `.js`/`.mjs` entry, or a `.ts` entry with no tsx available
+    // — in which case native type stripping is the only chance we have.
     const mod = await import(url);
     return mod.default;
   } catch (err) {
-    if (!/\.[mc]?ts$/.test(file)) throw err;
+    if (!isTypeScript) throw err;
     const code = (err as NodeJS.ErrnoException | undefined)?.code;
-    // tsx can recover these two — they're loader/resolution failures, not a
-    // module-system mismatch:
+    // tsx would have recovered these two, and it isn't installed. Chain the
+    // original loader failure so a genuine (non-loader) error in the user's
+    // module isn't masked by the "install tsx" message.
     //   • ERR_UNKNOWN_FILE_EXTENSION — older Node with no native `.ts` support.
-    //   • ERR_MODULE_NOT_FOUND — Node ≥ 22.6 strips types natively and loads the
-    //     entry, but native stripping does NOT remap a `.js` specifier to its
-    //     `.ts` source, so a workspace's own relative imports (`./tables/user.js`)
-    //     fail. tsx's resolver does the remap.
+    //   • ERR_MODULE_NOT_FOUND — the unremapped `.js` specifier described above.
     if (code === "ERR_UNKNOWN_FILE_EXTENSION" || code === "ERR_MODULE_NOT_FOUND") {
-      return loadViaTsx(url, file, err);
-    }
-    // The entry was pulled into a CommonJS module graph — its nearest
-    // package.json is `"type": "commonjs"` (what `npm init -y` writes) — so Node
-    // (and tsx, which respects that type) evaluate it as CJS and choke on the
-    // ESM `import`. sidestep defs are ESM-only, so no loader can bridge this: the
-    // entry itself has to be ESM. Trade the cryptic native SyntaxError for an
-    // actionable one.
-    if (err instanceof SyntaxError && /import statement outside a module/.test(err.message)) {
       throw new Error(
-        `Cannot load "${file}": it is being evaluated as CommonJS, but sidestep ` +
-          `workspace files are ES modules. Add \`"type": "module"\` to the nearest ` +
-          `package.json, or rename the entry to \`.mts\`.`,
+        `Loading a TypeScript entry ("${file}") requires \`tsx\`. ` +
+          `Install it in your project (\`npm i -D tsx\`) or precompile the file to .js first.`,
         { cause: err },
       );
+    }
+    if (err instanceof SyntaxError && /import statement outside a module/.test(err.message)) {
+      throw commonJsEntryError(file, err);
     }
     throw err;
   }
@@ -915,12 +1004,44 @@ async function runPaths(args: ParsedArgs): Promise<void> {
 
   const unresolved = rows.filter((r) => !r.canonical);
   const resolved = rows.filter((r) => r.canonical);
-  const verbWidth = Math.max(0, ...resolved.map((r) => r.verb.length));
-  for (const r of resolved) {
-    const path = `/api:${r.canonical}/${r.name}`;
-    // Requested output → stdout (a caller may pipe it). Verb-padded for scanning;
-    // the trailing `api:<canonical>/<name>` is the canonical string form.
-    process.stdout.write(`${r.verb.padEnd(verbWidth)}  ${path}  api:${r.canonical}/${r.name}\n`);
+
+  // `--emit` writes the generated route module instead of printing. It needs
+  // every canonical resolved, so the unresolved check below runs first — a
+  // manifest missing routes is worse than no manifest, because the gap is
+  // invisible until a call site reaches for a name that isn't there.
+  if (args.emit !== undefined) {
+    if (unresolved.length === 0) {
+      const { renderRouteManifest } = await import("./routes-manifest.js");
+      const source = renderRouteManifest(
+        resolved.map((r) => ({ name: r.name, verb: r.verb, canonical: r.canonical! })),
+      );
+      const count = resolved.length === 1 ? "1 route" : `${resolved.length} routes`;
+      // `--check` is the CI guard. A generated manifest that is never
+      // regenerated rots exactly like the hand-typed ROUTES table it replaces —
+      // the strings keep compiling while the backend has moved.
+      if (args.strict) {
+        const current = existsSync(args.emit) ? readFileSync(args.emit, "utf8") : undefined;
+        if (current !== source) {
+          throw new Error(
+            `--strict: ${args.emit} is ${current === undefined ? "missing" : "out of date"}. ` +
+              `Run \`sidestep routes <entry> --emit ${args.emit}\` and commit the result — ` +
+              `a stale route manifest keeps compiling while the endpoints have moved.`,
+          );
+        }
+        info(`${args.emit} is up to date (${count}).`);
+      } else {
+        writeFileSync(args.emit, source, "utf8");
+        info(`Wrote ${args.emit} (${count}).`);
+      }
+    }
+  } else {
+    const verbWidth = Math.max(0, ...resolved.map((r) => r.verb.length));
+    for (const r of resolved) {
+      const path = `/api:${r.canonical}/${r.name}`;
+      // Requested output → stdout (a caller may pipe it). Verb-padded for scanning;
+      // the trailing `api:<canonical>/<name>` is the canonical string form.
+      process.stdout.write(`${r.verb.padEnd(verbWidth)}  ${path}  api:${r.canonical}/${r.name}\n`);
+    }
   }
 
   if (unresolved.length > 0) {
@@ -946,6 +1067,11 @@ export interface CompiledBundle {
    * seed silently (a `--bundle` deploy has no registry to resolve seed from).
    */
   omittedSeedTables: string[];
+  /**
+   * Seed values drawn from columns the schema declares non-public, for the
+   * `--static` publication guard. Empty unless seed was resolved.
+   */
+  nonPublicSeedValues: NonPublicSeedValue[];
 }
 
 /**
@@ -1030,9 +1156,10 @@ export async function compileBundle(
   // table emitted in the bundle. Built only when the deploy path asks for it;
   // otherwise report which seeded tables were left out so `export` can warn.
   const content = opts.seed ? await buildSeedContentFiles(def.tables()) : [];
+  const nonPublicSeedValues = opts.seed ? await collectNonPublicSeedValues(def.tables()) : [];
   const omittedSeedTables = opts.seed ? [] : def.tables().filter((t) => t.seed !== undefined).map((t) => t.name);
 
-  return { bundle: serializeBundle(bundle), content, omittedSeedTables };
+  return { bundle: serializeBundle(bundle), content, omittedSeedTables, nonPublicSeedValues };
 }
 
 /**

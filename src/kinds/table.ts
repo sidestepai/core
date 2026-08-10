@@ -238,7 +238,55 @@ export type SeedRowOf<
  */
 export type SeedSource<Row = unknown> =
   | ReadonlyArray<SeedRow<Row>>
+  | SeedFileSource
   | (() => ReadonlyArray<SeedRow<Row>> | Promise<ReadonlyArray<SeedRow<Row>>>);
+
+/** Brand for {@link seedFile}'s marker, so the deploy path can recognise it structurally. */
+export const SEED_FILE: unique symbol = Symbol.for("sidestep.seed.file") as never;
+
+/** A seed source that names a JSON file by PATH — see {@link seedFile}. */
+export interface SeedFileSource {
+  readonly [SEED_FILE]: { readonly path: string; readonly base: string };
+}
+
+/**
+ * Seed rows from a JSON file, named by path — the form that cannot reach a
+ * frontend bundle.
+ *
+ * ```ts
+ * seed: seedFile("./seed/user.json", import.meta.url)
+ * ```
+ *
+ * Prefer this over `seed: () => import("./seed.json")` for anything you would
+ * mind publishing. **The thunk does not keep seed values out of a frontend
+ * build**, despite reading as though it should: the `import()` sits in YOUR
+ * module, not in `@sidestep/core`, so a bundler sees an ordinary dynamic import
+ * and emits the JSON as a served chunk. Nothing the SDK does to its own code can
+ * prevent that. A frontend that value-imports any def whose module graph reaches
+ * the table then ships the seed to the browser (issue #204).
+ *
+ * A path is a plain string, so there is nothing for a bundler to follow. The
+ * file is read with `node:fs` in the deploy pipeline only.
+ *
+ * `base` is required, and is `import.meta.url` at the call site: `path` resolves
+ * relative to the FILE THAT DECLARES THE TABLE, which is where an author is
+ * looking when they write it — not the CLI's working directory, and not the
+ * workspace entry. Passing it explicitly is what makes that true for a table
+ * defined in a nested module.
+ *
+ * ⚠ Rows are validated at export (column names and coercion, per table schema),
+ * not at author time — a JSON file's contents are not visible to the type
+ * system. Keep secrets out of seed data regardless of form: a seed is throwaway
+ * fixture data for disposable environments.
+ */
+export function seedFile(path: string, base: string | URL): SeedFileSource {
+  return { [SEED_FILE]: { path, base: typeof base === "string" ? base : base.href } };
+}
+
+/** Whether a {@link SeedSource} is a {@link seedFile} marker. */
+export function isSeedFileSource(source: SeedSource): source is SeedFileSource {
+  return typeof source === "object" && source !== null && SEED_FILE in source;
+}
 
 /**
  * @typeParam Cols - phantom column-name union, captured by {@link table} from a
@@ -369,8 +417,17 @@ function systemColumns(idType: TableDef["idType"] = "int"): ColumnDef[] {
     // way because the value is engine-generated. An `int` key and an ordinary
     // (non-key) uuid column both carry `default: ""`, so this is specific to the
     // uuid key. See {@link FieldOptions.noDefault}.
-    { name: "id", type: idType, required: true, ...(idType === "uuid" ? { noDefault: true } : {}) },
-    { name: "created_at", type: "epochms", default: "now", access: "private" },
+    // `nullable` is pinned on both, not left to the per-type default: a uuid
+    // column is nullable by default (see NULLABLE_BY_DEFAULT), but a PRIMARY KEY
+    // never is, and every captured `id`/`created_at` stores `nullable: false`.
+    {
+      name: "id",
+      type: idType,
+      required: true,
+      nullable: false,
+      ...(idType === "uuid" ? { noDefault: true } : {}),
+    },
+    { name: "created_at", type: "epochms", default: "now", access: "private", nullable: false },
   ];
 }
 
