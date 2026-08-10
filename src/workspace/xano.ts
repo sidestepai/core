@@ -25,6 +25,7 @@ import type { FunctionDef } from "../function/define.js";
 import type { TableDef } from "../kinds/table.js";
 import type { ObjectKind } from "../kinds/kind.js";
 import { DiagnosticBag } from "./diagnostics.js";
+import { checkTables } from "./guards.js";
 
 /**
  * Cross-realm brand. `instanceof Xano` breaks when sidestep is loaded by two
@@ -222,6 +223,9 @@ export class Xano {
     // set at once, and so a hard error aborts BEFORE the lock is mutated or the
     // bundle is signed.
     const bag = new DiagnosticBag();
+    // Shapes whose only other outcome is an import that dies after the full
+    // replace has already cleared the workspace.
+    checkTables(this.tableDefs, bag);
     // A query's `auth` is resolved to its stored guid at encode time in
     // `encodeQuery` (see `resolveAuth`); here — where the table registry is
     // known — we confirm each resolved reference actually names a registered

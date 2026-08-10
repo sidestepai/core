@@ -98,6 +98,99 @@ describe("DiagnosticBag", () => {
   });
 });
 
+/**
+ * Every case below is pinned to a live deploy against a fresh ephemeral, one
+ * table shape per environment. The result matrix:
+ *
+ * | seeded table declares      | deploy            |
+ * |----------------------------|-------------------|
+ * | `f.text({ array: true })`  | import 500        |
+ * | `f.object({ … })`          | import 500        |
+ * | `f.json()`                 | import 500        |
+ * | `f.vector(N)`              | import 500        |
+ * | `f.geo.point()`            | deploys           |
+ * | all four, UNSEEDED         | deploys           |
+ * | scalars only, seeded       | deploys           |
+ *
+ * The engine source reads as though all of these are handled, so do not
+ * "correct" this guard from the source — re-run the probe instead.
+ */
+describe("seeded table with a non-scalar column (#195)", () => {
+  const seededWith = (schema: Record<string, unknown>) =>
+    new Xano()
+      .registerWorkspace({ name: "app" })
+      .registerTables([
+        table({ name: "thing", schema: schema as never, seed: [{ label: "a" }] as never }),
+      ]);
+
+  const messageOf = (fn: () => void): string => {
+    try {
+      fn();
+    } catch (error) {
+      return (error as Error).message;
+    }
+    return "";
+  };
+
+  it("refuses an f.json() column, naming the table, the column and the escape", () => {
+    const message = messageOf(() => seededWith({ label: f.text(), meta: f.json() }).export());
+    expect(message).toContain('table "thing", column "meta"');
+    expect(message).toContain("f.json()");
+    expect(message).toContain("separate unseeded table");
+    // The failure lands after the workspace has been cleared — say so, because
+    // that is why this is worth refusing rather than warning about.
+    expect(message).toContain("AFTER the full replace");
+    // Declaring the column stays supported; the message must not read as a ban.
+    expect(message).toContain("fine to declare on an unseeded table");
+  });
+
+  it("refuses f.object(), f.vector() and an array column too", () => {
+    for (const [name, schema] of [
+      ["blob", { label: f.text(), blob: f.object({ a: f.text() }) }],
+      ["embedding", { label: f.text(), embedding: f.vector(8) }],
+      ["tags", { label: f.text(), tags: f.text({ array: true }) }],
+    ] as const) {
+      expect(() => seededWith(schema).export()).toThrow(new RegExp(`column "${name}"`));
+    }
+  });
+
+  it("reports every offending column in one export, not just the first", () => {
+    const message = messageOf(() =>
+      seededWith({ label: f.text(), meta: f.json(), tags: f.text({ array: true }) }).export(),
+    );
+    expect(message).toContain('column "meta"');
+    expect(message).toContain('column "tags"');
+    expect(message).toContain("2 errors");
+  });
+
+  it("does NOT fire on a geo column — a seeded geo table deploys", () => {
+    expect(() => seededWith({ label: f.text(), at: f.geo.point() }).export()).not.toThrow();
+  });
+
+  it("does NOT fire on an UNSEEDED table with every non-scalar column", () => {
+    expect(() =>
+      new Xano()
+        .registerWorkspace({ name: "app" })
+        .registerTables([
+          table({
+            name: "thing",
+            schema: {
+              tags: f.text({ array: true }),
+              blob: f.object({ a: f.text() }),
+              meta: f.json(),
+              emb: f.vector(4),
+            },
+          }),
+        ])
+        .export(),
+    ).not.toThrow();
+  });
+
+  it("does NOT fire on a scalar-only seeded table", () => {
+    expect(() => seededWith({ label: f.text(), count: f.int() }).export()).not.toThrow();
+  });
+});
+
 describe("shapes deliberately NOT guarded — engine bugs, labelled `external`", () => {
   // Each of these was verified against the engine source: SideStep's emitted
   // bytes match what Xano's own tooling writes, so the failure is upstream and
@@ -118,26 +211,6 @@ describe("shapes deliberately NOT guarded — engine bugs, labelled `external`",
       new Xano()
         .registerWorkspace({ name: "app", use_xdo: true })
         .registerTables([table({ name: "thing", schema: { label: f.text() } })])
-        .export();
-    });
-    expect(seen).toHaveLength(0);
-  });
-
-  it("accepts a seeded table with a non-scalar column (#195)", () => {
-    // The engine's own cast layer handles list/obj/json columns (ArrayCast
-    // renders a Postgres literal STRING before binding), so the reported PHP
-    // fatal is not reachable from any shape SideStep controls. Blocking the
-    // seed here would refuse a pattern `examples/sandbox` itself demonstrates.
-    const seen = captureWarnings(() => {
-      new Xano()
-        .registerWorkspace({ name: "app" })
-        .registerTables([
-          table({
-            name: "thing",
-            schema: { label: f.text(), tags: f.text({ array: true }), meta: f.json() },
-            seed: [{ label: "a", tags: ["x"], meta: {} }] as never,
-          }),
-        ])
         .export();
     });
     expect(seen).toHaveLength(0);
