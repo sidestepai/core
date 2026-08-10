@@ -104,6 +104,12 @@ export interface ParsedArgs {
   dest: "sandbox" | "ephemeral" | undefined;
   /** `deploy --expires-hours <n>`: ephemeral create-time TTL (1–72, default 1 server-side). */
   expiresHours: number | undefined;
+  /**
+   * `routes --emit <path>`: write the generated route module there instead of
+   * printing the table. Plain data + one interpolator, importing nothing, so a
+   * frontend gets the typed path/verb contract without the SDK runtime.
+   */
+  emit: string | undefined;
   /** `deploy --static <dir>`: archive this directory and deploy it to the sandbox's static host. */
   static: string | undefined;
   /**
@@ -261,12 +267,17 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let noInstall = false;
   let noVerify = false;
   let allowSeedInStatic = false;
+  let emit: string | undefined;
   const positionals: string[] = [];
   const unknownFlags: string[] = [];
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i]!;
     if (arg === "--out" || arg === "-o") {
       out = rest[++i];
+    } else if (arg === "--emit") {
+      emit = rest[++i];
+    } else if (arg.startsWith("--emit=")) {
+      emit = arg.slice("--emit=".length);
     } else if (arg === "--lock") {
       lock = true;
     } else if (arg.startsWith("--lock=")) {
@@ -451,6 +462,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     noInstall,
     noVerify,
     allowSeedInStatic,
+    emit,
     unknownFlags,
   };
 }
@@ -992,12 +1004,44 @@ async function runPaths(args: ParsedArgs): Promise<void> {
 
   const unresolved = rows.filter((r) => !r.canonical);
   const resolved = rows.filter((r) => r.canonical);
-  const verbWidth = Math.max(0, ...resolved.map((r) => r.verb.length));
-  for (const r of resolved) {
-    const path = `/api:${r.canonical}/${r.name}`;
-    // Requested output → stdout (a caller may pipe it). Verb-padded for scanning;
-    // the trailing `api:<canonical>/<name>` is the canonical string form.
-    process.stdout.write(`${r.verb.padEnd(verbWidth)}  ${path}  api:${r.canonical}/${r.name}\n`);
+
+  // `--emit` writes the generated route module instead of printing. It needs
+  // every canonical resolved, so the unresolved check below runs first — a
+  // manifest missing routes is worse than no manifest, because the gap is
+  // invisible until a call site reaches for a name that isn't there.
+  if (args.emit !== undefined) {
+    if (unresolved.length === 0) {
+      const { renderRouteManifest } = await import("./routes-manifest.js");
+      const source = renderRouteManifest(
+        resolved.map((r) => ({ name: r.name, verb: r.verb, canonical: r.canonical! })),
+      );
+      const count = resolved.length === 1 ? "1 route" : `${resolved.length} routes`;
+      // `--check` is the CI guard. A generated manifest that is never
+      // regenerated rots exactly like the hand-typed ROUTES table it replaces —
+      // the strings keep compiling while the backend has moved.
+      if (args.strict) {
+        const current = existsSync(args.emit) ? readFileSync(args.emit, "utf8") : undefined;
+        if (current !== source) {
+          throw new Error(
+            `--strict: ${args.emit} is ${current === undefined ? "missing" : "out of date"}. ` +
+              `Run \`sidestep routes <entry> --emit ${args.emit}\` and commit the result — ` +
+              `a stale route manifest keeps compiling while the endpoints have moved.`,
+          );
+        }
+        info(`${args.emit} is up to date (${count}).`);
+      } else {
+        writeFileSync(args.emit, source, "utf8");
+        info(`Wrote ${args.emit} (${count}).`);
+      }
+    }
+  } else {
+    const verbWidth = Math.max(0, ...resolved.map((r) => r.verb.length));
+    for (const r of resolved) {
+      const path = `/api:${r.canonical}/${r.name}`;
+      // Requested output → stdout (a caller may pipe it). Verb-padded for scanning;
+      // the trailing `api:<canonical>/<name>` is the canonical string form.
+      process.stdout.write(`${r.verb.padEnd(verbWidth)}  ${path}  api:${r.canonical}/${r.name}\n`);
+    }
   }
 
   if (unresolved.length > 0) {

@@ -8949,6 +8949,14 @@
         {
           "flag": "--lock[=<path>]",
           "description": "Use (and create) xano.lock — default: beside the entry file"
+        },
+        {
+          "flag": "--emit <path>",
+          "description": "Write a generated route module there (plain data, no SDK import)"
+        },
+        {
+          "flag": "--strict",
+          "description": "Promote export warnings (unresolvable filters) to a hard failure"
         }
       ],
       "description": "List each query's verb + resolved api:<canonical>/<name>"
@@ -9033,6 +9041,14 @@
         {
           "flag": "--lock[=<path>]",
           "description": "Use (and create) xano.lock — default: beside the entry file"
+        },
+        {
+          "flag": "--emit <path>",
+          "description": "Write a generated route module there (plain data, no SDK import)"
+        },
+        {
+          "flag": "--strict",
+          "description": "Promote export warnings (unresolvable filters) to a hard failure"
         }
       ],
       "description": "Alias for `paths` (alias of `paths`)"

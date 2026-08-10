@@ -121,6 +121,10 @@ export const FLAGS = {
     summary: "Publish the static build even if it contains non-public seed values",
   },
   "static-env": { spec: "--static-env KEY=VALUE", summary: "Public config baked in as window.<KEY> (repeatable; never secrets)" },
+  emit: {
+    spec: "--emit <path>",
+    summary: "Write a generated route module there (plain data, no SDK import)",
+  },
   "static-host": { spec: "--static-host <name>", summary: "Static-host name to deploy to (default: default)" },
   "no-verify": { spec: "--no-verify", summary: "Skip the post-deploy liveness checks (static host, microservices)" },
   origin: { spec: "--origin <origin>", summary: "Xano control-plane OAuth host (default: $XANO_ORIGIN)" },
@@ -190,8 +194,8 @@ export const COMMANDS = {
     display: "paths <file>",
     summary: "List each query's verb + resolved api:<canonical>/<name>",
     args: [{ name: "file", required: true, path: true }],
-    flags: ["lock"],
-    example: "sidestep paths ./index.ts",
+    flags: ["lock", "emit", "strict"],
+    example: "sidestep paths ./index.ts --emit xano/routes.gen.ts",
   },
   routes: {
     group: "Author",
@@ -199,7 +203,7 @@ export const COMMANDS = {
     summary: "Alias for `paths`",
     aliasOf: "paths",
     args: [{ name: "file", required: true, path: true }],
-    flags: ["lock"],
+    flags: ["lock", "emit", "strict"],
   },
   init: {
     group: "Author",
