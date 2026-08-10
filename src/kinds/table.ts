@@ -369,8 +369,17 @@ function systemColumns(idType: TableDef["idType"] = "int"): ColumnDef[] {
     // way because the value is engine-generated. An `int` key and an ordinary
     // (non-key) uuid column both carry `default: ""`, so this is specific to the
     // uuid key. See {@link FieldOptions.noDefault}.
-    { name: "id", type: idType, required: true, ...(idType === "uuid" ? { noDefault: true } : {}) },
-    { name: "created_at", type: "epochms", default: "now", access: "private" },
+    // `nullable` is pinned on both, not left to the per-type default: a uuid
+    // column is nullable by default (see NULLABLE_BY_DEFAULT), but a PRIMARY KEY
+    // never is, and every captured `id`/`created_at` stores `nullable: false`.
+    {
+      name: "id",
+      type: idType,
+      required: true,
+      nullable: false,
+      ...(idType === "uuid" ? { noDefault: true } : {}),
+    },
+    { name: "created_at", type: "epochms", default: "now", access: "private", nullable: false },
   ];
 }
 

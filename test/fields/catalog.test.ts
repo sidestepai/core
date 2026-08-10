@@ -79,20 +79,25 @@ describe("rich table schemas — byte-exact vs golden corpus", () => {
       schema: {
         ...meta,
         name: f.text({ methods: ["trim"] }),
-        image: f.image({ nullable: true }),
-        vid: f.video({ nullable: true }),
-        music: f.audio({ nullable: true }),
-        attach: f.attachment({ nullable: true }),
-        pt: f.geo.point({ nullable: true }),
-        pts: f.geo.multipoint({ nullable: true }),
-        path: f.geo.linestring({ nullable: true }),
-        paths: f.geo.multilinestring({ nullable: true }),
-        poly: f.geo.polygon(),
-        polys: f.geo.multipolygon({ nullable: true }),
+        // Blob, geo and uuid columns are nullable by DEFAULT — the engine's own
+        // `schema/type/<type>` endpoints declare `nullable?=true`, and this
+        // golden (a real pulled table) stores exactly that. So none of them
+        // spells it, and `poly` — the one column whose author turned it off —
+        // is the one that has to.
+        image: f.image(),
+        vid: f.video(),
+        music: f.audio(),
+        attach: f.attachment(),
+        pt: f.geo.point(),
+        pts: f.geo.multipoint(),
+        path: f.geo.linestring(),
+        paths: f.geo.multilinestring(),
+        poly: f.geo.polygon({ nullable: false }),
+        polys: f.geo.multipolygon(),
         email: f.email({ methods: ["trim", "lower"] }),
         pass: f.password({ sensitive: true }),
         js: f.json(),
-        superid: f.uuid({ nullable: true }),
+        superid: f.uuid(),
       },
       index: baseIndex,
     });
