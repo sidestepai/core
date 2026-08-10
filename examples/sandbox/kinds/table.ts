@@ -6,13 +6,6 @@
  * so re-deploying re-seeds cleanly). Values are validated against the column
  * types before deploy. Omit `id` on an int-PK table and rows are auto-numbered
  * `1..N`; set `id` on every row or none.
- *
- * **A seeded table must be scalar-only.** The engine's content import cannot
- * write `f.json()`, `f.object({…})`, `f.vector(N)` or `{ array: true }`, and it
- * fails after the full replace has already cleared the workspace — so `export()`
- * refuses the combination up front. The column need not appear in any seed row;
- * declaring it is enough. Those column types are fine on an UNSEEDED table (see
- * `posts.tags` in `_shared.ts`); populate them from an endpoint instead.
  */
 import { table, f, seedFile } from "@sidestep/core";
 
@@ -23,8 +16,6 @@ export const productTable = table({
     name: f.text({ required: true }),
     price: f.decimal({ default: "0" }),
     in_stock: f.bool({ default: "true" }),
-    // An array column is fine here because this table is NOT seeded — see the
-    // scalar-only `ex_kind_product_notes` below for the inline-seed shape.
     tags: f.text({ array: true }),
   },
   index: [
@@ -34,10 +25,10 @@ export const productTable = table({
 });
 
 /**
- * Inline `seed` — starter rows written straight into the def.
- *
- * Scalar columns only, which is the rule for any seeded table (see above).
- * `id` is omitted, so the rows are auto-numbered `1..N`.
+ * Inline `seed` — starter rows written straight into the def, for a table whose
+ * rows are small enough to read in place. `id` is omitted, so the rows are
+ * auto-numbered `1..N`. Compare `accessoryTable` below, which reads the same
+ * kind of data from a file.
  */
 export const productNoteTable = table({
   name: "ex_kind_product_notes",

@@ -2,11 +2,14 @@
  * The build-time diagnostics collector (KTD5), plus the regression tests that
  * keep guards OFF the shapes a source check cleared (KTD2b).
  *
- * The negative tests here are the point. Four shapes the audit asked us to
+ * The negative tests here are the point. Five shapes the audit asked us to
  * block at `export()` turned out to be engine defects against bytes the
- * engine's own tooling emits — a guard on any of them would refuse a supported
- * shape and have to be un-shipped the moment the engine is fixed. Each carries
- * a test so a future reading of the issue does not re-add it.
+ * engine's own tooling emits — a guard on any of them refuses a supported
+ * shape and has to be un-shipped the moment the engine is fixed. One of them
+ * (#195) was guarded for a single release before its real cause surfaced
+ * upstream, which is the cautionary case: it had a clean live reproduction and
+ * was still wrong. Each carries a test so a future reading of the issue does
+ * not re-add it.
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { Xano } from "../../src/workspace/xano.js";
@@ -101,99 +104,6 @@ describe("DiagnosticBag", () => {
     } finally {
       setDiagnosticSink(previous);
     }
-  });
-});
-
-/**
- * Every case below is pinned to a live deploy against a fresh ephemeral, one
- * table shape per environment. The result matrix:
- *
- * | seeded table declares      | deploy            |
- * |----------------------------|-------------------|
- * | `f.text({ array: true })`  | import 500        |
- * | `f.object({ … })`          | import 500        |
- * | `f.json()`                 | import 500        |
- * | `f.vector(N)`              | import 500        |
- * | `f.geo.point()`            | deploys           |
- * | all four, UNSEEDED         | deploys           |
- * | scalars only, seeded       | deploys           |
- *
- * The engine source reads as though all of these are handled, so do not
- * "correct" this guard from the source — re-run the probe instead.
- */
-describe("seeded table with a non-scalar column (#195)", () => {
-  const seededWith = (schema: Record<string, unknown>) =>
-    new Xano()
-      .registerWorkspace({ name: "app" })
-      .registerTables([
-        table({ name: "thing", schema: schema as never, seed: [{ label: "a" }] as never }),
-      ]);
-
-  const messageOf = (fn: () => void): string => {
-    try {
-      fn();
-    } catch (error) {
-      return (error as Error).message;
-    }
-    return "";
-  };
-
-  it("refuses an f.json() column, naming the table, the column and the escape", () => {
-    const message = messageOf(() => seededWith({ label: f.text(), meta: f.json() }).export());
-    expect(message).toContain('table "thing", column "meta"');
-    expect(message).toContain("f.json()");
-    expect(message).toContain("separate unseeded table");
-    // The failure lands after the workspace has been cleared — say so, because
-    // that is why this is worth refusing rather than warning about.
-    expect(message).toContain("AFTER the full replace");
-    // Declaring the column stays supported; the message must not read as a ban.
-    expect(message).toContain("fine to declare on an unseeded table");
-  });
-
-  it("refuses f.object(), f.vector() and an array column too", () => {
-    for (const [name, schema] of [
-      ["blob", { label: f.text(), blob: f.object({ a: f.text() }) }],
-      ["embedding", { label: f.text(), embedding: f.vector(8) }],
-      ["tags", { label: f.text(), tags: f.text({ array: true }) }],
-    ] as const) {
-      expect(() => seededWith(schema).export()).toThrow(new RegExp(`column "${name}"`));
-    }
-  });
-
-  it("reports every offending column in one export, not just the first", () => {
-    const message = messageOf(() =>
-      seededWith({ label: f.text(), meta: f.json(), tags: f.text({ array: true }) }).export(),
-    );
-    expect(message).toContain('column "meta"');
-    expect(message).toContain('column "tags"');
-    expect(message).toContain("2 errors");
-  });
-
-  it("does NOT fire on a geo column — a seeded geo table deploys", () => {
-    expect(() => seededWith({ label: f.text(), at: f.geo.point() }).export()).not.toThrow();
-  });
-
-  it("does NOT fire on an UNSEEDED table with every non-scalar column", () => {
-    expect(() =>
-      new Xano()
-        .registerWorkspace({ name: "app" })
-        .registerTables([
-          table({
-            name: "thing",
-            schema: {
-              tags: f.text({ array: true }),
-              blob: f.object({ a: f.text() }),
-              meta: f.json(),
-              emb: f.vector(4),
-            },
-          }),
-        ])
-        .export(),
-    ).not.toThrow();
-  });
-
-  it("does NOT fire on a scalar-only seeded table", () => {
-    expect(() => seededWith({ label: f.text(), count: f.int() }).export()).not.toThrow();
   });
 });
 
@@ -534,6 +444,27 @@ describe("shapes deliberately NOT guarded — engine bugs, labelled `external`",
       new Xano()
         .registerWorkspace({ name: "app", use_xdo: true })
         .registerTables([table({ name: "thing", schema: { label: f.text() } })])
+        .export();
+    });
+    expect(seen).toHaveLength(0);
+  });
+
+  it("accepts a seeded table with a non-scalar column (#195)", () => {
+    // Guarded for one release on the strength of a live reproduction, then
+    // removed: the cause was a stale per-worker model cache upstream
+    // (DEV-7605) that dropped the column's value cast, not anything about the
+    // authored shape. Nothing an author could have avoided, and nothing to
+    // refuse. A reproduction proves a symptom, not a rule.
+    const seen = captureWarnings(() => {
+      new Xano()
+        .registerWorkspace({ name: "app" })
+        .registerTables([
+          table({
+            name: "thing",
+            schema: { label: f.text(), tags: f.text({ array: true }), meta: f.json() },
+            seed: [{ label: "a", tags: ["x"], meta: {} }] as never,
+          }),
+        ])
         .export();
     });
     expect(seen).toHaveLength(0);
