@@ -78,10 +78,20 @@ describe("middleware kind", () => {
     expect(middlewareKind.payloadKey).toBe("middleware");
   });
 
-  it("defaults to merge/silent", () => {
+  it("defaults to merge/rethrow — a guard must be enforced unless opted out", () => {
+    // Verified live: under `silent` a throwing middleware returns the host's
+    // normal 200 and the guard is simply not enforced; under `rethrow` the same
+    // middleware returns the authored error. The engine's own fallback is
+    // `silent`, but SideStep always WRITES the field, so the emitted bundle
+    // never relies on that fallback (issue #210).
     const m = encodeMiddleware({ name: "m" });
     expect(m.result_type).toBe("merge");
-    expect(m.exception).toBe("silent");
+    expect(m.exception).toBe("rethrow");
+  });
+
+  it("still honours an explicit silent — the escape hatch survives", () => {
+    expect(encodeMiddleware({ name: "m", exceptionPolicy: "silent" }).exception).toBe("silent");
+    expect(encodeMiddleware({ name: "m", exceptionPolicy: "critical" }).exception).toBe("critical");
   });
 });
 

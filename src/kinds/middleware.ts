@@ -22,13 +22,14 @@ export type ResultStrategy = "merge" | "replace";
  * tripped `s.redis.ratelimit`). SideStep passes the value through verbatim; the
  * Xano engine interprets it:
  *
- * - `"silent"` **(default)** — the throw is swallowed; the host continues as if
- *   the middleware succeeded. For a guard (rate limit, auth check) this means the
+ * - `"rethrow"` **(SideStep's default)** — the throw aborts the request and the
+ *   authored `error`/status surfaces to the caller (a tripped `ratelimit` →
+ *   HTTP 429). The `post` chain still runs. This is what a guard-style
+ *   middleware wants, and guards are what middleware is mostly used for.
+ * - `"silent"` — the throw is swallowed; the host continues as if the
+ *   middleware succeeded. For a guard (rate limit, auth check) this means the
  *   guard is **not enforced** — the over-limit request goes through. Set this
  *   only for advisory middleware (logging, metrics) that must never block.
- * - `"rethrow"` — the throw aborts the request and the authored `error`/status
- *   surfaces to the caller (a tripped `ratelimit` → HTTP 429). The `post` chain
- *   still runs. This is what a guard-style middleware wants.
  * - `"critical"` — like `"rethrow"` (same aborted request, same HTTP status) but
  *   additionally **skips the entire `post` middleware chain**. Use it when a
  *   failed `pre` guard should suppress post-processing (audit shaping, response
@@ -36,6 +37,20 @@ export type ResultStrategy = "merge" | "replace";
  *
  * No status or logging difference between `rethrow` and `critical` — the only
  * distinction is whether `post` middleware runs.
+ *
+ * ## Why SideStep defaults to `rethrow` and the engine does not
+ *
+ * The engine falls back to `silent` when the field is absent. SideStep always
+ * writes the field, and writes `rethrow`, so nothing here depends on the
+ * engine's fallback — the value is explicit in the bundle either way.
+ *
+ * The default is different on purpose. Verified live: a middleware that throws
+ * under `silent` returns the host's normal 200 and the guard is simply not
+ * enforced; under `rethrow` the same middleware returns the authored error. An
+ * author who writes a rate limiter and does not think about this field gets, by
+ * default, a limiter that does nothing and says nothing. An inert guard is
+ * worse than a loud one, so the safe reading is the default and the permissive
+ * one is opt-in (issue #210).
  */
 export type ExceptionPolicy = "silent" | "rethrow" | "critical";
 
@@ -47,9 +62,10 @@ export interface MiddlewareDef {
   docs?: string;
   resultStrategy?: ResultStrategy;
   /**
-   * How a throw in the stack affects the request. Defaults to `"silent"` (the
-   * throw is swallowed — a guard is **not** enforced). A rate limiter or auth
-   * check wants `"rethrow"`. See {@link ExceptionPolicy} for all three.
+   * How a throw in the stack affects the request. Defaults to `"rethrow"` — the
+   * throw aborts the request and the authored error reaches the caller, which
+   * is what a guard wants. Set `"silent"` for advisory middleware that must
+   * never block. See {@link ExceptionPolicy}.
    */
   exceptionPolicy?: ExceptionPolicy;
   tags?: string[];
@@ -60,6 +76,14 @@ export interface MiddlewareDef {
    * {@link HistoryInput}.
    */
   history?: HistoryInput;
+  /**
+   * ⚠ **Never bound.** Declaring an input here is accepted and stored (the
+   * engine persists the field, and real workspaces carry one), but the host
+   * request does not populate it: `inp("x")` inside a middleware stack fails at
+   * runtime with `Unable to locate input: x` — verified live. Read the request
+   * body with `s.util.get_all_input` instead, which hands back a
+   * `{ type, vars }` envelope. `export()` warns if this is set.
+   */
   input?: Record<string, InputDescriptor>;
   stack?: Statement[];
   response?: ResponseDef;
@@ -87,7 +111,7 @@ export function encodeMiddleware(def: MiddlewareDef): MiddlewareXdo {
     description: def.description ?? "",
     docs: def.docs ?? "",
     result_type: def.resultStrategy ?? "merge",
-    exception: def.exceptionPolicy ?? "silent",
+    exception: def.exceptionPolicy ?? "rethrow",
     history: encodeHistory("middleware", def.history),
     tag: encodeTags(def.tags),
     shared_workspace: { is_shared: false },

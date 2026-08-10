@@ -298,16 +298,83 @@ function checkInternalColumnReads(
   }
 }
 
+/** Every `{ tag: "input", value: "<name>" }` reference inside an object. */
+function collectInputRefs(node: unknown, out: string[]): void {
+  if (Array.isArray(node)) {
+    for (const item of node) collectInputRefs(item, out);
+    return;
+  }
+  if (!node || typeof node !== "object") return;
+  const record = node as { tag?: unknown; value?: unknown };
+  if (record.tag === "input" && typeof record.value === "string") out.push(record.value);
+  for (const value of Object.values(node as Record<string, unknown>)) {
+    collectInputRefs(value, out);
+  }
+}
+
 /**
- * Warn about the two shapes that return HTTP 200 while destroying data or
- * reading nothing. Both are statically detectable and neither is ever
- * blocked — see the individual checks for why each stays a warning.
+ * A middleware's declared `input` is never bound, and `inp()` inside one fails
+ * at runtime (#210).
+ *
+ * Verified live: a middleware declaring `input: { probe: input.text({ default })
+ * }` and reading `inp("probe")` returns
+ * `500 Unable to locate input: probe` — the default does not even stand in. The
+ * host request simply does not populate a middleware's inputs. The body is read
+ * with `s.util.get_all_input`, which hands back a `{ type, vars }` envelope.
+ *
+ * **Warnings, not errors**, despite the field being useless at runtime. The
+ * engine stores it and real workspaces carry one — a captured middleware in
+ * this repo's own corpus declares `vars` and `type` inputs. Refusing it at
+ * export would make such a workspace impossible to pull, edit and push back,
+ * which is a worse failure than the one being reported: the SDK must be able to
+ * represent what the engine holds.
+ */
+function checkMiddleware(
+  sections: Readonly<Record<string, unknown[] | undefined>>,
+  bag: DiagnosticBag,
+): void {
+  for (const mw of sections.middleware ?? []) {
+    if (!mw || typeof mw !== "object") continue;
+    const record = mw as { name?: unknown; input?: unknown; run?: unknown };
+    const name = typeof record.name === "string" ? record.name : "?";
+
+    if (Array.isArray(record.input) && record.input.length > 0) {
+      bag.warn(
+        "middleware.input-never-bound",
+        `middleware "${name}" declares \`input\`, which the host request never binds — ` +
+          `\`inp()\` inside a middleware fails at runtime with \`Unable to locate input\`, and a ` +
+          `declared default does not stand in. Read the request body with ` +
+          `\`s.util.get_all_input\` instead; it yields a \`{ type, vars }\` envelope. The field ` +
+          `is kept because the engine stores it and existing workspaces carry one.`,
+      );
+    }
+
+    const refs: string[] = [];
+    collectInputRefs(record.run, refs);
+    const unique = [...new Set(refs)];
+    if (unique.length > 0) {
+      bag.warn(
+        "middleware.inp-unresolvable",
+        `middleware "${name}" reads ${unique.map((r) => `\`inp("${r}")\``).join(", ")}, which ` +
+          `cannot resolve — a middleware has no bound inputs, so this fails at runtime with ` +
+          `\`Unable to locate input: ${unique[0]}\`. Use \`s.util.get_all_input\` and read the ` +
+          `\`{ type, vars }\` envelope it binds.`,
+      );
+    }
+  }
+}
+
+/**
+ * Warn about the shapes that return HTTP 200 while destroying data, reading
+ * nothing, or failing at runtime. All are statically detectable and none is
+ * ever blocked — see the individual checks for why each stays a warning.
  */
 export function checkStacks(
   tables: readonly TableDef[],
   sections: Readonly<Record<string, unknown[] | undefined>>,
   bag: DiagnosticBag,
 ): void {
+  checkMiddleware(sections, bag);
   if (tables.length === 0) return;
   const tablesByGuid = new Map<string, TableDef>();
   for (const def of tables) tablesByGuid.set(resolveRef("dbo", def), def);

@@ -24,7 +24,9 @@ import { task } from "../../src/kinds/task.js";
 import { defineFunction } from "../../src/function/define.js";
 import { s } from "../../src/statements/s.js";
 import { f } from "../../src/fields/catalog.js";
-import { c, ref } from "../../src/values/value.js";
+import { c, ref, inp } from "../../src/values/value.js";
+import { middleware } from "../../src/kinds/middleware.js";
+import { input } from "../../src/inputs/input.js";
 import "../../src/kinds/workspace-config.js"; // side-effect: register the "workspace" kind
 import "../../src/kinds/function.js"; // side-effect: register the "function" kind
 
@@ -341,6 +343,77 @@ describe("reading an internal column a db.get did not return (#224)", () => {
       s.set_var("b", ref("u.password")),
     ]);
     expect(seen).toHaveLength(1);
+  });
+});
+
+/**
+ * Pinned to a live run against a fresh ephemeral, one endpoint per case:
+ *
+ *   control (no inp)                -> 200
+ *   middleware reads inp("probe")   -> 500 Unable to locate input: probe
+ *   throws under `silent`           -> 200  (guard NOT enforced)
+ *   throws under `rethrow`          -> 500  (authored error surfaces)
+ *   throws with NO policy set       -> 200  (today's default — an inert guard)
+ *
+ * The declared input carried a `default`, and it did not stand in.
+ */
+describe("middleware input and inp() (#210)", () => {
+  const exportWith = (def: Parameters<typeof middleware>[0]) =>
+    captureWarnings(() => {
+      new Xano().registerWorkspace({ name: "app" }).registerMiddleware([middleware(def)]).export();
+    });
+
+  it("warns that a declared `input` is never bound, pointing at get_all_input", () => {
+    const seen = exportWith({ name: "mw", input: { probe: input.text() }, stack: [] });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.code).toBe("middleware.input-never-bound");
+    expect(seen[0]!.message).toContain("s.util.get_all_input");
+    expect(seen[0]!.message).toContain("{ type, vars }");
+  });
+
+  it("warns — never throws — because real stored middleware declares inputs", () => {
+    // A captured middleware in this repo's corpus declares `vars` and `type`
+    // inputs. Refusing the field at export would make such a workspace
+    // impossible to pull, edit and push back, which is worse than the runtime
+    // failure being reported.
+    expect(() =>
+      new Xano()
+        .registerWorkspace({ name: "app" })
+        .registerMiddleware([middleware({ name: "mw", input: { probe: input.text() }, stack: [] })])
+        .export(),
+    ).not.toThrow();
+  });
+
+  it("warns on an inp() read inside a middleware stack, quoting the runtime error", () => {
+    const seen = exportWith({ name: "mw", stack: [s.set_var("v", inp("probe"))] });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.code).toBe("middleware.inp-unresolvable");
+    expect(seen[0]!.message).toContain("Unable to locate input: probe");
+  });
+
+  it("reports a repeated inp() read once", () => {
+    const seen = exportWith({
+      name: "mw",
+      stack: [s.set_var("a", inp("probe")), s.set_var("b", inp("probe"))],
+    });
+    expect(seen).toHaveLength(1);
+  });
+
+  it("is silent for a middleware that reads no inputs", () => {
+    expect(exportWith({ name: "mw", stack: [s.set_var("v", c.text("ok"))] })).toHaveLength(0);
+  });
+
+  it("does not warn about inp() in a NON-middleware stack", () => {
+    // `inp()` is correct everywhere else; the breakage is specific to middleware.
+    const seen = captureWarnings(() => {
+      new Xano()
+        .registerWorkspace({ name: "app" })
+        .registerFunctions([
+          defineFunction({ name: "fn", stack: [s.set_var("v", inp("probe"))] }),
+        ])
+        .export();
+    });
+    expect(seen).toHaveLength(0);
   });
 });
 
