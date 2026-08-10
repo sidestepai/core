@@ -587,8 +587,7 @@ describe("misc specials", () => {
     roundTrip(s.comment());
   });
 
-  it("round-trips placeholder and the terminal statements", () => {
-    roundTrip(s.placeholder("todo"));
+  it("round-trips the terminal statements", () => {
     roundTrip(s.return(ref("result")));
     roundTrip(s.debug.log({ value: c.text("here") }));
   });

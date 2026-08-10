@@ -135,7 +135,13 @@ export const STATEMENT_SURFACES: ReadonlyArray<readonly [string, string]> = [
   ["object.entries", "mvp:object_entries"],
   ["object.keys", "mvp:object_keys"],
   ["object.values", "mvp:object_values"],
-  ["placeholder", "mvp:placeholder"],
+  // `mvp:placeholder` has no surface on purpose. The engine writes one in place
+  // of a statement it could not resolve and then refuses the same bytes on
+  // import, so authoring one can only produce an un-deployable workspace. It is
+  // listed in {@link DECODE_ONLY_STATEMENTS}, carried through `raw()`, and
+  // blocked at `export()` — the same treatment retired versions get, and for the
+  // same reason: keeping it out of this catalog keeps it out of the manifest an
+  // agent authors from.
   ["precondition", "mvp:precondition"],
   ["realtime.get_session", "mvp:get_session"],
   ["realtime.publish", "mvp:realtime_publish"],

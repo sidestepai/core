@@ -6,7 +6,7 @@ Author a Xano workspace in TypeScript: build typed objects, register them on a
 `new Xano()` instance, and call `.export()` to get one importable bundle. Compile
 with `sidestep export ./xano/index.js`.
 
-Coverage: object kinds 24/30, statement surfaces 215/215, filters 225 (129 typed).
+Coverage: object kinds 24/30, statement surfaces 214/214, filters 225 (129 typed).
 Not authorable here: branch, market_item, realtime_channel, run.job, run.service, tablemap — these cannot be authored and do not survive a pull; see `coverage.objectKinds.unmodeled` in `manifest.json`.
 
 Full reference: this doc shows the authoring signature for every kind, statement, and
@@ -878,7 +878,6 @@ Microservices (the `microservice()` def and the statement that calls it):
 - `s.foreach_remove` [special]
 - `s.foreach` [special]
 - `s.group` [special]
-- `s.placeholder` [special]
 - `s.precondition({ expr?: comparison; error_type?: string; error?: value; payload?: value })`
 - `s.return` [special]
 - `s.switch` [special]
@@ -1196,3 +1195,9 @@ replacement only for NEW code. Never swap one for the other — each version bro
 - `mvp:crypto_jws_decode` → `mvp:crypto_jws_decode2`
 - `mvp:crypto_jws_encode` → `mvp:crypto_jws_encode2`
 - `mvp:connect_ncscale_send_log` — retired, no replacement
+
+Statements the engine writes but will NOT import back — no `s.` surface exists, and
+unlike the retired versions above these must be FIXED, not left alone. Pulled code shows
+them as `raw({ name: "…" })`; `export()` refuses any bundle that still contains one.
+
+- `mvp:placeholder` — an unconfigured statement slot the engine writes in place of a statement it could not resolve, so an export stays well-formed. There is no statement class behind it: importing a workspace that contains one fails outright with "Missing statement: mvp:placeholder". Replace it with the statement it stands in for before deploying — there is no destination where it runs.

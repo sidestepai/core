@@ -19,6 +19,15 @@ export type ReportCategory =
    * latest of each family (see `SUPERSEDED_STATEMENTS`).
    */
   | "superseded"
+  /**
+   * A statement the engine WRITES but will not read back, carried verbatim (see
+   * `DECODE_ONLY_STATEMENTS`). Warning, and the split from `superseded` is the
+   * whole point: a retired version keeps running exactly as stored, so a pulled
+   * workspace holding one pushes straight back. One of these does not. The
+   * decode is faithful and nothing is lost, but the workspace is NOT deployable
+   * until the statement is replaced, and `export()` says so.
+   */
+  | "decode-only"
   /** A value was emitted as an annotated literal instead of a `c.*`/`ref` call. */
   | "value-fallback"
   /**
@@ -176,6 +185,7 @@ export type ReportSeverity =
 const CATEGORY_LABELS: ReadonlyArray<readonly [ReportCategory, string, ReportSeverity]> = [
   ["verify-mismatch", "Round-trip mismatches", "error"],
   ["unresolved-ref", "References that could not be resolved", "error"],
+  ["decode-only", "Statements the engine writes but will not import", "warning"],
   ["raw-fallback", "Statements emitted as raw() passthroughs", "warning"],
   ["unsupported-section", "Unsupported payload sections", "warning"],
   ["value-fallback", "Values emitted as annotated literals", "warning"],

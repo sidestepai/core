@@ -57,7 +57,6 @@ const UNCOVERED_BY_DESIGN: Readonly<Record<string, string>> = {
 
   // The engine's input schema is empty — nothing optional to get wrong.
   "mvp:comment": "engine input schema is empty",
-  "mvp:placeholder": "engine input schema is empty",
 
   // Already settled on this branch (cb07bb2): input order read from the
   // engine's own input schema, `extras`/`expiration` omitted when unset.

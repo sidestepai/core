@@ -91,7 +91,6 @@ const SPECIALS: Array<[string, () => Statement]> = [
   ["foreach_continue", () => s.foreach_continue({ disabled: true, description: NOTE })],
   ["foreach_remove", () => s.foreach_remove({ disabled: true, description: NOTE })],
   ["comment", () => s.comment("hi", { disabled: true, description: NOTE })],
-  ["placeholder", () => s.placeholder("todo", { disabled: true, description: NOTE })],
   [
     "conditional",
     () =>

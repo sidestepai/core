@@ -16,6 +16,7 @@ import "../kinds/all.js";
 import "../statements/s.js";
 import { GENERATED_SPECS } from "../statements/generated/specs.generated.js";
 import { SUPERSEDED_STATEMENTS } from "../statements/superseded.js";
+import { DECODE_ONLY_STATEMENTS } from "../statements/decode-only.js";
 import type { StatementSpec } from "../statements/schema-dsl/interpret.js";
 import {
   STATEMENT_SURFACES,
@@ -1605,7 +1606,7 @@ export function renderLlmsTxt(m: Manifest): string {
   const legacyValues = m.values.constructors.filter((v) => v.legacy);
   const legacyStatements = m.statements.filter((s) => s.legacy);
   const legacyFactories = m.objectKinds.flatMap((k) => (k.subKinds ?? []).filter((sub) => sub.legacy));
-  if (legacyValues.length + legacyStatements.length + legacyFactories.length + SUPERSEDED_STATEMENTS.size > 0) {
+  if (legacyValues.length + legacyStatements.length + legacyFactories.length + SUPERSEDED_STATEMENTS.size + DECODE_ONLY_STATEMENTS.size > 0) {
     lines.push(
       "## Legacy",
       "",
@@ -1641,6 +1642,21 @@ export function renderLlmsTxt(m: Manifest): string {
       for (const [stored, successor] of retired) {
         lines.push(successor ? `- \`${stored}\` → \`${successor}\`` : `- \`${stored}\` — retired, no replacement`);
       }
+    }
+    // Statements the engine WRITES but will not read back. Split from the
+    // retired versions above because the instruction is the opposite one: a
+    // retired version keeps running as stored and must be LEFT ALONE, while one
+    // of these makes the workspace un-deployable and must be REPLACED.
+    const decodeOnly = [...DECODE_ONLY_STATEMENTS.entries()];
+    if (decodeOnly.length > 0) {
+      lines.push("");
+      lines.push(
+        "Statements the engine writes but will NOT import back — no `s.` surface exists, and",
+        "unlike the retired versions above these must be FIXED, not left alone. Pulled code shows",
+        "them as `raw({ name: \"…\" })`; `export()` refuses any bundle that still contains one.",
+        "",
+      );
+      for (const [stored, reason] of decodeOnly) lines.push(`- \`${stored}\` — ${reason}.`);
     }
     lines.push("");
   }

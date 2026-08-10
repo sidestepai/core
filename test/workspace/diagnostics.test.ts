@@ -26,6 +26,10 @@ import { apiGroup } from "../../src/kinds/api-group.js";
 import { task } from "../../src/kinds/task.js";
 import { defineFunction } from "../../src/function/define.js";
 import { s } from "../../src/statements/s.js";
+import { raw } from "../../src/statements/special/raw.js";
+import { isRegisteredStatement } from "../../src/statements/statement.js";
+import { STATEMENT_SURFACES } from "../../src/statements/surfaces.js";
+import { checkDecodeOnlyStatements } from "../../src/workspace/guards.js";
 import { f } from "../../src/fields/catalog.js";
 import { c, ref, inp } from "../../src/values/value.js";
 import { middleware } from "../../src/kinds/middleware.js";
@@ -515,5 +519,75 @@ describe("migrated warnings keep their behavior", () => {
     expect(seen).toHaveLength(1);
     expect(seen[0]!.code).toBe("query.auth-table-unflagged");
     expect(formatDiagnostic(seen[0]!)).toMatch(/^sidestep: query "me".*table\("users"|users/s);
+  });
+});
+
+/**
+ * #235. `mvp:placeholder` is the one shape the audit turned up that is OURS
+ * rather than the engine's — and the only reason it clears the KTD2c bar for a
+ * hard error is that the rule is upstream's, not an inference from a
+ * reproduction: Xano's own CLI blocks a push whose preview names this
+ * statement, alongside a syntax error. There is no `s.` surface for it, so the
+ * only route into a bundle is a pull that carried one through `raw()`.
+ */
+describe("statements the engine writes but will not import (#235)", () => {
+  /** A workspace whose one function carries a raw `mvp:placeholder`. */
+  const withPlaceholder = () =>
+    new Xano()
+      .registerWorkspace({ name: "app" })
+      .registerFunctions([
+        defineFunction({
+          name: "half_built",
+          stack: [raw({ name: "mvp:placeholder", context: { name: "todo" }, input: [] })],
+        }),
+      ]);
+
+  it("has no authoring surface at all", () => {
+    expect("placeholder" in s).toBe(false);
+    expect(STATEMENT_SURFACES.some(([, stored]) => stored === "mvp:placeholder")).toBe(false);
+    expect(isRegisteredStatement("mvp:placeholder")).toBe(false);
+  });
+
+  it("refuses to export a bundle carrying one, naming the object and the fix", () => {
+    let message = "";
+    try {
+      withPlaceholder().export();
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain('function "half_built"');
+    expect(message).toContain("mvp:placeholder");
+    expect(message).toContain("Missing statement: mvp:placeholder");
+    expect(message).toContain("raw(");
+  });
+
+  it("reports one diagnostic per object, not one per copy", () => {
+    const bag = new DiagnosticBag();
+    checkDecodeOnlyStatements(
+      {
+        function: [
+          {
+            name: "half_built",
+            run: [
+              { name: "mvp:placeholder", context: { name: "a" } },
+              { name: "mvp:placeholder", context: { name: "b" } },
+            ],
+          },
+        ],
+      },
+      bag,
+    );
+    expect(bag.all()).toHaveLength(1);
+    expect(bag.all()[0]!.code).toBe("statement.decode-only");
+  });
+
+  it("stays silent on a workspace that carries none", () => {
+    const seen = captureWarnings(() =>
+      new Xano()
+        .registerWorkspace({ name: "app" })
+        .registerFunctions([defineFunction({ name: "fine", stack: [s.comment("all good")] })])
+        .export(),
+    );
+    expect(seen).toHaveLength(0);
   });
 });

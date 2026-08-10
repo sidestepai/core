@@ -25,7 +25,7 @@ import type { FunctionDef } from "../function/define.js";
 import type { TableDef } from "../kinds/table.js";
 import type { ObjectKind } from "../kinds/kind.js";
 import { DiagnosticBag } from "./diagnostics.js";
-import { checkReferences, checkStacks } from "./guards.js";
+import { checkDecodeOnlyStatements, checkReferences, checkStacks } from "./guards.js";
 
 /**
  * Cross-realm brand. `instanceof Xano` breaks when sidestep is loaded by two
@@ -239,6 +239,10 @@ export class Xano {
     // they never block a deploy.
     checkStacks(this.tableDefs, sections, bag);
     checkReferences(this.bundleType, sections, this.workspaceConfig.guid, bag);
+    // A statement the engine writes but will not read back — this bundle cannot
+    // import at all while it carries one. Unscoped by bundle type: a partial
+    // bundle is no more importable than a full one here.
+    checkDecodeOnlyStatements(sections, bag);
     bag.flush();
     if (lockCtx) this.applyLock(lockCtx, sections);
     // The workspace-import path requires `workspace.guid`. Under a lock,

@@ -30,7 +30,13 @@ const m = buildManifest({ version: "test" });
 const FLOOR = {
   filters: 225,
   typedFilters: 129,
-  statements: 215,
+  // 215 until `placeholder` was withdrawn (#235). The engine has no statement
+  // class for `mvp:placeholder` — it writes one where it could not resolve a
+  // statement and then refuses the same bytes on import — so the surface only
+  // ever produced un-deployable workspaces. It is decoded, never authored; see
+  // `test/statements/decode-only.test.ts`. This is the deliberate exception the
+  // no-shrink rule is worded against, not a slimming pass.
+  statements: 214,
   objectKindsImplemented: 16,
   valueConstructors: 20,
   fieldTypes: 15,

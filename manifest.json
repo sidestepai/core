@@ -34,8 +34,8 @@
       ]
     },
     "statements": {
-      "implemented": 215,
-      "total": 215
+      "implemented": 214,
+      "total": 214
     },
     "filters": {
       "typed": 129,
@@ -3208,13 +3208,6 @@
         "name": "as",
         "type": "unknown[]"
       }
-    },
-    {
-      "surface": "placeholder",
-      "storedName": "mvp:placeholder",
-      "sPath": "placeholder",
-      "registered": true,
-      "declarative": false
     },
     {
       "surface": "precondition",

@@ -148,7 +148,6 @@ export {
   arrayMap,
   arrayUnion,
   comment,
-  placeholder,
   getRawInput,
   postProcess,
   realtimeEvent,

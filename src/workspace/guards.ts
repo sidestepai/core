@@ -24,6 +24,7 @@
  */
 import { tableColumns } from "../kinds/table.js";
 import { resolveRef } from "../refs/guid.js";
+import { DECODE_ONLY_STATEMENTS } from "../statements/decode-only.js";
 import type { TableDef } from "../kinds/table.js";
 import type { DiagnosticBag } from "./diagnostics.js";
 
@@ -325,6 +326,52 @@ export function checkStacks(
         }
       }
       checkInternalColumnReads(statements, owner, tablesByGuid, bag);
+    }
+  }
+}
+
+/**
+ * Refuse a bundle carrying a statement the engine will not read back.
+ *
+ * `mvp:placeholder` is the whole population today: the engine writes one into an
+ * export in place of a statement it could not resolve, so the export stays
+ * well-formed — and then refuses those same bytes on import, because there is no
+ * statement class behind the name. A bundle containing one can only fail with
+ * `Missing statement: mvp:placeholder`, after a destructive full-replace has
+ * begun.
+ *
+ * This clears the KTD2c bar without asserting anything about what the engine
+ * accepts: Xano's own CLI blocks a push whose preview names `mvp:placeholder`,
+ * as a critical error, in the same breath as a syntax error. The rule is
+ * upstream's. SideStep cannot even author one — there is no `s.` surface — so
+ * the only way a bundle acquires one is a pull that carried it through `raw()`,
+ * which is exactly the case worth stopping.
+ */
+export function checkDecodeOnlyStatements(
+  sections: Readonly<Record<string, unknown[] | undefined>>,
+  bag: DiagnosticBag,
+): void {
+  for (const [payloadKey, arr] of Object.entries(sections)) {
+    for (const obj of arr ?? []) {
+      if (!obj || typeof obj !== "object") continue;
+      const objName = (obj as { name?: unknown }).name;
+      const owner = `${payloadKey} "${typeof objName === "string" ? objName : "?"}"`;
+      const statements: EncodedStatement[] = [];
+      collectStatements(obj, statements);
+      // One diagnostic per distinct statement name per object: three copies of
+      // the same unresolved slot is one thing to go fix, not three.
+      const found = new Set(
+        statements.map((s) => s.name).filter((name) => DECODE_ONLY_STATEMENTS.has(name)),
+      );
+      for (const name of found) {
+        bag.error(
+          "statement.decode-only",
+          `${owner} contains \`${name}\`, which is ${DECODE_ONLY_STATEMENTS.get(name)}. It ` +
+            `reached this bundle from a pulled workspace — SideStep has no factory for it — and ` +
+            `the generated source carries it as a \`raw({ name: "${name}", … })\` call. Replace ` +
+            `that call with the statement it stands in for.`,
+        );
+      }
     }
   }
 }
