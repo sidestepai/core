@@ -38,7 +38,12 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
 import { emit, serializeBundle } from "./emit.js";
-import { buildSeedContentFiles, type SeedContentFile } from "../workspace/seed.js";
+import {
+  buildSeedContentFiles,
+  collectNonPublicSeedValues,
+  type NonPublicSeedValue,
+  type SeedContentFile,
+} from "../workspace/seed.js";
 import { writeArtifact } from "./write.js";
 import { findUnresolvableFilters } from "../validate/filter-names.js";
 import type { FunctionDef } from "../function/define.js";
@@ -173,6 +178,13 @@ export interface ParsedArgs {
    */
   noVerify: boolean;
   /**
+   * `deploy --allow-seed-in-static`: publish a static build even when it
+   * contains seed values the schema declares non-public. The refusal exists
+   * because the alternative is serving them at a public URL; this is the escape
+   * hatch for a workspace whose seed is deliberately demo data.
+   */
+  allowSeedInStatic: boolean;
+  /**
    * Leading-dash tokens the parser doesn't recognize. They are collected HERE
    * rather than falling into {@link positionals} so an unknown flag can never be
    * resolved as the entry `<file>` — the issue #173 failure mode, where
@@ -248,6 +260,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let force = false;
   let noInstall = false;
   let noVerify = false;
+  let allowSeedInStatic = false;
   const positionals: string[] = [];
   const unknownFlags: string[] = [];
   for (let i = 0; i < rest.length; i++) {
@@ -351,6 +364,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
       force = true;
     } else if (arg === "--no-install") {
       noInstall = true;
+    } else if (arg === "--allow-seed-in-static") {
+      allowSeedInStatic = true;
     } else if (arg === "--no-verify") {
       noVerify = true;
     } else if (arg === "--profile" || arg.startsWith("--profile=")) {
@@ -435,6 +450,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     force,
     noInstall,
     noVerify,
+    allowSeedInStatic,
     unknownFlags,
   };
 }
@@ -1007,6 +1023,11 @@ export interface CompiledBundle {
    * seed silently (a `--bundle` deploy has no registry to resolve seed from).
    */
   omittedSeedTables: string[];
+  /**
+   * Seed values drawn from columns the schema declares non-public, for the
+   * `--static` publication guard. Empty unless seed was resolved.
+   */
+  nonPublicSeedValues: NonPublicSeedValue[];
 }
 
 /**
@@ -1091,9 +1112,10 @@ export async function compileBundle(
   // table emitted in the bundle. Built only when the deploy path asks for it;
   // otherwise report which seeded tables were left out so `export` can warn.
   const content = opts.seed ? await buildSeedContentFiles(def.tables()) : [];
+  const nonPublicSeedValues = opts.seed ? await collectNonPublicSeedValues(def.tables()) : [];
   const omittedSeedTables = opts.seed ? [] : def.tables().filter((t) => t.seed !== undefined).map((t) => t.name);
 
-  return { bundle: serializeBundle(bundle), content, omittedSeedTables };
+  return { bundle: serializeBundle(bundle), content, omittedSeedTables, nonPublicSeedValues };
 }
 
 /**

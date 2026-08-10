@@ -55,6 +55,49 @@ function collectFiles(dir: string): ArchiveEntry[] {
   return out;
 }
 
+/** One non-public seed value found inside a built asset. */
+export interface SeedLeak {
+  /** POSIX-relative path of the asset within the static directory. */
+  file: string;
+  table: string;
+  column: string;
+}
+
+/**
+ * Search a built frontend for seed values the schema declares non-public.
+ *
+ * This is the one moment the tooling holds both halves at once — the rows about
+ * to be imported and the assets about to be published — which is why the check
+ * lives here rather than in a linter that would have to be told about both.
+ *
+ * A hit means a bundler copied a server-side value into a file that is about to
+ * be served at a public URL. That is how the deferred-thunk seed form leaked
+ * plaintext passwords into `dist/` (issue #204); `seedFile()` closes the known
+ * path, and this closes the general one — any future bundler behaviour that
+ * reaches seed data still gets caught before publication rather than after.
+ *
+ * Matching is a plain substring: minified output rewrites identifiers but not
+ * string literals, so a leaked credential survives the build verbatim, and a
+ * word-boundary rule would miss it inside a concatenated chunk.
+ */
+export function findSeedLeaks(
+  dir: string,
+  values: readonly { table: string; column: string; value: string }[],
+): SeedLeak[] {
+  if (values.length === 0 || !existsSync(dir)) return [];
+  const leaks: SeedLeak[] = [];
+  for (const file of collectFiles(dir)) {
+    // Latin-1 rather than UTF-8: a binary asset then decodes to harmless
+    // mojibake instead of replacement characters, which keeps an ASCII secret
+    // findable in a file this scan cannot otherwise classify.
+    const text = file.data.toString("latin1");
+    for (const v of values) {
+      if (text.includes(v.value)) leaks.push({ file: file.path, table: v.table, column: v.column });
+    }
+  }
+  return leaks;
+}
+
 /**
  * Assemble a gzipped USTAR tarball from the collected files. Exported for tests.
  * Adapts the static-host `{ path, data }` shape onto the shared {@link tarGz}

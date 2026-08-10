@@ -29,6 +29,7 @@
  */
 import type { ParsedArgs } from "./cli.js";
 import { loadBundleText } from "./bundle-input.js";
+import type { NonPublicSeedValue } from "../workspace/seed.js";
 import { getAccessToken, type ResolvedAuth } from "../auth/token.js";
 import { encodeWorkspaceArchive } from "../validate/archive.js";
 import { importWorkspaceArchive } from "../deploy/import.js";
@@ -118,17 +119,64 @@ async function resolveSandboxBaseUrl(auth: ResolvedAuth): Promise<string> {
   return tenantBaseUrl(tenant, auth.instance);
 }
 
+/**
+ * Refuse to publish a static build that carries seed values the schema declares
+ * non-public (issue #204).
+ *
+ * Deploy is the one moment both halves are in hand — the rows about to be
+ * imported and the assets about to be served — so this is the only place the
+ * check can be made without being told about both separately.
+ *
+ * Only `access: "internal"` and `sensitive: true` columns are considered. A
+ * public column's seed value is already readable through the deployed API, so
+ * finding it in a bundle is not a disclosure, and refusing on it would train
+ * people to reach for the override.
+ */
+async function assertNoSeedLeaks(
+  dir: string,
+  values: readonly NonPublicSeedValue[],
+  allow: boolean,
+): Promise<void> {
+  if (values.length === 0) return;
+  // Lazily imported for the same reason the upload is: the static-host module
+  // pulls in node:fs/node:zlib and must stay out of the authoring bundle.
+  const { findSeedLeaks } = await import("../deploy/static-host.js");
+  const leaks = findSeedLeaks(dir, values);
+  if (leaks.length === 0) return;
+
+  const lines = leaks.map((l) => `  ${l.file} — ${l.table}.${l.column}`);
+  if (allow) {
+    warn(`Publishing ${leaks.length} non-public seed value(s) in the static build (--allow-seed-in-static):`);
+    for (const line of lines) detail(line);
+    return;
+  }
+  throw new Error(
+    `Refusing to publish: the static build in "${dir}" contains seed values from columns ` +
+      `your schema marks non-public. These would be served at a public URL.\n` +
+      `${lines.join("\n")}\n\n` +
+      `A bundler copied them in — most often from \`seed: () => import("./seed.json")\`, which ` +
+      `does NOT keep seed values out of a frontend build. Use \`seedFile("./seed.json", ` +
+      `import.meta.url)\` instead, then rebuild the frontend.\n` +
+      `If the data is deliberately public demo content, pass --allow-seed-in-static.`,
+  );
+}
+
 export async function runDeployCommand(args: ParsedArgs): Promise<void> {
   const dest: DeployDest = args.dest ?? "ephemeral";
 
   // `--reset` is accepted but a no-op: every deploy is a full replace now.
   if (args.reset) info("`--reset` is redundant — deploy is always a full replace.");
 
-  const { bundle, source, content } = await loadBundleText(
+  const { bundle, source, content, nonPublicSeedValues } = await loadBundleText(
     args,
     `Missing input. Usage: sidestep deploy [--dest sandbox|ephemeral] <file> | --bundle <path>.`,
     { withSeed: true },
   );
+
+  // Before ANY network call: a refusal here must leave nothing deployed.
+  if (args.static !== undefined) {
+    await assertNoSeedLeaks(args.static, nonPublicSeedValues, args.allowSeedInStatic);
+  }
 
   const auth = await getAccessToken(args);
   if (content.length > 0) {

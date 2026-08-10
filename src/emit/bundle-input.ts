@@ -14,7 +14,7 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { compileBundle, type ParsedArgs } from "./cli.js";
-import type { SeedContentFile } from "../workspace/seed.js";
+import type { NonPublicSeedValue, SeedContentFile } from "../workspace/seed.js";
 
 /** The resolved bundle text plus the input it came from (an entry file or a `--bundle` path). */
 export interface LoadedBundle {
@@ -26,6 +26,11 @@ export interface LoadedBundle {
    * only; there is no live registry to resolve seed rows from).
    */
   content: SeedContentFile[];
+  /**
+   * Seed values from columns the schema declares non-public, for the `--static`
+   * publication guard. Same population rule as {@link content}.
+   */
+  nonPublicSeedValues: NonPublicSeedValue[];
 }
 
 /**
@@ -50,11 +55,11 @@ export async function loadBundleText(
     if (!existsSync(args.bundle)) {
       throw new Error(`${args.bundle} not found. Run \`sidestep export --out ${args.bundle}\` first.`);
     }
-    return { bundle: readFileSync(args.bundle, "utf8"), source: args.bundle, content: [] };
+    return { bundle: readFileSync(args.bundle, "utf8"), source: args.bundle, content: [], nonPublicSeedValues: [] };
   }
   if (args.file !== undefined) {
-    const { bundle, content } = await compileBundle(args, { seed: opts.withSeed });
-    return { bundle, source: args.file, content };
+    const { bundle, content, nonPublicSeedValues } = await compileBundle(args, { seed: opts.withSeed });
+    return { bundle, source: args.file, content, nonPublicSeedValues };
   }
   throw new Error(missingMessage);
 }

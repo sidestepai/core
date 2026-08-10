@@ -318,3 +318,58 @@ export async function buildSeedContentFiles(tableDefs: readonly TableDef[]): Pro
   }
   return files;
 }
+
+/** A seed value the schema says is not public, and where it came from. */
+export interface NonPublicSeedValue {
+  table: string;
+  column: string;
+  value: string;
+}
+
+/**
+ * Minimum length for a value worth scanning a built frontend for.
+ *
+ * Below this the string is more likely to collide with ordinary bundle content
+ * (a status word, an initial) than to be the secret it came from, and a guard
+ * that cries wolf gets switched off.
+ */
+const MIN_SCANNABLE_LENGTH = 6;
+
+/**
+ * Seed values drawn from columns the schema itself declares non-public.
+ *
+ * Scoped deliberately. A PUBLIC column's seed value is already readable through
+ * the deployed API, so finding it in a static bundle discloses nothing new and
+ * refusing on it would be noise. What matters is a value the schema says never
+ * leaves the server:
+ *
+ *   • `access: "internal"` — omitted from API output entirely (`f.password`'s
+ *     default), so the plaintext exists ONLY in the seed file and in whatever a
+ *     bundler copied it into.
+ *   • `sensitive: true` — the author's explicit "do not surface this".
+ *
+ * `access: "private"` is NOT included: private columns are still returned in
+ * responses (the system `created_at` is private and comes back on every read),
+ * so they carry no additional exposure here.
+ */
+export async function collectNonPublicSeedValues(
+  tableDefs: readonly TableDef[],
+): Promise<NonPublicSeedValue[]> {
+  const found: NonPublicSeedValue[] = [];
+  for (const def of tableDefs) {
+    if (def.seed === undefined) continue;
+    const guarded = tableColumns(def).filter(
+      (col) => col.access === "internal" || col.sensitive === true,
+    );
+    if (guarded.length === 0) continue;
+    const rows = await resolveSeedRows(def.seed);
+    for (const row of rows) {
+      for (const col of guarded) {
+        const value = (row as Record<string, unknown>)[col.name];
+        if (typeof value !== "string" || value.length < MIN_SCANNABLE_LENGTH) continue;
+        found.push({ table: def.name, column: col.name, value });
+      }
+    }
+  }
+  return found;
+}

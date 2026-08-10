@@ -8603,6 +8603,10 @@
           "description": "Public config baked in as window.<KEY> (repeatable; never secrets)"
         },
         {
+          "flag": "--allow-seed-in-static",
+          "description": "Publish the static build even if it contains non-public seed values"
+        },
+        {
           "flag": "--no-verify",
           "description": "Skip the post-deploy liveness checks (static host, microservices)"
         },

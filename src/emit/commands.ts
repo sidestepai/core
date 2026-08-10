@@ -116,6 +116,10 @@ export const FLAGS = {
   },
   "expires-hours": { spec: "--expires-hours <n>", summary: "Ephemeral TTL at create time, 1–72 (default: 1)" },
   static: { spec: "--static <dir>", summary: "Archive this built frontend and deploy it to the static host" },
+  "allow-seed-in-static": {
+    spec: "--allow-seed-in-static",
+    summary: "Publish the static build even if it contains non-public seed values",
+  },
   "static-env": { spec: "--static-env KEY=VALUE", summary: "Public config baked in as window.<KEY> (repeatable; never secrets)" },
   "static-host": { spec: "--static-host <name>", summary: "Static-host name to deploy to (default: default)" },
   "no-verify": { spec: "--no-verify", summary: "Skip the post-deploy liveness checks (static host, microservices)" },
@@ -220,6 +224,7 @@ export const COMMANDS = {
       "static",
       "static-host",
       "static-env",
+      "allow-seed-in-static",
       "no-verify",
       "reset",
       ...COMPILE,
