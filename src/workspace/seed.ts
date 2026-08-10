@@ -18,8 +18,6 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import type { TableDef, ColumnDef, SeedRow, SeedSource } from "../kinds/table.js";
 import { SEED_FILE, isSeedFileSource, tableColumns } from "../kinds/table.js";
 import { resolveRef } from "../refs/guid.js";
-import { geoToWkt } from "../values/geo.js";
-import type { GeoJsonGeometry } from "../values/geo.js";
 import { buildContentEnvelope } from "./export.js";
 
 /**
@@ -164,28 +162,6 @@ function coerceScalarValue(
     case "password": {
       if (typeof value === "string") return value;
       throw located(label, column, type, value, "a string");
-    }
-    case "geo_point":
-    case "geo_multipoint":
-    case "geo_linestring":
-    case "geo_multilinestring":
-    case "geo_polygon":
-    case "geo_multipolygon": {
-      // The engine takes WKT text and refuses GeoJSON (verified live: a
-      // `{ type, coordinates }` write is a 400). A seed carrying GeoJSON would
-      // otherwise be shipped verbatim and land as null — indistinguishable from
-      // a column the author forgot to populate. Convert it, or say why not.
-      if (typeof value === "string") return value;
-      if (value && typeof value === "object" && "type" in value && "coordinates" in value) {
-        try {
-          return geoToWkt(value as GeoJsonGeometry);
-        } catch (error) {
-          throw new Error(
-            `${label}, column "${column}" (${type}): ${(error as Error).message}`,
-          );
-        }
-      }
-      throw located(label, column, type, value, "WKT text or a GeoJSON geometry");
     }
     case "enum": {
       // The one column type the TYPE SYSTEM cannot police on a deferred seed: a

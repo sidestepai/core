@@ -123,35 +123,3 @@ describe("enum membership is enforced at export instead", () => {
     expect(() => coerceSeedRows("probe_bare", tableColumns(bare), [{ k: "anything" }])).not.toThrow();
   });
 });
-
-describe("a geo seed value is converted to the WKT the engine accepts (#208)", () => {
-  const places = table({ name: "p_places", schema: { at: f.geo.point() } });
-  const columns = tableColumns(places);
-
-  it("converts GeoJSON, because the engine refuses it verbatim", () => {
-    // Verified live: a `{ type, coordinates }` write is a 400 and would have
-    // been shipped as-is, landing as null — indistinguishable from a column the
-    // author forgot to populate.
-    expect(
-      coerceSeedRows("p_places", columns, [{ at: { type: "Point", coordinates: [1, 2] } }]),
-    ).toEqual([{ at: "POINT(1 2)", id: 1 }]);
-  });
-
-  it("passes raw WKT through untouched", () => {
-    expect(coerceSeedRows("p_places", columns, [{ at: "POINT(3 4)" }])).toEqual([
-      { at: "POINT(3 4)", id: 1 },
-    ]);
-  });
-
-  it("names the table, row and column when the geometry cannot be encoded", () => {
-    expect(() =>
-      coerceSeedRows("p_places", columns, [{ at: { type: "Point", coordinates: [1] } }]),
-    ).toThrow(/table "p_places", seed row 0, column "at" \(geo_point\).*\[lng, lat\] pair/s);
-  });
-
-  it("rejects a value that is neither WKT nor a geometry", () => {
-    expect(() => coerceSeedRows("p_places", columns, [{ at: 42 }])).toThrow(
-      /expected WKT text or a GeoJSON geometry/,
-    );
-  });
-});
