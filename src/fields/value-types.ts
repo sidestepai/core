@@ -53,9 +53,43 @@ export interface XanoDbLink {
 }
 
 /** Opaque runtime value of a geo input/column (a GeoJSON-shaped object). */
-export interface XanoGeoJson {
+/**
+ * The value type of an `f.geo.*` column.
+ *
+ * Deliberately the READ shape, and deliberately nullable — verified live: a
+ * stored geo value comes back as `null` from every documented read (`db.get`
+ * and `db.query`, with or without the column named in `output`). The
+ * `{ type, data: { lng, lat } }` form appears only in the echo a `db.add`
+ * returns. Typing it as non-null would promise `row.at.data.lat` a value that
+ * never arrives, so the honest type is the nullable one and the reason is
+ * documented rather than smoothed over (issue #208; the read failure is
+ * engine-side).
+ *
+ * On WRITE the engine takes WKT text and refuses GeoJSON outright
+ * (`400 Only strings are supported for: POINT`). Build the value with
+ * `geo({ type: "Point", coordinates: [lng, lat] })`, which converts, or pass
+ * raw WKT as `c.text("POINT(1 2)")`.
+ */
+export type XanoGeoJson = XanoGeoRead | null;
+
+/** One `{ lng, lat }` position as the engine renders it. */
+export interface XanoGeoPosition {
+  lng: number;
+  lat: number;
+}
+
+/**
+ * The `{ type, data }` shape a geo column echoes on write.
+ *
+ * `data` varies by geometry and `type` is the engine's own abbreviation, not
+ * the GeoJSON one — observed live: a point echoes
+ * `{ type: "point", data: { lng, lat } }`, a polygon echoes
+ * `{ type: "poly", data: [{ lng, lat }, …] }`. Typed as the union of what has
+ * actually been seen rather than a guess per geometry.
+ */
+export interface XanoGeoRead {
   type: string;
-  coordinates: unknown;
+  data: XanoGeoPosition | XanoGeoPosition[] | XanoGeoPosition[][];
 }
 
 /**

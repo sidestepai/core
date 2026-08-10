@@ -518,6 +518,15 @@ enum, json, object, password, date, tableRef). Pass `nullable` explicitly to ove
 e.g. `f.geo.polygon({ nullable: false })`. This is why `f.vector(8)` deploys: the engine
 turns an empty default into SQL NULL only for a nullable column, so a non-null vector
 would reach PostgreSQL as `vector(8) not null default ''` and fail to create.
+**`f.geo.*` takes WKT TEXT on write, never GeoJSON.** A `{ type, coordinates }` value is
+refused (`400 Only strings are supported for: POINT`). Build it with
+`geo({ type: "Point", coordinates: [lng, lat] })`, which converts to WKT and refuses a
+wrong-arity position or an unclosed polygon ring by name; or pass raw WKT
+(`c.text("POINT(1 2)")`). Coordinates are longitude-FIRST. ⚠ Reading a geo column back
+currently returns `null` on every path (`db.get`/`db.query`, with or without `output`) —
+the `{ type, data }` shape appears only in the echo a `db.add` returns, so its declared
+type is nullable. Engine-side; a geo column is write-and-forget for now. `s.db.edit` on a
+row holding one also fails, so keep geo on an insert-only side table.
 `methods` is a bind-time validator/transform pipeline whose
 valid names depend on the field type (below) — pass bare names (`"trim"`), the
 colon-form with args (`"min:8"`), or `{ name, arg }` for anything not listed.

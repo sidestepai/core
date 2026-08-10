@@ -54,6 +54,8 @@ export type {
   RowFromFieldMap,
   XanoFileRef,
   XanoGeoJson,
+  XanoGeoRead,
+  XanoGeoPosition,
 } from "./fields/value-types.js";
 export { f, toNestedFields } from "./fields/catalog.js";
 export type { FieldDescriptor, FieldMap, FieldOpts, MethodOpts } from "./fields/catalog.js";
@@ -76,6 +78,8 @@ export type {
 } from "./fields/generated/field-methods.generated.js";
 export { c, ref, inp, col, auth, caught, env, setting, sys, out, filter, withFilters } from "./values/value.js";
 export type { CaughtField } from "./values/value.js";
+export { geo, geoToWkt } from "./values/geo.js";
+export type { GeoJsonGeometry, Position } from "./values/geo.js";
 export type { Value, RefValue, FilteredValue } from "./values/value.js";
 export { obj } from "./values/obj.js";
 export type { ObjInput, ObjMember } from "./values/obj.js";
