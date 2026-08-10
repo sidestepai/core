@@ -503,73 +503,134 @@ async function importTsxApi(file: string): Promise<{ register: () => () => void 
   }
 }
 
-/**
- * Load a `.ts` entry through `tsx` (when installed) for plain-Node invocations.
- *
- * Uses the global `register()` hook rather than the scoped `tsImport()`: the
- * latter resolves nested `.js`→`.ts` specifiers relative to *this* module's
- * location, so when the CLI runs from a symlinked install (`npx`, a `file:` dep)
- * the workspace's own relative imports (e.g. `index.ts` importing
- * `./tables/user.js`) fail to resolve. `register()` installs the loader
- * process-wide, so the whole module graph remaps consistently; we unregister
- * once the entry has loaded.
- */
-async function loadViaTsx(url: string, file: string, cause?: unknown): Promise<unknown> {
-  let register: () => () => void;
+/** {@link importTsxApi}, returning `undefined` instead of throwing when tsx isn't installed. */
+async function tryImportTsxApi(file: string): Promise<{ register: () => () => void } | undefined> {
   try {
-    ({ register } = await importTsxApi(file));
+    return await importTsxApi(file);
   } catch {
-    // tsx isn't installed (in the project OR beside the CLI), so we can't recover
-    // a TS entry bare Node rejected. Chain the original loader failure so a genuine
-    // (non-loader) error in the user's module isn't masked by the "install tsx" message.
-    throw new Error(
-      `Loading a TypeScript entry ("${file}") requires \`tsx\`. ` +
-        `Install it in your project (\`npm i -D tsx\`) or precompile the file to .js first.`,
-      cause !== undefined ? { cause } : undefined,
-    );
+    return undefined;
   }
-  const unregister = register();
-  try {
-    const mod = (await import(url)) as { default?: unknown };
-    return mod.default;
-  } finally {
-    unregister();
+}
+
+/**
+ * Whether a TypeScript entry will be evaluated as CommonJS.
+ *
+ * `.mts` is always ESM and `.cts` always CJS; a bare `.ts` follows the nearest
+ * package.json's `type`, where a missing `type` field (what `npm init -y`
+ * writes) means CommonJS.
+ *
+ * Decided by inspection rather than by catching a loader's error, because the
+ * error differs per loader: native Node raises a `SyntaxError` about an import
+ * statement outside a module, while tsx — which respects the same `type` —
+ * fails earlier, resolving `@sidestep/core` under `require` conditions and
+ * reporting a missing `exports` main. Neither message tells an author what to do.
+ *
+ * Answers only on POSITIVE evidence. An entry with no package.json above it
+ * anywhere is left alone: Node's own rule would call it CommonJS, but a host
+ * with an active loader (vitest, a bundler's dev server) happily treats it as
+ * ESM, and a false "add type: module" on a file that loads fine is worse than
+ * the raw loader error on a genuinely broken one.
+ */
+function entryIsCommonJs(file: string): boolean {
+  const path = resolve(file);
+  if (/\.mts$/.test(path)) return false;
+  if (/\.cts$/.test(path)) return true;
+
+  let dir = dirname(path);
+  for (;;) {
+    const manifest = join(dir, "package.json");
+    if (existsSync(manifest)) {
+      try {
+        const pkg = JSON.parse(readFileSync(manifest, "utf8")) as { type?: unknown };
+        return pkg.type !== "module";
+      } catch {
+        // An unreadable/non-JSON package.json is not evidence of anything.
+        return false;
+      }
+    }
+    const parent = dirname(dir);
+    if (parent === dir) return false; // no manifest anywhere — don't guess
+    dir = parent;
   }
+}
+
+/**
+ * The actionable error for an entry in a CommonJS module graph. sidestep defs
+ * are ESM-only, so no loader can bridge this — the entry itself has to be ESM.
+ */
+function commonJsEntryError(file: string, cause?: unknown): Error {
+  return new Error(
+    `Cannot load "${file}": it is being evaluated as CommonJS, but sidestep ` +
+      `workspace files are ES modules. Add \`"type": "module"\` to the nearest ` +
+      `package.json, or rename the entry to \`.mts\`.`,
+    cause !== undefined ? { cause } : undefined,
+  );
 }
 
 export async function loadDefault(file: string): Promise<unknown> {
   const url = pathToFileURL(resolve(file)).href;
+  const isTypeScript = /\.[mc]?ts$/.test(file);
+
+  // Register tsx BEFORE the first import of a TypeScript entry, rather than as
+  // a recovery step after one fails (issue #197).
+  //
+  // Node's native type stripping loads a `.ts` entry but does NOT remap a `.js`
+  // specifier to its `.ts` source, so a workspace's own intra-workspace imports
+  // (`./tables/user.js` — the form the docs mandate) fail to resolve. The
+  // native loader is therefore never the right loader for a sidestep entry.
+  //
+  // Recovering after the fact is not possible: Node CACHES the rejected module
+  // resolution, so re-importing the same URL with tsx registered returns the
+  // same failure, and cache-busting the entry URL does not help either because
+  // the unresolvable specifier is a nested one. Reproduced on Node 22.19
+  // (Node 24 happens not to cache it, which is why this hid for so long).
+  //
+  // Uses the global `register()` hook rather than the scoped `tsImport()`: the
+  // latter resolves nested `.js`→`.ts` specifiers relative to *this* module's
+  // location, so when the CLI runs from a symlinked install (`npx`, a `file:`
+  // dep) the workspace's own relative imports fail to resolve. `register()`
+  // installs the loader process-wide, so the whole module graph remaps
+  // consistently; we unregister once the entry has loaded.
+  if (isTypeScript) {
+    // Check this before loading: under tsx the CommonJS failure surfaces as an
+    // unrelated resolution error, so there is nothing recognisable to translate
+    // afterwards.
+    if (entryIsCommonJs(file)) throw commonJsEntryError(file);
+
+    const tsx = await tryImportTsxApi(file);
+    if (tsx) {
+      const unregister = tsx.register();
+      try {
+        const mod = (await import(url)) as { default?: unknown };
+        return mod.default;
+      } finally {
+        unregister();
+      }
+    }
+  }
+
   try {
-    // A plain dynamic import works whenever a TS loader is already active
-    // (vitest, `node --import tsx`, etc.) and keeps a single module instance.
+    // Either a plain `.js`/`.mjs` entry, or a `.ts` entry with no tsx available
+    // — in which case native type stripping is the only chance we have.
     const mod = await import(url);
     return mod.default;
   } catch (err) {
-    if (!/\.[mc]?ts$/.test(file)) throw err;
+    if (!isTypeScript) throw err;
     const code = (err as NodeJS.ErrnoException | undefined)?.code;
-    // tsx can recover these two — they're loader/resolution failures, not a
-    // module-system mismatch:
+    // tsx would have recovered these two, and it isn't installed. Chain the
+    // original loader failure so a genuine (non-loader) error in the user's
+    // module isn't masked by the "install tsx" message.
     //   • ERR_UNKNOWN_FILE_EXTENSION — older Node with no native `.ts` support.
-    //   • ERR_MODULE_NOT_FOUND — Node ≥ 22.6 strips types natively and loads the
-    //     entry, but native stripping does NOT remap a `.js` specifier to its
-    //     `.ts` source, so a workspace's own relative imports (`./tables/user.js`)
-    //     fail. tsx's resolver does the remap.
+    //   • ERR_MODULE_NOT_FOUND — the unremapped `.js` specifier described above.
     if (code === "ERR_UNKNOWN_FILE_EXTENSION" || code === "ERR_MODULE_NOT_FOUND") {
-      return loadViaTsx(url, file, err);
-    }
-    // The entry was pulled into a CommonJS module graph — its nearest
-    // package.json is `"type": "commonjs"` (what `npm init -y` writes) — so Node
-    // (and tsx, which respects that type) evaluate it as CJS and choke on the
-    // ESM `import`. sidestep defs are ESM-only, so no loader can bridge this: the
-    // entry itself has to be ESM. Trade the cryptic native SyntaxError for an
-    // actionable one.
-    if (err instanceof SyntaxError && /import statement outside a module/.test(err.message)) {
       throw new Error(
-        `Cannot load "${file}": it is being evaluated as CommonJS, but sidestep ` +
-          `workspace files are ES modules. Add \`"type": "module"\` to the nearest ` +
-          `package.json, or rename the entry to \`.mts\`.`,
+        `Loading a TypeScript entry ("${file}") requires \`tsx\`. ` +
+          `Install it in your project (\`npm i -D tsx\`) or precompile the file to .js first.`,
         { cause: err },
       );
+    }
+    if (err instanceof SyntaxError && /import statement outside a module/.test(err.message)) {
+      throw commonJsEntryError(file, err);
     }
     throw err;
   }
