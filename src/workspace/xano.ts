@@ -25,7 +25,7 @@ import type { FunctionDef } from "../function/define.js";
 import type { TableDef } from "../kinds/table.js";
 import type { ObjectKind } from "../kinds/kind.js";
 import { DiagnosticBag } from "./diagnostics.js";
-import { checkTables } from "./guards.js";
+import { checkReferences, checkTables } from "./guards.js";
 
 /**
  * Cross-realm brand. `instanceof Xano` breaks when sidestep is loaded by two
@@ -235,6 +235,10 @@ export class Xano {
     // Catch an `auth()`-keyed middleware directly attached to a host that can't
     // resolve a request identity — the silent null-bucket collapse (issue #81).
     this.validateMiddlewareAuth(sections, bag);
+    // Every cross-object reference must name something this bundle carries.
+    // Runs last so a more specific diagnostic (an unregistered auth table)
+    // is reported in its own words rather than as a bare dangling guid.
+    checkReferences(this.bundleType, sections, this.workspaceConfig.guid, bag);
     bag.flush();
     if (lockCtx) this.applyLock(lockCtx, sections);
     // The workspace-import path requires `workspace.guid`. Under a lock,

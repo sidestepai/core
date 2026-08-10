@@ -11,8 +11,8 @@ import {
   c,
 } from "../src/index.js";
 import { meQuery, login, getSnippet, fetchSnippet } from "./fixtures/consumer-example.js";
-import { createLink } from "./fixtures/validate-input-recipe.js";
-import { links, bumpClicks, listLinks, getLinkSlug, getLinkOrNull } from "./fixtures/docs-recipes.js";
+import { createLink, linksGroup } from "./fixtures/validate-input-recipe.js";
+import { api, links, bumpClicks, listLinks, getLinkSlug, getLinkOrNull } from "./fixtures/docs-recipes.js";
 import { Xano } from "../src/workspace/xano.js";
 
 /**
@@ -56,7 +56,10 @@ describe("public consumer surface", () => {
   });
 
   it("the validate-at-the-boundary recipe fixture exports with its precondition (#12)", () => {
-    const bundle = new Xano().register("query", createLink).export();
+    const bundle = new Xano()
+      .register("api_group", linksGroup)
+      .register("query", createLink)
+      .export();
     const q = (bundle.payload.query as Array<{ name: string; run: Array<{ name: string }> }>).find(
       (x) => x.name === "create_link",
     );
@@ -65,7 +68,11 @@ describe("public consumer surface", () => {
   });
 
   it("the docs recipes fixture exports (#13: array column, tableRef opts, unique index, increment)", () => {
-    const bundle = new Xano().register("table", links).register("query", bumpClicks).export();
+    const bundle = new Xano()
+      .register("api_group", api)
+      .register("table", links)
+      .register("query", bumpClicks)
+      .export();
     const table = (bundle.payload.dbo as Array<{ name: string; index: Array<{ type: string }> }>).find(
       (t) => t.name === "links",
     );

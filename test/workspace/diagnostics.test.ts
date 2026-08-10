@@ -20,9 +20,13 @@ import type { Diagnostic } from "../../src/workspace/diagnostics.js";
 import { table } from "../../src/kinds/table.js";
 import { query } from "../../src/kinds/query.js";
 import { apiGroup } from "../../src/kinds/api-group.js";
+import { task } from "../../src/kinds/task.js";
+import { defineFunction } from "../../src/function/define.js";
+import { s } from "../../src/statements/s.js";
 import { f } from "../../src/fields/catalog.js";
 import { c } from "../../src/values/value.js";
 import "../../src/kinds/workspace-config.js"; // side-effect: register the "workspace" kind
+import "../../src/kinds/function.js"; // side-effect: register the "function" kind
 
 /** Capture every warning emitted during `fn()`, restoring the sink after. */
 function captureWarnings(fn: () => void): Diagnostic[] {
@@ -188,6 +192,103 @@ describe("seeded table with a non-scalar column (#195)", () => {
 
   it("does NOT fire on a scalar-only seeded table", () => {
     expect(() => seededWith({ label: f.text(), count: f.int() }).export()).not.toThrow();
+  });
+});
+
+describe("unresolved cross-object references", () => {
+  const group = () => apiGroup({ name: "pub", canonical: "abc12345" });
+
+  const withQuery = (name: string, extra: Record<string, unknown> = {}) => {
+    const g = group();
+    return new Xano()
+      .registerWorkspace({ name: "app" })
+      .registerApiGroups([g])
+      .registerQueries([
+        query({ name, verb: "GET", apiGroup: g, stack: [], response: c.bool(true), ...extra }),
+      ]);
+  };
+
+  it("refuses a call to an object that is not registered, naming the referrer", () => {
+    let message = "";
+    try {
+      const g = group();
+      new Xano()
+        .registerWorkspace({ name: "app" })
+        .registerApiGroups([g])
+        .registerFunctions([
+          defineFunction({
+            name: "caller",
+            // A bare name with a typo: resolves to a well-formed guid pointing
+            // at nothing. This is the exact shape that shipped in the sandbox.
+            stack: [s.task.call({ task: "nightly_cleanup_typo" })],
+          }),
+        ])
+        .export();
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain('function "caller"');
+    expect(message).toContain("not registered on this workspace");
+    expect(message).toMatch(/guid [0-9a-f]{32}/);
+    // The engine's own error text, so the author can connect the two.
+    expect(message).toContain("Invalid <kind> reference");
+  });
+
+  it("passes once the target is registered", () => {
+    const cleanup = task({ name: "nightly_cleanup", stack: [] });
+    const seen = captureWarnings(() => {
+      new Xano()
+        .registerWorkspace({ name: "app" })
+        .registerTasks([cleanup])
+        .registerFunctions([
+          defineFunction({ name: "caller", stack: [s.task.call({ task: cleanup })] }),
+        ])
+        .export();
+    });
+    expect(seen).toHaveLength(0);
+  });
+
+  it("reports one diagnostic per target, however many statements reference it", () => {
+    let message = "";
+    try {
+      new Xano()
+        .registerWorkspace({ name: "app" })
+        .registerFunctions([
+          defineFunction({ name: "a", stack: [s.task.call({ task: "gone" })] }),
+          defineFunction({ name: "b", stack: [s.task.call({ task: "gone" })] }),
+        ])
+        .export();
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    // One target, one finding — naming both referrers rather than repeating.
+    expect(message).not.toContain("2 errors");
+    expect(message).toContain('function "a"');
+    expect(message).toContain('function "b"');
+  });
+
+  it("does NOT fire on a 32-hex string in an author VALUE", () => {
+    // The load-bearing false-positive case, and the reason the check can be an
+    // error: `examples/sandbox` has an auth-token example whose statement input
+    // value is a literal 32-hex string. A value is not a reference.
+    const seen = captureWarnings(() => {
+      withQuery("q", {
+        stack: [s.set_var("v", c.text("157d4a98d979cf04b9ccdb98dfc15229"))],
+      }).export();
+    });
+    expect(seen).toHaveLength(0);
+  });
+
+  it("does NOT fire on a partial bundle, which may reference outside itself", () => {
+    // A `share`/`schema`/`content` bundle is not a self-contained workspace —
+    // codegen is handed exactly this shape when a pull misses a parent.
+    expect(() =>
+      new Xano()
+        .setBundleType("share")
+        .registerWorkspace({ name: "app" })
+        .registerFunctions([defineFunction({ name: "a", stack: [s.task.call({ task: "gone" })] })])
+        .export(),
+    ).not.toThrow();
   });
 });
 
