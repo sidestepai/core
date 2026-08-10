@@ -9,6 +9,7 @@ import { obj } from "../values/obj.js";
 import type { ObjInput } from "../values/obj.js";
 import type { Statement } from "../statements/statement.js";
 import { rawResponseItems } from "./raw-response.js";
+import { emitDiagnostic } from "../workspace/diagnostics.js";
 
 /**
  * A member of a record response — a {@link Value}, or a nested plain object
@@ -40,12 +41,15 @@ export function warnUnboundReturn(
 ): void {
   if (response !== undefined) return;
   if (!stack?.some((statement) => statement?.name === "mvp:return")) return;
-  console.warn(
-    `sidestep: ${kind} "${name}" ends with s.return(...) but has no \`response\` field. ` +
+  emitDiagnostic({
+    severity: "warning",
+    code: "response.unbound-return",
+    message:
+      `${kind} "${name}" ends with s.return(...) but has no \`response\` field. ` +
       `A ${kind}'s response is set by the \`response:\` field only — s.return does not ` +
       `populate it, so this ${kind} returns nothing. Add \`response: <value>\` ` +
       `(e.g. \`response: ref("...")\`).`,
-  );
+  });
 }
 
 function isValue(x: ResponseDef | ResponseMember): x is Value {

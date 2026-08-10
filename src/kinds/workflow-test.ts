@@ -18,6 +18,7 @@ import type { StackItemXdo } from "../types/xdo.js";
 import { encodeStatement } from "../statements/statement.js";
 import type { Statement } from "../statements/statement.js";
 import { registerKind } from "./kind.js";
+import { emitDiagnostic } from "../workspace/diagnostics.js";
 import type { ObjectKind } from "./kind.js";
 import { encodeTags } from "./common.js";
 
@@ -66,12 +67,15 @@ export interface WorkflowTestXdo {
  */
 function warnLiveDatasource(name: string, datasource: string): void {
   if (datasource.trim().toLowerCase() !== "live") return;
-  console.warn(
-    `sidestep: workflow test "${name}" runs against the "live" datasource. ` +
+  emitDiagnostic({
+    severity: "warning",
+    code: "workflow-test.live-datasource",
+    message:
+      `workflow test "${name}" runs against the "live" datasource. ` +
       `Running a test CLONES its datasource first — against production-sized data ` +
       `this is slow enough to fail the run. Prefer \`datasource: ""\` (an empty ` +
       `datasource, the recommended default) or a small fixture datasource.`,
-  );
+  });
 }
 
 /** Encode a `WorkflowTestDef` into the flattened importable `workflow_test` xdo. */

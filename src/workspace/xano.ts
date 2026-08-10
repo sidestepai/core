@@ -24,6 +24,7 @@ import type { LockExportContext } from "../lock/lock.js";
 import type { FunctionDef } from "../function/define.js";
 import type { TableDef } from "../kinds/table.js";
 import type { ObjectKind } from "../kinds/kind.js";
+import { DiagnosticBag } from "./diagnostics.js";
 
 /**
  * Cross-realm brand. `instanceof Xano` breaks when sidestep is loaded by two
@@ -217,15 +218,20 @@ export class Xano {
         return { ...encoded, import: { mode: "standard" } };
       });
     }
+    // Every build-time finding lands in one bag so the author sees the whole
+    // set at once, and so a hard error aborts BEFORE the lock is mutated or the
+    // bundle is signed.
+    const bag = new DiagnosticBag();
     // A query's `auth` is resolved to its stored guid at encode time in
     // `encodeQuery` (see `resolveAuth`); here — where the table registry is
     // known — we confirm each resolved reference actually names a registered
     // auth table. Xano supports any number of auth tables; each endpoint names
     // the one it authenticates against.
-    this.validateQueryAuth(sections);
+    this.validateQueryAuth(sections, bag);
     // Catch an `auth()`-keyed middleware directly attached to a host that can't
     // resolve a request identity — the silent null-bucket collapse (issue #81).
-    this.validateMiddlewareAuth(sections);
+    this.validateMiddlewareAuth(sections, bag);
+    bag.flush();
     if (lockCtx) this.applyLock(lockCtx, sections);
     // The workspace-import path requires `workspace.guid`. Under a lock,
     // `applyLock` stamps it from the workspace canonical; without one, derive a
@@ -261,7 +267,10 @@ export class Xano {
    * explicit `guid` referenced by bare name lands in the "not registered" branch
    * (its name-derived guid diverges from the pinned one) — pass the def instead.
    */
-  private validateQueryAuth(sections: Partial<Record<PayloadArrayKey, unknown[]>>): void {
+  private validateQueryAuth(
+    sections: Partial<Record<PayloadArrayKey, unknown[]>>,
+    bag: DiagnosticBag,
+  ): void {
     // The query kind's `payloadKey` (see `queryKind`); referenced literally so
     // this doesn't depend on the query kind being registered in every workspace.
     const queries = sections["query" as PayloadArrayKey];
@@ -288,15 +297,17 @@ export class Xano {
       // the table's flag nowhere, so the combination works — and one real
       // workspace ships it, which throwing made impossible to pull.
       if (known) {
-        console.warn(
-          `sidestep: query "${name}" requires auth against table "${known}", which is not marked ` +
+        bag.warn(
+          "query.auth-table-unflagged",
+          `query "${name}" requires auth against table "${known}", which is not marked ` +
             `\`table({ auth: true })\`. The engine allows it — a token minted for that table is ` +
             `accepted — but the editor will not offer the table as an auth source. Mark it if that ` +
             `is what you meant.`,
         );
         continue;
       }
-      throw new Error(
+      bag.error(
+        "query.auth-table-unregistered",
         `query "${name}": \`auth\` references a table that isn't registered on this workspace. ` +
           `Check for a typo, or register the auth table; if it pins an explicit \`guid\`, pass the ` +
           `table def rather than its name.`,
@@ -329,6 +340,7 @@ export class Xano {
    */
   private validateMiddlewareAuth(
     sections: Partial<Record<PayloadArrayKey, unknown[]>>,
+    bag: DiagnosticBag,
   ): void {
     const middlewares = sections["middleware" as PayloadArrayKey];
     if (!Array.isArray(middlewares) || middlewares.length === 0) return;
@@ -386,8 +398,9 @@ export class Xano {
           if (!guid || !referencesAuth(guid)) continue;
           const mwName = String(byGuid.get(guid)?.name ?? guid);
 
-          console.warn(
-            `sidestep: middleware "${mwName}" references auth() and is attached to ${label} ` +
+          bag.warn(
+            "middleware.auth-null-host",
+            `middleware "${mwName}" references auth() and is attached to ${label} ` +
               `"${hostName}", where ${reason}. A null auth() collapses all callers into one shared ` +
               `key — attach it to an authenticated host, vary the key, or remove auth().`,
           );
