@@ -33,6 +33,10 @@ import { checkDecodeOnlyStatements } from "../../src/workspace/guards.js";
 import { f } from "../../src/fields/catalog.js";
 import { c, ref, inp } from "../../src/values/value.js";
 import { middleware } from "../../src/kinds/middleware.js";
+import { realtimeServer } from "../../src/kinds/realtime-server.js";
+import { realtimeChannel } from "../../src/kinds/realtime-channel.js";
+import { realtimeChannelTrigger, realtimeServerTrigger } from "../../src/kinds/trigger.js";
+import { obj } from "../../src/values/obj.js";
 import { input } from "../../src/inputs/input.js";
 import "../../src/kinds/workspace-config.js"; // side-effect: register the "workspace" kind
 import "../../src/kinds/function.js"; // side-effect: register the "function" kind
@@ -587,6 +591,120 @@ describe("statements the engine writes but will not import (#235)", () => {
         .registerWorkspace({ name: "app" })
         .registerFunctions([defineFunction({ name: "fine", stack: [s.comment("all good")] })])
         .export(),
+    );
+    expect(seen).toHaveLength(0);
+  });
+});
+
+/**
+ * #199/#200. The audit reported that a realtime gate FAILS OPEN — that a
+ * `connect`/`join` stack which raises admits the client, with no error frame and
+ * no close code — and that `inp()` cannot resolve inside a `join`/`leave`
+ * trigger at all. The plan's deliverables followed from those two claims: a
+ * fail-closed helper wrapping every decision in `s.try_catch`, and a BUILD ERROR
+ * on `inp()` in a join/leave stack.
+ *
+ * Neither claim holds at the current engine, and both were checked at the
+ * source before anything was built (KTD2b):
+ *
+ *  - Both gates FAIL CLOSED. The transport seeds a deny decision before running
+ *    the stack and keeps it in the `catch`; `connect` additionally pushes an
+ *    error frame and closes with 4401. The engine's own comment states the rule
+ *    — a gate that cannot answer must not admit — and contrasts it with a
+ *    normal message, which fails open so one workspace bug cannot black-hole a
+ *    channel.
+ *  - `join` and `leave` MERGE the channel's typed path params into the trigger
+ *    event specifically so the stack reads them as `$input.<param>`. `inp()` is
+ *    the correct spelling there, and a build error would have blocked the
+ *    engine's intended pattern.
+ *
+ * All three changes landed 2026-07-26/28, roughly two weeks before the audit
+ * ran, so this is not a rollout lag like #196. So: no helper, no build error,
+ * and these regression tests exist so neither is re-added from a reading of the
+ * issues. What DID ship is the one lockout this leaves — see below.
+ */
+describe("realtime gates (#199/#200)", () => {
+  const server = realtimeServer({ name: "rt" });
+  const room = realtimeChannel({ name: "rooms/{id}", server, input: { id: input.int() } });
+
+  const build = (triggers: unknown[]) =>
+    new Xano()
+      .registerWorkspace({ name: "app" })
+      .registerRealtimeServers([server])
+      .registerRealtimeChannels([room])
+      .registerTriggers(triggers);
+
+  it("warns that a gating trigger with no response refuses every client", () => {
+    const seen = captureWarnings(() =>
+      build([
+        realtimeChannelTrigger({ name: "gate", channel: room, actions: { join: true }, stack: () => [] }),
+      ]).export(),
+    );
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.code).toBe("realtime.gate-denies-everyone");
+    expect(seen[0]!.message).toContain('trigger "gate"');
+    expect(seen[0]!.message).toContain("join");
+    // The message has to say a crash denies too, or a reader "fixes" this by
+    // adding a try_catch, which is the shape the wrong model produced.
+    expect(seen[0]!.message).toContain("A crash denies too");
+  });
+
+  it("warns for a server connect gate on the same terms", () => {
+    const seen = captureWarnings(() =>
+      build([
+        realtimeServerTrigger({
+          name: "front_door",
+          realtimeServer: server,
+          actions: { connect: true },
+          stack: () => [],
+        }),
+      ]).export(),
+    );
+    expect(seen.map((d) => d.code)).toEqual(["realtime.gate-denies-everyone"]);
+  });
+
+  it("stays quiet once the gate can say yes", () => {
+    const seen = captureWarnings(() =>
+      build([
+        realtimeChannelTrigger({
+          name: "gate",
+          channel: room,
+          actions: { join: true },
+          stack: () => [],
+          response: () => obj({ allowed: c.bool(true) }),
+        }),
+      ]).export(),
+    );
+    expect(seen).toHaveLength(0);
+  });
+
+  it("says nothing about the OBSERVATIONAL actions, whose return is ignored", () => {
+    // `leave`/`disconnect` discard their return, and `deliver` with no response
+    // delivers the original payload unchanged — a working default, not a
+    // lockout. Warning on these would be noise on every correct workspace.
+    const seen = captureWarnings(() =>
+      build([
+        realtimeChannelTrigger({ name: "obs", channel: room, actions: { leave: true, deliver: true }, stack: () => [] }),
+        realtimeServerTrigger({ name: "bye", realtimeServer: server, actions: { disconnect: true }, stack: () => [] }),
+      ]).export(),
+    );
+    expect(seen).toHaveLength(0);
+  });
+
+  it("does NOT reject inp() in a join or leave stack — the engine binds path params there", () => {
+    // The planned build error. `join`/`leave` merge the channel's typed path
+    // params into the event so the stack reads them as `$input.<param>`; this
+    // is the engine's intended way to gate per room.
+    const seen = captureWarnings(() =>
+      build([
+        realtimeChannelTrigger({
+          name: "per_room",
+          channel: room,
+          actions: { join: true, leave: true },
+          stack: () => [s.set_var("room", inp("id"))],
+          response: () => obj({ allowed: c.bool(true) }),
+        }),
+      ]).export(),
     );
     expect(seen).toHaveLength(0);
   });

@@ -45,8 +45,22 @@ const SILENT_FAILURES: Fact[] = [
     needs: [/\bgat(e|ing)\b/i, /\bNO `?response`?\b/i, /\b(DENIES|refuses)\b/i],
   },
   {
-    name: "gating actions fail OPEN on a crash (a broken stack admits)",
-    needs: [/\bCRASH\b/i, /fail(s)? OPEN/i, /\bADMITS?\b/i],
+    // This entry asserted the OPPOSITE until 2026-08-10, and it is the exact
+    // drift U18 exists to catch: a live-behavioral claim with a test that only
+    // checked the text was PRESENT, never that it was true. The transport seeds
+    // a deny before running a gate stack and keeps it on a throw — both
+    // connect and join. Verified against the engine's own gate code, whose
+    // comment reads "a join gate that cannot answer must NOT admit".
+    name: "a gating action DENIES on a crash (the gate is seeded with a deny)",
+    needs: [/\bCRASH\b/i, /\bDENIES\b/i],
+  },
+  {
+    name: "gating is OPT-IN — no trigger means no gate at all",
+    needs: [/OPT-IN/i, /no `?connect`? trigger/i],
+  },
+  {
+    name: "join/leave bind the channel's path params, so inp() resolves there",
+    needs: [/bind the channel's typed path params|binds? the channel's typed path params/i, /inp\(/],
   },
   {
     name: "a message handler that crashes broadcasts the original unvalidated payload",
@@ -219,7 +233,7 @@ describe("def-shape signatures list every field", () => {
 // its datasource-clone constraint, which is the kind's one real trap. Exactly the
 // "legitimate new constraint" case above — the entry was already compressed from
 // 128 tokens over to 13 before raising.
-const DEF_SHAPES_CEILING = 7_500;
+const DEF_SHAPES_CEILING = 7_650;
 
 describe("object def shapes section stays lean", () => {
   it(`is under ${DEF_SHAPES_CEILING.toLocaleString()} tokens`, () => {

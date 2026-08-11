@@ -25,7 +25,12 @@ import type { FunctionDef } from "../function/define.js";
 import type { TableDef } from "../kinds/table.js";
 import type { ObjectKind } from "../kinds/kind.js";
 import { DiagnosticBag } from "./diagnostics.js";
-import { checkDecodeOnlyStatements, checkReferences, checkStacks } from "./guards.js";
+import {
+  checkDecodeOnlyStatements,
+  checkReferences,
+  checkRealtimeGates,
+  checkStacks,
+} from "./guards.js";
 
 /**
  * Cross-realm brand. `instanceof Xano` breaks when sidestep is loaded by two
@@ -258,6 +263,8 @@ export class Xano {
     // import at all while it carries one. Unscoped by bundle type: a partial
     // bundle is no more importable than a full one here.
     checkDecodeOnlyStatements(sections, bag);
+    // A realtime gate that can only ever say no — a lockout, not a breach.
+    checkRealtimeGates(sections, bag);
     bag.flush();
     if (lockCtx) this.applyLock(lockCtx, sections);
     // The workspace-import path requires `workspace.guid`. Under a lock,

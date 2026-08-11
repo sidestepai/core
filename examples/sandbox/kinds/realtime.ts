@@ -121,9 +121,17 @@ export const typingMessage = realtimeMessage({
  *
  * WHICH IS WHY `response` IS MANDATORY ON A GATING TRIGGER. Without it the
  * trigger returns nothing, nothing is falsy, and a falsy return DENIES — a
- * `connect` trigger with no response refuses every client on the server. (A
- * trigger that CRASHES is different: gating actions fail OPEN, so a broken stack
- * admits. It is the clean-but-empty return that locks the door.)
+ * `connect` trigger with no response refuses every client on the server. A
+ * CRASH denies too — the transport seeds a deny before running the stack and
+ * keeps it on a throw, because a gate that cannot answer must not admit. So
+ * BOTH failure modes lock the door, and the risk here is a self-inflicted
+ * lockout rather than a breach: an unguarded drill into a `db.get` that bound
+ * null raises, and every client is refused. `export()` warns on the missing
+ * `response`; nothing can warn about the raise, so guard the drill
+ * (`ref(path, { safe: true })`).
+ *
+ * The one thing that admits without asking is not declaring the action at all —
+ * gating is opt-in, so a server with no `connect` trigger accepts everyone.
  */
 export const onChatConnect = realtimeServerTrigger({
   name: "ex_kind_trigger_on_chat_connect",
@@ -209,7 +217,14 @@ export const onChatConnect = realtimeServerTrigger({
  * WHICH MEANS `response` IS NOT OPTIONAL ON A GATING TRIGGER. A `join` trigger
  * with a stack but no `response` returns nothing, nothing is falsy, and a falsy
  * return DENIES — it refuses every join on the channel it was added to protect.
- * A `leave` trigger may omit `response` safely; a `join` one may not.
+ * A `leave` trigger may omit `response` safely; a `join` one may not, and
+ * `export()` warns when one does.
+ *
+ * `join` and `leave` both bind the channel's typed path params as INPUTS, so
+ * `inp("room_id")` resolves here and the gate can decide per room —
+ * `s.realtime.get_session` carries the same values under `params`. A SERVER
+ * connect/disconnect has no channel, which is the one place a path param
+ * cannot be read.
  *
  * Note `c.bool(true)`, not `true`: a response member is a VALUE, and a bare
  * JavaScript boolean is not one.

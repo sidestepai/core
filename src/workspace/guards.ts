@@ -331,6 +331,62 @@ export function checkStacks(
 }
 
 /**
+ * Warn when a realtime GATING trigger cannot say yes.
+ *
+ * `connect` and `join` are gates: the transport reads the stack's return, and
+ * anything empty or falsy is a DENY. A trigger that declares one of those
+ * actions and carries no `response` returns nothing on every run, so it refuses
+ * every client — a lockout that presents as "realtime silently stopped working"
+ * rather than as an error, because a refusal is a normal, expected outcome and
+ * looks identical to a working gate rejecting a caller.
+ *
+ * It is a WARNING, not an error, and the split is the one KTD2c draws. The
+ * engine accepts this shape and behaves exactly as documented; what the check
+ * asserts is INTENT — that nobody writes a gate meaning to reject 100% of
+ * traffic. That is a prediction, and predictions warn. Someone who really wants
+ * a closed door writes `response: () => c.bool(false)` and this stays quiet.
+ *
+ * Deliberately NOT checked: `leave`, `disconnect` (observational — the return is
+ * ignored) and `deliver` (a missing return delivers the original payload
+ * unchanged, which is a working default rather than a lockout).
+ */
+const GATING_ACTIONS: Readonly<Record<string, readonly string[]>> = {
+  realtime_server: ["connect"],
+  channel: ["join"],
+};
+
+export function checkRealtimeGates(
+  sections: Readonly<Record<string, unknown[] | undefined>>,
+  bag: DiagnosticBag,
+): void {
+  for (const obj of sections.trigger ?? []) {
+    if (!obj || typeof obj !== "object") continue;
+    const t = obj as { name?: unknown; obj_type?: unknown; meta?: unknown; result?: unknown };
+    // A response-bearing trigger encodes its response into `result[]`; a gating
+    // trigger with none encodes an empty array, which is what returns nothing.
+    if (!Array.isArray(t.result) || t.result.length > 0) continue;
+    const objType = typeof t.obj_type === "string" ? t.obj_type : "";
+    const gating = GATING_ACTIONS[objType];
+    if (!gating) continue;
+    const actions = (t.meta as Record<string, { action?: Record<string, unknown> }> | undefined)?.[
+      objType
+    ]?.action;
+    const declared = gating.filter((a) => actions?.[a] === true);
+    if (declared.length === 0) continue;
+    const name = typeof t.name === "string" ? t.name : "?";
+    bag.warn(
+      "realtime.gate-denies-everyone",
+      `trigger "${name}" gates \`${declared.join("`/`")}\` but declares no \`response\`, so it ` +
+        `returns nothing on every run — and an empty return is a DENY, which refuses every ` +
+        `client. A crash denies too, so there is no shape of this trigger that admits anyone. ` +
+        `Add \`response: () => obj({ allowed: c.bool(true) })\` (any truthy value admits; an ` +
+        `\`allowed: false\` with a \`reason\` reaches the client). If refusing everyone is the ` +
+        `intent, say so explicitly with \`response: () => c.bool(false)\`.`,
+    );
+  }
+}
+
+/**
  * Refuse a bundle carrying a statement the engine will not read back.
  *
  * `mvp:placeholder` is the whole population today: the engine writes one into an
