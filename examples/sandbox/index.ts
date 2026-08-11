@@ -13,7 +13,7 @@ import { autoTables, autoQueries, autoFunctions } from "./_auto.js";
 
 // --- object-kind examples (kinds/) ---
 import { addFunction } from "./kinds/function.js";
-import { productTable, productNoteTable, accessoryTable } from "./kinds/table.js";
+import { productTable, productNoteTable, accessoryTable, auditTable } from "./kinds/table.js";
 import { publicApi } from "./kinds/apiGroup.js";
 import { getUserQuery, userPostQuery } from "./kinds/query.js";
 import { onUserInsert, onMessage, onBranchLive } from "./kinds/trigger.js";
@@ -42,7 +42,7 @@ const defs = (xs: unknown[]) => xs as never[];
 export default workspace("sidestep-examples")
   .registerWorkspace(wsConfig)
   .registerApiGroups(defs([api, publicApi]))
-  .registerTables(defs([users, posts, productTable, productNoteTable, accessoryTable, ...autoTables]))
+  .registerTables(defs([users, posts, productTable, productNoteTable, accessoryTable, auditTable, ...autoTables]))
   .registerFunctions(defs([doubleFn, addFunction, ...autoFunctions]))
   .registerQueries(defs([getUserQuery, userPostQuery, askAssistant, classifyTicket, ...autoQueries]))
   .registerTriggers(defs([onUserInsert, onMessage, onBranchLive, onChatConnect, onRoomJoin, onRoomDeliver]))
