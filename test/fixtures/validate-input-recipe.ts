@@ -8,12 +8,12 @@
  */
 import { query, apiGroup, input, s, c, inp, expr, withFilters, fl } from "../../src/index.js";
 
-const links = apiGroup({ name: "links", canonical: "links" });
+export const linksGroup = apiGroup({ name: "links", canonical: "links" });
 
 export const createLink = query({
   name: "create_link",
   verb: "POST",
-  apiGroup: links,
+  apiGroup: linksGroup,
   // `input.url()` names the intent; the http(s) constraint is enforced below.
   input: { url: input.url({ required: true }) },
   stack: [

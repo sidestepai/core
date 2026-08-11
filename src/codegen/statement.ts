@@ -16,6 +16,7 @@ import type { Statement } from "../statements/statement.js";
 import { raw } from "../statements/special/raw.js";
 import { STATEMENT_SURFACES } from "../statements/surfaces.js";
 import { SUPERSEDED_STATEMENTS, supersededBy } from "../statements/superseded.js";
+import { DECODE_ONLY_STATEMENTS } from "../statements/decode-only.js";
 import { CODEGEN_MODULE, type DecodeContext } from "./context.js";
 import { arr, call, lit, type Expr } from "./print.js";
 import type { RefIndex, ResolveOptions } from "./ref-index.js";
@@ -73,6 +74,22 @@ function dispatch(
         : `${stored.name} is a superseded version — the platform offers \`${replacement}\` now, ` +
           "and the two are not interchangeable (each version was a breaking change). " +
           "Carried verbatim via raw(), so it keeps running exactly as stored",
+    );
+    ctx.use(CODEGEN_MODULE, "raw");
+    return call("raw", lit(stored));
+  }
+
+  // A statement the engine WRITES but will not read back. It has no authoring
+  // surface to decode to, and inventing one would hand back source that cannot
+  // deploy. `raw()` keeps the bytes exact and the report says what it is and
+  // what to do about it — the author has to replace it, and needs to know that
+  // before they try to push.
+  const decodeOnly = DECODE_ONLY_STATEMENTS.get(stored.name);
+  if (decodeOnly !== undefined) {
+    ctx.problem(
+      "decode-only",
+      `${stored.name} is ${decodeOnly}. Carried verbatim via raw() so nothing is lost, but ` +
+        `\`export()\` refuses a bundle that still contains one.`,
     );
     ctx.use(CODEGEN_MODULE, "raw");
     return call("raw", lit(stored));

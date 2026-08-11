@@ -58,6 +58,8 @@ interface FilterArg {
   /** True when the arg may be omitted (has an upstream `default`, or its
    * description is flagged `optional`). Omitted when required. */
   optional?: boolean;
+  /** The exact accepted spellings, for an enumerated arg (see {@link ARG_ENUMS}). */
+  enum?: string[];
 }
 /** The distilled spec for one filter. */
 interface FilterSpec {
@@ -278,21 +280,57 @@ for (const n of [
 }
 
 /**
- * Curated path-arg coercion (issue #76). The object-manipulation filters
- * (`set`, `get`, `has`, `unset`, `append`, `index_by`, … — 20 in all) take a
- * static key path argument, uniformly named `path` and typed `text` upstream.
- * Typing it as a bare `Value` forces `fl.get(c.text("count"))` where
- * `fl.get("count")` reads naturally. Every such arg accepts `string | Value`
- * and coerces a bare string to `c.text` in the factory body — mirroring how
- * `api.request` fields (`url`, `method`, …) already accept literals. This is a
- * pure widening (`Value` → `string | Value`), so no existing caller breaks and
- * no byte output changes for currently-valid code. Keyed on the invariant arg
- * NAME rather than a per-filter allowlist, so a new path-taking filter is
- * covered automatically. Lives here (not in vendor JSON) so `--refresh` can't
- * clobber it. See {@link emitFactory} and {@link emit}.
+ * Bare scalars are accepted for EVERY filter argument (#229, superseding the
+ * path-only coercion of #76).
+ *
+ * The narrow version of this took only a `path` argument, and only a string.
+ * That is what made it a problem: `fl.get("count")` worked on the first try, so
+ * an author learned "bare literals are fine here" — and then `fl.get("a.b", 0)`
+ * failed to typecheck, on the SAME call, for the argument next to the one that
+ * just worked. An asymmetry teaches a rule, and this one taught a false one.
+ *
+ * So the rule is now uniform and statable in one line: **anywhere a filter takes
+ * a `Value`, a bare `string`, `number` or `boolean` is accepted and wrapped.**
+ * Objects and arrays are NOT — `c.obj`/`c.array` carry a deliberate type-level
+ * diagnostic the audit singled out as worth keeping, and swallowing them here
+ * would route around it.
+ *
+ * Coercion keys on the RUNTIME type rather than the upstream declared type, so
+ * the wrapper is exactly what the author would have typed by hand: a string
+ * becomes `c.text`, an integral number `c.int`, any other number `c.decimal`, a
+ * boolean `c.bool`. That makes this a pure TYPING change — a `Value` argument
+ * still passes through untouched, and no currently-valid call changes a byte.
+ * The conformance corpus asserts exactly that.
+ *
+ * Lives here (not in vendor JSON) so `--refresh` cannot clobber it.
  */
-const PATH_ARG_NAMES = new Set(["path"]);
-const takesCoercedPath = (arg: FilterArg): boolean => PATH_ARG_NAMES.has(arg.name);
+
+/**
+ * Curated argument ENUMS — the exact set of spellings a filter's own
+ * implementation branches on, keyed `<filter>.<arg>`.
+ *
+ * `fsort`'s `type` is why this exists (#198). Its comparator switch has five
+ * arms and the `default:` arm falls through to `itext`, so every spelling
+ * outside the set — `"decimal"`, `"int"`, anything — sorts case-insensitively
+ * as TEXT and silently returns the wrong order. That is the failure the audit
+ * hit: a "top N by score/distance/recency" endpoint built the natural way is
+ * wrong, with no error anywhere. Only `"number"` compares numerically.
+ *
+ * Typing the argument as the literal union refuses the lying spellings where an
+ * author writes them, at compile time, rather than asserting anything about
+ * what the engine accepts — it accepts all of them, which is the whole problem.
+ * `c.text("decimal")` still compiles, because it is still a `Value`; that is the
+ * same deliberate escape hatch `raw()` is, and it is also what lets a pulled
+ * workspace holding one round-trip instead of becoming un-exportable (the
+ * lesson from the middleware `input` flip).
+ *
+ * The set is read off the engine's filter implementation, not probed: a probe
+ * can only show which spellings behave differently, and four of these five are
+ * string sorts that differ only in case-folding and numeric-substring handling.
+ */
+const ARG_ENUMS: Readonly<Record<string, readonly string[]>> = {
+  "fsort.type": ["text", "itext", "natural", "inatural", "number"],
+};
 
 /**
  * Fold the curated pipe-direction notes into each affected filter's
@@ -336,44 +374,72 @@ function emitFactory(name: string, spec: FilterSpec | undefined): string {
     for (const a of spec.args) {
       const pn = paramName(a.name, used);
       sawOptional = sawOptional || !!a.optional;
-      // A path arg accepts a bare string and is coerced to c.text in the body
-      // (issue #76); every other arg stays a plain `Value`.
-      const isPath = takesCoercedPath(a);
-      params.push(`${pn}${sawOptional ? "?" : ""}: ${isPath ? "string | Value" : "Value"}`);
-      callArgs.push(isPath ? `coercePath(${pn})` : pn);
+      const members = ARG_ENUMS[`${name}.${a.name}`];
+      // An enumerated arg narrows the string half of `Scalar` to the exact
+      // members; numbers and booleans are dropped from it, since a comparator
+      // mode is never one of those.
+      const type = members
+        ? `${members.map((m) => JSON.stringify(m)).join(" | ")} | Value`
+        : "Scalar | Value";
+      params.push(`${pn}${sawOptional ? "?" : ""}: ${type}`);
+      callArgs.push(`v(${pn})`);
     }
     // Named args for discoverability + a variadic tail so filters the yaml
     // under-specifies (e.g. variadic `concat`) still accept extra arguments.
-    return `  ${JSON.stringify(name)}: ${doc}(${params.join(", ")}, ...rest: Value[]): FilterXdo => filter(${JSON.stringify(name)}, ${callArgs.join(", ")}, ...rest),`;
+    return `  ${JSON.stringify(name)}: ${doc}(${params.join(", ")}, ...rest: (Scalar | Value)[]): FilterXdo => filter(${JSON.stringify(name)}, ${callArgs.join(", ")}, ...rest.map(v)),`;
   }
-  return `  ${JSON.stringify(name)}: ${doc}(...args: Value[]): FilterXdo => filter(${JSON.stringify(name)}, ...args),`;
+  return `  ${JSON.stringify(name)}: ${doc}(...args: (Scalar | Value)[]): FilterXdo => filter(${JSON.stringify(name)}, ...args.map(v)),`;
+}
+
+/**
+ * Attach the curated {@link ARG_ENUMS} members to the emitted `FilterSpec`, so
+ * `manifest.json` and `llms.txt` can print the accepted set instead of the bare
+ * word "enum" — which is what they printed before, and it is why the audit had
+ * to discover the members by trying seven spellings against a live engine.
+ */
+function withArgEnums(specs: Record<string, FilterSpec>): Record<string, FilterSpec> {
+  const out: Record<string, FilterSpec> = {};
+  for (const [name, spec] of Object.entries(specs)) {
+    const args = spec.args?.map((a) => {
+      const members = ARG_ENUMS[`${name}.${a.name}`];
+      return members ? { ...a, enum: [...members] } : a;
+    });
+    out[name] = args ? { ...spec, args } : spec;
+  }
+  return out;
 }
 
 function emit(cat: FilterCatalog): string {
-  const specs = withDirectionNotes(cat.specs);
+  const specs = withArgEnums(withDirectionNotes(cat.specs));
   const factories = cat.names.map((n) => emitFactory(n, specs[n])).join("\n");
   const typedCount = cat.names.filter((n) => specs[n]?.args?.length).length;
-  // Only pull in `c` + the coercion helper when a path-coercing filter is present,
-  // so an unused import can never leak into the generated file (issue #76).
-  const hasPathCoerce = cat.names.some((n) => specs[n]?.args?.some(takesCoercedPath));
-  const imports = hasPathCoerce ? "{ filter, c }" : "{ filter }";
-  const coerceHelper = hasPathCoerce
-    ? [
-        "",
-        "/**",
-        " * Coerce a bare string path to a text constant; pass a {@link Value} through",
-        " * (issue #76), and an OMITTED one straight back out.",
-        " *",
-        " * Nine filters take a path argument the engine accepts as absent (see",
-        " * vendor/filters-optional-args.json), so this is reached with undefined —",
-        " * which filter() then drops, producing the empty arg list a real workspace",
-        " * stores.",
-        " */",
-        "const coercePath = (path?: string | Value): Value | undefined =>",
-        '  typeof path === "string" ? c.text(path) : path;',
-        "",
-      ].join("\n")
-    : "";
+  const imports = "{ filter, c }";
+  const coerceHelper = [
+    "",
+    "/** A bare JS literal a filter argument accepts in place of a {@link Value}. */",
+    "export type Scalar = string | number | boolean;",
+    "",
+    "/**",
+    " * Wrap a bare scalar as the constant an author would have written by hand;",
+    " * pass a {@link Value} through, and an OMITTED argument straight back out.",
+    " *",
+    " * Keyed on the RUNTIME type, so the emitted tag matches the explicit form",
+    " * exactly — `fl.get(\"a.b\", 0)` and `fl.get(c.text(\"a.b\"), c.int(0))` encode to",
+    " * the same bytes (#229). Integral numbers take `const:int` and the rest",
+    " * `const:decimal`, which is the split `c.int`/`c.decimal` already make.",
+    " *",
+    " * Undefined is reached in normal use: several filters take an argument the",
+    " * engine accepts as absent (see vendor/filters-optional-args.json), and",
+    " * `filter()` drops it, producing the empty arg list a real workspace stores.",
+    " */",
+    "const v = (x?: Scalar | Value): Value | undefined => {",
+    '  if (typeof x === "string") return c.text(x);',
+    '  if (typeof x === "number") return Number.isInteger(x) ? c.int(x) : c.decimal(x);',
+    '  if (typeof x === "boolean") return c.bool(x);',
+    "  return x;",
+    "};",
+    "",
+  ].join("\n");
   return `/**
  * AUTO-GENERATED by scripts/codegen-filters.ts — DO NOT EDIT BY HAND.
  *
@@ -390,7 +456,7 @@ import type { FilterXdo } from "../../types/xdo.js";
 ${coerceHelper}
 /** Distilled metadata for a filter (from the engine's filter/pipe/aggregate schema + LSP docs). */
 export interface FilterSpec {
-  args?: Array<{ name: string; type: string; optional?: boolean }>;
+  args?: Array<{ name: string; type: string; optional?: boolean; enum?: string[] }>;
   result?: string;
   group?: string;
   description?: string;

@@ -53,9 +53,32 @@ export interface XanoDbLink {
 }
 
 /** Opaque runtime value of a geo input/column (a GeoJSON-shaped object). */
-export interface XanoGeoJson {
+/** One `{ lng, lat }` position, as the engine both accepts and returns. */
+export interface XanoGeoPosition {
+  lng: number;
+  lat: number;
+}
+
+/**
+ * The value of an `f.geo.*` column: `{ type, data }`.
+ *
+ * Named for what it is rather than for GeoJSON, which this is NOT — the
+ * previous `XanoGeoJson` declared `{ type, coordinates }`, a shape the engine
+ * neither accepts nor returns (issue #208).
+ *
+ * The same shape works in BOTH directions, verified live: seeding
+ * `{ type: "point", data: { lng: 1, lat: 2 } }` reads back byte-identical, and
+ * a polygon seeded as `{ type: "poly", data: [{ lng, lat }, …] }` reads back
+ * with its ring closed for you. `type` is the engine's own abbreviation
+ * (`"point"`, `"poly"`, …), not the GeoJSON keyword, and `data` nests by
+ * geometry: an object for a point, an array of positions for a polygon.
+ *
+ * Raw WKT text (`c.text("POINT(1 2)")`) is also accepted wherever a value is
+ * taken — it is just not the typed path, because a read never returns one.
+ */
+export interface XanoGeoValue {
   type: string;
-  coordinates: unknown;
+  data: XanoGeoPosition | XanoGeoPosition[] | XanoGeoPosition[][];
 }
 
 /**

@@ -41,8 +41,15 @@ describe("obj() — dynamic object value (const:expr2)", () => {
     expect(obj({}).value).toBe("{}");
   });
 
-  it("rejects a value carrying a filter chain", () => {
-    expect(() => obj({ x: withFilters(inp("q"), filter("trim")) })).toThrow(/filter chain/);
+  /**
+   * A filter chain used to be rejected outright (#222). It renders as the
+   * expression language's postfix pipe now — see
+   * `test/codegen/obj-expr.test.ts` for the full encode/decode pairs, which
+   * live together there so a readable decode is always proven against the
+   * encoder that produced it.
+   */
+  it("renders a value's filter chain as the postfix pipe", () => {
+    expect(obj({ x: withFilters(inp("q"), filter("trim")) }).value).toBe("{ x: $input.q|trim }");
   });
 
   it("rejects an unsupported value tag (env) with a clear message", () => {

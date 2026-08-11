@@ -76,9 +76,15 @@ export interface RealtimeActions {
  * connection is ever ready, so it is a real front door and not just an observer.
  * Same return shape as a channel `join`: `{ allowed: true }` or any truthy value
  * admits, and an EMPTY OR FALSY return DENIES — including a gating trigger with
- * no `response`, which returns nothing and so refuses every client. A CRASH goes
- * the other way (gating actions fail OPEN, so a broken stack admits); it is the
- * clean-but-empty return that locks the door.
+ * no `response`, which returns nothing and so refuses every client. A CRASH also
+ * DENIES: the transport seeds a deny decision before running the stack and keeps
+ * it when the stack throws, because a gate that cannot answer must not admit.
+ *
+ * So both failure modes lock the door rather than open it, and the risk to plan
+ * for is a self-inflicted lockout — an unguarded drill into a `db.get` that
+ * bound `null` raises, and every client is refused. The one thing that admits
+ * without asking is NOT declaring the action at all: gating is opt-in, so a
+ * server with no `connect` trigger accepts every connection.
  *
  * `disconnect` is OBSERVATIONAL: its return is ignored and a throw is swallowed,
  * because the connection is already gone and cleanup must always complete.
@@ -101,7 +107,16 @@ export interface RealtimeServerActions {
  *    optional `reason` surfaces in the client's error frame) or any other truthy
  *    value to admit. AN EMPTY OR FALSY RETURN DENIES — a stack that just falls
  *    through, or a gating trigger with no `response`, refuses the join. A CRASH
- *    is the opposite: gating actions fail OPEN, so a broken stack admits.
+ *    DENIES TOO (the gate is seeded with a deny and keeps it when the stack
+ *    throws), which is the INVERSE of a normal message: a message whose stack
+ *    crashes still delivers, so one workspace bug cannot black-hole a channel.
+ *    Note the asymmetry with `deliver` below, which is a gate that fails OPEN.
+ *
+ *    `join` and `leave` both bind the channel's typed path params as INPUTS, so
+ *    `inp("room_id")` resolves inside them and the gate can decide per room.
+ *    (`s.realtime.get_session` carries the same values under `params`; either
+ *    reads them.) A SERVER `connect`/`disconnect` trigger has no channel and so
+ *    no params — that is the one place a path param cannot be read.
  *  - `leave` is OBSERVATIONAL (return ignored, throws swallowed).
  *  - `deliver` GATES delivery PER RECIPIENT — it runs once for each client the
  *    message is about to reach. It is the heaviest of the three by a wide

@@ -16,6 +16,7 @@ import "../kinds/all.js";
 import "../statements/s.js";
 import { GENERATED_SPECS } from "../statements/generated/specs.generated.js";
 import { SUPERSEDED_STATEMENTS } from "../statements/superseded.js";
+import { DECODE_ONLY_STATEMENTS } from "../statements/decode-only.js";
 import type { StatementSpec } from "../statements/schema-dsl/interpret.js";
 import {
   STATEMENT_SURFACES,
@@ -190,8 +191,12 @@ export interface ManifestFilter {
   fl: string;
   /** Whether it carries named, typed args (vs. variadic-by-name). */
   typed: boolean;
-  /** Named, typed args (richly-specified filters only). */
-  args?: Array<{ name: string; type: string; optional?: boolean }>;
+  /**
+   * Named, typed args (richly-specified filters only). `enum` carries the exact
+   * accepted spellings where the arg has a closed set — printed in place of the
+   * bare word "enum", which told a reader nothing (#198).
+   */
+  args?: Array<{ name: string; type: string; optional?: boolean; enum?: string[] }>;
   /** Result type (richly-specified filters only). */
   result?: string;
   /** Group, e.g. `timestamp`, `vector` (richly-specified filters only). */
@@ -436,9 +441,17 @@ export const TOTAL_OBJECT_KINDS = ENGINE_OBJECT_KINDS.length;
  */
 const NAMESPACE_NOTES: Readonly<Record<string, string>> = {
   expect:
-    "Assertions. These belong in a `workflowTest({...})` stack — assert on what a " +
-    "`.call` bound with `as`. An `s.expect.*` in a query/function/task stack is " +
-    "reachable but asserts nothing useful: nothing collects the result.",
+    "Assertions. **Put them in a `workflowTest({...})` stack** — assert on what a `.call` " +
+    "bound with `as`. That is where they belong and effectively the only place to author " +
+    "them. They are NOT inert elsewhere, which is the part worth knowing: a failure raises " +
+    "and aborts whatever stack it is in, so an `s.expect.*` left in a `query`/`function`/" +
+    "`task` takes the request down with an HTTP 500 carrying the assertion's own message " +
+    "(`to_equal failed - expected value 2 does not equal 1`). Treat one outside a " +
+    "`workflowTest` as a mistake to remove, not as a check that quietly does nothing. " +
+    "Two behaviours to know when writing them: `to_throw` does not detect every " +
+    "engine-raised failure (a hard fault escapes it and the assertion reports " +
+    "\"response is ok\"), and `to_be_within` EXCLUDES both bounds — `min < expr < max` — " +
+    "while `s.security.random_number`'s bounds are inclusive.",
   workflow_test:
     "Run another workflow test from inside one. Pass the `workflowTest()` def handle, " +
     "not a name.",
@@ -494,12 +507,12 @@ const VALUE_CONSTRUCTORS: ReadonlyArray<ManifestValue> = [
   { name: "c.expression", signature: "(source: string) => Value", description: 'Xano Expression Engine source, passed through VERBATIM → tag "const:expr2". The string IS the expression: c.expression(\'"Hi, " ~ $input.name\'), c.expression("$var.price * $var.qty"). ⚠️ NOT VALIDATED — never parsed or type-checked, invisible to InferResponse, and untouched by a rename that updates every typed ref(); a typo surfaces at runtime or as a wrong answer. Use it ONLY for syntax the typed surfaces cannot express (~ concatenation, inline arithmetic, conditionals) — prefer ref/inp/col, withFilters+fl.*, and obj() (which BUILDS a checked expression). Not the expr() condition builder.' },
   { name: "c.expressionLegacy", signature: "(source: string) => Value", legacy: true, description: 'the older `const:expr` expression form, emitted by codegen for workspaces that still hold one — author `c.expression` instead.' },
   { name: "c.now", signature: "() => Value", description: 'Current time as epoch-ms — the engine-native const:epochms constant (no filter). Valid inline as a where/cmp operand. For cutoff math (cutoff = now - max_age) either compare inline or, for reuse/readability, hoist it into an s.set_var and compare against the var.' },
-  { name: "obj", signature: "(fields: Record<string, Value | nested>) => Value", description: 'Dynamic object value → tag "const:expr2" (a XanoScript object-literal expression). The dynamic sibling of c.obj: members may be inp/ref/auth/col/c.* values, nested records, or arrays. A value with filters, or a less-common tag (env/setting/output/…), is rejected. Use for e.g. s.ai.agent.run args.' },
+  { name: "obj", signature: "(fields: Record<string, Value | nested>) => Value", description: 'Dynamic object value → tag "const:expr2" (an object-literal expression string). The dynamic sibling of c.obj: members may be inp/ref/auth/col values, env()/setting()/sys.*, c.now(), c.* constants, nested records, or arrays — and each member may carry a FILTER CHAIN (withFilters + fl.*), which renders as the expression pipe `$var.row|get:"a.b"`. That matters most for the null-safe drill: db.get binds null on a miss, so ref(path, { safe: true }) inside an obj() is the normal shape, not a workaround — you do NOT need a preceding s.set_var to hoist it. Still rejected: a filter ARGUMENT carrying its own chain (a trailing | binds to the whole value, not one argument), a DISABLED filter (an expression string cannot record that), and the output/response/toolset/reg tags — build those in a prior step and ref() them. Use for e.g. s.ai.agent.run args.' },
   { name: "ref", signature: "(name: string, opts?: { safe?: boolean }) => Value", description: 'Reference a stack variable → tag "var". Pass { safe: true } for null-safe nested access — a dotted ref("owner.user_id", { safe: true }) compiles through the get filter so it resolves to null instead of raising "Unable to locate var" when the base is null.' },
   { name: "inp", signature: "(name: string) => Value", description: 'Reference a function input → tag "input".' },
   { name: "col", signature: "(name: string) => Value", description: 'Reference a table column → tag "col".' },
   { name: "auth", signature: "(path?: string) => Value", description: 'Reference the authenticated identity (auth("id") → $auth.id) → tag "auth".' },
-  { name: "caught", signature: '(path?: "code" | "message" | "name" | "result") => Value', description: 'Read the caught error inside an s.try_catch CATCH arm → tag "trycatch". Valid ONLY there — it reads empty in the try/finally arms and outside the statement. Those four fields are all the engine binds (result is the attached payload); bare caught() is the whole error record.' },
+  { name: "caught", signature: '(path?: "code" | "message" | "name" | "result") => Value', description: 'Read the caught error inside an s.try_catch CATCH arm → tag "trycatch". Valid ONLY there — it reads empty in the try/finally arms and outside the statement. Those four fields are all the engine binds (result is the attached payload); bare caught() is the whole error record. \u26a0 For an ENGINE-raised exception only `code` and `name` are populated; for an `s.throw`, `message` is the fixed string "Throw Error Statement" and your text is in `result`. So `caught("name")` is useful in both cases and `caught("message")` in NEITHER.' },
   { name: "env", signature: "(name: string) => Value", description: 'Read a WORKSPACE environment variable (set via workspaceConfig({ env }) or the dashboard) → `$env.NAME`. Compiles to tag "setting" with the plain name. env("remote_ip") reads a user var named remote_ip, not the caller IP — use sys.remoteIp() for that.' },
   { name: "setting", signature: "(name: string) => Value", description: 'Reference a workspace setting → tag "setting". Built-in system vars are $-prefixed settings, e.g. setting("$remote_ip"); prefer the typed sys.* accessors.' },
   { name: "sys.*", signature: "() => Value", description: 'Built-in system / request-context variables → tag "setting" ($-prefixed). Accessors: remoteIp, requestMethod, requestUri, requestQueryString, httpHeaders, requestAuthToken, apiBaseUrl, datasource, branch, tenant, release, platform, isDebugger. In XanoScript these are $env.$remote_ip etc.; sys.remoteIp() is the public-endpoint rate-limit key (auth("id") is null there).' },
@@ -638,6 +651,18 @@ const STATEMENT_RESULTS: Record<string, { name: string; type: string; note?: str
     name: "as",
     type: "boolean",
     note: "true when the plaintext matches the stored hash. ⚠ input.password double-hashes — pass input.text() plaintext",
+  },
+  // util.* — two whose UNITS and SHAPE cost teams time, and neither is guessable
+  // from the signature.
+  "util.geo_distance": {
+    name: "as",
+    type: "number",
+    note: "great-circle distance in METRES (a decimal) — divide by 1000 for km. Identical points return 0",
+  },
+  "util.ip_lookup": {
+    name: "as",
+    type: "object",
+    note: "a NESTED object, not flat fields — and city/region names are commonly null even for a routable public address, so treat every level as optional",
   },
   // Clearly-typed declarative ops.
   "array.every": { name: "as", type: "boolean" },
@@ -784,6 +809,15 @@ export const FILTER_NOTES: Record<string, string> = {
   some: "`code` is a JS boolean expression run per element (true for any?)",
   findIndex: "`code` is a JS boolean expression; returns the first matching index",
   lambda: "runs a JavaScript expression body",
+  // The sort mode is the whole behavior of this filter, and picking it wrong is
+  // SILENT — every unrecognized spelling falls through to `itext`, so the array
+  // comes back sorted as case-insensitive text with no error anywhere. That is
+  // how "top N by score/distance/recency" comes out wrong (#198).
+  fsort:
+    '`type` is the comparator, and ONLY "number" compares numerically — "text"/"itext" ' +
+    'are strcmp/strcasecmp, "natural"/"inatural" are the human-readable "a2 < a10" ' +
+    'orderings. Default "itext". Anything else silently sorts as text, so a numeric ' +
+    'sort MUST spell "number"; the path arg drills into each element',
   // Non-obvious names.
   epochms_transform: 'applies a relative shift (e.g. "+1 day") to the timestamp',
   unpick: "returns the object without the named keys (inverse of a pick)",
@@ -982,6 +1016,7 @@ export function renderLlmsTxt(m: Manifest): string {
     "  or a `db.has`/`db.query`-count precondition), or drill with the null-safe opt-in:",
     "  `expr(ref(\"owner.user_id\", { safe: true }), \"=\", auth(\"id\"))` compiles through the",
     "  `get` filter and yields `null` (guard reads `false`) rather than 500ing.",
+    "  Works inside `obj({...})` too — no per-member `s.set_var` hoist needed.",
     "- **DB reads are field-match, not `where`-expr.** `db.get`/`db.edit`/`db.del`/",
     "  `db.has`/`db.patch` match one field: `{ fieldName, fieldValue }` (`fieldName`",
     "  defaults to the PK `id`). Only `db.query` takes a `where`/`additionalWhere`",
@@ -1069,6 +1104,14 @@ export function renderLlmsTxt(m: Manifest): string {
     "- **`get_input`/`get_raw_input` read the whole payload**, not one named input",
     "  (args are `{ as?, encoding?, excludeMiddleware? }` — no `name`). For a single",
     "  input use `inp(\"name\")`.",
+    "- **`f.password()` defaults to `access: \"internal\"`, so `db.get` does NOT return it.**",
+    "  A login stack that reads `ref(\"u.password\")` after a plain `db.get` fails at runtime",
+    "  with `Unable to locate var: u.password` — the column is simply absent from the row.",
+    "  Name it in the read's `output` to pull it: `s.db.get({ table: users, fieldName: \"email\",",
+    "  fieldValue: inp(\"email\"), output: [\"id\", \"email\", \"password\"], as: \"u\" })`, then",
+    "  `s.security.check_password`. `output` OVERRIDES column visibility — it is the only way to",
+    "  read an `internal` column, and `export()` warns when a stack reads one a `db.get` did not",
+    "  return.",
     "- **Build regex-filter patterns with `c.regex(body, flags?)`, never `c.text`.**",
     "  The regex filters (`regex_test`/`regex_match`/`regex_replace`/…) are pattern-piped",
     "  PHP `preg_*`: the piped value is the PATTERN and must be delimiter-wrapped. A bare",
@@ -1163,11 +1206,11 @@ export function renderLlmsTxt(m: Manifest): string {
     "- `defineFunction`/`query`/`apiGroup` above cover the queries+tables core; the five below are the \"reach past that\" primitives (agents, tools, tasks, middleware, MCP servers). Same envelope conventions (`guid?`, `description?`, `docs?`, `tags?`, `history?`) unless noted.",
     "- `task({ name, guid?, description?, docs?, datasource?, active?, tags?, history?, schedule?, stack?, middleware? })` — a scheduled background job (function-like `stack`, no `input`/`response`).",
     "  - `schedule?`: a `ScheduleDef[]` (NOT a single object) — `{ startsOn, freq?, repeatEnabled?, endsOn?, endsEnabled? }`. `startsOn`/`endsOn` are **ISO-8601 string** timestamps (`\"2026-01-01T00:00:00Z\"`), not epoch numbers; `freq` is the repeat interval **in seconds** (default `86400` = daily); `endsOn` present ⇒ the schedule has an end. `endsEnabled?` defaults to that and is recovery-only — state it to reproduce a stored schedule that remembers an end date with the gate OFF. Fires on an ephemeral; does NOT fire in the sandbox (see Gotchas).",
-    "- `workflowTest({ name, guid?, description?, docs?, datasource?, active?, tags?, stack? })` — an end-to-end test. NO `input`/`response`: `.call` something with an `as`, then assert on that var — `s.function.call({ fn, input, as: \"r\" })`, `s.expect.to_equal({ expr: ref(\"r\"), value: c.int(42) })`. `s.expect.*` is only meaningful here. `active?` defaults `true`; chain tests with `s.workflow_test.call({ workflowTest: <def handle> })`.",
+    "- `workflowTest({ name, guid?, description?, docs?, datasource?, active?, tags?, stack? })` — an end-to-end test. NO `input`/`response`: `.call` something with an `as`, then assert on that var — `s.function.call({ fn, input, as: \"r\" })`, `s.expect.to_equal({ expr: ref(\"r\"), value: c.int(42) })`. `s.expect.*` belongs here — it is not inert elsewhere (a failure 500s the request), so treat one in a query/function/task as a mistake to remove. `active?` defaults `true`; chain tests with `s.workflow_test.call({ workflowTest: <def handle> })`.",
     "  - `datasource?`: **the trap.** Default `\"\"` is an EMPTY datasource (recommended), not \"no datasource\". Any non-empty name makes the engine CLONE it before EVERY run — against production-sized data, slow enough to fail the run. `\"live\"` warns at compile time; other names don't.",
     "- `middleware({ name, guid?, description?, docs?, resultStrategy?, exceptionPolicy?, tags?, history?, input?, stack?, response? })` — a pre/post interceptor (function-like `stack`); attach it via a host's `middleware: { pre, post }`.",
     "  - `resultStrategy?`: `\"merge\" | \"replace\"` (default `merge`) — how the middleware `response` folds into the host's.",
-    "  - `exceptionPolicy?`: `\"silent\" | \"rethrow\" | \"critical\"` (default `\"silent\"` — a throw is SWALLOWED, so a guard is NOT enforced). A rate-limit/auth guard wants `\"rethrow\"` (throw aborts the request, surfaces the status); `\"critical\"` also skips the `post` chain.",
+    "  - `exceptionPolicy?`: `\"silent\" | \"rethrow\" | \"critical\"` (default `\"rethrow\"` — a throw ABORTS the request and surfaces the authored error/status, which is what a guard wants). `\"silent\"` swallows the throw and lets the request through, so a guard set to it is NOT enforced — use it only for advisory middleware. `\"critical\"` is `\"rethrow\"` plus skipping the `post` chain.",
     "- `tool({ name, guid?, description?, instructions?, docs?, enabled?, tags?, history?, input?, stack?, response?, middleware? })` — a function-like operation (`input`/`stack`/`response`) that a toolset (MCP server or agent) exposes. Register it, then reference it from a toolset's `tools`.",
     "- `mcpServer({ name, guid?, description?, instructions?, docs?, enabled?, canonical?, spec?, tags?, history?, tools?, llm?, output? })` — an MCP toolset. `llm?`/`output?` are the same blocks `agent()` takes and are usually absent: an MCP server and an agent are ONE stored object distinguished by `type`, so a server that carries LLM settings can say so. Returns a handle with `getPath()`/`getUrl(baseUrl)` for the Streamable-HTTP endpoint. Fires on an ephemeral; does NOT fire in the sandbox (see Gotchas).",
     "  - `tools?`: a `ToolsetToolRef[]` — `{ tool: <a tool() handle or its name>, enabled?, auth? }` WRAPPERS, not bare handles. `auth` names an auth **table** (a `table({ auth: true })` handle or its name) — Xano's ONLY MCP auth surface (per-tool; there is no server-level gate).",
@@ -1196,7 +1239,7 @@ export function renderLlmsTxt(m: Manifest): string {
     "  - **Both input surfaces read as ordinary inputs:** `inp(\"body\")` for a payload field, `inp(\"room_id\")` for the channel's `{room_id}`. No session lookup, no frame parsing.",
     "    - A path param is bound ONCE at join and read from the connection thereafter, never from the frame — a sender cannot claim a room it did not join. The same values reach a channel `join`/`leave` trigger's stack.",
     "  - `s.realtime.get_session({ as })` — the CALLER's realtime session for the current frame. FLAT shape:",
-    "    - `authenticated` bool · `client_id` text (the AUTHED ROW ID as text, `\"\"` anonymous) · `dbo_id` int (0 anonymous) · `socket_id` int (transport id) · `channel` text (resolved path, `\"\"` in a server trigger) · `params` object (bound path params, `{}` when none — `ref(\"session.params.room_id\")`) · `extras` object · `opened_at` decimal.",
+    "    - `authenticated` bool · `client_id` text (the AUTHED ROW ID as text, `\"\"` anonymous) · `dbo_id` int (the auth TABLE's id — NOT the user's row id; `0` anonymous — to look the caller up use `client_id`. `dbo_id` is an int in the same position and typechecks, so a gate that keys on it finds no user and refuses EVERYONE) · `socket_id` int (transport id) · `channel` text (resolved path, `\"\"` in a server trigger) · `params` object (bound path params, `{}` when none — `ref(\"session.params.room_id\")`) · `extras` object · `opened_at` decimal.",
     "    - Works in a realtime MESSAGE stack and in CHANNEL and SERVER trigger stacks; off that path it degrades to an anonymous session.",
     "    - For a path param prefer `inp(\"room_id\")`. Reach for the session when you need the CONNECTION (identity/extras) — \"who is this sender\" on an anonymous-client channel.",
     "    - ⚠ THREE UNRELATED THINGS ARE CALLED A CLIENT ID: `session.client_id` (app-facing identity), `session.socket_id` (transport), and a frame's `options.client_id` (the at_least_once CURSOR handle). Conflating the first and last breaks at_least_once for anonymous clients.",
@@ -1262,8 +1305,8 @@ export function renderLlmsTxt(m: Manifest): string {
     "errorTrigger}({ name, guid?, description?, active?, tags?, ... })`.",
     "",
     "- `tableTrigger({ name, table?, datasources?, actions?: {insert?,update?,delete?,truncate?}, stack })` — database/table trigger. `t.new` / `t.old` are the row **after** / **before** the change; `t.action` (`insert|update|delete|truncate`), `t.datasource`. Bind `table` to a `table()` handle and `t.new(\"col\")` / `t.old(\"col\")` are typed to that row (misspelled column = compile error). Nullability follows the enabled actions: insert → `old` is null, delete → `new` is null, update → both, truncate → neither. Config-only (no response).",
-    "- `realtimeServerTrigger({ name, realtimeServer, actions?: {connect?,disconnect?}, stack?, response? })` — realtime SERVER lifecycle (a client connecting to / disconnecting from the server, not a message). Inputs: `t.action` (`connect|disconnect`), `t.realtime_server`, `t.client`. Bind `realtimeServer` to a `realtimeServer()` handle (or its name). `connect` GATES the connection — a denial sends an `error` and CLOSES the socket with code 4401 before it is ever ready, so it is a real front door, not an observer; same return shape as a channel `join` (`{ allowed: true }` or any truthy value admits, EMPTY/FALSY DENIES — INCLUDING a gating trigger with NO `response`, which returns nothing and so refuses every client). A CRASH is the OPPOSITE: gating actions fail OPEN, so a broken stack ADMITS; it is the clean-but-empty return that locks the door. `disconnect` is OBSERVATIONAL (return ignored, throws swallowed — cleanup must always complete). Both are SERVER-scoped, so `s.realtime.get_session` works but carries no channel path and no bound params.",
-    "- `realtimeChannelTrigger({ name, channel, actions?: {join?,leave?,deliver?}, stack?, response? })` — realtime CHANNEL lifecycle. Inputs: `t.action` (`join|leave|deliver`), `t.channel`, `t.client`. Bind `channel` to a `realtimeChannel()` handle — a bare path is NOT accepted (it is unique only within its server). The three actions have DIFFERENT postures, and the posture decides what the stack should return: `join` GATES the join (it runs BEFORE the client becomes a member, so a denial means it never sees a fan-out) — return `{ allowed: true }` (optional `reason` reaches the client) or any truthy value to admit, and an EMPTY OR FALSY RETURN DENIES, so a stack that just falls through — or a gating trigger with NO `response` — refuses everyone (a CRASH is the opposite: gating actions fail OPEN and admit); `leave` is OBSERVATIONAL (return ignored, throws swallowed); `deliver` GATES delivery PER RECIPIENT — the per-viewer redaction tool and the most expensive action here (a stack per recipient per message), and it needs `delivery.perRecipient` on the channel to run at all. **`deliver`'s RETURN VALUES DO NOT READ LIKE A FILTER:** ONLY an explicit NULL drops the message for that recipient; an OBJECT replaces that recipient's payload; ANYTHING ELSE — INCLUDING `false`, `0`, `\"\"` — DELIVERS IT UNCHANGED, as does a crash. So `return false` from a yes/no redaction check SENDS the message it was written to suppress — return null instead. The delivered payload arrives NESTED, so read `inp(\"payload\").<field>`, and `t.client` is the SENDER while `s.realtime.get_session` describes the RECIPIENT this run is for.",
+    "- `realtimeServerTrigger({ name, realtimeServer, actions?: {connect?,disconnect?}, stack?, response? })` — realtime SERVER lifecycle (a client connecting to / disconnecting from the server, not a message). Inputs: `t.action` (`connect|disconnect`), `t.realtime_server`, `t.client`. Bind `realtimeServer` to a `realtimeServer()` handle (or its name). `connect` GATES the connection — a denial sends an `error` and CLOSES the socket with code 4401 before it is ever ready, so it is a real front door, not an observer; same return shape as a channel `join` (`{ allowed: true }` or any truthy value admits, EMPTY/FALSY DENIES — INCLUDING a gating trigger with NO `response`, which returns nothing and so refuses every client). A CRASH DENIES too — the transport seeds a deny and keeps it on a throw. Both failure modes lock the door, so plan for a self-inflicted LOCKOUT (an unguarded drill into a null `db.get` raises → everyone refused), not a breach. Gating is OPT-IN: a server with no `connect` trigger accepts every connection. `disconnect` is OBSERVATIONAL (return ignored, throws swallowed — cleanup must always complete). Both are SERVER-scoped, so `s.realtime.get_session` works but carries no channel path and no bound params.",
+    "- `realtimeChannelTrigger({ name, channel, actions?: {join?,leave?,deliver?}, stack?, response? })` — realtime CHANNEL lifecycle. Inputs: `t.action` (`join|leave|deliver`), `t.channel`, `t.client`. Bind `channel` to a `realtimeChannel()` handle — a bare path is NOT accepted (it is unique only within its server). The three actions have DIFFERENT postures, and the posture decides what the stack should return: `join` GATES the join (it runs BEFORE the client becomes a member, so a denial means it never sees a fan-out) — return `{ allowed: true }` (optional `reason` reaches the client) or any truthy value to admit, and an EMPTY OR FALSY RETURN DENIES, so a stack that just falls through — or a gating trigger with NO `response` — refuses everyone, and a CRASH DENIES too. That is the inverse of a normal message (a crashing message still delivers) and of `deliver` below (a gate that fails OPEN). `join`/`leave` bind the channel's typed path params as INPUTS, so `inp(\"room_id\")` resolves and the gate decides per room; a SERVER connect/disconnect has no channel, the one place a path param cannot be read; `leave` is OBSERVATIONAL (return ignored, throws swallowed); `deliver` GATES delivery PER RECIPIENT — the per-viewer redaction tool and the most expensive action here (a stack per recipient per message), and it needs `delivery.perRecipient` on the channel to run at all. **`deliver`'s RETURN VALUES DO NOT READ LIKE A FILTER:** ONLY an explicit NULL drops the message for that recipient; an OBJECT replaces that recipient's payload; ANYTHING ELSE — INCLUDING `false`, `0`, `\"\"` — DELIVERS IT UNCHANGED, as does a crash. So `return false` from a yes/no redaction check SENDS the message it was written to suppress — return null instead. The delivered payload arrives NESTED, so read `inp(\"payload\").<field>`, and `t.client` is the SENDER while `s.realtime.get_session` describes the RECIPIENT this run is for.",
     "- `mcpServerTrigger(...)` / `agentTrigger({ name, objId, stack?, response? })` — toolset connection. Inputs: `t.toolset` (`t.toolset(\"name\")`), `t.tools`. Response-bearing; the default stack copies `toolset`/`tools` into vars and returns them.",
     "- `workspaceTrigger({ name, actions?: {branch_live?,branch_merge?,branch_new?}, stack? })` — branch lifecycle. Inputs: `t.to_branch`, `t.from_branch`, `t.action`. Config-only.",
     "- `errorTrigger({ name, stack? })` — error-signature trigger. Inputs: `t.event` (`new|regression|fixed`), `t.id`, `t.signature`, `t.error` (`t.error(\"code\")`/`t.error(\"message\")`), `t.caller`, `t.statement`, `t.actor`, `t.count`, `t.first_seen`, `t.last_seen`, `t.fixed_at`. Config-only.",
@@ -1324,6 +1367,10 @@ export function renderLlmsTxt(m: Manifest): string {
     "e.g. `f.geo.polygon({ nullable: false })`. This is why `f.vector(8)` deploys: the engine",
     "turns an empty default into SQL NULL only for a nullable column, so a non-null vector",
     "would reach PostgreSQL as `vector(8) not null default ''` and fail to create.",
+    "**`f.geo.*` values are `{ type, data }`, not GeoJSON.** The same shape goes in and comes",
+    "back: `{ type: \"point\", data: { lng, lat } }`, `{ type: \"poly\", data: [{ lng, lat }, …] }`",
+    "— `type` is the engine's abbreviation, and a polygon ring is closed for you. Raw WKT text",
+    "(`c.text(\"POINT(1 2)\")`) is accepted on write too, but a read never returns one.",
     "`methods` is a bind-time validator/transform pipeline whose",
     "valid names depend on the field type (below) — pass bare names (`\"trim\"`), the",
     "colon-form with args (`\"min:8\"`), or `{ name, arg }` for anything not listed.",
@@ -1355,6 +1402,11 @@ export function renderLlmsTxt(m: Manifest): string {
     "`regex_matches` needed; `input.int`/`input.decimal`/`input.uuid`/`input.enum([...])`/`input.date`",
     "likewise reject or coerce bad input at the boundary. Drop to `input.text` + `s.precondition`",
     "only for rules no type expresses (README: \"Validate input at the boundary\").",
+    "⚠ `s.precondition`'s `error` must be a TAGGED value — `c.text(\"…\")`, not a bare string.",
+    "The engine falls back to the generic \"Precondition failed.\" whenever it reads an empty or",
+    "non-scalar message, and a bare string lands there, so the client never sees your text. The",
+    "`error_type` → HTTP status mapping is correct either way; only the message is lost. The bare",
+    "form stays accepted so a pulled workspace round-trips, not as a spelling to choose.",
     "Normalizing transforms run on bind too — put `trim`/`lower`/`upper` on the input's `methods`",
     "so `inp(\"name\")` reads already-normalized; don't reroll `var $x = inp(\"name\")|trim` in the stack.",
     "",
@@ -1376,6 +1428,11 @@ export function renderLlmsTxt(m: Manifest): string {
     "pipeline. Filters are passed spread (canonical); the array form",
     "`withFilters(v, [fl.a(), fl.b()])` is also accepted. Typed filters carry named",
     "args; the rest are variadic by name.",
+    "A bare JS **scalar** — string, number or boolean — is accepted in ANY `fl.*` argument and",
+    "wrapped as the constant you would have written by hand (`fl.get(\"a.b\", 0)` encodes",
+    "identically to `fl.get(c.text(\"a.b\"), c.int(0))`). An object or array must still be built",
+    "with `c.obj`/`c.array`. The arg types below name each argument's ENGINE type, not the JS",
+    "type you may pass.",
     "Read-modify-write a column from its current value with the pipeline: to increment",
     "a counter you MUST `db.get` the row first, then pipe its bound value —",
     "`col(\"clicks\")` does NOT resolve to the stored value inside a `db.edit` `row`",
@@ -1400,7 +1457,16 @@ export function renderLlmsTxt(m: Manifest): string {
   );
   const typedFilters = m.filters.filter((fl) => fl.typed);
   for (const fl of typedFilters) {
-    const sig = (fl.args ?? []).map((a) => `${a.name}${a.optional ? "?" : ""}: ${a.type}`).join(", ");
+    // An enumerated arg prints its MEMBERS, not the word "enum". Printing the
+    // word is what made #198 expensive: the accepted set was discoverable only
+    // by trying spellings against a live engine, and the one that behaves
+    // differently from the rest is not guessable.
+    const sig = (fl.args ?? [])
+      .map((a) => {
+        const type = a.enum?.length ? a.enum.map((m) => JSON.stringify(m)).join("|") : a.type;
+        return `${a.name}${a.optional ? "?" : ""}: ${type}`;
+      })
+      .join(", ");
     const ret = fl.result ? `: ${fl.result}` : "";
     // Signature-first: render only a curated note (complete, non-truncated) where the
     // signature underspecifies; the raw source description is dropped from the primary
@@ -1469,14 +1535,16 @@ export function renderLlmsTxt(m: Manifest): string {
     "- `s.db.add_or_edit({ table, fieldName?, fieldValue, row?, data?, as? })` — upsert.",
     "- `s.db.query({ table, where?, additionalWhere?, bind?, sort?, paging?, external?, returnType?, distinct?, eval?, output?, lock?, addon?, as? })` — search.",
     "  - `where` / `additionalWhere` — `expr(...)`, an `expr[]` (ANDed), or a raw `Value`. Rides `context.search`.",
+    "    - ⚠ `ignoreEmpty` DROPS the predicate when the operand is empty — it does not match zero rows. On an `in` comparison an empty list therefore returns the UNFILTERED set, so never use it to scope rows to a permitted-id list: an empty list of permissions returns everything.",
     "    - For the full operator set use `cmp(left, op, right, { ignoreEmpty? })` — `op`: `in`/`not in`/`like`/`ilike`/`between`/`contains`/`includes`/`overlaps`/`@>`/`~`/`search`/… plus the `expr` comparisons.",
     "    - Compose nested boolean logic with `and(...)` / `or(...)` groups (also available on `addon()` `where`).",
     "    - An operand may be a bare value (`col`/`inp`/`ref`/`auth`/`c.*`) OR a **filtered** value (`withFilters(...)`) inline. Hoisting into a prior `s.set_var` is a readability option, not a requirement.",
     "  - `bind: [{ table, as?, join?, where? }]` — joins (`context.bind[]`). `join` defaults to `\"inner\"`. Joined columns take a dotted path in `where`/`sort`/`eval`. `as` defaults to the table name; two joins to the same table need distinct aliases.",
-    "  - `returnType` — `\"list\"` (default) | `\"single\"` | `\"count\"` | `\"exists\"` | `\"stream\"` | `\"aggregate\"`. Drives `context.return.type` AND the `InferResponse` shape: `count`→`number`, `exists`→`boolean`, `single`→`Row|null`, `stream`→`Row[]` (pageable, no envelope), `list`→`Row[]`/envelope, `aggregate`→rows keyed by the `aggregate.group`/`eval` aliases.",
+    "  - `returnType` — `\"list\"` (default) | `\"single\"` | `\"count\"` | `\"exists\"` | `\"stream\"` | `\"aggregate\"`. Drives `context.return.type` AND the `InferResponse` shape: `count`→`number`, `exists`→`boolean`, `single`→`Row|null`, `stream`→`Row[]` (pageable, no envelope), `list`→`Row[]`/envelope, `aggregate`→rows keyed by the `aggregate.group`/`eval` aliases. ⚠ A bare `count` of ZERO serializes as an EMPTY body, not `0` — a client parsing JSON gets a parse error on the one result it most needs to handle. Wrap it: `response: { count: ref(\"n\") }`.",
     "  - `eval: [{ name, as, filters? }]` — computed columns (`context.eval[]`). Each `as` grafts onto the row as an `unknown` key in `InferResponse`; shadowing a real column throws.",
     "  - `aggregate: { group?, eval?, sort?, paging? }` (with `returnType:\"aggregate\"`) builds `context.return.aggregate`. `group`/`eval` are `{ name, as, filters? }`, an aggregator like `sum`/`count` riding `filters`.",
-    "    - ⚠ Write each `name` as a **bare** column (`\"status\"`). It is alias-qualified to `\"<table>.status\"` on emit — the engine rejects a bare column in an aggregate with `Unsupported param format`. An already-dotted `name` (a `bind`ed/joined column) passes through.",
+    "    - ⚠ Write each `name` as a **bare** column (`\"status\"`). It is alias-qualified to `\"<alias>.status\"` on emit — the engine rejects an unqualified column in an aggregate with `Unsupported param format`. An already-dotted `name` (a `bind`ed/joined column) passes through.",
+    "    - ⚠ The alias it qualifies WITH is `tableAlias` when you set one, otherwise the table's name. If the engine does not know that alias for this query it rejects the qualified form instead — `Unsupported object reference - <alias>.<column>`. The two errors are the same check failing at different steps, NOT evidence that the bare form is right. If you hit the second one, set `tableAlias` explicitly so the alias you qualify with is the alias the query declares.",
     "  - `sort: [{ sortBy: <col>, dir?: \"asc\"|\"desc\"|\"rand\" }]` and `paging: { page?, per_page?, offset?, totals?, metadata?, search?, sort? }` ride `context.return.list`.",
     "    - ⚠ `paging` with a page/per_page/offset field and `metadata` on (the DEFAULT) wraps the result in an envelope `{ items: Row[], curPage, nextPage, prevPage, offset, perPage, itemsReceived }` — plus `itemsTotal`/`pageTotal` when `totals: true` — instead of a bare `Row[]`. `InferResponse` reflects it. Pass `metadata: false` to keep the bare array.",
     "    - Read `nextPage` (`number|null`) as the typed has-next signal.",
@@ -1521,8 +1589,8 @@ export function renderLlmsTxt(m: Manifest): string {
     "  - ⚠ An alias that shadows an existing column on the queried table throws at build time; rename with a `_` prefix.",
     "- **Middleware attachment** runs a reusable `middleware({...})` before/after a host's own stack. Attach with the host's `middleware: { pre, post }` field on `query`/`function`/`task`/`tool`/`apiGroup` (NOT triggers): each phase is an ordered list of middleware refs (def handle or name), or `{ middleware, active: false }` to keep an entry disabled. Providing a phase **overrides** it (sets the stored `pre_customize`/`post_customize` flag); omitting a phase **inherits** the parent tier's chain — the engine resolves Query → API Group → Workspace at request time (override, not merge; the API-Group tier applies to queries — functions/tasks/tools have no API-group binding and inherit straight from the workspace). Prefer a def handle over a bare name when the middleware pins an explicit `guid`. `pre: middleware.clear()` (an empty list) overrides with nothing — stop inheriting. Workspace-level defaults are the terminal tier: `workspaceConfig({ middleware: { query: { pre }, function, task, tool } })` emits the flat `{host}_{phase}` map (no `_customize` flags) — setting it replaces the whole workspace map, so unlisted hosts are cleared; omit the field to leave existing workspace middleware untouched. Distinct from `s.middleware.call` (inline invoke).",
     "- **Middleware request context.** A `pre` middleware runs **after** auth resolution, so `auth()` is available inside the middleware when the host is authenticated (its `auth` names an auth table); on a public host `auth()` is `null`. This matters for the canonical use — a rate limit keyed by `auth(\"id\")`: on an authenticated endpoint the bucket is per-user, but attach the same middleware to a public endpoint and every anonymous caller keys under the same `null` id (one shared bucket), silently. To catch that, `export()` **warns** (never blocks) when a middleware whose stack references `auth()` is directly attached to a host where `auth()` may be null — a `query` with no auth table, a `task` (scheduled, never authenticated), or a `function`/`tool` (whose auth is caller-dependent). An authenticated query (its own `auth` table set) is skipped. The check is direct-attachment only; a middleware reaching a public query via API-group/workspace tier inheritance is not caught.",
-    "- **Rate-limit recipe (the canonical middleware).** Per-user rate limiting is the most common middleware. Author it with `s.redis.ratelimit` and a **composite key** built via the filter chain — `\"prefix\" + auth(\"id\")` does not exist, you build the key: `middleware({ name: \"write_rl\", exceptionPolicy: \"rethrow\", stack: [ s.redis.ratelimit({ key: withFilters(c.text(\"rl:write:\"), fl.concat(auth(\"id\"))), max: c.int(10), ttl: c.int(30), error: c.text(\"Too fast.\") }) ] })`. `exceptionPolicy: \"rethrow\"` is what makes a tripped limit abort with HTTP 429 (the default `\"silent\"` would let it through). Attach it with `middleware: { pre: [writeRl] }` on an **authenticated** host (its `auth` set) so `auth(\"id\")` keys per-user; on a public host `auth(\"id\")` is null and every caller shares one bucket (`export()` warns — see request context above). **Shared-bucket rule:** co-attaching one middleware object to N hosts means all N share the *same* key ⇒ *one* counter — `max: 10` is a global per-user budget across them, not 10-per-host. Vary the key (fold in the host/action name) for an independent limit per host.",
-    "- **Middleware `exceptionPolicy`** governs what a **throw** in the middleware stack does to the request (SideStep passes the value through; the Xano engine interprets it). `\"silent\"` is the **default** — a throw is swallowed and the host continues as if the middleware succeeded, so a guard (rate limit, auth check) authored without an explicit policy is **not enforced** (the over-limit request goes through). `\"rethrow\"` aborts the request and surfaces the authored `error`/status (a tripped `s.redis.ratelimit` → HTTP 429); the `post` chain still runs — this is what a guard wants. `\"critical\"` behaves like `\"rethrow\"` (same aborted request, same HTTP status) but additionally **skips the entire `post` middleware chain**. The only difference between `rethrow` and `critical` is whether `post` runs — no status or logging change.",
+    "- **Rate-limit recipe (the canonical middleware).** Per-user rate limiting is the most common middleware. Author it with `s.redis.ratelimit` and a **composite key** built via the filter chain — `\"prefix\" + auth(\"id\")` does not exist, you build the key: `middleware({ name: \"write_rl\", exceptionPolicy: \"rethrow\", stack: [ s.redis.ratelimit({ key: withFilters(c.text(\"rl:write:\"), fl.concat(auth(\"id\"))), max: c.int(10), ttl: c.int(30), error: c.text(\"Too fast.\") }) ] })`. `exceptionPolicy` defaults to `\"rethrow\"`, which is what makes a tripped limit abort with HTTP 429; `\"silent\"` would let the over-limit request through. Attach it with `middleware: { pre: [writeRl] }` on an **authenticated** host (its `auth` set) so `auth(\"id\")` keys per-user; on a public host `auth(\"id\")` is null and every caller shares one bucket (`export()` warns — see request context above). **Shared-bucket rule:** co-attaching one middleware object to N hosts means all N share the *same* key ⇒ *one* counter — `max: 10` is a global per-user budget across them, not 10-per-host. Vary the key (fold in the host/action name) for an independent limit per host.",
+    "- **Middleware `exceptionPolicy`** governs what a **throw** in the middleware stack does to the request (SideStep passes the value through; the Xano engine interprets it). `\"rethrow\"` is the **default** — the throw aborts the request and surfaces the authored `error`/status (a tripped `s.redis.ratelimit` → HTTP 429); the `post` chain still runs. `\"silent\"` swallows the throw, so a guard set to it is **not enforced** — advisory middleware only. `\"critical\"` is `\"rethrow\"` plus skipping the `post` chain. The only difference between `rethrow` and `critical` is whether `post` runs — no status or logging change.",
     "",
     "- **Request history** controls per-object execution capture (the request/task/trigger debugger). Authored as a single scalar `history` field on any primitive: `false` off, `true` on at the default capture depth, a number = capture depth (how many statement executions are recorded per history record — NOT record retention), `\"all\"` unlimited. **Omit `history` to inherit** — the engine resolves object → container → workspace at request time (a query inherits from its API group, a tool from its toolset envelope, everything else straight from the workspace). Any authored value stops inheriting for that object. Per-kind defaults (when inheriting): query/task/tool capture ON, function/trigger/middleware OFF; default depth 100. Container tiers are authorable too — `apiGroup({ history })` sets the `query_*` default its queries inherit, and an agent/mcp_server/toolset `history` sets the `tool_*` default its tools inherit. Workspace-level defaults are the terminal tier: `workspaceConfig({ history: { query, function, task, tool, trigger, middleware } })` emits the flat `{objType}_enabled`/`{objType}_limit` map (no inherit flag) — setting it is wholesale (unlisted types fall back to their engine default), so declare every default you want to keep; omit the field to leave existing workspace history untouched.",
     "",
@@ -1601,7 +1669,7 @@ export function renderLlmsTxt(m: Manifest): string {
   const legacyValues = m.values.constructors.filter((v) => v.legacy);
   const legacyStatements = m.statements.filter((s) => s.legacy);
   const legacyFactories = m.objectKinds.flatMap((k) => (k.subKinds ?? []).filter((sub) => sub.legacy));
-  if (legacyValues.length + legacyStatements.length + legacyFactories.length + SUPERSEDED_STATEMENTS.size > 0) {
+  if (legacyValues.length + legacyStatements.length + legacyFactories.length + SUPERSEDED_STATEMENTS.size + DECODE_ONLY_STATEMENTS.size > 0) {
     lines.push(
       "## Legacy",
       "",
@@ -1637,6 +1705,21 @@ export function renderLlmsTxt(m: Manifest): string {
       for (const [stored, successor] of retired) {
         lines.push(successor ? `- \`${stored}\` → \`${successor}\`` : `- \`${stored}\` — retired, no replacement`);
       }
+    }
+    // Statements the engine WRITES but will not read back. Split from the
+    // retired versions above because the instruction is the opposite one: a
+    // retired version keeps running as stored and must be LEFT ALONE, while one
+    // of these makes the workspace un-deployable and must be REPLACED.
+    const decodeOnly = [...DECODE_ONLY_STATEMENTS.entries()];
+    if (decodeOnly.length > 0) {
+      lines.push("");
+      lines.push(
+        "Statements the engine writes but will NOT import back — no `s.` surface exists, and",
+        "unlike the retired versions above these must be FIXED, not left alone. Pulled code shows",
+        "them as `raw({ name: \"…\" })`; `export()` refuses any bundle that still contains one.",
+        "",
+      );
+      for (const [stored, reason] of decodeOnly) lines.push(`- \`${stored}\` — ${reason}.`);
     }
     lines.push("");
   }

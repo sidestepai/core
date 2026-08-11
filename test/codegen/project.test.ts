@@ -72,7 +72,12 @@ function table(name: string, g: string): TableDef {
  * hand-approximated envelope would exercise a shape the encoder never produces.
  */
 function build(defs: { functions?: FunctionDef[]; tables?: TableDef[] }): GeneratedProject {
-  const ws = workspace("ws");
+  // "share", not the default "workspace": these fixtures deliberately model a
+  // PARTIAL export whose reference targets live outside it — which is what
+  // codegen is handed when a pull does not cover the whole workspace. A full
+  // workspace bundle must be self-contained, so `export()` refuses a dangling
+  // reference there (see `checkReferences`); a partial one may carry them.
+  const ws = workspace("ws").setBundleType("share");
   if (defs.tables?.length) ws.registerTables(defs.tables);
   if (defs.functions?.length) ws.registerFunctions(defs.functions);
   return decodeBundle(ws.export());
@@ -240,7 +245,9 @@ describe("every generated import resolves", () => {
 
 describe("query placement", () => {
   function pathsOf(build: (x: Xano) => Xano): string[] {
-    return decodeBundle(build(new Xano()).export()).files.map((f) => f.path);
+    // A partial bundle — see the note on `build` above; some cases here bind by
+    // name to parents this export does not hold, on purpose.
+    return decodeBundle(build(new Xano().setBundleType("share")).export()).files.map((f) => f.path);
   }
 
   it("nests a query under its api group, with the verb in the filename", () => {
@@ -343,7 +350,9 @@ describe("query placement", () => {
 
 describe("realtime hierarchy placement", () => {
   function pathsOf(build: (x: Xano) => Xano): string[] {
-    return decodeBundle(build(new Xano()).export()).files.map((f) => f.path);
+    // A partial bundle — see the note on `build` above; some cases here bind by
+    // name to parents this export does not hold, on purpose.
+    return decodeBundle(build(new Xano().setBundleType("share")).export()).files.map((f) => f.path);
   }
 
   const chat = realtimeServer({ name: "chat", guid: guid(1) });
@@ -433,7 +442,9 @@ describe("realtime hierarchy placement", () => {
 describe("trigger placement", () => {
   /** Paths in the generated tree, for asserting where a trigger landed. */
   function pathsOf(build: (x: Xano) => Xano): string[] {
-    return decodeBundle(build(new Xano()).export()).files.map((f) => f.path);
+    // A partial bundle — see the note on `build` above; some cases here bind by
+    // name to parents this export does not hold, on purpose.
+    return decodeBundle(build(new Xano().setBundleType("share")).export()).files.map((f) => f.path);
   }
 
   it("puts a database trigger under the table directory", () => {

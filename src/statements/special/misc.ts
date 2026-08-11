@@ -150,10 +150,11 @@ export function comment(text = "", a?: StatementAnnotations): Statement {
   return annotate({ name: "mvp:comment", description: text, context: {}, input: [] }, a);
 }
 
-/** `placeholder <name>` — an unconfigured statement slot (`mvp:placeholder`). */
-export function placeholder(name: string, a?: StatementAnnotations): Statement {
-  return annotate({ name: "mvp:placeholder", context: { name }, input: [] }, a);
-}
+// `mvp:placeholder` deliberately has NO factory. The engine writes it into an
+// export in place of a statement it could not resolve, then refuses those same
+// bytes on import, so there is no destination where an authored one runs. It is
+// decoded through `raw()` and blocked at `export()` — see
+// {@link DECODE_ONLY_STATEMENTS}.
 
 // --- raw input / post-process ---------------------------------------------
 
@@ -451,7 +452,6 @@ registerStatement("mvp:array_map", arrayMap);
 registerStatement("mvp:guid", createGuid);
 registerStatement("mvp:array_union", arrayUnion);
 registerStatement("mvp:comment", comment);
-registerStatement("mvp:placeholder", placeholder);
 registerStatement("mvp:get_input", getRawInput);
 registerStatement("mvp:post_process", postProcess);
 registerStatement("mvp:realtime_event", realtimeEvent);

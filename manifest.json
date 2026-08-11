@@ -1,6 +1,6 @@
 {
   "name": "sidestep",
-  "version": "4.1.35",
+  "version": "4.1.36",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
@@ -34,8 +34,8 @@
       ]
     },
     "statements": {
-      "implemented": 215,
-      "total": 215
+      "implemented": 214,
+      "total": 214
     },
     "filters": {
       "typed": 129,
@@ -103,7 +103,7 @@
       {
         "name": "obj",
         "signature": "(fields: Record<string, Value | nested>) => Value",
-        "description": "Dynamic object value → tag \"const:expr2\" (a XanoScript object-literal expression). The dynamic sibling of c.obj: members may be inp/ref/auth/col/c.* values, nested records, or arrays. A value with filters, or a less-common tag (env/setting/output/…), is rejected. Use for e.g. s.ai.agent.run args."
+        "description": "Dynamic object value → tag \"const:expr2\" (an object-literal expression string). The dynamic sibling of c.obj: members may be inp/ref/auth/col values, env()/setting()/sys.*, c.now(), c.* constants, nested records, or arrays — and each member may carry a FILTER CHAIN (withFilters + fl.*), which renders as the expression pipe `$var.row|get:\"a.b\"`. That matters most for the null-safe drill: db.get binds null on a miss, so ref(path, { safe: true }) inside an obj() is the normal shape, not a workaround — you do NOT need a preceding s.set_var to hoist it. Still rejected: a filter ARGUMENT carrying its own chain (a trailing | binds to the whole value, not one argument), a DISABLED filter (an expression string cannot record that), and the output/response/toolset/reg tags — build those in a prior step and ref() them. Use for e.g. s.ai.agent.run args."
       },
       {
         "name": "ref",
@@ -128,7 +128,7 @@
       {
         "name": "caught",
         "signature": "(path?: \"code\" | \"message\" | \"name\" | \"result\") => Value",
-        "description": "Read the caught error inside an s.try_catch CATCH arm → tag \"trycatch\". Valid ONLY there — it reads empty in the try/finally arms and outside the statement. Those four fields are all the engine binds (result is the attached payload); bare caught() is the whole error record."
+        "description": "Read the caught error inside an s.try_catch CATCH arm → tag \"trycatch\". Valid ONLY there — it reads empty in the try/finally arms and outside the statement. Those four fields are all the engine binds (result is the attached payload); bare caught() is the whole error record. ⚠ For an ENGINE-raised exception only `code` and `name` are populated; for an `s.throw`, `message` is the fixed string \"Throw Error Statement\" and your text is in `result`. So `caught(\"name\")` is useful in both cases and `caught(\"message\")` in NEITHER."
       },
       {
         "name": "env",
@@ -3210,13 +3210,6 @@
       }
     },
     {
-      "surface": "placeholder",
-      "storedName": "mvp:placeholder",
-      "sPath": "placeholder",
-      "registered": true,
-      "declarative": false
-    },
-    {
       "surface": "precondition",
       "storedName": "mvp:precondition",
       "sPath": "precondition",
@@ -5188,7 +5181,12 @@
           "type": "value",
           "optional": true
         }
-      ]
+      ],
+      "result": {
+        "name": "as",
+        "type": "number",
+        "note": "great-circle distance in METRES (a decimal) — divide by 1000 for km. Identical points return 0"
+      }
     },
     {
       "surface": "util.get_all_input",
@@ -5271,7 +5269,12 @@
           "type": "value",
           "optional": false
         }
-      ]
+      ],
+      "result": {
+        "name": "as",
+        "type": "object",
+        "note": "a NESTED object, not flat fields — and city/region names are commonly null even for a routable public address, so treat every level as optional"
+      }
     },
     {
       "surface": "util.post_process",
@@ -6885,7 +6888,14 @@
         {
           "name": "type",
           "type": "enum",
-          "optional": true
+          "optional": true,
+          "enum": [
+            "text",
+            "itext",
+            "natural",
+            "inatural",
+            "number"
+          ]
         },
         {
           "name": "asc",

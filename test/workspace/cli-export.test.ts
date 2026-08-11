@@ -25,6 +25,17 @@ describe("sidestep export CLI", () => {
     }
   });
 
+  it("resolves a DEFERRED seed at export, so it cannot pass here and fail at deploy (#209)", async () => {
+    // `export` never used to call the seed source, so a bad row was caught only
+    // by `deploy` — after a full-replace import had already begun. Both paths
+    // now go through the same resolver, so they cannot disagree about what they
+    // accept. The message must name the table, the row index and the column.
+    const entry = fileURLToPath(new URL("../fixtures/seed-deferred/index.ts", import.meta.url));
+    await expect(run(["export", entry])).rejects.toThrow(
+      /table "probe_seed", seed row 0, column "name".*"a", "b"/s,
+    );
+  });
+
   it("emitBundle round-trips and matches export()", () => {
     expect(JSON.parse(emitBundle(exampleXano))).toEqual(exampleXano.export());
   });

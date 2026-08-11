@@ -53,7 +53,8 @@ export type {
   FromFieldMap,
   RowFromFieldMap,
   XanoFileRef,
-  XanoGeoJson,
+  XanoGeoValue,
+  XanoGeoPosition,
 } from "./fields/value-types.js";
 export { f, toNestedFields } from "./fields/catalog.js";
 export type { FieldDescriptor, FieldMap, FieldOpts, MethodOpts } from "./fields/catalog.js";
@@ -147,7 +148,6 @@ export {
   arrayMap,
   arrayUnion,
   comment,
-  placeholder,
   getRawInput,
   postProcess,
   realtimeEvent,

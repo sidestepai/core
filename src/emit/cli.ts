@@ -1155,7 +1155,15 @@ export async function compileBundle(
   // `resolveRef("dbo", def)` inside buildSeedContentFiles yields the same guid the
   // table emitted in the bundle. Built only when the deploy path asks for it;
   // otherwise report which seeded tables were left out so `export` can warn.
-  const content = opts.seed ? await buildSeedContentFiles(def.tables()) : [];
+  // Resolved even when the artifact will not carry it. `export` previously never
+  // called a seed thunk, so a defect only `deploy` could see — a JSON `import()`
+  // missing its `with { type: "json" }` attribute, an unknown column, a value
+  // that will not coerce — passed export and failed at deploy, AFTER an
+  // environment had been provisioned. A check that runs only on the destructive
+  // path is in the wrong place. Same function either way, so the two commands
+  // cannot drift apart in what they accept (issue #209).
+  const resolvedContent = await buildSeedContentFiles(def.tables());
+  const content = opts.seed ? resolvedContent : [];
   const nonPublicSeedValues = opts.seed ? await collectNonPublicSeedValues(def.tables()) : [];
   const omittedSeedTables = opts.seed ? [] : def.tables().filter((t) => t.seed !== undefined).map((t) => t.name);
 

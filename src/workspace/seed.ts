@@ -124,6 +124,7 @@ function coerceScalarValue(
   column: string,
   type: string,
   value: unknown,
+  values?: readonly (string | number)[],
 ): unknown {
   // Null is always allowed through — nullability is the engine's to enforce, and
   // a genuinely non-nullable column rejects it there. Blocking here would be a
@@ -162,6 +163,22 @@ function coerceScalarValue(
       if (typeof value === "string") return value;
       throw located(label, column, type, value, "a string");
     }
+    case "enum": {
+      // The one column type the TYPE SYSTEM cannot police on a deferred seed: a
+      // JSON module's strings widen to `string`, never the literal union, so
+      // the thunk/file forms accept any string at author time (issue #209).
+      // Membership is therefore checked here, where the value and the column's
+      // declared options are both in hand. An enum with no options is a real,
+      // engine-supported shape (a column added in the editor and not yet given
+      // its values) and permits nothing, so it is left to the engine.
+      if (!values || values.length === 0) return value;
+      if (values.includes(value as string | number)) return value;
+      const allowed = values.map((v) => JSON.stringify(v)).join(", ");
+      throw new Error(
+        `${label}, column "${column}" (enum): ${JSON.stringify(value)} is not one of its ` +
+          `declared values (${allowed}). Fix the seed value or add it to the column's enum.`,
+      );
+    }
     default:
       return value;
   }
@@ -177,9 +194,11 @@ function coerceColumnValue(label: string, col: ColumnDef, value: unknown): unkno
   if (value === null) return null;
   if (col.array) {
     if (!Array.isArray(value)) throw located(label, col.name, `${col.type}[]`, value, "an array");
-    return value.map((el, j) => coerceScalarValue(label, `${col.name}[${j}]`, col.type, el));
+    return value.map((el, j) =>
+      coerceScalarValue(label, `${col.name}[${j}]`, col.type, el, col.values),
+    );
   }
-  return coerceScalarValue(label, col.name, col.type, value);
+  return coerceScalarValue(label, col.name, col.type, value, col.values);
 }
 
 function located(

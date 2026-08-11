@@ -97,7 +97,12 @@ describe("validateMiddlewareAuth (issue #81 export guard)", () => {
     expect(() =>
       new Xano().registerMiddleware([tenantKeyedMw]).registerQueries([q]).export(),
     ).not.toThrow();
-    expect(warn).not.toHaveBeenCalled();
+    // Scoped to THIS guard: `tenantKeyedMw` keys on `inp("tenant")`, which a
+    // middleware cannot resolve at all, so the #210 warning legitimately fires
+    // here too. Asserting "no warnings whatsoever" would make this test a
+    // tripwire for every unrelated guard added later.
+    const messages = warn.mock.calls.map((call) => String(call[0]));
+    expect(messages.filter((m) => m.includes("references auth()"))).toHaveLength(0);
   });
 
   it("does not fire for a disabled attachment entry (it never runs)", () => {

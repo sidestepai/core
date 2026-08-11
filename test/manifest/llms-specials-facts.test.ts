@@ -180,7 +180,7 @@ describe("s.db.query signature is complete", () => {
  * creeping back: the entry was cut three times first, and every sentence left
  * changes how the call gets written. Re-measure before raising it again.
  */
-const SPECIALS_CEILING = 5_800;
+const SPECIALS_CEILING = 6_050;
 
 describe("Specials block stays lean", () => {
   it(`is under ${SPECIALS_CEILING.toLocaleString()} tokens`, () => {

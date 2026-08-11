@@ -968,7 +968,7 @@ export const KIND_DECODERS: readonly KindDecoder[] = [
         plain(a.stored, "description", ""),
         plain(a.stored, "docs", ""),
         plain(a.stored, "result_type", "merge", "resultStrategy"),
-        plain(a.stored, "exception", "silent", "exceptionPolicy"),
+        plain(a.stored, "exception", "rethrow", "exceptionPolicy"),
         history(a),
         tags(a.stored),
         inputs(a),

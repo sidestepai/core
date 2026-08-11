@@ -9,7 +9,9 @@ import { workspaceConfig } from "@sidestep/core";
 import { rateLimit } from "./middleware.js";
 
 export const wsConfig = workspaceConfig({
-  name: "ex_kind_workspace_config",
+  // No `name`: the config inherits the one `workspace("…")` gave the registry
+  // in index.ts. Naming it here would RENAME the workspace, which is what this
+  // example used to do by accident.
   canonical: "my-app",
   // NOTE: `realtime`, `documentation`, and `swagger` are deliberately absent.
   // They are server-shaped blocks this SDK carries verbatim so a pulled workspace

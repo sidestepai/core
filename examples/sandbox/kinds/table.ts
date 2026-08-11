@@ -22,9 +22,23 @@ export const productTable = table({
     { type: "unique", fields: [{ name: "sku" }] },
     { type: "btree", fields: [{ name: "price", op: "desc" }] },
   ],
+});
+
+/**
+ * Inline `seed` — starter rows written straight into the def, for a table whose
+ * rows are small enough to read in place. `id` is omitted, so the rows are
+ * auto-numbered `1..N`. Compare `accessoryTable` below, which reads the same
+ * kind of data from a file.
+ */
+export const productNoteTable = table({
+  name: "ex_kind_product_notes",
+  schema: {
+    sku: f.text({ required: true }),
+    note: f.text(),
+  },
   seed: [
-    { sku: "SKU-001", name: "Aeron Chair", price: 1395, in_stock: true, tags: ["furniture", "ergonomic"] },
-    { sku: "SKU-002", name: "Standing Desk", price: 599, in_stock: false, tags: ["furniture"] },
+    { sku: "SKU-001", note: "Aeron Chair — ships flat-packed" },
+    { sku: "SKU-002", note: "Standing Desk — 3 week lead time" },
   ],
 });
 

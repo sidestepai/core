@@ -22,12 +22,35 @@
  * `call_agent` object-args fixture in the conformance corpus pins the exact
  * `const:expr` string this encoder emits for `obj({ question: inp(...) })`.
  *
- * **Supported members:** `inp()`, `ref()`, `auth()`, `col()`, `c.text/int/
- * decimal/bool/null`, nested `obj`-style records, and arrays of those. A value
- * carrying a **filter chain** (`withFilters`), or a less-common tag
- * (`env`/`setting`/`output`/`response`/`toolset`/`reg`), throws — its
- * XanoScript rendering is ambiguous enough that guessing risks a bad export;
- * build such a value in a prior stack step instead.
+ * **Supported members:** `inp()`, `ref()`, `auth()`, `col()`, `env()` /
+ * `setting()` / `sys.*`, `c.now()`, `c.text/int/decimal/bool/null`, nested
+ * `obj`-style records, and arrays of those — each optionally carrying a
+ * **filter chain**, which renders as the expression language's own postfix pipe
+ * (`$var.row|get:"address.city"`).
+ *
+ * The filter chain used to throw, and the rejection was wrong (#222). It
+ * collided constantly, because `db.get` binds `null` on a miss — the SDK's own
+ * headline gotcha — so almost every object built from a `db.get` result needs a
+ * null-safe drill, which compiles through the `get` filter. One team counted
+ * twenty pure-plumbing `s.set_var` statements written to work around it.
+ *
+ * The representation was never the obstacle: the engine's own parser stores
+ * `{ …, goals: [$q.goal_1, …]|filter:$$ != null, … }` as ONE `const:expr2`
+ * string, so a per-member chain is exactly what it carries. Nothing had to
+ * change in the engine; the SDK was guessing that it could not.
+ *
+ * **On evidence.** The value of an `expr2` is an expression string the engine
+ * parses — it is NOT XanoScript, and nothing validates its contents ahead of a
+ * live run. So what backs this is the engine's own parser fixtures (paired
+ * source → stored JSON), which show the exact string its tooling produces. A
+ * rendering outside that set is not "probably fine"; it is unverified. Keep the
+ * emitted grammar to shapes a fixture demonstrates.
+ *
+ * What still throws: a filter argument carrying its OWN chain (a trailing `|`
+ * binds to the whole value, so it cannot be written without changing meaning),
+ * a **disabled** filter (an expression string has nowhere to record that), and
+ * the remaining exotic tags (`output`/`response`/`toolset`/`reg`). Build those
+ * in a prior stack step and reference them with `ref`.
  */
 import type { Value } from "./value.js";
 import { isTaggedValue } from "./value.js";
@@ -47,14 +70,65 @@ export interface ObjInput {
 /** Bare-identifier keys only (what XanoScript object literals accept unquoted). */
 const IDENT = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
-/** Render one {@link Value} to its XanoScript expression fragment. */
+/**
+ * Render one {@link Value}, including its filter chain, to a XanoScript
+ * expression fragment.
+ *
+ * The chain renders as the expression language's own postfix pipe —
+ * `$var.row|get:"address.city"` — which the object-literal grammar carries per
+ * member. That is settled against the engine's parser fixtures, not inferred:
+ * a stored `mvp:array_push` holds
+ * `{ …, goals: [$q.goal_1, …]|filter:$$ != null, … }` as ONE `const:expr2`
+ * string. See the module doc for why this stopped being a rejection.
+ */
 function serializeValue(v: Value, path: string): string {
-  if (v.filters.length > 0) {
-    throw new Error(
-      `obj(): the value at \`${path}\` carries a filter chain, which can't be serialized into an ` +
-        `object literal yet. Compute it in a prior step (e.g. \`setVar\`) and reference it with \`ref\`.`,
-    );
+  return serializeAtom(v, path) + serializeFilters(v, path);
+}
+
+/**
+ * The filter chain as `|name:arg:arg`, or `""` when there is none.
+ *
+ * Two shapes stay rejected, because neither has an expression spelling that
+ * means what the author wrote:
+ *
+ * - **A filter arg that carries its own chain.** `|add:$var.n|mul:2` parses as
+ *   two filters on the OUTER value, not one filter on a computed argument, so
+ *   emitting it would silently change the result.
+ * - **A disabled filter.** `disabled` is a property of the structured
+ *   `filters[]` array; an expression string has nowhere to put it, so the only
+ *   faithful renderings are "drop it" (changes nothing visibly, loses the
+ *   author's intent to re-enable) or "keep it" (runs a filter the author
+ *   switched off). Refusing is the honest third option.
+ */
+function serializeFilters(v: Value, path: string): string {
+  let out = "";
+  for (const f of v.filters) {
+    if (f.disabled) {
+      throw new Error(
+        `obj(): the value at \`${path}\` carries a DISABLED \`${f.name}\` filter. An object ` +
+          `literal is stored as one expression string, which has no spelling for a disabled ` +
+          `filter — drop it, or build the value in a prior step (e.g. \`s.set_var\`) and ` +
+          `reference it with \`ref\`.`,
+      );
+    }
+    const args = f.arg.map((a, i) => {
+      if (a.filters.length > 0) {
+        throw new Error(
+          `obj(): the \`${f.name}\` filter at \`${path}\` has an argument (#${i}) that carries ` +
+            `its own filter chain. In an expression a trailing \`|\` binds to the whole value, ` +
+            `not to one argument, so this cannot be written without changing what it means. ` +
+            `Compute the argument in a prior step and reference it with \`ref\`.`,
+        );
+      }
+      return serializeAtom(a, `${path}|${f.name}[${i}]`);
+    });
+    out += `|${f.name}${args.length > 0 ? `:${args.join(":")}` : ""}`;
   }
+  return out;
+}
+
+/** Render one {@link Value}'s BASE (tag + value), ignoring any filter chain. */
+function serializeAtom(v: Value, path: string): string {
   switch (v.tag) {
     case "const":
       return JSON.stringify(v.value); // double-quoted + escaped, valid XanoScript string
@@ -73,12 +147,24 @@ function serializeValue(v: Value, path: string): string {
       return v.value ? `$auth.${v.value}` : "$auth";
     case "col":
       return `$db.${v.value}`;
-    default:
-      throw new Error(
-        `obj(): value tag "${v.tag}" at \`${path}\` isn't supported in a dynamic object literal yet. ` +
-          `Supported: inp(), ref(), auth(), col(), and c.text/int/decimal/bool/null.`,
-      );
+    // A workspace env var and a built-in request var are the SAME tag; the
+    // built-ins just carry a `$`-prefixed name. Both spell `$env.` + the name,
+    // so `sys.remoteIp()` renders `$env.$remote_ip` and `env("STRIPE_KEY")`
+    // renders `$env.STRIPE_KEY`.
+    case "setting":
+      return `$env.${v.value}`;
+    // The engine's native current-time constant. Only ever holds `"now"` — the
+    // same narrowing the decoder makes — so anything else falls through to the
+    // rejection rather than being rendered as a `now` it is not.
+    case "const:epochms":
+      if (v.value === "now") return "now";
+      break;
   }
+  throw new Error(
+    `obj(): value tag "${v.tag}" at \`${path}\` isn't supported in a dynamic object literal yet. ` +
+      `Supported: inp(), ref(), auth(), col(), env()/setting()/sys.*, c.now(), and ` +
+      `c.text/int/decimal/bool/null — each optionally carrying a filter chain.`,
+  );
 }
 
 /** Render any {@link ObjMember} (scalar literal, value, nested record, or array). */

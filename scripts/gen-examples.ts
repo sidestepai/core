@@ -150,15 +150,29 @@ for (const spec of GENERATED_SPECS) {
   if (e.hasOutput) {
     e.imports.add("ref");
   }
+  // `s.expect.*` is hosted by a `workflowTest`, not a function. It is NOT inert
+  // anywhere else — a failed assertion raises and 500s the request — so an
+  // example that put one in a `defineFunction` would both teach the wrong home
+  // and break the sandbox deploy the moment it ran.
+  const isAssertion = sPath.startsWith("expect.");
+  if (isAssertion) {
+    e.imports.delete("defineFunction");
+    e.imports.add("workflowTest");
+  }
   const importList = [...e.imports].sort().join(", ");
-  const responseLine = e.hasOutput ? `\n  response: ref("result"),` : "";
+  const responseLine = e.hasOutput && !isAssertion ? `\n  response: ref("result"),` : "";
+  const host = isAssertion ? "workflowTest" : "defineFunction";
   const src = `/**
- * \`s.${sPath}\` — codegen'd declarative statement.
+ * \`s.${sPath}\` — codegen'd declarative statement.${
+    isAssertion
+      ? "\n * Hosted by a `workflowTest`: assertions belong there, and a failure raises\n * rather than being collected, so one left in a query/function 500s the request."
+      : ""
+  }
  * Generated from GENERATED_SPECS; edit freely to make it more illustrative.
  */
 import { ${importList} } from "@sidestep/core";
 
-export const ${constName(sPath)} = defineFunction({
+export const ${constName(sPath)} = ${host}({
   name: "${fnName(sPath)}",
   stack: [
     ${stack.join(",\n    ")},

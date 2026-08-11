@@ -189,9 +189,8 @@ describe("structural array + misc specials", () => {
     expect((enc.context as { right: unknown }).right).toBeDefined();
   });
 
-  it("comment and placeholder are reachable", () => {
+  it("comment is reachable", () => {
     expect(encodeStatement(s.comment("note")).description).toBe("note");
-    expect((encodeStatement(s.placeholder("todo")).context as { name: string }).name).toBe("todo");
   });
 
   it("util.get_input and util.get_raw_input share mvp:get_input", () => {

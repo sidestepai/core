@@ -292,12 +292,6 @@ const comment: SpecialDecoder = (a) => {
   );
 };
 
-/** `placeholder <name>` — an unconfigured statement slot. */
-const placeholder: SpecialDecoder = (a) => {
-  const name = getPath(a.stored.context, "name");
-  if (typeof name !== "string") return declineHere("placeholder: context.name is not a string");
-  return prove(a.ctx, a.stored, "placeholder", [name], [lit(name)]);
-};
 
 /** Control-flow, loop, and variable decoders by stored name. */
 export const CONTROL_FLOW_DECODERS: ReadonlyMap<string, SpecialDecoder> = new Map<
@@ -320,5 +314,7 @@ export const CONTROL_FLOW_DECODERS: ReadonlyMap<string, SpecialDecoder> = new Ma
   ["mvp:foreach_continue", nullaryDecoder("foreach_continue")],
   ["mvp:foreach_remove", nullaryDecoder("foreach_remove")],
   ["mvp:comment", comment],
-  ["mvp:placeholder", placeholder],
+  // No `mvp:placeholder` decoder: it has no authoring surface to decode TO.
+  // `decodeStatement` intercepts it ahead of this map and emits `raw()` with the
+  // reason — see DECODE_ONLY_STATEMENTS.
 ]);

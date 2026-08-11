@@ -51,6 +51,10 @@ const GOTCHA_BULLETS = [
   "MCP servers & agents are distinct root kinds",
   "`task.schedule` is an array",
   "`get_input`/`get_raw_input` read the whole payload",
+  // #224/#231-C3. The broken `auth/login` recipe is copied verbatim into nearly
+  // every project, and the fix used to live ~220 lines away on the `s.db.get`
+  // signature — where nobody is standing when they declare the column.
+  "`f.password()` defaults to `access: \"internal\"`, so `db.get` does NOT return it.",
   "Build regex-filter patterns with `c.regex(body, flags?)`, never `c.text`.",
   'Declare inputs with `input.<type>()`, read them with `inp("name")`.',
   "Don't take a password through `input.password` on login — it double-hashes.",
@@ -211,7 +215,7 @@ assertFacts("llms.txt Quickstart facts", QUICKSTART_FACTS);
  * fit. Ratchet down after a real reduction.
  */
 const DEPLOY_CEILING = 800;
-const GOTCHAS_CEILING = 3_250;
+const GOTCHAS_CEILING = 3_500;
 
 describe("prose sections stay lean", () => {
   it(`Deploy is under ${DEPLOY_CEILING.toLocaleString()} tokens`, () => {

@@ -85,7 +85,17 @@ export interface WorkspaceDefaultsDef {
 }
 
 export interface WorkspaceConfigDef {
-  name: string;
+  /**
+   * OPTIONAL — omit it and the workspace inherits the name `workspace("…")`
+   * already gave it (#228).
+   *
+   * There is exactly one config per workspace and the entry point names it, so
+   * restating it here was pure duplication that every documented example got
+   * wrong: `workspace("app").registerWorkspace(workspaceConfig({ history }))`
+   * failed to typecheck on a field the registry already knew. Supply it only to
+   * override, or when building a config with no `workspace("…")` above it.
+   */
+  name?: string;
   description?: string;
   canonical?: string;
   /**
@@ -355,13 +365,21 @@ function encodeWorkspaceMiddleware(m: WorkspaceMiddlewareDef): WorkspaceMiddlewa
 }
 
 export function encodeWorkspaceConfig(def: WorkspaceConfigDef): WorkspaceConfigXdo {
-  // Present-but-empty is accepted, absent is not. A real instance holds a
-  // workspace whose stored `name` is `""` — the engine allows it — and refusing
-  // that spelling made a faithful pull of it impossible to export at all, which
-  // is the SDK inventing a stricter rule than the engine's. A MISSING key is
-  // still a mistake worth catching, since the type says the field is there.
+  // Present-but-empty is accepted. A real instance holds a workspace whose
+  // stored `name` is `""` — the engine allows it — and refusing that spelling
+  // made a faithful pull of it impossible to export at all, which is the SDK
+  // inventing a stricter rule than the engine's.
+  //
+  // Absent reaches here only when nothing named the workspace at all:
+  // `Xano.registerWorkspace` fills the field from the name `workspace("…")`
+  // set, which is why the def type no longer demands it (#228). The bundle
+  // still needs a name, so this stays an error — it just names the fix now.
   if (def.name === undefined || def.name === null) {
-    throw new Error("workspace: `name` is required.");
+    throw new Error(
+      "workspace: no name. `workspaceConfig({ name })` is optional because the config " +
+        'inherits the name from `workspace("…")` — so either start from `workspace("my-app")` ' +
+        "or give this config an explicit `name`.",
+    );
   }
   return {
     name: def.name,

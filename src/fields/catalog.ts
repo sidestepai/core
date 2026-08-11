@@ -17,7 +17,7 @@ import type { FieldOptions, NestedField, MethodArg, ReadonlyMethods } from "./fi
 import type {
   TypeBrand,
   XanoFileRef,
-  XanoGeoJson,
+  XanoGeoValue,
   FromFieldMap,
 } from "./value-types.js";
 import { resolveRef } from "../refs/guid.js";
@@ -219,12 +219,12 @@ export const f = {
 
   // --- geo ---
   geo: {
-    point: make<XanoGeoJson>("geo_point"),
-    multipoint: make<XanoGeoJson>("geo_multipoint"),
-    linestring: make<XanoGeoJson>("geo_linestring"),
-    multilinestring: make<XanoGeoJson>("geo_multilinestring"),
-    polygon: make<XanoGeoJson>("geo_polygon"),
-    multipolygon: make<XanoGeoJson>("geo_multipolygon"),
+    point: make<XanoGeoValue>("geo_point"),
+    multipoint: make<XanoGeoValue>("geo_multipoint"),
+    linestring: make<XanoGeoValue>("geo_linestring"),
+    multilinestring: make<XanoGeoValue>("geo_multilinestring"),
+    polygon: make<XanoGeoValue>("geo_polygon"),
+    multipolygon: make<XanoGeoValue>("geo_multipolygon"),
   },
 
   // --- composite (positional payload + options) ---

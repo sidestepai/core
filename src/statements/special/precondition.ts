@@ -51,10 +51,17 @@ export interface PreconditionArgs extends StatementAnnotations {
    */
   error_type?: PreconditionErrorType;
   /**
-   * The error message. A bare string is stored bare — the spelling the editor
-   * writes, and the one a pulled workspace carries; a {@link Value} is stored as
-   * a tagged value. The engine keeps whichever it is given (live-verified), so
-   * pick the plain string unless the message has to be computed.
+   * The error message. ⚠ **Use `c.text("…")`, not a bare string.**
+   *
+   * The engine reads this field as a TAGGED value and falls back to the generic
+   * `"Precondition failed."` whenever what it reads is empty or non-scalar — so
+   * a bare string is dropped and the client never sees the message you wrote.
+   * A `c.text(...)` (or any computed {@link Value}) is delivered intact. The
+   * `error_type` → HTTP status mapping is correct either way; it is only the
+   * message that is lost.
+   *
+   * The bare-string form stays accepted because a pulled workspace can carry
+   * one and has to round-trip, not because it is a spelling to choose.
    */
   error?: Value | string;
   /** Extra payload attached to the error (for `inputerror`, the offending param). */

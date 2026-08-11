@@ -38,7 +38,7 @@ export const links = table({
 // (Asserted at the type level in the companion test via `InferRow`.)
 export type LinkRow = InferRow<typeof links>;
 
-const api = apiGroup({ name: "links", canonical: "links" });
+export const api = apiGroup({ name: "links", canonical: "links" });
 
 // Read-modify-write: increment a counter from its current column value, and
 // sort/paging shapes on db.query (system column `created_at` as a sort target).
