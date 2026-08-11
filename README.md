@@ -321,7 +321,8 @@ const product = table({
   },
   // Rows are validated against the column types before deploy. A column without
   // `required: true` may be omitted (the engine applies its default). Omit `id` and
-  // int-PK rows are auto-numbered 1..N (or set `id` on every row); a bad value
+  // rows are keyed for you — 1..N for an int PK, a stable uuid for a uuid PK (or
+  // set `id` on every row); a bad value
   // or unknown column is a loud error, never a silent drop.
   seed: [
     { sku: "SKU-001", name: "Aeron Chair",   price: 1395, tags: ["furniture", "ergonomic"] },

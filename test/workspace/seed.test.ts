@@ -26,6 +26,10 @@ const products = table({
 
 const cols = tableColumns(products);
 
+const uuidCols = tableColumns(
+  table({ name: "things", idType: "uuid", schema: { label: f.text() } }),
+);
+
 describe("resolveSeedRows", () => {
   it("accepts an array, a sync thunk, and an async thunk", async () => {
     const rows = [{ name: "a" }];
@@ -97,6 +101,31 @@ describe("coerceSeedRows", () => {
     expect(() => coerceSeedRows("products", cols, [{ id: 5, name: "a" }, { name: "b" }])).toThrow(
       /seed rows set `id` and the rest omit it/,
     );
+  });
+
+  it("fills a uuid-PK row that omits id, deterministically and distinctly", () => {
+    // The content import PRESERVES `id` for EVERY key type and never generates a
+    // uuid — an omitted one reaches Postgres as '' and the whole import 500s with
+    // `invalid input syntax for type uuid: ""` (#205, verified live). Derived from
+    // the table name + row index, so a re-export is byte-identical.
+    const rows = coerceSeedRows("things", uuidCols, [{ label: "a" }, { label: "b" }]);
+    const ids = rows.map((r) => r.id as string);
+    expect(ids[0]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    expect(ids[1]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    expect(ids[0]).not.toBe(ids[1]);
+    expect(coerceSeedRows("things", uuidCols, [{ label: "a" }, { label: "b" }])).toEqual(rows);
+    // Distinct per table, so two tables' seeds never share a key by construction.
+    expect(coerceSeedRows("others", uuidCols, [{ label: "a" }])[0]!.id).not.toBe(ids[0]);
+  });
+
+  it("honors explicit uuid ids, and rejects a mix on a uuid PK", () => {
+    const explicit = "6f1f8a8e-0f6a-4a1a-9d8e-2b1c3d4e5f60";
+    expect(coerceSeedRows("things", uuidCols, [{ id: explicit, label: "a" }])).toEqual([
+      { id: explicit, label: "a" },
+    ]);
+    expect(() =>
+      coerceSeedRows("things", uuidCols, [{ id: explicit, label: "a" }, { label: "b" }]),
+    ).toThrow(/seed rows set `id` and the rest omit it/);
   });
 
   it("passes null through (nullability is the engine's to enforce)", () => {
