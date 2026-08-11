@@ -8,7 +8,7 @@ const grp = apiGroup({ name: "internal" });
 const links = table({ name: "links", schema: { title: f.text() } });
 
 const list = query({
-  name: "links.list",
+  name: "links_list",
   verb: "GET",
   apiGroup: grp,
   stack: [s.db.query({ table: links, as: "rows" })],

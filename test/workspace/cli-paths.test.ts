@@ -40,19 +40,19 @@ describe("sidestep paths", () => {
   it("lists each query's verb + resolved api:<canonical>/<name> (in-code canonical, no lock)", async () => {
     const out = await captureStdout(() => run(["paths", resolvedEntry]));
     // Both queries, with their real verbs and the /api:<canonical>/<name> path.
-    expect(out).toMatch(/GET\s+\/api:abc12345\/links\.list\s+api:abc12345\/links\.list/);
-    expect(out).toMatch(/POST\s+\/api:abc12345\/links\.create\s+api:abc12345\/links\.create/);
-    // The leading slash on "/links.create" is stripped in the emitted path.
-    expect(out).not.toContain("/api:abc12345//links.create");
+    expect(out).toMatch(/GET\s+\/api:abc12345\/links_list\s+api:abc12345\/links_list/);
+    expect(out).toMatch(/POST\s+\/api:abc12345\/links_create\s+api:abc12345\/links_create/);
+    // The leading slash on "/links_create" is stripped in the emitted path.
+    expect(out).not.toContain("/api:abc12345//links_create");
   });
 
   it("distinct verbs are preserved and rows are sorted by path", async () => {
     const out = await captureStdout(() => run(["paths", resolvedEntry]));
     const lines = out.trim().split("\n");
     expect(lines).toHaveLength(2);
-    // Sorted by (canonical, name): links.create before links.list.
-    expect(lines[0]).toContain("links.create");
-    expect(lines[1]).toContain("links.list");
+    // Sorted by (canonical, name): links_create before links_list.
+    expect(lines[0]).toContain("links_create");
+    expect(lines[1]).toContain("links_list");
   });
 
   it("`routes` is an alias producing identical output", async () => {
@@ -63,7 +63,7 @@ describe("sidestep paths", () => {
 
   it("errors with the export --lock fix when a canonical can't resolve", async () => {
     await expect(run(["paths", noCanonEntry])).rejects.toThrow(/export --lock/);
-    await expect(run(["paths", noCanonEntry])).rejects.toThrow(/links\.list/);
+    await expect(run(["paths", noCanonEntry])).rejects.toThrow(/links_list/);
   });
 
   it("resolves a group's canonical from the lock (no in-code canonical)", async () => {
@@ -74,7 +74,7 @@ describe("sidestep paths", () => {
     });
     try {
       const out = await captureStdout(() => run(["paths", noCanonEntry, `--lock=${lock}`]));
-      expect(out).toMatch(/GET\s+\/api:LockTok9\/links\.list\s+api:LockTok9\/links\.list/);
+      expect(out).toMatch(/GET\s+\/api:LockTok9\/links_list\s+api:LockTok9\/links_list/);
     } finally {
       rmSync(lock, { recursive: true, force: true });
     }

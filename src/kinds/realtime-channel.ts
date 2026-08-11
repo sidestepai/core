@@ -45,6 +45,7 @@ import {
   type IsStaticPath,
   type PathParamValues,
 } from "./path-params.js";
+import { assertStoredName } from "./stored-name.js";
 
 /** A reference to the owning realtime server: its `realtimeServer()` handle, or its name. */
 export type RealtimeServerRef = string | (Pick<RealtimeServerDef, "name"> & { guid?: string });
@@ -291,6 +292,9 @@ export function channelPathParams(path: string): string[] {
  */
 function assertChannelPathParams(def: Pick<RealtimeChannelDef, "name" | "input">): string[] {
   const context = `realtimeChannel "${def.name}"`;
+  // Same stored charset as a query name, and the same silent-NULL on violation
+  // (#227). It bites harder here: a channel name becomes a pub/sub key segment.
+  assertStoredName(context, def.name, "route");
   const params = parsePathParams(context, def.name);
   assertPathParamInputs(context, params, def.input);
   return params;

@@ -448,6 +448,12 @@ async function fetchPosts(): Promise<Post[]> {
 - **`query.toSearchParams(input)`** → the GET transport counterpart to `InferInput`:
   serialize an input map into a `URLSearchParams` (scalars stringify, arrays repeat the
   key, `null`/`undefined` are dropped) instead of hand-building `?id=…`.
+- **Endpoint names hold `A-Z a-z 0-9 _ - /` and `{}`** — nothing else, capped at 200 chars.
+  A `.` is the trap: Xano does not reject `name: "export.zip"`, it stores the endpoint with
+  an *empty* name, so it deploys clean and then 404s `Unable to locate request.` on every
+  request. `query()` throws instead. Name it `export_zip` or `export/zip` and set the file
+  extension in the response headers. Same rule for `realtimeChannel` and `tool` names;
+  `realtimeMessage` is narrower still (no `/` or `{}`).
 - **URL path params** → name the endpoint with `{param}` segments and declare an input per
   segment. `getPath({ params })` fills them, with the keys typed from the name itself:
 

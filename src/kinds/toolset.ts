@@ -40,6 +40,7 @@ import type { ObjectRef } from "../refs/guid.js";
 import { resolveAuthRef } from "../refs/auth.js";
 import type { AuthRef } from "../refs/auth.js";
 import { resolveCanonicalToken } from "./canonical.js";
+import { assertStoredName } from "./stored-name.js";
 
 // ---------- tool ----------
 
@@ -90,6 +91,9 @@ export interface ToolXdo {
 
 export function encodeTool(def: ToolDef): ToolXdo {
   if (!def.name) throw new Error("tool: `name` is required.");
+  // A tool name carries the same stored charset as a query's, and the same
+  // silent-NULL on violation (#227) — an unnamed tool is one no model can call.
+  assertStoredName(`tool "${def.name}"`, def.name, "route");
   return {
     name: def.name,
     description: def.description ?? "",

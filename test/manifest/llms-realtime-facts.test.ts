@@ -261,7 +261,14 @@ describe("def-shape signatures list every field", () => {
 // its datasource-clone constraint, which is the kind's one real trap. Exactly the
 // "legitimate new constraint" case above — the entry was already compressed from
 // 128 tokens over to 13 before raising.
-const DEF_SHAPES_CEILING = 7_650;
+//
+// Raised 7,650 → 7,800 for the stored-name charset (#227). A name outside
+// `A-Za-z0-9_-/{}` is not rejected by Xano — it saves the object with an EMPTY
+// name, which deploys clean and then 404s forever, reported nowhere. That is
+// unguessable and silent, so it is grounding the model cannot do without; it also
+// covers `realtimeChannel`/`tool`/`realtimeMessage` in one clause. Compressed
+// twice before raising (~150 tokens over → 92).
+const DEF_SHAPES_CEILING = 7_800;
 
 describe("object def shapes section stays lean", () => {
   it(`is under ${DEF_SHAPES_CEILING.toLocaleString()} tokens`, () => {
