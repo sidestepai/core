@@ -211,7 +211,7 @@ assertFacts("llms.txt Quickstart facts", QUICKSTART_FACTS);
  * fit. Ratchet down after a real reduction.
  */
 const DEPLOY_CEILING = 800;
-const GOTCHAS_CEILING = 3_250;
+const GOTCHAS_CEILING = 3_300;
 
 describe("prose sections stay lean", () => {
   it(`Deploy is under ${DEPLOY_CEILING.toLocaleString()} tokens`, () => {

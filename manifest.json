@@ -103,7 +103,7 @@
       {
         "name": "obj",
         "signature": "(fields: Record<string, Value | nested>) => Value",
-        "description": "Dynamic object value → tag \"const:expr2\" (a XanoScript object-literal expression). The dynamic sibling of c.obj: members may be inp/ref/auth/col/c.* values, nested records, or arrays. A value with filters, or a less-common tag (env/setting/output/…), is rejected. Use for e.g. s.ai.agent.run args."
+        "description": "Dynamic object value → tag \"const:expr2\" (an object-literal expression string). The dynamic sibling of c.obj: members may be inp/ref/auth/col values, env()/setting()/sys.*, c.now(), c.* constants, nested records, or arrays — and each member may carry a FILTER CHAIN (withFilters + fl.*), which renders as the expression pipe `$var.row|get:\"a.b\"`. That matters most for the null-safe drill: db.get binds null on a miss, so ref(path, { safe: true }) inside an obj() is the normal shape, not a workaround — you do NOT need a preceding s.set_var to hoist it. Still rejected: a filter ARGUMENT carrying its own chain (a trailing | binds to the whole value, not one argument), a DISABLED filter (an expression string cannot record that), and the output/response/toolset/reg tags — build those in a prior step and ref() them. Use for e.g. s.ai.agent.run args."
       },
       {
         "name": "ref",

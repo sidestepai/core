@@ -20,8 +20,21 @@
  * the stored one, emitting only on an exact match (the standing proof-carrying
  * rule). A parser bug therefore costs readability, never fidelity.
  */
-import { auth, c, col, inp, ref, type Value } from "../values/value.js";
+import {
+  auth,
+  c,
+  col,
+  env,
+  inp,
+  isTaggedValue,
+  ref,
+  setting,
+  sys,
+  withFilters,
+  type Value,
+} from "../values/value.js";
 import type { ObjInput, ObjMember } from "../values/obj.js";
+import { fl, FILTER_NAMES } from "../values/generated/filters.generated.js";
 import { call, lit, obj as objExpr, arr, type Expr } from "./print.js";
 
 /** A parsed member: what to print, and what to feed the real `obj()` to prove it. */
@@ -36,6 +49,27 @@ interface Parsed {
 const IDENT = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 /** A `$`-rooted reference path, e.g. `$input.user.id`. */
 const REFERENCE = /^\$(input|var|auth|db)((?:\.[A-Za-z0-9_$]+)*)$/;
+/**
+ * `$env.<name>` — a workspace env var, or a built-in request var when the name
+ * carries its own `$`. ONE segment only, which is all `obj()` emits: a setting's
+ * value is a plain name. A dotted drill like `$env.$http_headers.X-Request-Id`
+ * is legal upstream and declines here, falling back to `rawValue` exactly as
+ * every other out-of-grammar shape does.
+ */
+const SETTING = /^\$env\.(\$?[A-Za-z0-9_]+)$/;
+
+/**
+ * Built-in request vars, keyed by stored name back to their `sys.*` accessor.
+ *
+ * Derived by calling each accessor rather than restating the names, so it
+ * cannot drift as `sys` grows. Without it a pulled `$env.$remote_ip` decodes to
+ * `setting("$remote_ip")` — byte-identical, but the spelling the SDK's own docs
+ * steer authors away from, because `env("remote_ip")` sits one typo away and
+ * silently reads a different thing.
+ */
+const SYS_BY_NAME = new Map(
+  Object.entries(sys).map(([accessor, make]) => [make().value, accessor] as const),
+);
 
 /** A hand-rolled cursor — the grammar is small enough not to warrant a lexer. */
 class Cursor {
@@ -149,8 +183,99 @@ function parseReference(token: string): Parsed | null {
   }
 }
 
-/** One member: reference, scalar literal, nested record, or array. */
+/**
+ * One member, plus any filter chain riding it.
+ *
+ * The chain is postfix (`$var.row|get:"a.b"|add:1`), so it is parsed as a loop
+ * after the atom rather than folded into it — which is also how it binds: a
+ * trailing `|` applies to the whole value to its left, never to one filter
+ * argument. Arguments are therefore parsed with {@link parseAtom}, which cannot
+ * consume a `|`.
+ */
 function parseMember(cur: Cursor): Parsed | null {
+  const atom = parseAtom(cur);
+  if (!atom) return null;
+  if (cur.peek() !== "|") return atom;
+
+  // Everything from here on is a Value — `withFilters` has nothing to attach to
+  // a raw scalar, so a filtered literal is lifted to the constant `obj()` would
+  // have rendered it from. The PRINTED form has to be lifted in lockstep, or the
+  // emitted source calls `withFilters("hi", …)` on a bare string.
+  const lifted = liftToValue(atom);
+  if (!lifted) return null;
+  const expr = lifted.expr;
+  let built = lifted.built;
+  const symbols = [...lifted.symbols];
+  const filterExprs: Expr[] = [];
+
+  while (cur.eat("|")) {
+    const name = cur.take(/[A-Za-z0-9_]/);
+    // `FILTER_NAMES` is the authoritative membership list. An unknown name has
+    // no `fl.*` factory to build or print, so the whole parse declines.
+    if (name === "" || !FILTER_NAMES.includes(name)) return null;
+    const factory = (fl as Record<string, ((...a: unknown[]) => unknown) | undefined>)[name];
+    if (typeof factory !== "function") return null;
+
+    const argExprs: Expr[] = [];
+    const argBuilt: unknown[] = [];
+    while (cur.eat(":")) {
+      const arg = parseAtom(cur);
+      if (!arg) return null;
+      // `fl.*` takes a scalar or a Value; a record or array argument has no
+      // accepted spelling, so decline rather than guess one.
+      if (arg.built !== null && typeof arg.built === "object" && !isTaggedValue(arg.built)) {
+        return null;
+      }
+      argExprs.push(arg.expr);
+      argBuilt.push(arg.built);
+      symbols.push(...arg.symbols);
+    }
+    let filterValue: unknown;
+    try {
+      filterValue = factory(...argBuilt);
+    } catch {
+      return null;
+    }
+    built = withFilters(built, filterValue as never);
+    filterExprs.push(call(`fl.${name}`, ...argExprs));
+  }
+
+  return {
+    expr: call("withFilters", expr, ...filterExprs),
+    built,
+    symbols: [...symbols, "withFilters", "fl"],
+  };
+}
+
+/** A parsed member already narrowed to a {@link Value}, expression included. */
+interface LiftedValue {
+  readonly expr: Expr;
+  readonly built: Value;
+  readonly symbols: readonly string[];
+}
+
+/**
+ * Lift a raw scalar member to the constant `obj()` renders it from, so a filter
+ * chain has a {@link Value} to attach to — carrying the printed expression with
+ * it, since `withFilters` needs a real constructor call on both sides, not a
+ * bare literal. Returns null for a record or array, which `withFilters` cannot
+ * take.
+ */
+function liftToValue(parsed: Parsed): LiftedValue | null {
+  const m = parsed.built;
+  if (isTaggedValue(m)) return { expr: parsed.expr, built: m, symbols: parsed.symbols };
+  if (typeof m === "string") return { expr: call("c.text", lit(m)), built: c.text(m), symbols: ["c"] };
+  if (typeof m === "number") {
+    return Number.isInteger(m)
+      ? { expr: call("c.int", lit(m)), built: c.int(m), symbols: ["c"] }
+      : { expr: call("c.decimal", lit(m)), built: c.decimal(m), symbols: ["c"] };
+  }
+  if (typeof m === "boolean") return { expr: call("c.bool", lit(m)), built: c.bool(m), symbols: ["c"] };
+  return null;
+}
+
+/** One member ATOM — reference, scalar literal, nested record, or array. */
+function parseAtom(cur: Cursor): Parsed | null {
   const next = cur.peek();
   if (next === undefined) return null;
 
@@ -189,6 +314,25 @@ function parseMember(cur: Cursor): Parsed | null {
 
   const reference = parseReference(token);
   if (reference) return reference;
+
+  // The engine's native current-time constant. Narrowed to exactly `now`, which
+  // is the only value `c.now()` produces and the only one the value decoder
+  // accepts for this tag.
+  if (token === "now") return { expr: call("c.now"), built: c.now(), symbols: ["c"] };
+
+  const settingMatch = SETTING.exec(token);
+  if (settingMatch) {
+    const name = settingMatch[1]!;
+    const accessor = SYS_BY_NAME.get(name);
+    if (accessor) {
+      return { expr: call(`sys.${accessor}`), built: setting(name), symbols: ["sys"] };
+    }
+    // A `$`-prefixed name `sys` does not cover stays `setting()`; a plain one is
+    // a workspace env var, which is what `env()` is for.
+    return name.startsWith("$")
+      ? { expr: call("setting", lit(name)), built: setting(name), symbols: ["setting"] }
+      : { expr: call("env", lit(name)), built: env(name), symbols: ["env"] };
+  }
 
   if (token === "true" || token === "false") {
     const value = token === "true";
