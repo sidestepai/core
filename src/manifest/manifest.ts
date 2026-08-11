@@ -661,8 +661,9 @@ const STATEMENT_RESULTS: Record<string, { name: string; type: string; note?: str
   },
   "util.ip_lookup": {
     name: "as",
-    type: "object",
-    note: "a NESTED object, not flat fields — and city/region names are commonly null even for a routable public address, so treat every level as optional",
+    type: "IpLookupResult | null",
+    note:
+      "NESTED, not flat: { continent: {code,name}, country: {code,name}, region: {code,name}, city: {name}, postal: {code}, location: {latitude, longitude, tz, radius} }. Coordinates are ref(\"geo.location.latitude\"/\".longitude\"), place names ref(\"geo.city.name\"/\"geo.region.name\"/\"geo.country.name\"); radius is KILOMETRES. ⚠ Every leaf is nullable and region/city/postal commonly ARE null for a routable public address — that is a normal hit, not a failed lookup. `city` is an OBJECT, so a bare ref(\"geo.city\") into a text column fails on the object and { safe: true } does NOT help; drill to city.name with a fallback. The whole var is null for an unresolvable address",
   },
   // Clearly-typed declarative ops.
   "array.every": { name: "as", type: "boolean" },

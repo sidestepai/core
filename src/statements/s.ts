@@ -51,6 +51,7 @@ import {
   dbExternalQuery,
 } from "./special/db.js";
 import { apiRequest, streamFromRequest, webflowRequest } from "./special/api-request.js";
+import { ipLookup } from "./special/ip-lookup.js";
 import { microserviceRequest } from "./special/microservice.js";
 import { aiAgentRun, cloudJob, cloudJobAwait, cloudJobStatus } from "./special/ai-cloud.js";
 import {
@@ -161,5 +162,13 @@ export const s = {
   array: { ...generated.array, map: arrayMap, union: arrayUnion },
   expect: { ...generated.expect, to_throw: expectToThrow },
   security: { ...generated.security, create_auth_token: createAuthToken, create_guid: createGuid },
-  util: { ...generated.util, get_raw_input: getRawInput, get_input: getRawInput, post_process: postProcess },
+  util: {
+    ...generated.util,
+    get_raw_input: getRawInput,
+    get_input: getRawInput,
+    post_process: postProcess,
+    // Typed override of the generated factory: same bytes, plus the nested
+    // result shape a `ref` into the bound var has no other way to learn (#226).
+    ip_lookup: ipLookup,
+  },
 } as const;

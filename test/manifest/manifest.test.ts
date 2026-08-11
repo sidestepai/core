@@ -271,6 +271,25 @@ describe("manifest", () => {
     expect(bySurface.get("db.truncate")?.result).toBeUndefined();
   });
 
+  // #226: `util.ip_lookup` binds a NESTED record, and the flat guess an author
+  // makes from the signature resolves to null then fails against an unrelated
+  // column name. The descriptor is the only place that shape is written down —
+  // it must name every branch, the two traps (nullable leaves, `city` being an
+  // object `{ safe: true }` cannot rescue), and the units on `radius`.
+  it("util.ip_lookup's result descriptor spells out the whole nested shape (#226)", () => {
+    const r = new Map(m.statements.map((x) => [x.surface, x])).get("util.ip_lookup")?.result;
+    expect(r?.type).toBe("IpLookupResult | null");
+    for (const branch of ["continent", "country", "region", "city", "postal", "location"]) {
+      expect(r?.note).toContain(branch);
+    }
+    expect(r?.note).toContain("latitude");
+    expect(r?.note).toContain("longitude");
+    expect(r?.note).toMatch(/NESTED/);
+    expect(r?.note).toMatch(/KILOMETRES/);
+    expect(r?.note).toMatch(/safe: true.*NOT help/);
+    expect(r?.note).toMatch(/nullable/);
+  });
+
   it("renderLlmsTxt surfaces the result binding inline in the statement catalog (#145)", () => {
     const txt = renderLlmsTxt(m);
     expect(txt).toContain("s.security.check_password");

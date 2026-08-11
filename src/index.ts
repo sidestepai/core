@@ -154,6 +154,8 @@ export {
   createAuthToken,
   expectToThrow,
 } from "./statements/special/misc.js";
+export { ipLookup } from "./statements/special/ip-lookup.js";
+export type { IpLookupArgs, IpLookupResult } from "./statements/special/ip-lookup.js";
 export type {
   ArrayMapArgs,
   GetRawInputArgs,
