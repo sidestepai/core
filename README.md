@@ -1593,9 +1593,10 @@ runtime (SideStep only compiles), and generating engine-side numeric ids/timesta
 (Object guids and canonicals *are* handled — deterministically derived or frozen via
 `xano.lock`.)
 
-**Deferred (by design)** — folder auto-discovery, and the `workflow_test` / `service` /
-`vault` / `branch` payload sections. (Round-trip decompile is no longer deferred: that is
-`sidestep codegen`, above.) `InferResponse`
+**Deferred (by design)** — folder auto-discovery, and the `service` / `vault` / `branch`
+payload sections. (Round-trip decompile is no longer deferred: that is
+`sidestep codegen`, above; nor is `workflow_test` — it is a first-class kind, see
+`workflowTest` above.) `InferResponse`
 auto-derivation covers the object-literal and single-`db`-variable cases (matching the engine's
 static walk); multi-hop tracing (a response variable produced inside control flow, `set_var`, or
 a nested function call) and addon/related-field keys resolve to `unknown` — declare
