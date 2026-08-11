@@ -736,7 +736,10 @@ realtimeMessage({
 The client side is derived too, the same way `query().getPath()` works — `chat.getUrl(BASE)`
 builds the socket URL (`wss://…/ws/<canonical>`, with a tenant base URL translated into the
 socket's `/ws/<tenant>:<canonical>` form) and `room.getChannel({ room_id: 42 })` builds the
-path a client joins. Both throw rather than guess.
+path a client joins. Both throw rather than guess. In a **browser bundle**, reach for the
+generated manifest's `socketUrl`/`channelPath` instead — same addresses, same checks, without
+importing the defs (see
+[The payoff: a type-safe frontend, for free](#the-payoff-a-type-safe-frontend-for-free)).
 
 Five traps account for most realtime bugs. The full wire protocol — every server frame,
 the presence roster shape, the at-least-once client contract — is in `llms.txt`.

@@ -208,15 +208,15 @@ Non-obvious authoring rules:
   (`writeBundle`/`writeArtifact`) and lock-file I/O import from `@sidestep/core/node`,
   NOT the browser-safe `@sidestep/core` entry (which a frontend can import query
   defs from to use `getPath()`/`InferInput` with no Node built-ins in the bundle).
-- **Client bundle size / tree-shaking.** `@sidestep/core` is `sideEffects: false`
-  and the `.` entry pulls no Node built-ins, so a bundler drops the SDK exports a
-  frontend doesn't use. But importing a query **def** for its `getPath()`/`verb`
-  also pulls whatever its `stack` references: the `s.*`/`c.*` factory CALLS run at
-  module load to BUILD the def, so they can't be tree-shaken away. Types are free.
+- **Client bundle size / tree-shaking.** `@sidestep/core` is `sideEffects: false` and pulls
+  no Node built-ins, so a bundler drops unused SDK exports. But importing a **def** for its
+  `getPath()`/`verb`/`getUrl()`/`getChannel()` also pulls whatever its `stack` references:
+  the `s.*`/`c.*` factory CALLS run at module load to BUILD it. Types are free.
   ⚠ A FLOOR — **~37 kB minified** for the FIRST def; splitting modules never removes it.
-  Fix: `sidestep routes <entry> --emit xano/routes.gen.ts`
-  emits every verb + resolved path as plain data importing NOTHING, still compile-checked
-  (`routePath("blog/{slug}", { slug })`) — a rename is a type error, not a 404.
+  Fix: `sidestep routes <entry> --emit xano/routes.gen.ts` — verbs, paths, and sockets as
+  plain data importing NOTHING, still compile-checked: `routePath("blog/{slug}", { slug })`,
+  `channelPath("rooms/{room_id}", { room_id })`, `socketUrl("chat", baseUrl)` (tenant base
+  URLs lifted to `wss://h/ws/<tenant>:<canonical>`). A rename is a type error, not a 404.
 - **Intra-workspace imports use `.js` specifiers** (`../tables/links.js`), not
   extensionless — the defs compile under `moduleResolution: bundler`. Add the `.js`.
 - **Verifying a def outside a bundler.** Inside a bundler (Vite/webpack) importing a
