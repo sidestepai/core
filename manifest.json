@@ -8962,7 +8962,7 @@
         },
         {
           "flag": "--emit <path>",
-          "description": "Write a generated route module there (plain data, no SDK import)"
+          "description": "Write a generated route + socket module there (plain data, no SDK import)"
         },
         {
           "flag": "--strict",
@@ -9054,7 +9054,7 @@
         },
         {
           "flag": "--emit <path>",
-          "description": "Write a generated route module there (plain data, no SDK import)"
+          "description": "Write a generated route + socket module there (plain data, no SDK import)"
         },
         {
           "flag": "--strict",
