@@ -1074,7 +1074,15 @@ auto-assigned `id`/`created_at`, `s.db.del` binds `null`, and `edit`/`del` **thr
 `s.db.query` mirrors the whole Xano query builder — `returnType`, `bind` joins, computed
 `eval` columns, `aggregate` groups, `distinct`, and the full operator set via
 `cmp(left, op, right)` with `and(...)`/`or(...)` for boolean groups. Signatures are in
-`llms.txt`; three behaviors are worth knowing here:
+`llms.txt`; four behaviors are worth knowing here:
+
+- **A join condition spells its two sides differently.** The joined table's column takes its
+  `as` alias; this query's own columns stay bare:
+  `bind: [{ table: users, as: "author", join: "left", where: expr(col("author_id"), "=", col("author.id")) }]`.
+  Qualifying your own column by the table's name (`col("posts.author_id")`) resolves only if
+  the query also sets `tableAlias` — the alias the qualifier is matched against. Unqualified,
+  the engine reads the operand as a text literal and fails at runtime with a parse error
+  naming the *other* operand, so `db.query` rejects that spelling at export instead.
 
 - **Paging changes the response shape.** Supplying `paging` with metadata on (the default)
   returns a **paging envelope** — `{ items, curPage, nextPage, prevPage, offset, perPage,
@@ -1089,7 +1097,8 @@ auto-assigned `id`/`created_at`, `s.db.del` binds `null`, and `edit`/`del` **thr
   `and(or(a, b), c)` or `or(a, and(b, c))` — each says exactly one thing in every context.
 - **An aggregate `name` is written bare** (`"status"`) and alias-qualified on emit; the
   engine rejects a bare column in an aggregate, and an already-dotted joined column passes
-  through.
+  through. The statement also declares the alias it qualified with, so the qualified name
+  resolves — nothing to set by hand.
 
 **Addons** enrich each returned row with related data, attached to the row-returning ops
 (`query`/`get`/`add`/`edit`/`patch`). An addon is a single table-bound db query rather than a

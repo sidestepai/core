@@ -48,8 +48,10 @@ export type SortDir = "asc" | "desc" | "rand";
 export interface SortDirective<C extends string = string> {
   /**
    * The column to sort by, or a dotted path qualifying one — a joined table's
-   * column, or the bound table's own `tableAlias` (`"comments.id"`), which is the
-   * form Xano's editor writes. See {@link QualifiedCol}.
+   * column (its `bind` alias), or the bound table's own `tableAlias`
+   * (`"comments.id"`), which is the form Xano's editor writes. A column of the
+   * bound table is BARE unless the query sets `tableAlias`; see
+   * {@link QualifiedCol}.
    */
   sortBy: QualifiedCol<C>;
   /** Direction (`"asc"` | `"desc"` | `"rand"`); defaults to ascending. */
@@ -165,8 +167,14 @@ export function encodeEval(evals?: readonly DbEval[]): unknown[] | undefined {
  * Alias-qualify aggregate `group`/`eval` column names. The engine rejects a bare
  * (dotless) column in an aggregate with `Unsupported param format - <col>`; a name
  * must be `<tableAlias>.<column>`. A bare author name is prefixed with the query's
- * primary table alias (`primaryAlias`, the table name — the default `dbo.as`); a
- * name the author already dotted (a `bind`ed/joined column) passes through. The
+ * primary table alias (`primaryAlias` — `tableAlias`, else the table name); a
+ * name the author already dotted (a `bind`ed/joined column) passes through.
+ *
+ * ⚠ Prefixing alone is not enough: the engine resolves the qualifier against the
+ * alias the STATEMENT declares, so `db.query` also emits `dbo.as` whenever this
+ * function adds a prefix — otherwise the qualified name fails at runtime with
+ * `Unsupported object reference - <alias>.<column>` (#213). The two are a pair;
+ * changing one without the other re-breaks the statement. The
  * result is guarded to a real `<alias>.<col>` shape so an unresolvable name fails
  * at export instead of 500ing at runtime. Used by both `db.query` aggregate and
  * the `cardinality:"aggregate"` addon.
