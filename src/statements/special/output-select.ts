@@ -55,6 +55,12 @@ export type OutputPath<C extends string> = QualifiedCol<C> | PagingEnvelopeField
  * The bare arm stays closed: a typo like `"emial"` is still an error, which is
  * where the union earns its keep. Nothing is given up by opening the dotted form,
  * because the engine has no other meaning for a dot at the root.
+ *
+ * ⚠ `comments.id` is only the bound table's own alias WHEN THE QUERY DECLARES ONE
+ * (`tableAlias`) — that is why Xano's editor can write it and a hand-authored
+ * query cannot. Without `tableAlias`, qualifying the bound table by its NAME does
+ * not resolve, and the query fails at runtime (issue #213); `db.query` checks the
+ * `where`/`sort`/`eval` paths for it at export. Bare is the form to reach for.
  */
 export type QualifiedCol<C extends string> = C | `${string}.${string}`;
 

@@ -305,6 +305,25 @@ type DbTableRef<T extends ObjectRef = ObjectRef> = T | null;
  * an optional `where` join condition (same search surface as the query). Joins
  * widen what `where`/`sort`/`eval` can address by dotted path (`"author.id"`);
  * they do not by themselves change the returned row shape.
+ *
+ * ⚠ **The two sides of a join condition are spelled differently** (issue #213).
+ * The JOINED column takes the dotted alias path; the query's OWN column stays
+ * BARE:
+ *
+ * ```ts
+ * s.db.query({
+ *   table: doc,                                   // columns of `doc` are bare
+ *   bind: [{ table: team, as: "team_row", join: "left",
+ *            where: expr(col("team"), "=", col("team_row.id")) }],
+ * })
+ * ```
+ *
+ * Qualifying your own column with the table's name (`col("doc.team")`) resolves
+ * only when the query also sets {@link DbQueryArgs.tableAlias} — the engine
+ * matches the qualifier against the alias the statement declares, and a query
+ * without `tableAlias` declares none. Unqualified, the engine treats the operand
+ * as a text literal and the request fails with `ParseError: Invalid value for
+ * param:"…"` naming the OTHER operand. Both spellings are checked at export.
  */
 export interface DbBind {
   /**
@@ -1630,6 +1649,81 @@ function encodeBind(binds?: readonly DbBind[]): unknown[] | undefined {
   });
 }
 
+/**
+ * Collect every `{tag:"col"}` operand path out of an ENCODED search tree
+ * (`{expression:[…]}`), including nested groups. Walking the encoded form rather
+ * than the authored nodes catches the raw-`Value` escape hatch too, which
+ * bypasses `expr()`/`cmp()` entirely.
+ */
+function collectColOperands(search: unknown, out: string[]): void {
+  if (search === null || typeof search !== "object") return;
+  if (Array.isArray(search)) {
+    for (const item of search) collectColOperands(item, out);
+    return;
+  }
+  const node = search as Record<string, unknown>;
+  if (node.tag === "col" && typeof node.operand === "string") out.push(node.operand);
+  for (const value of Object.values(node)) collectColOperands(value, out);
+}
+
+/**
+ * Reject a dotted column path whose alias prefix the ENGINE cannot resolve —
+ * issue #213.
+ *
+ * A `db.query` addresses columns three ways, and only two of them are dotted:
+ * a joined table's column takes its `bind` alias (`"team_row.id"`), an object
+ * column's sub-key takes the column name (`"meta.country"`), and the query's OWN
+ * columns are BARE (`"team"`). Qualifying a base-table column with the table's
+ * name — `"q_doc.team"`, the form the docs used to imply — resolves only when the
+ * query also declares an alias for that table (`tableAlias`, the engine's
+ * `context.dbo.as`). Without it the operand is not recognised as a column at all:
+ * the engine falls back to treating it as a text literal and the request dies
+ * with `ParseError: Invalid value for param:…` naming the OTHER operand, or with
+ * `Unsupported parameter reference`. Both are opaque, both are runtime-only, and
+ * everything needed to catch them is known here at export.
+ *
+ * Only runs against a typed `table()` handle: the exception for an object
+ * column's sub-key needs the column list, and without it a legitimate
+ * `"meta.country"` is indistinguishable from a bad alias.
+ */
+function assertResolvableColumnPaths(
+  table: ObjectRef | null,
+  tableAlias: string | undefined,
+  bindAliases: readonly string[],
+  paths: readonly { path: string; surface: string }[],
+): void {
+  if (table === null || typeof table === "string" || !("schema" in table)) return;
+  const def = table as TableDef;
+  const columns = new Set(tableColumns(def).map((col) => col.name));
+  const known = new Set<string>(bindAliases);
+  if (tableAlias !== undefined) known.add(tableAlias);
+
+  for (const { path, surface } of paths) {
+    const dot = path.indexOf(".");
+    if (dot <= 0) continue;
+    const prefix = path.slice(0, dot);
+    if (known.has(prefix) || columns.has(prefix)) continue;
+    // The #213 trap specifically: the author qualified with the table's own name.
+    // It reads as the obvious spelling and is the one the docs implied, so it
+    // gets its own message naming both working forms.
+    if (prefix === def.name) {
+      throw new Error(
+        `db.query ${surface}: "${path}" — a column of "${def.name}" qualified by the table's ` +
+          `own name only resolves when the query declares an alias for that table. Either drop ` +
+          `the qualifier (\`${path.slice(dot + 1)}\`) or add \`tableAlias: "${def.name}"\` to the ` +
+          `db.query. (A JOINED column is different: it keeps its bind alias, e.g. ` +
+          `\`col("${bindAliases[0] ?? "<join alias>"}.id")\`.)`,
+      );
+    }
+    throw new Error(
+      `db.query ${surface}: "${path}" — "${prefix}" is not a resolvable alias. A dotted path ` +
+        `must start with a join's \`as\` alias${bindAliases.length ? ` (${bindAliases.map((a) => `"${a}"`).join(", ")})` : " (this query has no joins)"}, ` +
+        `the query's own \`tableAlias\`, or an object column of "${def.name}". Bare column ` +
+        `names address "${def.name}" directly.`,
+    );
+  }
+}
+
 function assertNoEvalShadow(table: ObjectRef, evals?: readonly DbEval[]): void {
   if (!evals?.length) return;
   if (typeof table === "string" || !("schema" in table)) return;
@@ -1856,16 +1950,47 @@ export function dbQuery<
     assertNoEvalShadow(args.table, args.eval);
   }
   const returnType: DbReturnType = args.returnType ?? "list";
+  const tableName =
+    args.table === null ? "" : typeof args.table === "string" ? args.table : args.table.name;
   // The primary table alias (the default `dbo.as`) — used to qualify aggregate
   // group/eval column names, which the engine requires as `<alias>.<column>`.
-  const primaryAlias =
-    args.tableAlias ??
-    (args.table === null ? "" : typeof args.table === "string" ? args.table : args.table.name);
+  const primaryAlias = args.tableAlias ?? tableName;
   const context: Record<string, unknown> = { dbo: dboBinding(args.table, args.tableAlias) };
   const search = encodeSearch(args.where, args.additionalWhere);
   if (search !== undefined) context.search = search;
   const binds = encodeBind(args.bind);
   if (binds) context.bind = binds;
+  // Every surface that takes a column path, checked against the aliases this
+  // statement actually declares. Runs after `encodeBind` so the join aliases are
+  // the resolved ones (`as` defaults to the table name).
+  {
+    const bindAliases = (binds ?? []).map(
+      (b) => (b as { dbo: { as: string } }).dbo.as,
+    );
+    const paths: { path: string; surface: string }[] = [];
+    const push = (surface: string, values: string[]): void => {
+      for (const path of values) paths.push({ path, surface });
+    };
+    const searchPaths: string[] = [];
+    collectColOperands(search, searchPaths);
+    push("where", searchPaths);
+    for (const b of binds ?? []) {
+      const bindPaths: string[] = [];
+      collectColOperands((b as { search?: unknown }).search, bindPaths);
+      push(`bind "${(b as { dbo: { as: string } }).dbo.as}" where`, bindPaths);
+    }
+    push("sort", (args.sort ?? []).map((sort) => sort.sortBy));
+    push("eval", (args.eval ?? []).map((e) => e.name));
+    // The AGGREGATE block is deliberately not checked. Its group/eval names are
+    // qualified by this SDK rather than by the author (`qualifyAggregateEvals` —
+    // the engine rejects a bare name there), and the engine PERSISTS that
+    // table-name-qualified form with no `dbo.as` alongside it: see the
+    // engine-captured `db_query_aggregate` conformance fixture. Whatever the
+    // aggregate path resolves those against, it is not the rule this guard
+    // encodes, and a guard that contradicts captured engine bytes would block
+    // pulling a real workspace.
+    assertResolvableColumnPaths(args.table, args.tableAlias, bindAliases, paths);
+  }
   const evals = encodeEval(args.eval);
   if (evals) context.eval = evals;
   // Row lock rides `context.lock` as a tagged value (`{value, tag, filters}`),

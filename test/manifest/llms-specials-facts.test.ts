@@ -179,8 +179,15 @@ describe("s.db.query signature is complete", () => {
  * defaulting contract across five fields. That is API growth, not prose
  * creeping back: the entry was cut three times first, and every sentence left
  * changes how the call gets written. Re-measure before raising it again.
+ *
+ * Raised 6,050 → 6,150 for the `db.query` join-operand rule (#213). The block
+ * previously said only "joined columns take a dotted path", which reads as
+ * permission to dot BOTH sides of a join condition — the one spelling that does
+ * not run, and the reason two apps could not use joins at all. The replacement
+ * is two lines: the rule, and a complete working `bind`. Both are load-bearing;
+ * the entry was condensed twice before the ceiling moved.
  */
-const SPECIALS_CEILING = 6_050;
+const SPECIALS_CEILING = 6_150;
 
 describe("Specials block stays lean", () => {
   it(`is under ${SPECIALS_CEILING.toLocaleString()} tokens`, () => {

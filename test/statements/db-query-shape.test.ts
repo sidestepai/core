@@ -645,7 +645,9 @@ describe("db.query (mvp:dbo_view) emit shape", () => {
     const enc = encodeStatement(
       dbQuery({
         table: note,
-        bind: [{ table: note, as: "note2", join: "left", where: cmp(col("note.user_id"), "=", col("note2.user_id")) }],
+        // The base table's own column is BARE — qualifying it with the table
+        // name needs `tableAlias` (see the #213 cases below).
+        bind: [{ table: note, as: "note2", join: "left", where: cmp(col("user_id"), "=", col("note2.user_id")) }],
       }),
     );
     const bind = (enc.context as { bind: { dbo: { as: string; id: unknown }; join: string; search: { expression: unknown[] } }[] }).bind;
@@ -660,6 +662,67 @@ describe("db.query (mvp:dbo_view) emit shape", () => {
     expect(bind[0]!.join).toBe("inner");
     expect(bind[0]!.dbo.as).toBe("note");
     expect(bind[0]).not.toHaveProperty("search");
+  });
+
+  // --- Unresolvable column paths (#213) ---
+  //
+  // Live-verified against an ephemeral tenant: `<table-name>.<column>` is not
+  // recognised as a column unless the query also sets `dbo.as`. The engine then
+  // treats the operand as a text literal and the request dies with
+  // `ParseError: Invalid value for param:…` naming the OTHER operand — an error
+  // that points at the wrong thing, from a form the docs used to recommend.
+
+  it("a bind where qualified by the table's own name throws, naming both fixes", () => {
+    expect(() =>
+      dbQuery({
+        table: note,
+        bind: [{ table: note, as: "note2", where: cmp(col("note2.user_id"), "=", col("note.user_id")) }],
+      }),
+    ).toThrow(/qualified by the table's own name.*tableAlias: "note"/s);
+  });
+
+  it("the same path is fine once the query declares that alias", () => {
+    const enc = encodeStatement(
+      dbQuery({
+        table: note,
+        tableAlias: "note",
+        bind: [{ table: note, as: "note2", where: cmp(col("note2.user_id"), "=", col("note.user_id")) }],
+      }),
+    );
+    expect((enc.context as { dbo: { as: string } }).dbo.as).toBe("note");
+  });
+
+  it("a bind where addressing the JOIN alias and a bare base column is accepted", () => {
+    expect(() =>
+      dbQuery({
+        table: note,
+        bind: [{ table: note, as: "note2", where: cmp(col("user_id"), "=", col("note2.user_id")) }],
+      }),
+    ).not.toThrow();
+  });
+
+  it("a dotted path naming no alias at all throws and lists the joins", () => {
+    expect(() =>
+      dbQuery({
+        table: note,
+        bind: [{ table: note, as: "note2" }],
+        where: cmp(col("nope.user_id"), "=", c.int(1)),
+      }),
+    ).toThrow(/"nope" is not a resolvable alias.*"note2"/s);
+  });
+
+  it("an object column's sub-key is not mistaken for an alias", () => {
+    // `title` is a real column, so `title.x` is a sub-key drill, not a bad alias.
+    expect(() => dbQuery({ table: note, where: cmp(col("title.x"), "=", c.int(1)) })).not.toThrow();
+  });
+
+  it("sort and eval are checked on the same rule", () => {
+    expect(() => dbQuery({ table: note, sort: [{ sortBy: "note.title" }] })).toThrow(/tableAlias/);
+    expect(() => dbQuery({ table: note, eval: [{ name: "note.title", as: "t2" }] })).toThrow(/tableAlias/);
+  });
+
+  it("an untyped table is left alone — no column list, so no way to tell a sub-key from an alias", () => {
+    expect(() => dbQuery({ table: "note", where: cmp(col("note.title"), "=", c.int(1)) })).not.toThrow();
   });
 
   it("two binds resolving to the same alias throw", () => {

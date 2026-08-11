@@ -48,8 +48,10 @@ export type SortDir = "asc" | "desc" | "rand";
 export interface SortDirective<C extends string = string> {
   /**
    * The column to sort by, or a dotted path qualifying one — a joined table's
-   * column, or the bound table's own `tableAlias` (`"comments.id"`), which is the
-   * form Xano's editor writes. See {@link QualifiedCol}.
+   * column (its `bind` alias), or the bound table's own `tableAlias`
+   * (`"comments.id"`), which is the form Xano's editor writes. A column of the
+   * bound table is BARE unless the query sets `tableAlias`; see
+   * {@link QualifiedCol}.
    */
   sortBy: QualifiedCol<C>;
   /** Direction (`"asc"` | `"desc"` | `"rand"`); defaults to ascending. */
