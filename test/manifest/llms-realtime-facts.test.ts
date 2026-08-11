@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { measureLlms } from "../../scripts/measure-llms.js";
+import { claimHash, evidenceProblems } from "./helpers/claims.js";
+import type { Evidence, VerifiedFact } from "./helpers/claims.js";
 
 /**
  * Fact inventory for the realtime + object-def-shape grounding in `llms.txt`.
@@ -24,8 +26,16 @@ import { measureLlms } from "../../scripts/measure-llms.js";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const llms = readFileSync(join(ROOT, "llms.txt"), "utf8");
 
-/** All patterns must match somewhere in the doc for the fact to count as present. */
-type Fact = { name: string; needs: RegExp[] };
+/**
+ * All patterns must match somewhere in the doc for the fact to count as present.
+ *
+ * `evidence` records what ESTABLISHED the claim, and is bound to the claim's
+ * exact wording by a hash — see `helpers/claims.ts` for why presence alone was
+ * not enough. It is optional only because most of this inventory predates the
+ * mechanism; the roster below ratchets coverage upward so it cannot quietly
+ * shrink.
+ */
+type Fact = { name: string; needs: RegExp[]; evidence?: Evidence };
 
 const SILENT_FAILURES: Fact[] = [
   {
@@ -53,14 +63,32 @@ const SILENT_FAILURES: Fact[] = [
     // comment reads "a join gate that cannot answer must NOT admit".
     name: "a gating action DENIES on a crash (the gate is seeded with a deny)",
     needs: [/\bCRASH\b/i, /\bDENIES\b/i],
+    evidence: {
+      kind: "engine-source",
+      checked: "2026-08-11",
+      note: "read both gate paths: each seeds a deny decision before running the stack and keeps it in the catch; the connect path additionally sends an error frame and closes 4401",
+      claim: "cc26b026",
+    },
   },
   {
     name: "gating is OPT-IN — no trigger means no gate at all",
     needs: [/OPT-IN/i, /no `?connect`? trigger/i],
+    evidence: {
+      kind: "engine-source",
+      checked: "2026-08-11",
+      note: "the gate block runs only when the object declares the action; with none declared the transport joins/connects without consulting a stack",
+      claim: "36470fa1",
+    },
   },
   {
     name: "join/leave bind the channel's path params, so inp() resolves there",
     needs: [/bind the channel's typed path params|binds? the channel's typed path params/i, /inp\(/],
+    evidence: {
+      kind: "engine-source",
+      checked: "2026-08-11",
+      note: "both lifecycle paths merge the resolved path params into the trigger event so the stack reads them as inputs; a server-scoped connect has no channel and so no params",
+      claim: "1d8a532c",
+    },
   },
   {
     name: "a message handler that crashes broadcasts the original unvalidated payload",
@@ -241,5 +269,65 @@ describe("object def shapes section stays lean", () => {
     const section = m.sections.find((s) => s.title === "Object def shapes");
     expect(section, "no `## Object def shapes` section").toBeDefined();
     expect(section!.tokens).toBeLessThan(DEF_SHAPES_CEILING);
+  });
+});
+
+/**
+ * U18 — the claim guard.
+ *
+ * Not "does a live-behavioral claim have a test": the fail-open claim above HAD
+ * one, passed for two weeks, and was false the whole time, because the test
+ * checked the sentence was PRESENT. What this enforces instead is that a fact
+ * carrying evidence stays bound to the wording that evidence was gathered for —
+ * reword it and the hash moves, which fails until someone re-verifies.
+ *
+ * Evidence is optional because most of this inventory predates the mechanism.
+ * The roster below is a RATCHET: it names every fact that carries evidence, so
+ * coverage can only grow, and dropping one is a visible edit rather than a
+ * silent regression.
+ */
+describe("documented claims carry their evidence", () => {
+  const all: Fact[] = [...SILENT_FAILURES, ...SHAPES];
+
+  /** Facts whose evidence has been gathered. Add to this list; never shorten it. */
+  const EVIDENCED = [
+    "a gating action DENIES on a crash (the gate is seeded with a deny)",
+    "gating is OPT-IN — no trigger means no gate at all",
+    "join/leave bind the channel's path params, so inp() resolves there",
+  ];
+
+  it("keeps every evidenced fact bound to the wording it was verified for", () => {
+    const problems = all
+      .filter((f) => f.evidence !== undefined)
+      .flatMap((f) => evidenceProblems(f as VerifiedFact));
+    expect(problems, problems.join("\n")).toEqual([]);
+  });
+
+  it("ratchets coverage — an evidenced fact never silently loses its evidence", () => {
+    const carrying = all.filter((f) => f.evidence !== undefined).map((f) => f.name).sort();
+    for (const name of EVIDENCED) {
+      expect(carrying, `"${name}" lost its evidence — re-verify rather than deleting`).toContain(
+        name,
+      );
+    }
+  });
+
+  it("names an evidenced fact in the roster, so the list cannot drift", () => {
+    // The other direction: evidence added without registering it here would not
+    // be protected by the ratchet above.
+    for (const f of all) {
+      if (f.evidence === undefined) continue;
+      expect(EVIDENCED, `"${f.name}" carries evidence but is missing from EVIDENCED`).toContain(
+        f.name,
+      );
+    }
+  });
+
+  it("reports the hash a fact's evidence must carry", () => {
+    // Not an assertion so much as the tool: when a claim changes, this is where
+    // the new hash comes from, and re-running it is the prompt to re-verify.
+    for (const f of all.filter((x) => x.evidence !== undefined)) {
+      expect(claimHash(f)).toMatch(/^[0-9a-f]{8}$/);
+    }
   });
 });
