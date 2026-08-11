@@ -726,9 +726,14 @@ path a client joins. Both throw rather than guess.
 Five traps account for most realtime bugs. The full wire protocol — every server frame,
 the presence roster shape, the at-least-once client contract — is in `llms.txt`.
 
-- **An empty return denies.** `connect` and `join` are gates: return `{ allowed: true }` or
-  any truthy value to admit. A stack that falls through, or a gating trigger with no
-  `response`, refuses everyone. A *crash* does the opposite — gating fails **open**.
+- **An empty return denies, and so does a crash.** `connect` and `join` are gates: return
+  `{ allowed: true }` or any truthy value to admit. A stack that falls through, or a gating
+  trigger with no `response`, refuses everyone — and a raise refuses too, because the gate is
+  seeded with a deny it keeps when the stack throws. Both failure modes lock the door, so the
+  risk to plan for is a self-inflicted lockout, not a breach: guard every drill inside a gate
+  with `ref(path, { safe: true })`, since `db.get` binds `null` on a miss. `export()` warns on
+  the missing `response`; nothing can warn about the raise. Gating is opt-in — a server with
+  no `connect` trigger admits everyone.
 - **Only `null` drops a message.** In a `deliver` trigger (per recipient) and in a message
   handler, `false`/`0`/`""` all deliver the message unchanged, and a crash broadcasts the
   sender's original unvalidated payload. Return `null` to suppress. So a redaction check
@@ -943,7 +948,7 @@ inheriting: query / task / tool capture **on**; function / trigger / middleware 
 ```ts
 query({ name: "get_user", verb: "GET", history: 100 });   // capture, depth cap 100
 apiGroup({ name: "blog", history: false });               // default for its queries
-workspaceConfig({ name: "my-app", history: { query: 100, trigger: "all" } });
+workspaceConfig({ history: { query: 100, trigger: "all" } });  // name inherited from workspace("…")
 ```
 
 **Workspace environment variables** — author them as a name→value map on the workspace
@@ -1100,6 +1105,13 @@ sources.
   (`inp`/`ref`/`auth`/`c.*`) is a compile error. For a computed object — a response, or an
   `api.request` `params` — use a record of values (`{ count: ref("count") }`). For a dynamic
   object argument use `obj({...})`, which builds a checked expression.
+- **An `obj({...})` member may carry a filter chain.** That matters most for the null-safe
+  drill: `db.get` binds `null` on a miss, so `obj({ city: ref("row.address.city", { safe: true }) })`
+  is the normal shape — no per-member `s.set_var` to hoist it out. `c.now()`, `env()` and
+  `sys.*()` are members too.
+- **A bare scalar works in any `fl.*` argument.** `fl.get("a.b", 0)` encodes identically to
+  `fl.get(c.text("a.b"), c.int(0))`; strings, numbers and booleans are all wrapped for you.
+  Objects and arrays still need `c.obj`/`c.array`.
 - **`col()` does not resolve to a stored value inside a `db.edit` `row`.** To
   read-modify-write a column — incrementing a counter — `db.get` the row first and pipe its
   bound value through a filter. `col()` evaluates to `null` there, so `fl.add(1)` computes

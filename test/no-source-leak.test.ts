@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+
+/** The branch a feature branch is measured against. */
+const DEFAULT_BRANCH = "main";
 import { join } from "node:path";
 import { sourceLeaks } from "./helpers/source-leak.js";
 
@@ -65,6 +69,42 @@ describe("no Xano source-internal naming (CLAUDE.md R10)", () => {
       });
     }
     expect(leaks, `source-internal naming found:\n${leaks.join("\n")}`).toEqual([]);
+  });
+
+  /**
+   * COMMIT MESSAGES, not just files.
+   *
+   * The file scan is not the whole exposure: a commit message is published the
+   * moment the branch is pushed, and it is the surface most likely to name an
+   * engine internal, because that is exactly what a "why I did this" paragraph
+   * wants to cite. Four commits on one branch had to be rewritten before push
+   * for precisely that, which is what this closes.
+   *
+   * Skipped rather than failed when there is no merge-base to diff against — a
+   * shallow CI clone has no default branch locally, and a guard that fails on
+   * checkout topology teaches people to disable it.
+   */
+  it("keeps engine internals out of this branch's commit messages", () => {
+    let log: string;
+    try {
+      const base = execFileSync("git", ["merge-base", "HEAD", DEFAULT_BRANCH], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      }).trim();
+      log = execFileSync("git", ["log", "--format=%B", `${base}..HEAD`], { encoding: "utf8" });
+    } catch {
+      return; // no merge-base (shallow clone, or the default branch is not local)
+    }
+    const leaks: string[] = [];
+    log.split("\n").forEach((line, i) => {
+      for (const pattern of sourceLeaks(line)) {
+        leaks.push(`commit message line ${i + 1}  /${pattern}/  ${line.trim()}`);
+      }
+    });
+    expect(
+      leaks,
+      `source-internal naming in a commit message — rewrite before pushing:\n${leaks.join("\n")}`,
+    ).toEqual([]);
   });
 
   it("still allows the wire format and public URL paths", () => {
