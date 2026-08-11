@@ -972,9 +972,20 @@ async function runPaths(args: ParsedArgs): Promise<void> {
     throw new Error(`Module "${file}" must default-export a Xano registry for \`paths\`.`);
   }
   const bundle = def.export();
-  const payload = bundle.payload as { query?: unknown[]; app?: unknown[] };
+  const payload = bundle.payload as {
+    query?: unknown[];
+    app?: unknown[];
+    realtime_server?: unknown[];
+    channel?: unknown[];
+  };
   const queries = (payload.query ?? []) as Array<{ name: string; verb: HttpVerb; app?: { id?: string } }>;
   const apps = (payload.app ?? []) as Array<{ name?: string; guid?: string; canonical?: string }>;
+  const realtimeServers = (payload.realtime_server ?? []) as Array<{
+    name?: string;
+    guid?: string;
+    canonical?: string;
+  }>;
+  const channels = (payload.channel ?? []) as Array<{ name?: string; server?: { id?: string } }>;
 
   // guid → resolved canonical: an in-code `apiGroup({ canonical })` (already in
   // the payload) wins; otherwise the lock's frozen token, keyed by group name.
@@ -988,7 +999,9 @@ async function runPaths(args: ParsedArgs): Promise<void> {
     if (resolved) canonicalByGuid.set(a.guid, resolved);
   }
 
-  if (queries.length === 0) {
+  // A realtime-only workspace has no routes to print but still has a manifest
+  // worth emitting (its socket addresses), so only the printing path is empty.
+  if (queries.length === 0 && !(args.emit !== undefined && realtimeServers.length > 0)) {
     info("No API queries registered in this workspace.");
     return;
   }
@@ -1010,12 +1023,68 @@ async function runPaths(args: ParsedArgs): Promise<void> {
   // manifest missing routes is worse than no manifest, because the gap is
   // invisible until a call site reaches for a name that isn't there.
   if (args.emit !== undefined) {
+    // The realtime half (issue #233): a socket address is derived from the same
+    // kind of canonical, resolved the same read-only way. Collected only for
+    // `--emit` — the printing path lists HTTP routes and is left as it was.
+    const serverNameByGuid = new Map<string, string>();
+    const serverRows = realtimeServers.flatMap((s) => {
+      if (typeof s.name !== "string" || s.name === "") return [];
+      if (typeof s.guid === "string") serverNameByGuid.set(s.guid, s.name);
+      const inCode = typeof s.canonical === "string" && s.canonical !== "" ? s.canonical : undefined;
+      const locked = lockModel?.objects[lockKey("realtime_server", s.name)]?.canonical;
+      return [{ name: s.name, canonical: inCode ?? locked }];
+    });
+    // An unresolved REALTIME server is a warning, not a failure — deliberately
+    // unlike an unresolved api group above. A manifest missing a route is worse
+    // than no manifest because routes are what the file is for; a workspace that
+    // merely CONTAINS realtime should still get its HTTP half, and a socket
+    // address nobody could resolve is better left out than guessed at. What is
+    // dropped is named, and reaching for a dropped server or channel is a
+    // compile error at the call site, never a wrong address at runtime.
+    const describable = new Set(serverRows.filter((s) => s.canonical).map((s) => s.name));
+    const unresolvedServers = serverRows.filter((s) => !s.canonical);
+    const channelRows = channels.flatMap((c) => {
+      if (typeof c.name !== "string" || c.name === "") return [];
+      const server = c.server?.id ? serverNameByGuid.get(c.server.id) : undefined;
+      // Drop the channels of a server that was left out — their socket address
+      // is exactly what could not be resolved, and the warning above names it.
+      // (A channel pointing at a server this workspace never registered cannot
+      // reach here: `export()` refuses that bundle outright.)
+      if (server === undefined || !describable.has(server)) return [];
+      return [{ name: c.name, server }];
+    });
+    if (unresolvedServers.length > 0) {
+      warn(
+        `${args.emit}: leaving out ${unresolvedServers.length} realtime server(s) — ` +
+          `${unresolvedServers.map((s) => `"${s.name}"`).join(", ")} — whose canonical URL token ` +
+          `resolves nowhere, along with their channels. Set an explicit ` +
+          `\`realtimeServer({ canonical })\`, or run \`sidestep export --lock\` once (it mints a ` +
+          `unique canonical and freezes it in xano.lock) beside the entry, then re-run to include them.`,
+      );
+    }
+
+    const describableServers = serverRows.flatMap((s) =>
+      s.canonical ? [{ name: s.name, canonical: s.canonical }] : [],
+    );
+    if (resolved.length === 0 && describableServers.length === 0) {
+      // Everything was dropped by the warnings above; a file exporting nothing
+      // is worse than none, and the warnings already say what to fix.
+      info(`Nothing to write to ${args.emit} yet.`);
+      return;
+    }
+
     if (unresolved.length === 0) {
       const { renderRouteManifest } = await import("./routes-manifest.js");
       const source = renderRouteManifest(
         resolved.map((r) => ({ name: r.name, verb: r.verb, canonical: r.canonical! })),
+        describableServers.length > 0
+          ? { servers: describableServers, channels: channelRows }
+          : undefined,
       );
-      const count = resolved.length === 1 ? "1 route" : `${resolved.length} routes`;
+      const routeCount = resolved.length === 1 ? "1 route" : `${resolved.length} routes`;
+      const channelCount =
+        channelRows.length === 1 ? "1 channel" : `${channelRows.length} channels`;
+      const count = describableServers.length > 0 ? `${routeCount}, ${channelCount}` : routeCount;
       // `--check` is the CI guard. A generated manifest that is never
       // regenerated rots exactly like the hand-typed ROUTES table it replaces —
       // the strings keep compiling while the backend has moved.

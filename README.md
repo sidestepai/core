@@ -574,6 +574,21 @@ import { routePath, ROUTES } from "../xano/routes.gen";
 fetch(BASE + routePath("blog/{slug}", { slug }), { method: ROUTES["blog/{slug}"].verb });
 ```
 
+Realtime is in the same file when the workspace has any: `socketUrl(server, baseUrl)` for the
+websocket URL and `channelPath(channel, params)` for the path a frame's `channel` field takes,
+both keyed and `{param}`-checked exactly like the routes. `socketUrl` is the equivalent of
+`realtimeServer().getUrl()` down to the tenant rule — a base URL that names a tenant
+(`https://host/tenant/ab-cd`, what deploy injects as `window.XANO_HOST`) is rewritten to the
+socket's own `wss://host/ws/ab-cd:<canonical>` form, which is the one address a frontend has no
+way to reconstruct:
+
+```ts
+import { socketUrl, channelPath } from "../xano/routes.gen";
+
+const ws = new WebSocket(socketUrl("chat", window.XANO_HOST), token);
+ws.send(JSON.stringify({ action: "join", channel: channelPath("rooms/{room_id}", { room_id }) }));
+```
+
 Add `--strict` in CI to fail when the committed manifest is out of date. A hand-typed
 `ROUTES` table is the option that gives up both the bundle saving and the rename safety.
 
@@ -721,7 +736,10 @@ realtimeMessage({
 The client side is derived too, the same way `query().getPath()` works — `chat.getUrl(BASE)`
 builds the socket URL (`wss://…/ws/<canonical>`, with a tenant base URL translated into the
 socket's `/ws/<tenant>:<canonical>` form) and `room.getChannel({ room_id: 42 })` builds the
-path a client joins. Both throw rather than guess.
+path a client joins. Both throw rather than guess. In a **browser bundle**, reach for the
+generated manifest's `socketUrl`/`channelPath` instead — same addresses, same checks, without
+importing the defs (see
+[The payoff: a type-safe frontend, for free](#the-payoff-a-type-safe-frontend-for-free)).
 
 Five traps account for most realtime bugs. The full wire protocol — every server frame,
 the presence roster shape, the at-least-once client contract — is in `llms.txt`.

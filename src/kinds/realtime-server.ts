@@ -302,6 +302,13 @@ export type RealtimeServerHandle = RealtimeServerDef & {
    * resolves that tenant by hostname, but the websocket tier only ever reads the
    * connection hash — so pass `{ tenant }` explicitly there.
    *
+   * IN A BROWSER BUNDLE, prefer the generated manifest: importing this def for
+   * its `getUrl()` pulls the SDK runtime in with it (the same ~37 kB floor a
+   * query def costs — the factory CALLS that build the def run at module load).
+   * `sidestep routes <entry> --emit xano/routes.gen.ts` writes the identical
+   * address, tenant lift included, as `socketUrl("<server>", baseUrl)` in a file
+   * that imports nothing.
+   *
    * `/ws` is the INSTANCE INGRESS's routing segment, stripped before the
    * websocket tier sees the path — the tier reads whatever remains, whole, as
    * the connection hash. That matters in exactly one case: a direct dial at a

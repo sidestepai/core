@@ -313,6 +313,10 @@ export type RealtimeChannelHandle<
      * Throws on a missing, empty, or unknown param, and on a value containing
      * `/` (which would fabricate a path segment and silently join a different
      * channel).
+     *
+     * IN A BROWSER BUNDLE, prefer the generated manifest's `channelPath()`
+     * (`sidestep routes <entry> --emit`): identical output and the same
+     * compile-time param checking, in a file that imports no SDK runtime.
      */
     getChannel: IsStaticPath<N> extends true
       ? (params?: Record<string, never>) => string

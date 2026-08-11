@@ -123,7 +123,7 @@ export const FLAGS = {
   "static-env": { spec: "--static-env KEY=VALUE", summary: "Public config baked in as window.<KEY> (repeatable; never secrets)" },
   emit: {
     spec: "--emit <path>",
-    summary: "Write a generated route module there (plain data, no SDK import)",
+    summary: "Write a generated route + socket module there (plain data, no SDK import)",
   },
   "static-host": { spec: "--static-host <name>", summary: "Static-host name to deploy to (default: default)" },
   "no-verify": { spec: "--no-verify", summary: "Skip the post-deploy liveness checks (static host, microservices)" },
