@@ -13,6 +13,7 @@
  * the browser-safe `export()` — that's what keeps seed VALUES out of any frontend
  * bundle (a table def's `seed` may be a deferred thunk resolved only here).
  */
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { TableDef, ColumnDef, SeedRow, SeedSource } from "../kinds/table.js";
@@ -249,41 +250,62 @@ export function coerceSeedRows(
     }
     return out;
   });
-  assignIntPrimaryKeys(tableName, columns, coerced);
+  assignPrimaryKeys(tableName, columns, coerced);
   return coerced;
 }
 
 /**
- * Fill the `id` of int-PK seed rows that omit it. The content-import path
- * PRESERVES each row's `id` and never auto-assigns one (a genuine engine export
- * always carries `id`), so id-less rows would all insert as the same key and the
- * import 500s with "Duplicate record detected". Verified against a live engine.
+ * Fill the `id` of seed rows that omit it. The content-import path PRESERVES each
+ * row's `id` and never auto-assigns one (a genuine engine export always carries
+ * `id`), for EVERY key type. Verified against a live engine, where an omitted id
+ * fails loudly and differently per type: int rows all insert as the same key
+ * ("Duplicate record detected"), while a uuid row reaches Postgres as the empty
+ * string and aborts the whole import with `invalid input syntax for type uuid: ""`
+ * (#205 — the table itself imports fine; only a seeded one broke).
  *
- * For an int primary key we auto-number omitted rows `1..N` so `seed: [{...}, …]`
- * just works; the engine resets the PK sequence past the max on import. All-or-
- * nothing: a mix of explicit and omitted `id` is ambiguous (which numbers are
- * free?) and throws. Non-int PKs (uuid) and `system:false` tables are left alone —
- * the engine generates uuids, and a custom PK is the author's to supply.
+ * An int primary key is auto-numbered `1..N` (the engine resets the PK sequence
+ * past the max on import); a uuid key gets a uuid derived from the table name and
+ * row index, so a re-export of the same seed is byte-identical and two tables
+ * never collide. All-or-nothing either way: a mix of explicit and omitted `id` is
+ * ambiguous (which keys are free?) and throws. A `system:false` table is left
+ * alone — a custom PK is the author's to supply.
  */
-function assignIntPrimaryKeys(
+function assignPrimaryKeys(
   tableName: string,
   columns: ColumnDef[],
   rows: Record<string, unknown>[],
 ): void {
-  const idCol = columns.find((c) => c.name === "id");
-  if (idCol?.type !== "int") return;
+  const idType = columns.find((c) => c.name === "id")?.type;
+  if (idType !== "int" && idType !== "uuid") return;
   const withId = rows.filter((r) => r.id !== undefined).length;
   if (withId === rows.length) return; // all explicit — nothing to fill
   if (withId !== 0) {
+    const fill = idType === "int" ? "auto-numbered 1..N" : "assigned a generated uuid";
     throw new Error(
       `table "${tableName}": ${withId} of ${rows.length} seed rows set \`id\` and the rest omit it. ` +
         `The engine preserves seed ids and won't auto-fill a missing one, so a mix collides on the ` +
-        `primary key. Provide \`id\` for every seed row, or none (they'll be auto-numbered 1..N).`,
+        `primary key. Provide \`id\` for every seed row, or none (they'll be ${fill}).`,
     );
   }
   rows.forEach((r, i) => {
-    r.id = i + 1;
+    r.id = idType === "int" ? i + 1 : seedUuid(tableName, i);
   });
+}
+
+/**
+ * A stable RFC-4122-shaped uuid for the seed row at `index` of `tableName`.
+ *
+ * Derived rather than random so that exporting the same workspace twice produces
+ * identical bytes — the bundle diff and round-trip checks compare exports, and a
+ * fresh `randomUUID()` per run would make every seeded uuid table look changed.
+ */
+function seedUuid(tableName: string, index: number): string {
+  const h = createHash("sha256").update(`sidestep:seed-id:${tableName}:${index}`).digest("hex");
+  // Stamp version 5 and the RFC-4122 variant so the value is a well-formed uuid,
+  // not just 32 hex digits — Postgres accepts either, tooling may not.
+  const version5 = `5${h.slice(13, 16)}`;
+  const variant = ((parseInt(h.slice(16, 17), 16) & 0x3) | 0x8).toString(16) + h.slice(17, 20);
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${version5}-${variant}-${h.slice(20, 32)}`;
 }
 
 /** Split coerced rows into pages under {@link SEED_PAGE_TARGET_BYTES} (≥1 row/page). */
