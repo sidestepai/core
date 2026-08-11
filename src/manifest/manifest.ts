@@ -441,9 +441,16 @@ export const TOTAL_OBJECT_KINDS = ENGINE_OBJECT_KINDS.length;
  */
 const NAMESPACE_NOTES: Readonly<Record<string, string>> = {
   expect:
-    "Assertions. These belong in a `workflowTest({...})` stack — assert on what a " +
-    "`.call` bound with `as`. An `s.expect.*` in a query/function/task stack is " +
-    "reachable but asserts nothing useful: nothing collects the result.",
+    "Assertions, and they ENFORCE wherever they run. A failure raises and aborts the " +
+    "stack it is in: in a `workflowTest({...})` that marks the test failed; in a " +
+    "`query`/`function`/`task` it aborts the run and surfaces as HTTP 500 with the " +
+    "assertion's own message (`to_equal failed - expected value 2 does not equal 1`). " +
+    "`workflowTest` is the natural home — assert on what a `.call` bound with `as` — but " +
+    "a deployed self-test endpoint built from `s.expect.*` is a legitimate pattern: it " +
+    "checks a live environment's invariants and fails loudly. Two caveats if you build " +
+    "one: `to_throw` does not detect every engine-raised failure (a hard fault escapes " +
+    "it and the assertion reports \"response is ok\"), and `to_be_within` EXCLUDES both " +
+    "bounds — `min < expr < max` — while `s.security.random_number`'s bounds are inclusive.",
   workflow_test:
     "Run another workflow test from inside one. Pass the `workflowTest()` def handle, " +
     "not a name.",
@@ -504,7 +511,7 @@ const VALUE_CONSTRUCTORS: ReadonlyArray<ManifestValue> = [
   { name: "inp", signature: "(name: string) => Value", description: 'Reference a function input → tag "input".' },
   { name: "col", signature: "(name: string) => Value", description: 'Reference a table column → tag "col".' },
   { name: "auth", signature: "(path?: string) => Value", description: 'Reference the authenticated identity (auth("id") → $auth.id) → tag "auth".' },
-  { name: "caught", signature: '(path?: "code" | "message" | "name" | "result") => Value', description: 'Read the caught error inside an s.try_catch CATCH arm → tag "trycatch". Valid ONLY there — it reads empty in the try/finally arms and outside the statement. Those four fields are all the engine binds (result is the attached payload); bare caught() is the whole error record.' },
+  { name: "caught", signature: '(path?: "code" | "message" | "name" | "result") => Value', description: 'Read the caught error inside an s.try_catch CATCH arm → tag "trycatch". Valid ONLY there — it reads empty in the try/finally arms and outside the statement. Those four fields are all the engine binds (result is the attached payload); bare caught() is the whole error record. \u26a0 For an ENGINE-raised exception only `code` and `name` are populated; for an `s.throw`, `message` is the fixed string "Throw Error Statement" and your text is in `result`. So `caught("name")` is useful in both cases and `caught("message")` in NEITHER.' },
   { name: "env", signature: "(name: string) => Value", description: 'Read a WORKSPACE environment variable (set via workspaceConfig({ env }) or the dashboard) → `$env.NAME`. Compiles to tag "setting" with the plain name. env("remote_ip") reads a user var named remote_ip, not the caller IP — use sys.remoteIp() for that.' },
   { name: "setting", signature: "(name: string) => Value", description: 'Reference a workspace setting → tag "setting". Built-in system vars are $-prefixed settings, e.g. setting("$remote_ip"); prefer the typed sys.* accessors.' },
   { name: "sys.*", signature: "() => Value", description: 'Built-in system / request-context variables → tag "setting" ($-prefixed). Accessors: remoteIp, requestMethod, requestUri, requestQueryString, httpHeaders, requestAuthToken, apiBaseUrl, datasource, branch, tenant, release, platform, isDebugger. In XanoScript these are $env.$remote_ip etc.; sys.remoteIp() is the public-endpoint rate-limit key (auth("id") is null there).' },
@@ -643,6 +650,18 @@ const STATEMENT_RESULTS: Record<string, { name: string; type: string; note?: str
     name: "as",
     type: "boolean",
     note: "true when the plaintext matches the stored hash. ⚠ input.password double-hashes — pass input.text() plaintext",
+  },
+  // util.* — two whose UNITS and SHAPE cost teams time, and neither is guessable
+  // from the signature.
+  "util.geo_distance": {
+    name: "as",
+    type: "number",
+    note: "great-circle distance in METRES (a decimal) — divide by 1000 for km. Identical points return 0",
+  },
+  "util.ip_lookup": {
+    name: "as",
+    type: "object",
+    note: "a NESTED object, not flat fields — and city/region names are commonly null even for a routable public address, so treat every level as optional",
   },
   // Clearly-typed declarative ops.
   "array.every": { name: "as", type: "boolean" },
@@ -1084,6 +1103,14 @@ export function renderLlmsTxt(m: Manifest): string {
     "- **`get_input`/`get_raw_input` read the whole payload**, not one named input",
     "  (args are `{ as?, encoding?, excludeMiddleware? }` — no `name`). For a single",
     "  input use `inp(\"name\")`.",
+    "- **`f.password()` defaults to `access: \"internal\"`, so `db.get` does NOT return it.**",
+    "  A login stack that reads `ref(\"u.password\")` after a plain `db.get` fails at runtime",
+    "  with `Unable to locate var: u.password` — the column is simply absent from the row.",
+    "  Name it in the read's `output` to pull it: `s.db.get({ table: users, fieldName: \"email\",",
+    "  fieldValue: inp(\"email\"), output: [\"id\", \"email\", \"password\"], as: \"u\" })`, then",
+    "  `s.security.check_password`. `output` OVERRIDES column visibility — it is the only way to",
+    "  read an `internal` column, and `export()` warns when a stack reads one a `db.get` did not",
+    "  return.",
     "- **Build regex-filter patterns with `c.regex(body, flags?)`, never `c.text`.**",
     "  The regex filters (`regex_test`/`regex_match`/`regex_replace`/…) are pattern-piped",
     "  PHP `preg_*`: the piped value is the PATTERN and must be delimiter-wrapped. A bare",
@@ -1178,7 +1205,7 @@ export function renderLlmsTxt(m: Manifest): string {
     "- `defineFunction`/`query`/`apiGroup` above cover the queries+tables core; the five below are the \"reach past that\" primitives (agents, tools, tasks, middleware, MCP servers). Same envelope conventions (`guid?`, `description?`, `docs?`, `tags?`, `history?`) unless noted.",
     "- `task({ name, guid?, description?, docs?, datasource?, active?, tags?, history?, schedule?, stack?, middleware? })` — a scheduled background job (function-like `stack`, no `input`/`response`).",
     "  - `schedule?`: a `ScheduleDef[]` (NOT a single object) — `{ startsOn, freq?, repeatEnabled?, endsOn?, endsEnabled? }`. `startsOn`/`endsOn` are **ISO-8601 string** timestamps (`\"2026-01-01T00:00:00Z\"`), not epoch numbers; `freq` is the repeat interval **in seconds** (default `86400` = daily); `endsOn` present ⇒ the schedule has an end. `endsEnabled?` defaults to that and is recovery-only — state it to reproduce a stored schedule that remembers an end date with the gate OFF. Fires on an ephemeral; does NOT fire in the sandbox (see Gotchas).",
-    "- `workflowTest({ name, guid?, description?, docs?, datasource?, active?, tags?, stack? })` — an end-to-end test. NO `input`/`response`: `.call` something with an `as`, then assert on that var — `s.function.call({ fn, input, as: \"r\" })`, `s.expect.to_equal({ expr: ref(\"r\"), value: c.int(42) })`. `s.expect.*` is only meaningful here. `active?` defaults `true`; chain tests with `s.workflow_test.call({ workflowTest: <def handle> })`.",
+    "- `workflowTest({ name, guid?, description?, docs?, datasource?, active?, tags?, stack? })` — an end-to-end test. NO `input`/`response`: `.call` something with an `as`, then assert on that var — `s.function.call({ fn, input, as: \"r\" })`, `s.expect.to_equal({ expr: ref(\"r\"), value: c.int(42) })`. `s.expect.*` is not confined here — it enforces in any stack (see the `expect` namespace note). `active?` defaults `true`; chain tests with `s.workflow_test.call({ workflowTest: <def handle> })`.",
     "  - `datasource?`: **the trap.** Default `\"\"` is an EMPTY datasource (recommended), not \"no datasource\". Any non-empty name makes the engine CLONE it before EVERY run — against production-sized data, slow enough to fail the run. `\"live\"` warns at compile time; other names don't.",
     "- `middleware({ name, guid?, description?, docs?, resultStrategy?, exceptionPolicy?, tags?, history?, input?, stack?, response? })` — a pre/post interceptor (function-like `stack`); attach it via a host's `middleware: { pre, post }`.",
     "  - `resultStrategy?`: `\"merge\" | \"replace\"` (default `merge`) — how the middleware `response` folds into the host's.",
@@ -1211,7 +1238,7 @@ export function renderLlmsTxt(m: Manifest): string {
     "  - **Both input surfaces read as ordinary inputs:** `inp(\"body\")` for a payload field, `inp(\"room_id\")` for the channel's `{room_id}`. No session lookup, no frame parsing.",
     "    - A path param is bound ONCE at join and read from the connection thereafter, never from the frame — a sender cannot claim a room it did not join. The same values reach a channel `join`/`leave` trigger's stack.",
     "  - `s.realtime.get_session({ as })` — the CALLER's realtime session for the current frame. FLAT shape:",
-    "    - `authenticated` bool · `client_id` text (the AUTHED ROW ID as text, `\"\"` anonymous) · `dbo_id` int (0 anonymous) · `socket_id` int (transport id) · `channel` text (resolved path, `\"\"` in a server trigger) · `params` object (bound path params, `{}` when none — `ref(\"session.params.room_id\")`) · `extras` object · `opened_at` decimal.",
+    "    - `authenticated` bool · `client_id` text (the AUTHED ROW ID as text, `\"\"` anonymous) · `dbo_id` int (the auth TABLE's id — NOT the user's row id; `0` anonymous — to look the caller up use `client_id`. `dbo_id` is an int in the same position and typechecks, so a gate that keys on it finds no user and refuses EVERYONE) · `socket_id` int (transport id) · `channel` text (resolved path, `\"\"` in a server trigger) · `params` object (bound path params, `{}` when none — `ref(\"session.params.room_id\")`) · `extras` object · `opened_at` decimal.",
     "    - Works in a realtime MESSAGE stack and in CHANNEL and SERVER trigger stacks; off that path it degrades to an anonymous session.",
     "    - For a path param prefer `inp(\"room_id\")`. Reach for the session when you need the CONNECTION (identity/extras) — \"who is this sender\" on an anonymous-client channel.",
     "    - ⚠ THREE UNRELATED THINGS ARE CALLED A CLIENT ID: `session.client_id` (app-facing identity), `session.socket_id` (transport), and a frame's `options.client_id` (the at_least_once CURSOR handle). Conflating the first and last breaks at_least_once for anonymous clients.",
@@ -1374,6 +1401,11 @@ export function renderLlmsTxt(m: Manifest): string {
     "`regex_matches` needed; `input.int`/`input.decimal`/`input.uuid`/`input.enum([...])`/`input.date`",
     "likewise reject or coerce bad input at the boundary. Drop to `input.text` + `s.precondition`",
     "only for rules no type expresses (README: \"Validate input at the boundary\").",
+    "⚠ `s.precondition`'s `error` must be a TAGGED value — `c.text(\"…\")`, not a bare string.",
+    "The engine falls back to the generic \"Precondition failed.\" whenever it reads an empty or",
+    "non-scalar message, and a bare string lands there, so the client never sees your text. The",
+    "`error_type` → HTTP status mapping is correct either way; only the message is lost. The bare",
+    "form stays accepted so a pulled workspace round-trips, not as a spelling to choose.",
     "Normalizing transforms run on bind too — put `trim`/`lower`/`upper` on the input's `methods`",
     "so `inp(\"name\")` reads already-normalized; don't reroll `var $x = inp(\"name\")|trim` in the stack.",
     "",
@@ -1395,6 +1427,11 @@ export function renderLlmsTxt(m: Manifest): string {
     "pipeline. Filters are passed spread (canonical); the array form",
     "`withFilters(v, [fl.a(), fl.b()])` is also accepted. Typed filters carry named",
     "args; the rest are variadic by name.",
+    "A bare JS **scalar** — string, number or boolean — is accepted in ANY `fl.*` argument and",
+    "wrapped as the constant you would have written by hand (`fl.get(\"a.b\", 0)` encodes",
+    "identically to `fl.get(c.text(\"a.b\"), c.int(0))`). An object or array must still be built",
+    "with `c.obj`/`c.array`. The arg types below name each argument's ENGINE type, not the JS",
+    "type you may pass.",
     "Read-modify-write a column from its current value with the pipeline: to increment",
     "a counter you MUST `db.get` the row first, then pipe its bound value —",
     "`col(\"clicks\")` does NOT resolve to the stored value inside a `db.edit` `row`",
@@ -1497,14 +1534,16 @@ export function renderLlmsTxt(m: Manifest): string {
     "- `s.db.add_or_edit({ table, fieldName?, fieldValue, row?, data?, as? })` — upsert.",
     "- `s.db.query({ table, where?, additionalWhere?, bind?, sort?, paging?, external?, returnType?, distinct?, eval?, output?, lock?, addon?, as? })` — search.",
     "  - `where` / `additionalWhere` — `expr(...)`, an `expr[]` (ANDed), or a raw `Value`. Rides `context.search`.",
+    "    - ⚠ `ignoreEmpty` DROPS the predicate when the operand is empty — it does not match zero rows. On an `in` comparison an empty list therefore returns the UNFILTERED set, so never use it to scope rows to a permitted-id list: an empty list of permissions returns everything.",
     "    - For the full operator set use `cmp(left, op, right, { ignoreEmpty? })` — `op`: `in`/`not in`/`like`/`ilike`/`between`/`contains`/`includes`/`overlaps`/`@>`/`~`/`search`/… plus the `expr` comparisons.",
     "    - Compose nested boolean logic with `and(...)` / `or(...)` groups (also available on `addon()` `where`).",
     "    - An operand may be a bare value (`col`/`inp`/`ref`/`auth`/`c.*`) OR a **filtered** value (`withFilters(...)`) inline. Hoisting into a prior `s.set_var` is a readability option, not a requirement.",
     "  - `bind: [{ table, as?, join?, where? }]` — joins (`context.bind[]`). `join` defaults to `\"inner\"`. Joined columns take a dotted path in `where`/`sort`/`eval`. `as` defaults to the table name; two joins to the same table need distinct aliases.",
-    "  - `returnType` — `\"list\"` (default) | `\"single\"` | `\"count\"` | `\"exists\"` | `\"stream\"` | `\"aggregate\"`. Drives `context.return.type` AND the `InferResponse` shape: `count`→`number`, `exists`→`boolean`, `single`→`Row|null`, `stream`→`Row[]` (pageable, no envelope), `list`→`Row[]`/envelope, `aggregate`→rows keyed by the `aggregate.group`/`eval` aliases.",
+    "  - `returnType` — `\"list\"` (default) | `\"single\"` | `\"count\"` | `\"exists\"` | `\"stream\"` | `\"aggregate\"`. Drives `context.return.type` AND the `InferResponse` shape: `count`→`number`, `exists`→`boolean`, `single`→`Row|null`, `stream`→`Row[]` (pageable, no envelope), `list`→`Row[]`/envelope, `aggregate`→rows keyed by the `aggregate.group`/`eval` aliases. ⚠ A bare `count` of ZERO serializes as an EMPTY body, not `0` — a client parsing JSON gets a parse error on the one result it most needs to handle. Wrap it: `response: { count: ref(\"n\") }`.",
     "  - `eval: [{ name, as, filters? }]` — computed columns (`context.eval[]`). Each `as` grafts onto the row as an `unknown` key in `InferResponse`; shadowing a real column throws.",
     "  - `aggregate: { group?, eval?, sort?, paging? }` (with `returnType:\"aggregate\"`) builds `context.return.aggregate`. `group`/`eval` are `{ name, as, filters? }`, an aggregator like `sum`/`count` riding `filters`.",
-    "    - ⚠ Write each `name` as a **bare** column (`\"status\"`). It is alias-qualified to `\"<table>.status\"` on emit — the engine rejects a bare column in an aggregate with `Unsupported param format`. An already-dotted `name` (a `bind`ed/joined column) passes through.",
+    "    - ⚠ Write each `name` as a **bare** column (`\"status\"`). It is alias-qualified to `\"<alias>.status\"` on emit — the engine rejects an unqualified column in an aggregate with `Unsupported param format`. An already-dotted `name` (a `bind`ed/joined column) passes through.",
+    "    - ⚠ The alias it qualifies WITH is `tableAlias` when you set one, otherwise the table's name. If the engine does not know that alias for this query it rejects the qualified form instead — `Unsupported object reference - <alias>.<column>`. The two errors are the same check failing at different steps, NOT evidence that the bare form is right. If you hit the second one, set `tableAlias` explicitly so the alias you qualify with is the alias the query declares.",
     "  - `sort: [{ sortBy: <col>, dir?: \"asc\"|\"desc\"|\"rand\" }]` and `paging: { page?, per_page?, offset?, totals?, metadata?, search?, sort? }` ride `context.return.list`.",
     "    - ⚠ `paging` with a page/per_page/offset field and `metadata` on (the DEFAULT) wraps the result in an envelope `{ items: Row[], curPage, nextPage, prevPage, offset, perPage, itemsReceived }` — plus `itemsTotal`/`pageTotal` when `totals: true` — instead of a bare `Row[]`. `InferResponse` reflects it. Pass `metadata: false` to keep the bare array.",
     "    - Read `nextPage` (`number|null`) as the typed has-next signal.",

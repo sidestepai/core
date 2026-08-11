@@ -128,7 +128,7 @@
       {
         "name": "caught",
         "signature": "(path?: \"code\" | \"message\" | \"name\" | \"result\") => Value",
-        "description": "Read the caught error inside an s.try_catch CATCH arm → tag \"trycatch\". Valid ONLY there — it reads empty in the try/finally arms and outside the statement. Those four fields are all the engine binds (result is the attached payload); bare caught() is the whole error record."
+        "description": "Read the caught error inside an s.try_catch CATCH arm → tag \"trycatch\". Valid ONLY there — it reads empty in the try/finally arms and outside the statement. Those four fields are all the engine binds (result is the attached payload); bare caught() is the whole error record. ⚠ For an ENGINE-raised exception only `code` and `name` are populated; for an `s.throw`, `message` is the fixed string \"Throw Error Statement\" and your text is in `result`. So `caught(\"name\")` is useful in both cases and `caught(\"message\")` in NEITHER."
       },
       {
         "name": "env",
@@ -5181,7 +5181,12 @@
           "type": "value",
           "optional": true
         }
-      ]
+      ],
+      "result": {
+        "name": "as",
+        "type": "number",
+        "note": "great-circle distance in METRES (a decimal) — divide by 1000 for km. Identical points return 0"
+      }
     },
     {
       "surface": "util.get_all_input",
@@ -5264,7 +5269,12 @@
           "type": "value",
           "optional": false
         }
-      ]
+      ],
+      "result": {
+        "name": "as",
+        "type": "object",
+        "note": "a NESTED object, not flat fields — and city/region names are commonly null even for a routable public address, so treat every level as optional"
+      }
     },
     {
       "surface": "util.post_process",
