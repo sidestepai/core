@@ -64,6 +64,7 @@ import type { MiddlewareAttach } from "./middleware-attach.js";
 import { resolveAuthRef } from "../refs/auth.js";
 import type { AuthRef } from "../refs/auth.js";
 import { deriveGuid, realtimeMessageSeedName } from "../refs/guid.js";
+import { assertStoredName } from "./stored-name.js";
 import {
   realtimeChannelGuid,
   realtimeServerRefName,
@@ -225,6 +226,9 @@ export function realtimeMessageGuid(def: RealtimeMessageDef): string {
 
 export function encodeRealtimeMessage(def: RealtimeMessageDef): RealtimeMessageXdo {
   if (!def.name) throw new Error("realtimeMessage: `name` is required.");
+  // Narrower than a channel path: a message name is not route-shaped, so the
+  // engine stores no "/" or "{}" here. Same silent-NULL on violation (#227).
+  assertStoredName(`realtimeMessage "${def.name}"`, def.name, "plain");
   const host = resolveHost(def);
   const channelId = realtimeChannelGuid(host.channel);
   const serverId = resolveRealtimeServerRef(`realtimeMessage "${def.name}"`, host.server);

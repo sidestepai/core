@@ -423,12 +423,13 @@ describe("realtime hierarchy placement", () => {
   it("does not merge a message that collides with its channel's own definition file", () => {
     // A message named `realtime_channel` sanitizes to exactly the file its
     // folder already uses. Symbols stay unique, so nothing warns — the two would
-    // simply land in one file, with both bindings in it.
+    // simply land in one file, with both bindings in it. The separator has to be
+    // one the engine actually stores in a message name (#227) — a space is not.
     const project = decodeBundle(
       new Xano()
         .registerRealtimeServers([chat])
         .registerRealtimeChannels([room])
-        .registerRealtimeMessages([realtimeMessage({ name: "realtime channel", channel: room, guid: guid(3) })])
+        .registerRealtimeMessages([realtimeMessage({ name: "realtime-channel", channel: room, guid: guid(3) })])
         .export(),
     );
     const inFolder = project.files.filter((f) => f.path.startsWith("realtime_server/chat/room/"));

@@ -8,7 +8,7 @@ const pub = apiGroup({ name: "public", canonical: "abc12345" });
 const links = table({ name: "links", schema: { title: f.text() } });
 
 const list = query({
-  name: "links.list",
+  name: "links_list",
   verb: "GET",
   apiGroup: pub,
   stack: [s.db.query({ table: links, as: "rows" })],
@@ -17,7 +17,7 @@ const list = query({
 
 // Leading slash on the name is stripped in the emitted path (matches getPath()).
 const create = query({
-  name: "/links.create",
+  name: "/links_create",
   verb: "POST",
   apiGroup: pub,
   stack: [s.db.add({ table: links, row: { title: ref("title") }, as: "r" })],

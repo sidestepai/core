@@ -84,7 +84,7 @@ export function parsePathParams(context: string, path: string): string[] {
     throw new Error(
       `${context}: "${path}" has an unmatched brace. A path param is written \`{name}\`, where the ` +
         `name holds no "/", "{" or "}" — it may sit anywhere in the path ("blog/{slug}", ` +
-        `"files/{name}.json"), and each name must have an input of the same name to bind to.`,
+        `"blog/post-{slug}"), and each name must have an input of the same name to bind to.`,
     );
   }
   return params;

@@ -23,6 +23,8 @@ import type { Diagnostic } from "../../src/workspace/diagnostics.js";
 import { table } from "../../src/kinds/table.js";
 import { query } from "../../src/kinds/query.js";
 import { apiGroup } from "../../src/kinds/api-group.js";
+import { encodeRealtimeMessage } from "../../src/kinds/realtime-message.js";
+import { encodeTool } from "../../src/kinds/toolset.js";
 import { task } from "../../src/kinds/task.js";
 import { defineFunction } from "../../src/function/define.js";
 import { s } from "../../src/statements/s.js";
@@ -478,24 +480,97 @@ describe("shapes deliberately NOT guarded — engine bugs, labelled `external`",
     expect(seen).toHaveLength(0);
   });
 
-  it("accepts a `.` in a query name with no diagnostic (#227)", () => {
+  // #227. The earlier reading of this — that the engine stores the name
+  // unsanitized and the router tolerates a "." — was checked against the router
+  // and was right about the router and wrong about the write. Live deploy of a
+  // six-name matrix settled it: `export_zip` served 200, while `export.zip`,
+  // `export.csv`, `export.xyz`, `ex.port` and `dir.d/leaf` ALL persisted with
+  // `name: null` and 404'd. So it is not extensions, not static-file handling,
+  // and not the router — the engine's stored charset rejects the write and the
+  // import path swallows the failure. Refusing it at authoring time is refusing
+  // silent data loss, and the rule is the engine's own, not a stricter one.
+  it("refuses a `.` in a query name, naming the character and the silent-null failure (#227)", () => {
     const group = apiGroup({ name: "pub", canonical: "abc12345" });
-    const seen = captureWarnings(() => {
+    expect(() =>
+      query({ name: "export.zip", verb: "GET", apiGroup: group, stack: [], response: c.bool(true) }),
+    ).toThrow(/contains "\."/);
+    expect(() =>
+      query({ name: "export.zip", verb: "GET", apiGroup: group, stack: [], response: c.bool(true) }),
+    ).toThrow(/EMPTY name/);
+  });
+
+  it("refuses every out-of-charset query name, and accepts the ones the engine stores (#227)", () => {
+    const group = apiGroup({ name: "pub", canonical: "abc12345" });
+    const mk = (name: string) =>
+      query({ name, verb: "GET", apiGroup: group, stack: [], response: c.bool(true) });
+
+    // Every shape proven to null out on the live engine.
+    for (const name of ["export.zip", "export.csv", "ex.port", "dir.d/leaf"]) {
+      expect(() => mk(name), name).toThrow(/cannot store/);
+    }
+    // …and the neighbours that are not dots but are equally unstorable.
+    for (const name of ["a b", "café", "a|b", "a+b", "a%2Eb", "a:b"]) {
+      expect(() => mk(name), name).toThrow(/cannot store/);
+    }
+    // The full stored charset, including a path param and the control from the
+    // live matrix, must still pass untouched.
+    for (const name of ["export_zip", "export-zip", "a/b/c", "ABC123", "x"]) {
+      expect(() => mk(name), name).not.toThrow();
+    }
+    expect(() =>
+      query({
+        name: "users/{user_id}/posts",
+        verb: "GET",
+        apiGroup: group,
+        input: { user_id: input.int() },
+        stack: [],
+        response: c.bool(true),
+      }),
+    ).not.toThrow();
+  });
+
+  it("refuses a query name past the engine's 200-character cap (#227)", () => {
+    const group = apiGroup({ name: "pub", canonical: "abc12345" });
+    const mk = (name: string) =>
+      query({ name, verb: "GET", apiGroup: group, stack: [], response: c.bool(true) });
+    expect(() => mk("a".repeat(200))).not.toThrow();
+    expect(() => mk("a".repeat(201))).toThrow(/201 characters/);
+  });
+
+  // `query()` is not the only door — `QueryDef` is public and the kind registry
+  // encodes plain objects, so the backstop has to hold too.
+  it("refuses a hand-built dotted def at export, not just at query() (#227)", () => {
+    const group = apiGroup({ name: "pub", canonical: "abc12345" });
+    expect(() =>
       new Xano()
         .registerWorkspace({ name: "app" })
         .registerApiGroups([group])
         .registerQueries([
-          query({
-            name: "export.zip",
-            verb: "GET",
-            apiGroup: group,
-            stack: [],
-            response: c.bool(true),
-          }),
+          { name: "export.zip", verb: "GET", apiGroup: group, stack: [], response: c.bool(true) } as never,
         ])
-        .export();
-    });
-    expect(seen).toHaveLength(0);
+        .export(),
+    ).toThrow(/cannot store/);
+  });
+
+  // The engine puts this same whitelist on four fields, not one. A guard on
+  // `query` alone would leave the identical silent-null on the other three.
+  it("refuses an unstorable name on every kind that carries the charset (#227)", () => {
+    const server = realtimeServer({ name: "chat", canonical: "chat1234" });
+    const channel = realtimeChannel({ name: "room", server });
+
+    // Channel paths take the route charset — "/" and "{}" are legal, "." is not.
+    expect(() => realtimeChannel({ name: "rooms.v2", server })).toThrow(/cannot store/);
+    expect(() => realtimeChannel({ name: "rooms/{room_id}", server, input: { room_id: input.text() } })).not.toThrow();
+
+    // A tool name is route-shaped too.
+    expect(() => encodeTool({ name: "fetch.url" })).toThrow(/cannot store/);
+    expect(() => encodeTool({ name: "fetch_url" })).not.toThrow();
+
+    // A realtime message name is NOT: the engine stores no "/" or "{}" here, so
+    // the guard has to be narrower rather than copied from the query rule.
+    expect(() => encodeRealtimeMessage({ name: "msg.sent", channel })).toThrow(/cannot store/);
+    expect(() => encodeRealtimeMessage({ name: "msg/sent", channel })).toThrow(/only letters, digits, "_" and "-"/);
+    expect(() => encodeRealtimeMessage({ name: "msg_sent", channel })).not.toThrow();
   });
 });
 

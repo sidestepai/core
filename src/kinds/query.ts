@@ -31,6 +31,7 @@ import {
   type IsStaticPath,
   type PathParamValues,
 } from "./path-params.js";
+import { assertStoredName } from "./stored-name.js";
 
 export type HttpVerb = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
 
@@ -54,14 +55,23 @@ export interface QueryDef<
    * The endpoint path within its api group — the last segment(s) of
    * `/api:<canonical>/<name>`.
    *
+   * Holds ONLY letters, digits, `_`, `-`, `/`, and the `{}` of a path param —
+   * the engine's stored charset, capped at 200 characters. Anything else (most
+   * often a `.`, as in `export.zip`) is NOT rejected by Xano: it saves the
+   * endpoint with an empty name, which deploys clean and then 404s
+   * `Unable to locate request.` on every request. `query()` throws instead.
+   * For a download endpoint use `export_zip` or `export/zip` and put the file
+   * extension in the response headers.
+   *
    * A `{param}` segment makes it a URL PATH PARAM: `"blog/{slug}"` binds the
    * segment to the `slug` input, and segments chain
    * (`"blog/{slug}/review/{review_id}"`). Every `{param}` MUST have a matching
-   * `input` entry declared `required: true` with a scalar type, or `query()`
-   * throws — a marker with no input deploys as a permanently-broken route. There
-   * are no wildcards or patterns, and a `{param}` is always a whole segment
-   * (`"post-{slug}"` is an error). Inputs that are not in the path are ordinary
-   * query-string/body params and need nothing special.
+   * `input` entry with a scalar type, or `query()` throws — a marker with no
+   * input deploys as a permanently-broken route. `required: true` is NOT
+   * demanded, because Xano's own editor leaves path-param inputs unmarked. A
+   * marker need not be a whole segment: `"blog/post-{slug}"` routes fine.
+   * Inputs that are not in the path are ordinary query-string/body params and
+   * need nothing special.
    *
    * Captured as a literal so `getPath({ params })` types its keys from it.
    */
@@ -264,11 +274,16 @@ function resolveAuth(name: string, auth: QueryDef["auth"]): false | number | str
  * Validate the endpoint path against the input map and return the `{param}`
  * names it declares. Shared by `query()` (authoring time — the error fires on
  * the line the author wrote) and `encodeQuery` (the backstop).
+ *
+ * Two rules with two different sources: the stored charset is the ENGINE's (a
+ * name outside it is silently saved as NULL — see `assertStoredName`), while
+ * the `{param}`↔input contract is SideStep's own opinion.
  */
 function assertQueryPathParams(
   def: Pick<QueryDef<Record<string, InputDescriptor>, unknown>, "name" | "input">,
 ): string[] {
   const context = `query "${def.name}"`;
+  assertStoredName(context, def.name, "route");
   const params = parsePathParams(context, def.name);
   assertPathParamInputs(context, params, def.input);
   return params;
