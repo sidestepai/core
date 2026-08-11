@@ -1,7 +1,7 @@
 {
   "as": "rollup",
   "name": "mvp:dbo_view",
-  "_xsid": "f:8111663c-41f1-4f37-a100-6426bb8a289c",
+  "_xsid": "f:abd945e8-2970-414f-866f-8d1c1a680057",
   "addon": [],
   "input": [],
   "mocks": {},
@@ -12,7 +12,8 @@
   },
   "context": {
     "dbo": {
-      "id": "9ab739e80990643f17d26ae07bb76835"
+      "as": "posts",
+      "id": "0xSEh2KaZvi3NZphv8kXs6yHGww"
     },
     "return": {
       "type": "aggregate",

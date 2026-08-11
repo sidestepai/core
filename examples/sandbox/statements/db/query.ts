@@ -55,7 +55,9 @@ export const dbQueryCount = defineFunction({
  * Gate 4 — aggregate / group-by (`returnType: "aggregate"`). Roll rows up by a
  * `group` column with `eval` aggregators (`count`/`sum`/… ride `filters`). Write
  * `name` as a bare column — it is alias-qualified to `"posts.<col>"` on emit (the
- * engine requires the qualified form for aggregate columns). Byte-verified (#133).
+ * engine requires the qualified form for aggregate columns) and the statement
+ * declares `posts` as its alias so that qualified name resolves (#213).
+ * Byte-verified against a live capture (#133).
  */
 export const dbQueryAggregate = defineFunction({
   name: "ex_db_query_aggregate",

@@ -1097,7 +1097,8 @@ auto-assigned `id`/`created_at`, `s.db.del` binds `null`, and `edit`/`del` **thr
   `and(or(a, b), c)` or `or(a, and(b, c))` — each says exactly one thing in every context.
 - **An aggregate `name` is written bare** (`"status"`) and alias-qualified on emit; the
   engine rejects a bare column in an aggregate, and an already-dotted joined column passes
-  through.
+  through. The statement also declares the alias it qualified with, so the qualified name
+  resolves — nothing to set by hand.
 
 **Addons** enrich each returned row with related data, attached to the row-returning ops
 (`query`/`get`/`add`/`edit`/`patch`). An addon is a single table-bound db query rather than a

@@ -619,6 +619,49 @@ describe("db.query (mvp:dbo_view) emit shape", () => {
     expect((ret(enc) as { aggregate: { group: { name: string }[] } }).aggregate.group[0]!.name).toBe(
       "author.name",
     );
+    // …and qualifies nothing, so it declares no alias either. This is the property
+    // that keeps a PULLED workspace byte-exact: stored aggregate names are already
+    // dotted, so codegen's re-emit adds neither a prefix nor a `dbo.as` (#213).
+    expect(enc.context).toHaveProperty("dbo", { id: expect.any(String) });
+  });
+
+  it("aggregate declares the alias it qualifies WITH, so the qualified name resolves", () => {
+    // The engine rejects a bare column in an aggregate, so the SDK prefixes one —
+    // and `<table>.<column>` only resolves against an alias the statement
+    // declares. Emitting the prefix without the alias is a runtime 400
+    // (`Unsupported object reference - note.title`), which is what the previous
+    // golden had frozen. Live-verified both ways (#213).
+    const enc = encodeStatement(
+      dbQuery({
+        table: note,
+        returnType: "aggregate",
+        aggregate: { group: [{ name: "title", as: "t" }] },
+      }),
+    );
+    expect((enc.context as { dbo: { as?: string } }).dbo.as).toBe("note");
+    expect((ret(enc) as { aggregate: { group: { name: string }[] } }).aggregate.group[0]!.name).toBe(
+      "note.title",
+    );
+  });
+
+  it("an explicit tableAlias still wins over the auto-declared one", () => {
+    const enc = encodeStatement(
+      dbQuery({
+        table: note,
+        tableAlias: "n",
+        returnType: "aggregate",
+        aggregate: { group: [{ name: "title", as: "t" }] },
+      }),
+    );
+    expect((enc.context as { dbo: { as?: string } }).dbo.as).toBe("n");
+    expect((ret(enc) as { aggregate: { group: { name: string }[] } }).aggregate.group[0]!.name).toBe(
+      "n.title",
+    );
+  });
+
+  it("a non-aggregate query declares no alias unless asked", () => {
+    const enc = encodeStatement(dbQuery({ table: note, where: expr(col("title"), "=", c.text("x")) }));
+    expect(enc.context).toHaveProperty("dbo", { id: expect.any(String) });
   });
 
   it("aggregate throws at export when a dotted name is malformed (engine would reject)", () => {

@@ -266,8 +266,10 @@ export interface DbAggregatePaging {
  * `{ name, as, filters }` — an aggregator like `sum`/`count` rides `filters`).
  * Both `as` sets graft onto the aggregate row (`unknown` values). Write `name` as
  * a bare column (`"status"`) — it is alias-qualified to `"<table>.status"` on emit
- * (the engine requires the qualified form); pass an already-dotted `name` for a
- * `bind`ed/joined column and it is left as-is.
+ * (the engine requires the qualified form) and the statement declares that alias
+ * so the qualified name resolves; pass an already-dotted `name` for a
+ * `bind`ed/joined column and it is left as-is (and declares nothing, which is
+ * what keeps a pulled workspace byte-exact — see issue #213).
  */
 export interface DbAggregate {
   group?: DbEval[];
@@ -1955,7 +1957,25 @@ export function dbQuery<
   // The primary table alias (the default `dbo.as`) — used to qualify aggregate
   // group/eval column names, which the engine requires as `<alias>.<column>`.
   const primaryAlias = args.tableAlias ?? tableName;
-  const context: Record<string, unknown> = { dbo: dboBinding(args.table, args.tableAlias) };
+  // An aggregate's `group`/`eval` names are qualified BY THIS SDK — the engine
+  // rejects a bare column there (`Unsupported param format`), so a bare authored
+  // name is prefixed on emit. The prefix has to be an alias the engine can
+  // resolve, and a table's NAME is not one unless the statement also declares it
+  // (`dbo.as`); without it the qualified name dies with `Unsupported object
+  // reference - <table>.<column>` (#213). The author wrote a bare name and never
+  // asked for the qualifier, so the alias is emitted for them.
+  //
+  // Gated on the SDK actually ADDING a prefix, which is what keeps a pulled
+  // workspace byte-exact: stored aggregate names are already dotted, so codegen's
+  // re-emit qualifies nothing, adds no alias, and round-trips unchanged.
+  const aggregateAddsQualifier =
+    returnType === "aggregate" &&
+    tableName !== "" &&
+    [...(args.aggregate?.group ?? []), ...(args.aggregate?.eval ?? [])].some(
+      (e) => !e.name.includes("."),
+    );
+  const emittedAlias = args.tableAlias ?? (aggregateAddsQualifier ? tableName : undefined);
+  const context: Record<string, unknown> = { dbo: dboBinding(args.table, emittedAlias) };
   const search = encodeSearch(args.where, args.additionalWhere);
   if (search !== undefined) context.search = search;
   const binds = encodeBind(args.bind);
@@ -1989,7 +2009,9 @@ export function dbQuery<
     // aggregate path resolves those against, it is not the rule this guard
     // encodes, and a guard that contradicts captured engine bytes would block
     // pulling a real workspace.
-    assertResolvableColumnPaths(args.table, args.tableAlias, bindAliases, paths);
+    // `emittedAlias`, not `args.tableAlias`: an aggregate that auto-declares the
+    // table name as its alias really can resolve `<table>.<column>` everywhere.
+    assertResolvableColumnPaths(args.table, emittedAlias, bindAliases, paths);
   }
   const evals = encodeEval(args.eval);
   if (evals) context.eval = evals;
