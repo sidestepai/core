@@ -10,7 +10,7 @@
  * listening on.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -113,12 +113,67 @@ describe("sidestep routes --emit, realtime half", () => {
     expect(readFileSync(out, "utf8")).toContain(`"chat": { canonical: "LockedTok" }`);
   });
 
-  it("refuses to emit a server whose canonical resolves nowhere", async () => {
+  it("leaves out a server whose canonical resolves nowhere, and still emits the routes", async () => {
     const entry = writeWorkspace();
     const out = join(dir, "routes.gen.ts");
     // No in-code canonical and no lock: minting one here would bake a token that
-    // differs from the one `export --lock` later freezes.
-    await expect(run(["routes", entry, "--emit", out])).rejects.toThrow(/realtime server/);
+    // differs from the one `export --lock` later freezes. But a workspace that
+    // merely CONTAINS realtime must still get its HTTP half — failing the whole
+    // emit would break `routes --emit` for every frontend that never opens a
+    // socket. The channels go with their server, and reaching for either is a
+    // compile error at the call site rather than a wrong address at runtime.
+    await run(["routes", entry, "--emit", out]);
+    const source = readFileSync(out, "utf8");
+    expect(source).toContain(`"health": { verb: "GET", path: "/api:app-tok/health" }`);
+    expect(source).not.toContain("REALTIME_SERVERS");
+    expect(source).not.toContain("lobby");
+    expect(stderrText()).toMatch(/leaving out 1 realtime server\(s\) — "chat"/);
+    expect(stderrText()).toContain("sidestep export --lock");
+  });
+
+  it("never sees a channel whose server is unregistered — export refuses it first", async () => {
+    const path = join(dir, `orphan-${++fileSeq}.ts`);
+    writeFileSync(
+      path,
+      `import { Xano, realtimeServer, realtimeChannel } from ${JSON.stringify(SDK)};
+const chat = realtimeServer({ name: "chat", enabled: true, canonical: "chat-tok" });
+const ops = realtimeServer({ name: "ops", enabled: true, canonical: "ops-tok" });
+export default new Xano()
+  .registerWorkspace({ name: "orphan" })
+  .registerRealtimeServers([chat])
+  .registerRealtimeChannels([
+    realtimeChannel({ name: "lobby", server: chat }),
+    // \`ops\` is never registered — an unresolvable reference.
+    realtimeChannel({ name: "alerts", server: ops }),
+  ]);
+`,
+      "utf8",
+    );
+    // Pins WHY the emitter carries no handling for this: the registry's own
+    // reference check fires during `export()`, before the manifest is built.
+    await expect(
+      run(["routes", path, "--emit", join(dir, "routes.gen.ts")]),
+    ).rejects.toThrow(/not registered on this workspace/);
+  });
+
+  it("writes nothing when everything it could describe was left out", async () => {
+    const path = join(dir, `empty-${++fileSeq}.ts`);
+    writeFileSync(
+      path,
+      `import { Xano, realtimeServer, realtimeChannel } from ${JSON.stringify(SDK)};
+const chat = realtimeServer({ name: "chat", enabled: true });
+export default new Xano()
+  .registerWorkspace({ name: "nothing" })
+  .registerRealtimeServers([chat])
+  .registerRealtimeChannels([realtimeChannel({ name: "lobby", server: chat })]);
+`,
+      "utf8",
+    );
+    const out = join(dir, "routes.gen.ts");
+    await run(["routes", path, "--emit", out]);
+    // A file exporting nothing is worse than no file; the warning says what to fix.
+    expect(existsSync(out)).toBe(false);
+    expect(stderrText()).toContain("Nothing to write");
   });
 
   it("emits for a realtime-only workspace, which has no routes at all", async () => {

@@ -1034,47 +1034,57 @@ async function runPaths(args: ParsedArgs): Promise<void> {
       const locked = lockModel?.objects[lockKey("realtime_server", s.name)]?.canonical;
       return [{ name: s.name, canonical: inCode ?? locked }];
     });
+    // An unresolved REALTIME server is a warning, not a failure — deliberately
+    // unlike an unresolved api group above. A manifest missing a route is worse
+    // than no manifest because routes are what the file is for; a workspace that
+    // merely CONTAINS realtime should still get its HTTP half, and a socket
+    // address nobody could resolve is better left out than guessed at. What is
+    // dropped is named, and reaching for a dropped server or channel is a
+    // compile error at the call site, never a wrong address at runtime.
+    const describable = new Set(serverRows.filter((s) => s.canonical).map((s) => s.name));
+    const unresolvedServers = serverRows.filter((s) => !s.canonical);
     const channelRows = channels.flatMap((c) => {
       if (typeof c.name !== "string" || c.name === "") return [];
       const server = c.server?.id ? serverNameByGuid.get(c.server.id) : undefined;
-      // A channel whose server isn't in this bundle has no canonical to build a
-      // socket URL from, so it cannot be described. Dropping it silently would
-      // read as "no such channel" at the call site; refuse instead.
-      if (!server) {
-        throw new Error(
-          `paths: the realtime channel "${c.name}" names a realtime server that is not registered in ` +
-            `this workspace, so its socket address cannot be resolved. Register the server (the same ` +
-            `\`realtimeServer()\` handle the channel was authored against).`,
-        );
-      }
+      // Drop the channels of a server that was left out — their socket address
+      // is exactly what could not be resolved, and the warning above names it.
+      // (A channel pointing at a server this workspace never registered cannot
+      // reach here: `export()` refuses that bundle outright.)
+      if (server === undefined || !describable.has(server)) return [];
       return [{ name: c.name, server }];
     });
-    const unresolvedServers = serverRows.filter((s) => !s.canonical);
     if (unresolvedServers.length > 0) {
-      const names = unresolvedServers.map((s) => `"${s.name}"`).join(", ");
-      throw new Error(
-        `paths: cannot resolve the canonical URL token for ${unresolvedServers.length} realtime ` +
-          `server(s): ${names}. Set an explicit \`realtimeServer({ canonical })\`, or run ` +
-          `\`sidestep export --lock\` once (it mints a unique canonical and freezes it in ` +
-          `xano.lock) beside the entry, then re-run \`sidestep paths\`.`,
+      warn(
+        `${args.emit}: leaving out ${unresolvedServers.length} realtime server(s) — ` +
+          `${unresolvedServers.map((s) => `"${s.name}"`).join(", ")} — whose canonical URL token ` +
+          `resolves nowhere, along with their channels. Set an explicit ` +
+          `\`realtimeServer({ canonical })\`, or run \`sidestep export --lock\` once (it mints a ` +
+          `unique canonical and freezes it in xano.lock) beside the entry, then re-run to include them.`,
       );
+    }
+
+    const describableServers = serverRows.flatMap((s) =>
+      s.canonical ? [{ name: s.name, canonical: s.canonical }] : [],
+    );
+    if (resolved.length === 0 && describableServers.length === 0) {
+      // Everything was dropped by the warnings above; a file exporting nothing
+      // is worse than none, and the warnings already say what to fix.
+      info(`Nothing to write to ${args.emit} yet.`);
+      return;
     }
 
     if (unresolved.length === 0) {
       const { renderRouteManifest } = await import("./routes-manifest.js");
       const source = renderRouteManifest(
         resolved.map((r) => ({ name: r.name, verb: r.verb, canonical: r.canonical! })),
-        serverRows.length > 0
-          ? {
-              servers: serverRows.map((s) => ({ name: s.name, canonical: s.canonical! })),
-              channels: channelRows,
-            }
+        describableServers.length > 0
+          ? { servers: describableServers, channels: channelRows }
           : undefined,
       );
       const routeCount = resolved.length === 1 ? "1 route" : `${resolved.length} routes`;
       const channelCount =
         channelRows.length === 1 ? "1 channel" : `${channelRows.length} channels`;
-      const count = serverRows.length > 0 ? `${routeCount}, ${channelCount}` : routeCount;
+      const count = describableServers.length > 0 ? `${routeCount}, ${channelCount}` : routeCount;
       // `--check` is the CI guard. A generated manifest that is never
       // regenerated rots exactly like the hand-typed ROUTES table it replaces —
       // the strings keep compiling while the backend has moved.
