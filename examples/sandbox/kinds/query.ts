@@ -22,6 +22,12 @@ export const getUserQuery = query({
  * matching input or `query()` throws: Xano treats an unbound marker as inert
  * route text, so the endpoint would answer on the path and see nothing.
  *
+ * The name itself holds only letters, digits, `_`, `-`, `/` and the `{}` of a
+ * param (max 200). A `.` is the one to watch: Xano does not reject it, it saves
+ * the endpoint with an EMPTY name, which deploys clean and then 404s on every
+ * request — so `query()` throws instead. A download endpoint is `ex_export_zip`
+ * or `ex_export/zip`, with the file extension set in the response headers.
+ *
  * Read the value with `inp("<param>")`, exactly like any other input. Inputs
  * that are NOT in the path (`verbose` here) stay ordinary query-string params.
  *
