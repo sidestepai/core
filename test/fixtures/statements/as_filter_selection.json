@@ -1,0 +1,62 @@
+{
+  "as": "user",
+  "name": "mvp:dbo_getby",
+  "_xsid": "f:9f59b912-bcfc-45a2-9c40-c726966c8cc2",
+  "addon": [],
+  "input": [
+    {
+      "tag": "const",
+      "name": "field_name",
+      "value": "id",
+      "expand": false,
+      "ignore": false,
+      "filters": [],
+      "children": []
+    },
+    {
+      "tag": "input",
+      "name": "field_value",
+      "value": "id",
+      "expand": false,
+      "ignore": false,
+      "filters": [],
+      "children": []
+    }
+  ],
+  "mocks": {},
+  "output": {
+    "items": [
+      {
+        "name": "id",
+        "children": []
+      },
+      {
+        "name": "email",
+        "children": []
+      }
+    ],
+    "filters": [
+      {
+        "arg": [
+          {
+            "tag": "const",
+            "value": "email",
+            "filters": []
+          }
+        ],
+        "name": "get",
+        "disabled": false
+      }
+    ],
+    "customize": true
+  },
+  "context": {
+    "dbo": {
+      "id": "sVbDZrN1g6cUiU6XAx_ZEeeZPck"
+    }
+  },
+  "runtime": null,
+  "disabled": false,
+  "description": "",
+  "settings_registry": null
+}

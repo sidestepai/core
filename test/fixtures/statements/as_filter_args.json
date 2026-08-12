@@ -1,0 +1,40 @@
+{
+  "as": "token",
+  "name": "mvp:uuid4",
+  "_xsid": "f:bbe60cdf-5951-4f42-ade0-be3bc6e5b5b2",
+  "addon": [],
+  "input": [],
+  "mocks": {},
+  "output": {
+    "items": [],
+    "filters": [
+      {
+        "arg": [],
+        "name": "upper",
+        "disabled": false
+      },
+      {
+        "arg": [
+          {
+            "tag": "const:int",
+            "value": "0",
+            "filters": []
+          },
+          {
+            "tag": "const:int",
+            "value": "8",
+            "filters": []
+          }
+        ],
+        "name": "substr",
+        "disabled": false
+      }
+    ],
+    "customize": false
+  },
+  "context": {},
+  "runtime": null,
+  "disabled": false,
+  "description": "",
+  "settings_registry": null
+}
