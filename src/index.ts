@@ -111,7 +111,7 @@ export type {
   SearchGroup,
   SearchNode,
 } from "./statements/special/db-search.js";
-export type { Statement, StatementAnnotations } from "./statements/statement.js";
+export type { Statement, StatementAnnotations, StatementOptions } from "./statements/statement.js";
 
 // Hand-authored control-flow / terminal specials (U10)
 export {

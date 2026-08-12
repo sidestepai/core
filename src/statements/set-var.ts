@@ -11,14 +11,14 @@
  */
 import type { Statement } from "./statement.js";
 import { registerStatement, annotate } from "./statement.js";
-import type { StatementAnnotations } from "./statement.js";
+import type { StatementAnnotations, StatementOptions } from "./statement.js";
 import type { Value } from "../values/value.js";
 
 export const SET_VAR = "mvp:set_var";
 export const UPDATE_VAR = "mvp:update_var";
 
 /** Assign `value` to stack variable `as` (`var $as { value = ... }`). */
-export function setVar(as: string, value: Value, a?: StatementAnnotations): Statement {
+export function setVar(as: string, value: Value, a?: StatementOptions): Statement {
   return annotate(
     {
       name: SET_VAR,

@@ -17,7 +17,7 @@
 import type { Statement, AsShapeBrand } from "../statement.js";
 import type { Value } from "../../values/value.js";
 import { generated } from "../generated/factories.generated.js";
-import type { StatementAnnotations } from "../statement.js";
+import type { StatementOptions } from "../statement.js";
 import { declaredServicePorts, type MicroserviceDef } from "../../kinds/microservice.js";
 import type { ApiRequestResult } from "./api-request.js";
 import {
@@ -126,7 +126,7 @@ type PortArg<D> = string extends PortsOf<D>
     : PortsOf<D> | AsNumber<PortsOf<D>>;
 
 export interface MicroserviceArgs<H extends MicroserviceHost = MicroserviceHost>
-  extends StatementAnnotations {
+  extends StatementOptions {
   /** Capture the response into this stack variable. */
   as?: string;
   /**

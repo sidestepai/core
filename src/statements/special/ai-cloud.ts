@@ -23,7 +23,7 @@ import type { AgentResultOf } from "../../kinds/agent.js";
 import { encodeAsyncRuntime } from "./async-runtime.js";
 import type { AsyncRuntime } from "./async-runtime.js";
 import { annotate } from "../statement.js";
-import type { StatementAnnotations } from "../statement.js";
+import type { StatementOptions } from "../statement.js";
 
 function vf(v: Value): { value: string; tag: string; filters: unknown[] } {
   return { value: v.value, tag: v.tag, filters: v.filters };
@@ -64,7 +64,7 @@ export interface AgentRunResult<R = string> {
   totalUsage?: Record<string, unknown>;
 }
 
-export interface AiAgentRunArgs<As extends string = "", A extends ObjectRef = ObjectRef, R = AgentResultOf<A>> extends StatementAnnotations {
+export interface AiAgentRunArgs<As extends string = "", A extends ObjectRef = ObjectRef, R = AgentResultOf<A>> extends StatementOptions {
   /** The target agent (toolset of type agent — def handle or name). */
   agent: A;
   /** The stack variable this run binds. Captured literally so `InferResponse` can trace a `ref` back to the typed {@link AgentRunResult}. */
@@ -140,7 +140,7 @@ export function aiAgentRun<
   return annotate(stmt as unknown as Statement & AsShapeBrand<As, AgentRunResult<R>>, a);
 }
 
-export interface CloudJobArgs extends StatementAnnotations {
+export interface CloudJobArgs extends StatementOptions {
   as?: string;
   image?: Value;
   command?: Value;
@@ -170,7 +170,7 @@ export function cloudJob(a: CloudJobArgs): Statement {
   return annotate({ name: "mvp:cloud_job", context: {}, as: a.as ?? "", input }, a);
 }
 
-export interface CloudJobAwaitArgs extends StatementAnnotations {
+export interface CloudJobAwaitArgs extends StatementOptions {
   as?: string;
   /** Job ids to await. */
   ids: Value;
@@ -194,7 +194,7 @@ export function cloudJobAwait(a: CloudJobAwaitArgs): Statement {
   }, a);
 }
 
-export interface CloudJobStatusArgs extends StatementAnnotations {
+export interface CloudJobStatusArgs extends StatementOptions {
   as?: string;
   /** The job id to query. */
   id: Value;

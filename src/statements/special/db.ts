@@ -45,7 +45,7 @@ import type { OutputPath, OutputRoot, QualifiedCol } from "./output-select.js";
 import { encodeSearch, encodeSort, encodeEval, qualifyAggregateEvals } from "./db-search.js";
 import type { DbWhere, SortDirective, DbEval, EvalFields, AggregateRow } from "./db-search.js";
 import { annotate } from "../statement.js";
-import type { StatementAnnotations } from "../statement.js";
+import type { StatementAnnotations, StatementOptions } from "../statement.js";
 export type { DbWhere, SortDir, SortDirective, DbEval, DbEvalFilter } from "./db-search.js";
 
 /**
@@ -530,7 +530,7 @@ export interface DbGetArgs<
   As extends string = string,
   Cols extends readonly OutputPath<ColsOf<T>>[] = readonly ColsOf<T>[],
   A extends readonly AddonSpec[] = readonly AddonSpec[],
-> extends StatementAnnotations {
+> extends StatementOptions {
   /**
    * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
    * Absent unless set — Xano writes it on some statements and not others, so it
@@ -609,7 +609,7 @@ export interface DbGetByIdArgs<
   As extends string = string,
   Cols extends readonly OutputPath<ColsOf<T>>[] = readonly ColsOf<T>[],
   A extends readonly AddonSpec[] = readonly AddonSpec[],
-> extends StatementAnnotations {
+> extends StatementOptions {
   /**
    * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
    * Absent unless set — Xano writes it on some statements and not others, so it
@@ -658,7 +658,7 @@ export function dbGetById<
   ) as DbResult<As, WithAddons<RowShapeOf<T, Cols>, A> | null>, args);
 }
 
-export interface DbDelArgs<T extends ObjectRef = ObjectRef> extends StatementAnnotations {
+export interface DbDelArgs<T extends ObjectRef = ObjectRef> extends StatementOptions {
   /**
    * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
    * Absent unless set — Xano writes it on some statements and not others, so it
@@ -696,7 +696,7 @@ export function dbDel<T extends ObjectRef>(args: DbDelArgs<T>): Statement {
   ), args);
 }
 
-export interface DbHasArgs<T extends ObjectRef = ObjectRef, As extends string = string> extends StatementAnnotations {
+export interface DbHasArgs<T extends ObjectRef = ObjectRef, As extends string = string> extends StatementOptions {
   /**
    * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
    * Absent unless set — Xano writes it on some statements and not others, so it
@@ -734,7 +734,7 @@ export interface DbPatchArgs<
   As extends string = string,
   Cols extends readonly OutputPath<ColsOf<T>>[] = readonly ColsOf<T>[],
   A extends readonly AddonSpec[] = readonly AddonSpec[],
-> extends StatementAnnotations {
+> extends StatementOptions {
   /**
    * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
    * Absent unless set — Xano writes it on some statements and not others, so it
@@ -790,7 +790,7 @@ export function dbPatch<
   ) as DbResult<As, WithAddons<RowShapeOf<T, Cols>, A>>, args);
 }
 
-export interface DbTruncateArgs extends StatementAnnotations {
+export interface DbTruncateArgs extends StatementOptions {
   /**
    * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
    * Absent unless set — Xano writes it on some statements and not others, so it
@@ -1001,7 +1001,7 @@ export interface DbAddArgs<
   As extends string = string,
   Cols extends readonly OutputPath<ColsOf<T>>[] = readonly ColsOf<T>[],
   A extends readonly AddonSpec[] = readonly AddonSpec[],
-> extends StatementAnnotations {
+> extends StatementOptions {
   /**
    * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
    * Absent unless set — Xano writes it on some statements and not others, so it
@@ -1075,7 +1075,7 @@ export interface DbEditArgs<
   As extends string = string,
   Cols extends readonly OutputPath<ColsOf<T>>[] = readonly ColsOf<T>[],
   A extends readonly AddonSpec[] = readonly AddonSpec[],
-> extends StatementAnnotations {
+> extends StatementOptions {
   /**
    * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
    * Absent unless set — Xano writes it on some statements and not others, so it
@@ -1173,7 +1173,7 @@ export function dbEdit<
  * of the db family.
  */
 
-export interface DbAddOrEditArgs<T extends ObjectRef = ObjectRef, As extends string = string> extends StatementAnnotations {
+export interface DbAddOrEditArgs<T extends ObjectRef = ObjectRef, As extends string = string> extends StatementOptions {
   /**
    * Refuse to auto-wire request inputs the endpoint did not explicitly bind.
    *
@@ -1234,7 +1234,7 @@ export function dbAddOrEdit<T extends ObjectRef, const As extends string = "">(
   } as DbResult<As, FullRowShapeOf<T>>, args);
 }
 
-export interface DbSchemaArgs extends StatementAnnotations {
+export interface DbSchemaArgs extends StatementOptions {
   /**
    * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
    * Absent unless set — Xano writes it on some statements and not others, so it
@@ -1267,7 +1267,7 @@ export function dbSchema(args: DbSchemaArgs): Statement {
  */
 export type DbResponseType = "list" | "single" | (string & {});
 
-export interface DbDirectQueryArgs extends StatementAnnotations {
+export interface DbDirectQueryArgs extends StatementOptions {
   /** The raw SQL to run (stored verbatim as `context.code`). */
   sql: string;
   /** Result shape: `"list"` (default) or `"single"`. */
@@ -1315,7 +1315,7 @@ export function dbDirectQuery(args: DbDirectQueryArgs): Statement {
 //   snowflake share the format and stay modeled-by-analogy (1 of 5 captured).
 // ---------------------------------------------------------------------------
 
-export interface DbBulkAddArgs extends StatementAnnotations {
+export interface DbBulkAddArgs extends StatementOptions {
   /**
    * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
    * Absent unless set — Xano writes it on some statements and not others, so it
@@ -1358,7 +1358,7 @@ export function dbBulkAdd(args: DbBulkAddArgs): Statement {
   ], args.tableAlias), args);
 }
 
-export interface DbBulkDeleteArgs<As extends string = string> extends StatementAnnotations {
+export interface DbBulkDeleteArgs<As extends string = string> extends StatementOptions {
   /**
    * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
    * Absent unless set — Xano writes it on some statements and not others, so it
@@ -1408,7 +1408,7 @@ export function dbBulkDelete<const As extends string = "">(
   >, args);
 }
 
-export interface DbBulkWriteArgs<T extends ObjectRef = ObjectRef, As extends string = string> extends StatementAnnotations {
+export interface DbBulkWriteArgs<T extends ObjectRef = ObjectRef, As extends string = string> extends StatementOptions {
   /**
    * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
    * Absent unless set — Xano writes it on some statements and not others, so it
@@ -1840,7 +1840,7 @@ export interface DbQueryArgs<
   RT extends DbReturnType = DbReturnType,
   E extends readonly DbEval[] = readonly DbEval[],
   AG extends DbAggregate = DbAggregate,
-> extends StatementAnnotations {
+> extends StatementOptions {
   /**
    * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
    * Absent unless set — Xano writes it on some statements and not others, so it
@@ -2096,7 +2096,7 @@ const EXTERNAL_SQL_NAME: Record<ExternalSqlEngine, string> = {
   snowflake: "mvp:dbo_external_snowflake_query",
 };
 
-export interface DbExternalQueryArgs extends StatementAnnotations {
+export interface DbExternalQueryArgs extends StatementOptions {
   /** Which external database engine to target. */
   engine: ExternalSqlEngine;
   sql: string;

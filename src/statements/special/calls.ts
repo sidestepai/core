@@ -42,7 +42,7 @@
  *     @TODOs below — do not vendor/capture until the identity model exists.
  */
 import type { Statement } from "../statement.js";
-import type { StatementAnnotations } from "../statement.js";
+import type { StatementOptions } from "../statement.js";
 import { registerStatement, annotate } from "../statement.js";
 import type { Value } from "../../values/value.js";
 import { resolveRef } from "../../refs/guid.js";
@@ -87,7 +87,7 @@ function fnId(fn: FnRef): string {
   return fn === null ? "" : resolveRef("function", fn);
 }
 
-export interface FunctionRunArgs extends StatementAnnotations {
+export interface FunctionRunArgs extends StatementOptions {
   /** The target function (def handle or name), or `null` when unbound. */
   fn: FnRef;
   /** Capture the result into this stack variable. */
@@ -113,7 +113,7 @@ export function functionRun(args: FunctionRunArgs): Statement {
   }, args);
 }
 
-export interface FunctionCallArgs extends StatementAnnotations {
+export interface FunctionCallArgs extends StatementOptions {
   fn: ObjectRef;
   as?: string;
   input?: CallInput;
@@ -129,7 +129,7 @@ export function functionCall(args: FunctionCallArgs): Statement {
   }, args);
 }
 
-export interface ApiCallArgs extends StatementAnnotations {
+export interface ApiCallArgs extends StatementOptions {
   /** The target API endpoint (a `query` object). */
   api: ObjectRef;
   as?: string;
@@ -166,7 +166,7 @@ export function apiCall(args: ApiCallArgs): Statement {
   }, args);
 }
 
-export interface TaskCallArgs extends StatementAnnotations {
+export interface TaskCallArgs extends StatementOptions {
   /** The target background task. */
   task: ObjectRef;
   as?: string;
@@ -182,7 +182,7 @@ export function taskCall(args: TaskCallArgs): Statement {
   }, args);
 }
 
-export interface ToolCallArgs extends StatementAnnotations {
+export interface ToolCallArgs extends StatementOptions {
   tool: ObjectRef;
   as?: string;
   input?: CallInput;
@@ -198,7 +198,7 @@ export function toolCall(args: ToolCallArgs): Statement {
   }, args);
 }
 
-export interface TriggerCallArgs extends StatementAnnotations {
+export interface TriggerCallArgs extends StatementOptions {
   trigger: ObjectRef;
   as?: string;
   input?: CallInput;
@@ -214,7 +214,7 @@ export function triggerCall(args: TriggerCallArgs): Statement {
   }, args);
 }
 
-export interface MiddlewareCallArgs extends StatementAnnotations {
+export interface MiddlewareCallArgs extends StatementOptions {
   middleware: ObjectRef;
   as?: string;
   input?: CallInput;
@@ -230,7 +230,7 @@ export function middlewareCall(args: MiddlewareCallArgs): Statement {
   }, args);
 }
 
-export interface AddonCallArgs extends StatementAnnotations {
+export interface AddonCallArgs extends StatementOptions {
   addon: ObjectRef;
   as?: string;
   input?: CallInput;
@@ -254,7 +254,7 @@ export function addonCall(args: AddonCallArgs): Statement {
 // call one — `mvp:function` has a single surface and the default payload above.
 // ---------------------------------------------------------------------------
 
-export interface ActionCallArgs extends StatementAnnotations {
+export interface ActionCallArgs extends StatementOptions {
   /** The action's name. */
   action: ObjectRef;
   /** The action package identifier. */
@@ -308,7 +308,7 @@ export function actionPackageCall(args: ActionCallArgs): Statement {
   }, args);
 }
 
-export interface WorkflowTestCallArgs extends StatementAnnotations {
+export interface WorkflowTestCallArgs extends StatementOptions {
   /** The target workflow test. */
   workflowTest: ObjectRef;
   as?: string;

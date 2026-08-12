@@ -12,7 +12,7 @@
  */
 import type { Statement, AsShapeBrand } from "../statement.js";
 import type { Value } from "../../values/value.js";
-import type { StatementAnnotations } from "../statement.js";
+import type { StatementOptions } from "../statement.js";
 import { generated } from "../generated/factories.generated.js";
 
 /**
@@ -52,7 +52,7 @@ export interface IpLookupResult {
   };
 }
 
-export interface IpLookupArgs<As extends string = string> extends StatementAnnotations {
+export interface IpLookupArgs<As extends string = string> extends StatementOptions {
   /** The IP address to geolocate. */
   value: Value;
   /** Bind the nested {@link IpLookupResult} (or `null`) to this stack variable. */
