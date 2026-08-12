@@ -65,7 +65,17 @@ frontend types follow.
   groups, and endpoints. Pin each API group's canonical slug so public paths are
   stable and \`getPath()\` resolves in the browser bundle.
 - \`xano/EXAMPLE.md\` — the walkthrough for adding your first table + endpoint.
-- \`frontend/src/\` — the React app.
+- \`frontend/src/\` — the React app. Tailwind v4 + shadcn/ui.
+  - \`frontend/src/components/ui/\` — shadcn components, **copied in and owned by
+    this project**. Edit them directly; there is no library to configure around.
+  - Need one that isn't there? \`npx shadcn@latest add <name>\` — do not hand-roll
+    it, and do not add a different component library.
+  - Import via the \`@/\` alias (\`@/components/ui/button\`, \`@/lib/utils\`), declared
+    in both \`tsconfig.json\` and \`vite.config.ts\`.
+  - Style with the semantic tokens (\`bg-primary\`, \`text-muted-foreground\`,
+    \`border-input\`), never raw palette classes like \`bg-gray-100\` — the tokens are
+    defined in \`frontend/src/index.css\`, which is also where you rebrand. Tailwind
+    v4 has no \`tailwind.config.js\`.
 
 ### Workflow
 
@@ -134,7 +144,17 @@ endpoint's verb and resolved path.
 - \`xano/index.ts\` — the barrel: default-exports the \`workspace()\` with every pulled object registered.
 - \`xano/_shared.ts\` — tables, and anything referenced from more than one file.
 - \`xano/README.md\` — the decode report for this pull.
-- \`frontend/src/\` — the React app.
+- \`frontend/src/\` — the React app. Tailwind v4 + shadcn/ui.
+  - \`frontend/src/components/ui/\` — shadcn components, **copied in and owned by
+    this project**. Edit them directly; there is no library to configure around.
+  - Need one that isn't there? \`npx shadcn@latest add <name>\` — do not hand-roll
+    it, and do not add a different component library.
+  - Import via the \`@/\` alias (\`@/components/ui/button\`, \`@/lib/utils\`), declared
+    in both \`tsconfig.json\` and \`vite.config.ts\`.
+  - Style with the semantic tokens (\`bg-primary\`, \`text-muted-foreground\`,
+    \`border-input\`), never raw palette classes like \`bg-gray-100\` — the tokens are
+    defined in \`frontend/src/index.css\`, which is also where you rebrand. Tailwind
+    v4 has no \`tailwind.config.js\`.
 
 ### Workflow
 

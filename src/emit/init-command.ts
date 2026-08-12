@@ -37,6 +37,10 @@ import {
   renderAppTsx,
   renderIndexCss,
   renderApiTs,
+  renderComponentsJson,
+  renderCnUtil,
+  renderButtonTsx,
+  renderCardTsx,
   type TemplateVars,
 } from "./init-templates.js";
 
@@ -76,11 +80,19 @@ export function projectShellFiles(
     { path: ".gitignore", content: renderGitignore() },
     { path: ".env.example", content: renderEnvExample() },
     { path: "README.md", content: parts.readme },
+    // The shadcn/ui CLI's config — lets `npx shadcn@latest add <component>` work
+    // in a fresh scaffold without a separate `shadcn init`.
+    { path: "components.json", content: renderComponentsJson() },
     { path: "frontend/index.html", content: renderIndexHtml(vars) },
     { path: "frontend/src/main.tsx", content: renderMainTsx() },
     { path: "frontend/src/App.tsx", content: parts.app },
     { path: "frontend/src/index.css", content: renderIndexCss() },
     { path: "frontend/src/lib/api.ts", content: renderApiTs() },
+    { path: "frontend/src/lib/utils.ts", content: renderCnUtil() },
+    // The two components the landing page uses. Every other shadcn component is
+    // one `npx shadcn@latest add` away and lands beside these.
+    { path: "frontend/src/components/ui/button.tsx", content: renderButtonTsx() },
+    { path: "frontend/src/components/ui/card.tsx", content: renderCardTsx() },
   ];
 }
 
