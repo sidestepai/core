@@ -186,8 +186,16 @@ describe("s.db.query signature is complete", () => {
  * not run, and the reason two apps could not use joins at all. The replacement
  * is two lines: the rule, and a complete working `bind`. Both are load-bearing;
  * the entry was condensed twice before the ceiling moved.
+ *
+ * Raised 6,150 → 6,250 for `asFilters`, a new option on every statement that
+ * binds an `as`. API growth again, and again condensed twice first — what is
+ * left is the signature plus the two things a reader gets WRONG by default:
+ * that it throws on a statement binding nothing (rather than quietly doing
+ * nothing), and that it does not retype the bound variable (the filter changes
+ * the runtime value, the declared type does not follow). Drop either and the
+ * remaining prose actively misleads. Re-measure before raising it again.
  */
-const SPECIALS_CEILING = 6_150;
+const SPECIALS_CEILING = 6_250;
 
 describe("Specials block stays lean", () => {
   it(`is under ${SPECIALS_CEILING.toLocaleString()} tokens`, () => {

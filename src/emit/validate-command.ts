@@ -99,6 +99,12 @@ async function validateWithClient(args: ParsedArgs, client: MetaClientType, bund
       for (const e of entries) {
         if (e.ran) {
           success(`runtime ✓ ${e.name}`);
+          // "It ran" is not "it returned what the author claimed". A function
+          // can answer 200 with a null key or a key missing entirely, which is
+          // how a sandbox example shipped a comment promising a value it never
+          // produced. Under `--verbose` the body is printed so the author can
+          // check the RESULT, not just the exit status.
+          if (args.verbose) detail(fmt(e.detail));
         } else {
           warn(`runtime ✗ ${e.name} (status ${e.status})`);
           if (args.verbose) detail(fmt(e.detail));

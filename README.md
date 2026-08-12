@@ -1053,6 +1053,20 @@ statement also carries `description` and `disabled`** — inline on the object-a
 a trailing options object on the positional specials. `disabled: true` is Xano's
 commented-out state: the step stays in the stack and the engine skips it.
 
+**Filter a statement's result as it binds.** Any statement with an `as` also takes
+`asFilters` — the editor's `return as <var> | upper` — applied in order, from the same
+`fl.*` catalog as value filters:
+
+```ts
+s.security.create_uuid({ as: "token", asFilters: [fl.upper()] })
+s.set_var("email", inp("raw"), { asFilters: [fl.trim(), fl.lower()] })
+```
+
+It saves a follow-up `s.set_var` for the common "bind it in a different shape" case. A
+statement that binds nothing does not offer the option. Note that the chain does not change
+the bound variable's declared type — `asFilters: [fl.count()]` on a db read still types as
+the row, so narrow it yourself if the filter reshapes the value.
+
 **Fields with a fixed set of values take a bare literal.** Where the engine accepts only
 certain spellings, the field's type is that set, so autocomplete offers them and a typo is a
 compile error rather than a runtime failure after deploy:
