@@ -25,10 +25,85 @@ describe("c.* constant constructors", () => {
     expect(c.null()).toEqual({ value: "null", tag: "const:null", filters: [] });
   });
 
-  it("c.obj round-trips to a parseable JSON string with const:obj", () => {
+  it("c.obj stores a POPULATED object as `{}` plus one `set` filter per key (issue #248)", () => {
+    // A populated JSON string — `{"q":"abc"}` — is not readable by the engine:
+    // a statement's value and filters are flattened into one piped string
+    // before evaluation, and the reader that splits it apart ends the value at
+    // the first unquoted `}`, so the constant arrives truncated and the request
+    // dies with `ERROR_FATAL "Unable to decode."`. `{}` is special-cased there,
+    // and each key rides inside a `set(...)` argument where quoting protects it
+    // — which is why this is the only populated form the editor writes.
     const v = c.obj({ q: "abc" });
-    expect(v.tag).toBe("const:obj");
-    expect(JSON.parse(v.value)).toEqual({ q: "abc" });
+    expect(v).toEqual({
+      value: "{}",
+      tag: "const:obj",
+      filters: [
+        {
+          name: "set",
+          disabled: false,
+          arg: [
+            { value: "q", tag: "const", filters: [] },
+            { value: "abc", tag: "const", filters: [] },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("c.obj types each member by its JSON type, and nests objects the same way", () => {
+    const tags = (v: ReturnType<typeof c.obj>) =>
+      v.filters.map((f) => [f.arg[0]!.value, f.arg[1]!.tag]);
+    expect(tags(c.obj({ s: "x", i: 1, d: 1.5, b: true, n: null, a: [1, 2], o: { k: 1 } }))).toEqual([
+      ["s", "const"],
+      ["i", "const:int"],
+      ["d", "const:decimal"],
+      ["b", "const:bool"],
+      ["n", "const:null"],
+      // An array keeps its JSON string: brackets shield its contents from the
+      // reader that truncates a bare `}`.
+      ["a", "const:array"],
+      ["o", "const:obj"],
+    ]);
+    const nested = c.obj({ o: { k: 1 } }).filters[0]!.arg[1]!;
+    expect(nested.value).toBe("{}");
+    expect(nested.filters).toEqual(c.obj({ k: 1 }).filters);
+  });
+
+  it("c.obj carries members JSON would not, exactly as the JSON form stored them", () => {
+    // The change is one of FORM. A member `JSON.stringify` dropped stays dropped
+    // and one it nulled stays null, so no stored object gains or changes a key.
+    const wire = (o: object) =>
+      c.obj(o as never).filters.map((f) => [f.arg[0]!.value, f.arg[1]!.tag, f.arg[1]!.value]);
+    expect(wire({ a: undefined, b: 1 })).toEqual([["b", "const:int", "1"]]);
+    expect(wire({ n: NaN, i: Infinity })).toEqual([
+      ["n", "const:null", "null"],
+      ["i", "const:null", "null"],
+    ]);
+    // Past the safe-integer range a number only stringifies in exponent form,
+    // which is not an integer literal — it goes to the tag stored as a string.
+    expect(wire({ big: 1e21 })).toEqual([["big", "const:decimal", "1e+21"]]);
+  });
+
+  it("c.obj bracket-escapes a key the engine's path reader would split", () => {
+    // A bare `a.b` path would nest (`{a:{b:…}}`); `["a.b"]` — the engine's own
+    // escape — keeps the literal key flat.
+    expect(c.obj({ "a.b": 1 }).filters[0]!.arg[0]!.value).toBe('["a.b"]');
+    expect(c.obj({ "items[0]": 1 }).filters[0]!.arg[0]!.value).toBe('["items[0]"]');
+    expect(c.obj({ 'q"x': 1 }).filters[0]!.arg[0]!.value).toBe('["q\\"x"]');
+    // A digits-only key is not an identifier, and neither is a digit-leading
+    // one. (The engine reads a numeric key as an INDEX either way — that is its
+    // data model, documented on `c.obj`, and no path spelling changes it.)
+    expect(c.obj({ "0": 1 }).filters[0]!.arg[0]!.value).toBe('["0"]');
+    expect(c.obj({ "1a": 1 }).filters[0]!.arg[0]!.value).toBe('["1a"]');
+    // Backslash is escaped BEFORE the quote, so a key ending in one cannot
+    // escape the closing quote and unterminate the segment.
+    expect(c.obj({ "a\\": 1 }).filters[0]!.arg[0]!.value).toBe('["a\\\\"]');
+  });
+
+  it("c.obj keeps both empty spellings unfiltered and distinct", () => {
+    expect(c.obj()).toEqual({ value: "{}", tag: "const:obj", filters: [] });
+    expect(c.obj({})).toEqual({ value: "{}", tag: "const:obj", filters: [] });
+    expect(c.obj(null)).toEqual({ value: "", tag: "const:obj", filters: [] });
   });
 
   it("c.array round-trips to a parseable JSON string with const:array", () => {
@@ -146,7 +221,7 @@ describe("c.obj/c.array reject nested tagged Values (issue #42)", () => {
     // fine (`"meta"` is not a Tag). This keeps the runtime guard from over-firing.
     const v = c.obj({ tag: "meta", value: "x", filters: [] });
     expect(v.tag).toBe("const:obj");
-    expect(JSON.parse(v.value)).toEqual({ tag: "meta", value: "x", filters: [] });
+    expect(v.filters.map((f) => f.arg[0]!.value)).toEqual(["tag", "value", "filters"]);
   });
 });
 

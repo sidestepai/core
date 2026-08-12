@@ -18,6 +18,14 @@ function field(encoded: ReturnType<typeof encodeStatement>, name: string) {
   return entry && { value: entry.value, tag: entry.tag };
 }
 
+/** The whole input entry, filters included — `field` drops those. */
+function fieldValue(encoded: ReturnType<typeof encodeStatement>, name: string) {
+  const entry = (encoded.input as Array<{ name: string } & Record<string, unknown>>).find(
+    (e) => e.name === name,
+  );
+  return entry && { value: entry.value, tag: entry.tag, filters: entry.filters };
+}
+
 describe("s.api.request — typed wrapper (U3)", () => {
   it("byte-matches the engine golden when built from typed literals (R5)", () => {
     const encoded = encodeStatement(
@@ -55,7 +63,11 @@ describe("s.api.request — typed wrapper (U3)", () => {
     );
     expect(field(encoded, "url")).toEqual({ value: "https://x", tag: "const" });
     expect(field(encoded, "method")).toEqual({ value: "POST", tag: "const" });
-    expect(field(encoded, "params")).toEqual({ value: '{"a":1}', tag: "const:obj" });
+    // A populated object constant is `{}` plus one `set` per key — the only
+    // populated form the engine reads back (issue #248). Asserted WITH its
+    // filters: the keys live there now, so dropping them would stop checking
+    // that `params` carries anything at all.
+    expect(fieldValue(encoded, "params")).toEqual({ ...c.obj({ a: 1 }) });
     expect(field(encoded, "headers")).toEqual({
       value: '["Content-Type: application/json"]',
       tag: "const:array",
@@ -76,7 +88,7 @@ describe("s.api.request — typed wrapper (U3)", () => {
     expect(field(encoded, "url")?.tag).toBe("input");
     expect(field(encoded, "method")?.tag).toBe("input");
     expect(field(encoded, "timeout")?.tag).toBe("input");
-    expect(field(encoded, "params")).toEqual({ value: '{"static":true}', tag: "const:obj" });
+    expect(fieldValue(encoded, "params")).toEqual({ ...c.obj({ static: true }) });
   });
 
   it("encodes each accepted verb as a const text value", () => {
@@ -128,8 +140,17 @@ describe("params record-of-values (issues #74/#75)", () => {
   it("keeps literal keys in the c.obj base and lifts only the Value keys", () => {
     const encoded = coerceObj({ n: 1, count: ref("count") })!;
     expect(encoded.tag).toBe("const:obj");
-    expect(encoded.value).toBe('{"n":1}'); // literal subset seeds the constant base
+    expect(encoded.value).toBe("{}");
     expect(encoded.filters).toEqual([
+      // the literal subset, then the lifted Value keys — every key is a `set`
+      {
+        name: "set",
+        disabled: false,
+        arg: [
+          { value: "n", tag: "const", filters: [] },
+          { value: "1", tag: "const:int", filters: [] },
+        ],
+      },
       {
         name: "set",
         disabled: false,
@@ -150,8 +171,7 @@ describe("params record-of-values (issues #74/#75)", () => {
   });
 
   it("leaves a pure-JSON record as a plain const:obj constant (no regression)", () => {
-    // Byte-identical to the pre-change behavior — no set filters.
-    expect(coerceObj({ a: "b", n: 1 })).toEqual({ value: '{"a":"b","n":1}', tag: "const:obj", filters: [] });
+    expect(coerceObj({ a: "b", n: 1 })).toEqual(c.obj({ a: "b", n: 1 }));
   });
 
   it("passes a dynamic Value (and an explicit c.obj) through untouched", () => {
@@ -185,11 +205,7 @@ describe("params record-of-values (issues #74/#75)", () => {
     // The passthrough uses the strict `isTaggedValue` (real Tag + filters[]), so a
     // params object that merely reuses `tag`/`value` as data keys is encoded as a
     // constant — not returned verbatim as a bogus node.
-    expect(coerceObj({ tag: "sale", value: "50" })).toEqual({
-      value: '{"tag":"sale","value":"50"}',
-      tag: "const:obj",
-      filters: [],
-    });
+    expect(coerceObj({ tag: "sale", value: "50" })).toEqual(c.obj({ tag: "sale", value: "50" }));
   });
 
   it("keeps array params as an array constant (not object-ified), preserving #42", () => {
@@ -204,8 +220,10 @@ describe("params record-of-values (issues #74/#75)", () => {
     // the flat encoding a literal-valued key gets — fail loud instead.
     expect(() => coerceObj({ "a.b": ref("x") })).toThrow(/nested path/);
     expect(() => coerceObj({ "items[0]": ref("x") })).toThrow(/nested path/);
-    // The same dotted key with a plain value stays flat (pre-existing behavior).
-    expect(coerceObj({ "a.b": 1 })).toEqual({ value: '{"a.b":1}', tag: "const:obj", filters: [] });
+    // The same dotted key with a plain value stays flat: `c.obj` writes it as the
+    // engine's bracket-escaped `set` path, `["a.b"]` (issue #248).
+    expect(coerceObj({ "a.b": 1 })).toEqual(c.obj({ "a.b": 1 }));
+    expect(coerceObj({ "a.b": 1 })!.filters[0]!.arg[0]!.value).toBe('["a.b"]');
   });
 });
 

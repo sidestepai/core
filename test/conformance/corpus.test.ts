@@ -260,10 +260,11 @@ const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
         api_key: c.text("MY_KEY"),
         url: c.text("https://test.com"),
         method: c.text("POST"),
-        payload: withFilters(
-          { value: "{}", tag: "const:obj", filters: [] },
-          [filter("set", c.text("q"), c.text("abc"))],
-        ),
+        // Built with `c.obj` on purpose: this engine-persisted capture IS the
+        // `{}`-plus-`set` form a populated object constant takes, so it byte-
+        // verifies the encoder against real engine bytes rather than against a
+        // hand-rolled chain that happens to agree with it (issue #248).
+        payload: c.obj({ q: "abc" }),
       }),
   },
   // Foreach body control-flow signals (no context, no output) — siblings of foreach_break.

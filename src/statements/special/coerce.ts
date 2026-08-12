@@ -61,19 +61,20 @@ export const coerceBool = (v: boolean | Value | undefined): Value | undefined =>
  * - `undefined` → dropped downstream.
  * - a tagged {@link Value} → passed through (the dynamic escape hatch), flattened
  *   to a plain object if it is a callable accessor like `t.new` (issue #78).
- * - an array → a `c.obj` constant, as before (a pure-JSON array stays `[…]`; an
- *   array holding a tagged value still throws #42). An object-of-values is a
- *   record, never a list, so arrays never take the `set`-filter path.
- * - a plain **pure-JSON** record → a `c.obj` constant (`tag:"const:obj"`), as before.
+ * - an array → a `c.obj` constant, as before (a pure-JSON array stays the JSON
+ *   string `[…]`; an array holding a tagged value still throws #42). An
+ *   object-of-values is a record, never a list.
+ * - a plain **pure-JSON** record → a `c.obj` constant (`tag:"const:obj"`), which
+ *   is itself an empty `{}` carrying one `set` filter per key (issue #248).
  * - a plain record that **contains tagged values** at the top level → a real
- *   object-of-values: a `c.obj` base seeded from the literal-valued keys, plus one
- *   `set` filter per Value-valued key. This makes `params: { count: ref("count") }`
+ *   object-of-values: the same `c.obj` base over the literal-valued keys, then one
+ *   more `set` filter per Value-valued key. This makes `params: { count: ref("count") }`
  *   *just work*, mirroring the record-of-values `response: { key: value }` accepts
  *   (issues #74/#75) — instead of routing into `c.obj`, which refuses to embed a
  *   tagged value (issue #42).
  *
  * Only **top-level** Value keys are lifted. A value nested *inside* a sub-object
- * or array lands in the `c.obj` base and still trips the #42 guard — a loud
+ * or array lands in the `c.obj` literal subset and still trips the #42 guard — a loud
  * failure, not a silent drop (the documented flat-only boundary).
  */
 export const coerceObj = (v: object | Value | undefined): Value | undefined => {
@@ -96,7 +97,7 @@ export const coerceObj = (v: object | Value | undefined): Value | undefined => {
   }
   // `c.obj` still enforces #42 on the literal subset — a value nested inside a
   // sub-object stays here and throws (the flat-only boundary). With no top-level
-  // Value keys this is byte-identical to the old plain-JSON constant path.
+  // Value keys the result IS `c.obj(v)`, lifted keys only append to its chain.
   const base = c.obj(literals);
   if (valueEntries.length === 0) return base;
   return withFilters(
@@ -105,7 +106,10 @@ export const coerceObj = (v: object | Value | undefined): Value | undefined => {
       // The engine `set` filter reads `.`/`[` in the path as a nested-path DSL
       // (`"a.b"` → `{a:{b:…}}`), so a dotted key carrying a Value would encode
       // differently than the same key with a literal value (which `c.obj` keeps
-      // flat). Fail loud on that ambiguity rather than silently diverging.
+      // flat, via the bracket-escaped path form). Fail loud on that ambiguity
+      // rather than silently diverging; `c.obj`'s escape could be reused here to
+      // lift the restriction, which is a change to make deliberately, not as a
+      // side effect of #248.
       if (/[.[]/.test(key))
         throw new Error(
           `coerceObj: object key ${JSON.stringify(key)} carries a tagged value but contains "." or "[", ` +
