@@ -9,6 +9,19 @@ import {
   generatedStatements,
   encodeStatement,
   c,
+  lam,
+  assertLambdaBody,
+  LAMBDA_BINDINGS,
+  LAMBDA_CODE_FILTERS,
+  LAMBDA_STATEMENTS,
+  LAMBDA_GLOBALS,
+  type LambdaBody,
+  type LambdaBindings,
+  type LambdaSurface,
+  type LambdaOptions,
+  type CaptureValue,
+  type AmbientBindings,
+  type IteratingBindings,
 } from "../src/index.js";
 import { meQuery, login, getSnippet, fetchSnippet } from "./fixtures/consumer-example.js";
 import { createLink, linksGroup } from "./fixtures/validate-input-recipe.js";
@@ -127,5 +140,39 @@ describe("generated factory tree namespace overrides", () => {
       }),
     );
     expect(enc.name).toBe("mvp:microservice_request");
+  });
+});
+
+/**
+ * The lambda authoring surface is reachable from the package entry — including
+ * its TYPES, which is the half a runtime check cannot see.
+ *
+ * `LambdaBody` shipped in the emitted signatures before it shipped as an export,
+ * so a consumer could use the inline form but could not NAME its type to write a
+ * shared body. Caught by type-checking a consumer against the built `.d.ts`, and
+ * pinned here so it stays exported.
+ */
+describe("lambda authoring surface (issue #221)", () => {
+  it("exports the authoring values", () => {
+    expect(typeof lam.fn).toBe("function");
+    expect(typeof lam.raw).toBe("function");
+    expect(typeof assertLambdaBody).toBe("function");
+    expect(LAMBDA_BINDINGS.reduce).toContain("$result");
+    expect(LAMBDA_CODE_FILTERS.reduce?.surface).toBe("reduce");
+    expect(LAMBDA_STATEMENTS["mvp:lambda"]?.surface).toBe("s.lambda");
+    expect(LAMBDA_GLOBALS).toContain("console");
+  });
+
+  it("exports every type a consumer needs to name one", () => {
+    // A shared body, typed for a surface, written the way a consumer would.
+    const body: LambdaBody<"map"> = ({ $this }) => $this;
+    const surface: LambdaSurface = "reduce";
+    const opts: LambdaOptions = { surface };
+    const capture: CaptureValue = { rate: 0.2 };
+    expectTypeOf<LambdaBindings<"reduce">>().toHaveProperty("$result");
+    expectTypeOf<LambdaBindings<"s.lambda">>().not.toHaveProperty("$this");
+    expectTypeOf<AmbientBindings>().toHaveProperty("$var");
+    expectTypeOf<IteratingBindings>().toHaveProperty("$parent");
+    expect([typeof body, surface, opts.surface, typeof capture]).toEqual(["function", "reduce", "reduce", "object"]);
   });
 });

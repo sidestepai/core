@@ -6,10 +6,18 @@ import { expr } from "../../src/statements/conditional.js";
 import { c, ref } from "../../src/values/value.js";
 
 /**
- * Issue #1 — a query/function whose stack ends in `s.return(...)` but declares
- * no `response` compiles into an endpoint that returns nothing (the response is
- * driven only by the `response` field). `encode*` now emits a `console.warn`
- * nudge; encoding itself is unchanged (`result` stays `[]`).
+ * A query/function whose stack ends in `s.return(...)` but declares no
+ * `response` encodes with an EMPTY response envelope (`result: []`), so its
+ * shape is invisible to `InferResponse`, to a typed frontend, and to codegen.
+ * `encode*` emits a `console.warn` nudge; encoding itself is unchanged.
+ *
+ * The warning used to say the endpoint "returns nothing". It does not: probed
+ * against a live ephemeral environment, a query whose whole stack is
+ * `s.return(c.text("done"))` answers `200 "done"` over HTTP, and an early
+ * `s.return` that fires beats a declared `response`. The nudge is about the
+ * missing TYPE, not a missing value — telling an author their endpoint returns
+ * nothing when it plainly does is the kind of unverified claim this SDK is
+ * supposed to be removing (see issue #221's binding contract).
  */
 
 afterEach(() => vi.restoreAllMocks());
@@ -23,8 +31,13 @@ describe("warnUnboundReturn", () => {
       stack: [s.set_var("posts", c.array([])), s.return(ref("posts"))],
     });
     expect(warn).toHaveBeenCalledOnce();
-    expect(String(warn.mock.calls[0]?.[0])).toMatch(/returns nothing/);
-    // Encoding is unchanged — the response is still empty.
+    const message = String(warn.mock.calls[0]?.[0]);
+    // Says the true thing: the value comes back, the TYPE does not.
+    expect(message).toMatch(/DOES\s+come back at runtime/);
+    expect(message).toMatch(/InferResponse/);
+    expect(message).not.toMatch(/returns nothing/);
+    // Encoding is unchanged — the stored response envelope is still empty, which
+    // is exactly why the shape is invisible to the SDK.
     expect(xdo.result).toEqual([]);
   });
 

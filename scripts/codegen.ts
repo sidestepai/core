@@ -189,6 +189,11 @@ interface FactoryEntry {
  */
 const NAMESPACE_OVERRIDES: Readonly<Record<string, string>> = {
   "api.microservice": "microservice.request",
+  // A lambda runs wherever a stack runs — functions, tasks, middleware,
+  // triggers — so `s.api.lambda` said something false about where it is
+  // available (issue #221). The stored name is unchanged; only the authoring
+  // path moves. Mirrored by the `lambda` key in src/statements/surfaces.ts.
+  "api.lambda": "lambda",
 };
 
 /** Derive the namespace path + method from a schema filename basename. */
@@ -202,6 +207,19 @@ function namespaceOf(base: string): { path: string[]; method: string } {
 const TS_TYPE: Record<string, string> = { string: "string", value: "Value", comparison: "Condition" };
 
 /**
+ * Per-field authored-type overrides, keyed `<stored name>.<field>`.
+ *
+ * The lambda statement's `code` also takes the body ITSELF — an inline function
+ * whose parameter destructures the bindings for the statement surface, so they
+ * autocomplete at the call site and a filter-only binding like `$this` is a
+ * compile error there (issue #221). The stored bytes are unchanged: the factory
+ * resolves the function to the same `const:text` a `c.text(...)` carried.
+ */
+const FIELD_TYPE_OVERRIDES: Readonly<Record<string, string>> = {
+  "mvp:lambda.code": 'Value | LambdaBody<"s.lambda">',
+};
+
+/**
  * The authored type for one field. An enum-constrained field renders as its
  * legal values (in the engine's declared order — the editor's dropdown order,
  * which reads as intentional) plus `Value`: the literal spelling puts the legal
@@ -209,7 +227,9 @@ const TS_TYPE: Record<string, string> = { string: "string", value: "Value", comp
  * `Value` keeps the dynamic-binding escape hatch open. Both spellings encode to
  * the same bytes (see `encodeFromSpec`).
  */
-function fieldType(r: StatementSpec["rules"][number]): string {
+function fieldType(r: StatementSpec["rules"][number], storedName: string): string {
+  const override = FIELD_TYPE_OVERRIDES[`${storedName}.${r.field}`];
+  if (override) return override;
   if (!r.enum) return TS_TYPE[r.type]!;
   return [...r.enum.map((v) => JSON.stringify(v)), TS_TYPE[r.type]!].join(" | ");
 }
@@ -218,7 +238,7 @@ function fieldType(r: StatementSpec["rules"][number]): string {
 function argSignature(spec: StatementSpec): { type: string; allOptional: boolean } {
   const fields = spec.rules.map((r) => {
     const optional = r.optional || r.default !== undefined;
-    return `${r.field}${optional ? "?" : ""}: ${fieldType(r)}`;
+    return `${r.field}${optional ? "?" : ""}: ${fieldType(r, spec.name)}`;
   });
   // Reserved envelope authoring keys (always optional). `disabled` and
   // `description` are on EVERY statement — they annotate the stack item rather
@@ -302,6 +322,7 @@ import type { Statement } from "../statement.js";
 import type { Authored, OutputAuthored } from "../schema-dsl/interpret.js";
 import { encodeFromSpec } from "../schema-dsl/interpret.js";
 import type { Value } from "../../values/value.js";
+import type { LambdaBody } from "../../values/lambda.js";
 import type { Condition } from "../conditional.js";
 import { GENERATED_SPECS } from "./specs.generated.js";
 

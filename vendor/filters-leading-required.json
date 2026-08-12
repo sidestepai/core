@@ -1,0 +1,14 @@
+{
+  "note": "How many arguments the ENGINE requires for filters whose upstream spec marks a LEADING argument optional. A leading optional cannot be omitted positionally — the next argument slides into its slot and the engine refuses the call — so `codegen:filters` requires the first `minArgs` arguments of each filter listed here. Regenerate with `tsx scripts/probe-lambda-bindings.ts` against a sandbox.",
+  "probedAt": "2026-08-12",
+  "minArgs": {
+    "reduce": 2,
+    "array_fill": 2,
+    "encrypt": 3,
+    "decrypt": 3,
+    "crypto_jws_encode": 3,
+    "crypto_jws_decode": 3,
+    "crypto_jwe_encode": 4,
+    "crypto_jwe_decode": 4
+  }
+}

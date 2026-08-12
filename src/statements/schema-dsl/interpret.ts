@@ -33,6 +33,7 @@ import { isIgnored } from "../../values/ignored.js";
 import { resolveEnumValue } from "./enum-guard.js";
 import { encodeComparison } from "../conditional.js";
 import type { Condition } from "../conditional.js";
+import { assertLambdaStatement, coerceLambdaFields } from "../../values/lambda.js";
 
 /**
  * What kind of authored value a field consumes:
@@ -185,6 +186,13 @@ function inputEntry(name: string, v: Value, full: boolean): Record<string, unkno
 
 /** Encode authored inputs into a `Statement` using a spec's field rules. */
 export function encodeFromSpec(spec: StatementSpec, authored: Authored): Statement {
+  // A statement carrying a JavaScript body resolves an INLINE body against its
+  // own surface — the call site knows which one — and then gets that body
+  // checked against the bindings the surface actually injects, before it can
+  // reach a live request (issue #221). Both are no-ops for every other
+  // statement.
+  authored = coerceLambdaFields(spec.name, authored as Record<string, unknown>) as Authored;
+  assertLambdaStatement(spec.name, authored as Record<string, unknown>);
   const env = spec.envelope;
   const context: Record<string, unknown> = {};
   const input: Record<string, unknown>[] = [];

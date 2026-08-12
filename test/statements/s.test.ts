@@ -24,7 +24,7 @@ describe("unified `s` authoring surface", () => {
       s.array.push,
       s.object.keys,
       s.text.append,
-      s.api.lambda,
+      s.lambda,
       s.storage.delete_file,
       s.expect.to_equal,
       s.set_var,

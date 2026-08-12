@@ -1,4 +1,4 @@
-# sidestep v4.1.37
+# sidestep v4.1.38
 
 > TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.
 
@@ -633,7 +633,7 @@ engine change.
 - `fl.append(value: <T>, path: text): <T>[]`
 - `fl.array_diff(value: <T>[]): <T>[]`
 - `fl.array_diff_assoc(value: <T>[]): <T>[]`
-- `fl.array_fill(start?: int, count: int): any[]`
+- `fl.array_fill(start: int, count: int): any[]`
 - `fl.array_fill_keys(keys?: any[]): any[]`
 - `fl.array_intersect(value: <T>[]): <T>[]`
 - `fl.array_intersect_assoc(value: <T>[]): <T>[]`
@@ -651,18 +651,18 @@ engine change.
 - `fl.contains(search: text): bool` — piped value is the subject text; the arg is the substring searched for
 - `fl.convert_encoding(to: text, from: text): text`
 - `fl.create_object(values?: <T>[]): any`
-- `fl.crypto_jwe_decode(check_claims?: json, key: json, key_algorithm?: enum, content_algorithm?: enum, timeDrift?: int): json`
-- `fl.crypto_jwe_encode(headers?: json, key: json, key_algorithm?: enum, content_algorithm?: enum, ttl?: int): text`
-- `fl.crypto_jws_decode(check_claims?: json, key: json, algorithm?: enum, timeDrift?: int): json`
-- `fl.crypto_jws_encode(headers?: json, key: json, algorithm?: enum, ttl?: int): text`
+- `fl.crypto_jwe_decode(check_claims: json, key: json, key_algorithm: enum, content_algorithm: enum, timeDrift?: int): json`
+- `fl.crypto_jwe_encode(headers: json, key: json, key_algorithm: enum, content_algorithm: enum, ttl?: int): text`
+- `fl.crypto_jws_decode(check_claims: json, key: json, algorithm: enum, timeDrift?: int): json`
+- `fl.crypto_jws_encode(headers: json, key: json, algorithm: enum, ttl?: int): text`
 - `fl.csv_create(rows: text[], separator?: text, enclosure?: text, escape?: text): text`
 - `fl.csv_decode(separator?: text, enclosure?: text, escape?: text): any`
 - `fl.csv_encode(separator?: text, enclosure?: text, escape?: text): text`
 - `fl.csv_parse(separator?: text, enclosure?: text, escape?: text): any`
-- `fl.decrypt(algorithm?: enum, key: text, iv: text): text`
+- `fl.decrypt(algorithm: enum, key: text, iv: text): text`
 - `fl.detect_encoding(encodings?: text): text`
 - `fl.div(value: decimal): decimal`
-- `fl.encrypt(algorithm?: enum, key: text, iv: text): text`
+- `fl.encrypt(algorithm: enum, key: text, iv: text): text`
 - `fl.ends_with(search: text): bool` — piped value is the subject text; the arg is the substring searched for
 - `fl.epochms_add_ms(milliseconds: int): epochms`
 - `fl.epochms_add_secs(seconds: int): epochms`
@@ -670,8 +670,8 @@ engine change.
 - `fl.epochms_from_format(format: text, timezone?: text): text`
 - `fl.epochms_transform(format: text, timezone?: text): text` — applies a relative shift (e.g. "+1 day") to the timestamp
 - `fl.eq(value: <T>): bool`
-- `fl.every(code: text, timeout?: int): any[]` — `code` is a JS boolean expression run per element (true for all?)
-- `fl.filter(code: text, timeout?: int): any[]`
+- `fl.every(code: text, timeout?: int): any[]` — `code` is a JS body run per element (true for all?), over `$this`/`$index`/`$parent`
+- `fl.filter(code: text, timeout?: int): any[]` — `code` is a JS body run per element (keep it? true/false), over `$this`/`$index`/`$parent`
 - `fl.filter_empty(path?: text): <T>[]` — keeps entries that are not empty ("", null, 0, "0", false, [], {})
 - `fl.filter_empty_array(path?: text): <T>[]`
 - `fl.filter_empty_object(path?: text): <T>[]`
@@ -679,8 +679,8 @@ engine change.
 - `fl.filter_false(path?: text): <T>[]`
 - `fl.filter_null(path?: text): <T>[]`
 - `fl.filter_zero(path?: text): <T>[]`
-- `fl.find(code: text, timeout?: int): any[]`
-- `fl.findIndex(code: text, timeout?: int): any[]` — `code` is a JS boolean expression; returns the first matching index
+- `fl.find(code: text, timeout?: int): any[]` — `code` is a JS body run per element; returns the first element it accepts
+- `fl.findIndex(code: text, timeout?: int): any[]` — `code` is a JS body run per element; returns the first matching index
 - `fl.first_notempty(value: any): any` — first value that is not empty ("", null, 0, "0", false, [], {})
 - `fl.first_notnull(value: any): any`
 - `fl.fsort(path?: text, type?: "text"|"itext"|"natural"|"inatural"|"number", asc?: bool): <T>[]` — `type` is the comparator, and ONLY "number" compares numerically — "text"/"itext" are strcmp/strcasecmp, "natural"/"inatural" are the human-readable "a2 < a10" orderings. Default "itext". Anything else silently sorts as text, so a numeric sort MUST spell "number"; the path arg drills into each element
@@ -699,12 +699,12 @@ engine change.
 - `fl.index_by(path: text): <T>[]`
 - `fl.istarts_with(search: text): bool` — case-insensitive; piped value is the subject, the arg is the substring
 - `fl.join(separator: text): text`
-- `fl.lambda(code: text, timeout?: int): any` — runs a JavaScript expression body
+- `fl.lambda(code: text, timeout?: int): any` — runs a JS body once over the piped value, which it binds as `$this` (NOT `$parent`)
 - `fl.log(base: <T>): decimal`
 - `fl.lt(value: <T>): bool`
 - `fl.lte(value: <T>): bool`
 - `fl.ltrim(mask?: text): text`
-- `fl.map(code: text, timeout?: int): any[]` — `code` is a JS expression body run per element
+- `fl.map(code: text, timeout?: int): any[]` — `code` is a JS body run per element, over `$this`/`$index`/`$parent` — build it with `lam.fn`
 - `fl.md5(raw?: bool): text`
 - `fl.mod(value: int): int`
 - `fl.mul(value: decimal): decimal`
@@ -716,7 +716,7 @@ engine change.
 - `fl.pow(exp: <T>): decimal`
 - `fl.prepend(value: <T>, path: text): <T>[]`
 - `fl.range(start: int, stop: int): int[]`
-- `fl.reduce(initial_value?: int, code: text, timeout?: int): any[]`
+- `fl.reduce(initial_value: int, code: text, timeout?: int): any[]` — `code` is a JS body run per element; the ACCUMULATOR is `$result` (there is no `$acc`) and `initial_value` is REQUIRED — omitting it would slot the code as the initial value
 - `fl.regex_match(subject: text): text[]`
 - `fl.regex_match_all(subject: text): text[]`
 - `fl.regex_quote(delimiter?: text): text`
@@ -734,7 +734,7 @@ engine change.
 - `fl.sha256(raw?: bool): text`
 - `fl.sha384(raw?: bool): text`
 - `fl.sha512(raw?: bool): text`
-- `fl.some(code: text, timeout?: int): any[]` — `code` is a JS boolean expression run per element (true for any?)
+- `fl.some(code: text, timeout?: int): any[]` — `code` is a JS body run per element (true for any?), over `$this`/`$index`/`$parent`
 - `fl.split(separator: text): text[]`
 - `fl.starts_with(search: text): bool` — piped value is the subject text; the arg is the substring searched for
 - `fl.string_replace(search: text, replacement: text): text`
@@ -760,6 +760,57 @@ engine change.
 - `fl.url_hasarg(key: text): text`
 
 Other filters (reachable as `fl.<name>`, variadic): abs, acos, acosh, addslashes, array_entries, array_keys, array_pop, array_shift, array_shuffle, array_values, asin, asinh, atan, atanh, avg, base64_decode, base64_decode_urlsafe, base64_encode, base64_encode_urlsafe, bin2hex, bindec, bitwise_not, capitalize, ceil, cos, count, create_object_from_entries, decbin, dechex, decoct, deg2rad, empty, escape, even, exp, first, flatten, floor, from_utf8, hex2bin, hexdec, is_array, is_bool, is_decimal, is_int, is_object, is_text, is_uuid, json_decode, json_encode, jwe_decode, jwe_encode, last, list_encodings, ln, log10, lower, max, min, not, octdec, odd, product, querystring_parse, rad2deg, reverse, safe_array, sin, sort, sprintf, sql_alias, sql_esc, sqrt, strip_accents, strlen, sum, tan, text_escape, text_unescape, to_bool, to_decimal, to_expr, to_int, to_text, to_utf8, uid, upper, url_decode, url_decode_rfc3986, url_encode, url_encode_rfc3986, url_parse, uuid4, xml_decode, yaml_decode, yaml_encode.
+
+## Lambda bodies (JavaScript)
+
+The lambda statement (`s.lambda({ as, code, timeout? })`) and eight filters run a
+JavaScript body. **Write the body as a FUNCTION, not a `c.text` string** — the
+bindings are its parameters, so the editor supplies them and a wrong name is a
+compile error instead of a wrong value at runtime. Write it inline and the surface
+is implied by where it sits; nothing names one:
+
+```ts
+fl.map(({ $this }) => $this * 2)                                   // map's bindings, typed from the position
+fl.reduce({ initial_value: 0, code: ({ $result, $this }) => $result + $this })
+s.lambda({ as: "total", code: ({ $var }) => $var.subtotal * 1.2 })  // ambient only — $this is a compile error
+```
+
+The parameters are a fiction — only the BODY is sent, and the engine injects the
+bindings as free identifiers — so DESTRUCTURE them. `(b) => b.$this` emits
+`return b.$this`, and `b` is undefined at runtime (the SDK refuses it).
+
+For a body built away from its call site:
+
+- `lam.fn(({ $result, $this }) => $result + $this, { surface?, capture? })` — name a `surface` to check it here, or omit it and the call site checks it.
+- `lam.raw("return 1", { surface })` — text, same validation.
+- `lam.file("./lambdas/total.ts")` — a default-exported function in its own type-checked module (`@sidestep/core/node`), read as text at build time. The deterministic option under a bundler, where a function's source is whatever the bundler emitted.
+
+A body is a FUNCTION BODY: it must `return` its value. Bindings by surface — an
+identifier outside its surface's set is undefined at runtime, and the SDK refuses
+it at build time whichever spelling you use:
+
+- every surface: `$env` · `$input` · `$var` · `$auth` (+ the `console` / `crypto` globals)
+- `fl.lambda`: + `$this`
+- `fl.map` · `fl.filter` · `fl.some` · `fl.every` · `fl.find` · `fl.findIndex`: + `$this` · `$index` · `$parent`
+- `fl.reduce`: + `$this` · `$index` · `$parent` · `$result`
+- `s.lambda`: ambient only — no `$this`, no `$parent`, no `$result`.
+
+`$result` is `reduce`'s ACCUMULATOR (there is no `$acc`). `$this` is the element in
+an iterating filter and the piped value in `fl.lambda`; `$parent` is the whole array
+and exists only on the iterating filters. A stack variable is reached as
+`$var.name` — it is NOT also injected as a bare `$name`.
+
+Three hazards, all live-verified:
+
+- ⚠ A body that THROWS does not fail the request: the engine returns its diagnostic
+  TEXT as the value with HTTP 200, so the failure reads as bad data. Validate before
+  consuming a lambda result numerically, and prefer a `lam.*` body, which cannot fail
+  this way for a binding reason.
+- ⚠ A top-level `import`/`export` is a syntax error — the body is a function body, not
+  a module. Reach a dependency with dynamic `import()`: `const m = await import("…")`.
+- ⚠ `console` output goes to the request LOG, not stdout.
+
+TypeScript annotations survive in the body, and top-level `await` works.
 
 ## Statements
 
@@ -793,7 +844,7 @@ Control flow & blocks (each nests a sub-stack; block specials name it `body`):
 
 Array blocks (an `if`/`transform` is applied per item):
 
-- `s.array.map({ source, as?, transform? })` — `transform` is either a per-item `Value` expression (each item maps to that value) or a **record of values** (each item maps to an object with those keys). Use `ref("$this")` for the item and `ref("$index")` for its position.
+- `s.array.map({ source, as?, transform? })` — `transform` is either a per-item `Value` expression (each item maps to that value) or a **record of values** (each item maps to an object with those keys). Use `ref("$this")` for the item and `ref("$index")` for its position. These are THIS statement's own bindings, in a value expression — not the JavaScript lambda contract (see **Lambda bodies**), which binds a different set per surface and is written with `lam.fn`.
 - `s.array.union({ source, with?, as?, transform? })` — set-union two arrays.
 
 DB reads/writes (`table` is a def handle or name; `fieldName` defaults to the
@@ -901,6 +952,7 @@ Microservices (the `microservice()` def and the statement that calls it):
 - `s.foreach_remove` [special]
 - `s.foreach` [special]
 - `s.group` [special]
+- `s.lambda({ as?: string; code?: value; timeout?: value })`
 - `s.precondition({ expr?: comparison; error_type?: string; error?: value; payload?: value })`
 - `s.return` [special]
 - `s.switch` [special]
@@ -929,7 +981,6 @@ Microservices (the `microservice()` def and the statement that calls it):
 ### api
 
 - `s.api.call` [special]
-- `s.api.lambda({ as?: string; code?: value; timeout?: value })`
 - `s.api.request` [special, output]
 - `s.api.stream({ value: value })`
 

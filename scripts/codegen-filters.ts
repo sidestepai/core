@@ -39,6 +39,13 @@ const RESOLVABLE = join(ROOT, "vendor/filters-resolvable.json");
 // required on 20 filters; a real engine runs 9 of them with no argument at all.
 // Regenerate via `tsx scripts/probe-optional-path.ts` against a sandbox.
 const OPTIONAL_ARGS = join(ROOT, "vendor/filters-optional-args.json");
+// The empirically-probed argument COUNTS for filters whose spec marks a LEADING
+// argument optional. An optional argument cannot be omitted positionally when a
+// required one follows it — the next argument slides into its slot and the
+// engine refuses the call — so the first `minArgs` arguments are emitted as
+// required whatever the spec's flags say. Regenerate via
+// `tsx scripts/probe-lambda-bindings.ts` against a sandbox. See issue #221.
+const LEADING_REQUIRED = join(ROOT, "vendor/filters-leading-required.json");
 const OUT = join(ROOT, "src/values/generated/filters.generated.ts");
 
 const NAMES_SRC = process.env.XANO_FILTER_NAMES ?? "";
@@ -333,6 +340,25 @@ const ARG_ENUMS: Readonly<Record<string, readonly string[]>> = {
 };
 
 /**
+ * Filter → the lambda surface its `code` argument runs at, so the emitted
+ * signature can type an INLINE body (`fl.map(({ $this }) => …)`) with exactly
+ * that surface's bindings. Mirrors `LAMBDA_CODE_FILTERS` in
+ * `src/values/lambda.ts`, which is what the runtime guard reads; a test asserts
+ * the two agree, and the emitted surface is what makes the author not have to
+ * name one.
+ */
+const LAMBDA_SURFACES: Readonly<Record<string, string>> = {
+  lambda: "fl.lambda",
+  map: "map",
+  filter: "filter",
+  some: "some",
+  every: "every",
+  find: "find",
+  findIndex: "findIndex",
+  reduce: "reduce",
+};
+
+/**
  * Fold the curated pipe-direction notes into each affected filter's
  * `description`. Done here (rather than only in the emitted JSDoc) so the note
  * rides `FILTER_SPECS` into the manifest and `llms.txt` too — the agent that hit
@@ -350,6 +376,35 @@ function withDirectionNotes(specs: Record<string, FilterSpec>): Record<string, F
   return out;
 }
 
+/**
+ * Clear the `optional` flag on every argument the engine actually requires, so
+ * `FILTER_SPECS` — which is what `manifest.json` and `llms.txt` describe the
+ * surface from — says the same thing the generated signature enforces. Without
+ * this the docs would keep advertising `fl.reduce`'s `initial_value` as omittable
+ * while the type refuses to omit it, which is the same wrong fact #221 started
+ * from, in a different place.
+ */
+function withEngineRequired(specs: Record<string, FilterSpec>): Record<string, FilterSpec> {
+  const out: Record<string, FilterSpec> = {};
+  for (const [name, spec] of Object.entries(specs)) {
+    if (!spec.args?.length) {
+      out[name] = spec;
+      continue;
+    }
+    const required = requiredCount(name, spec.args);
+    out[name] = {
+      ...spec,
+      args: spec.args.map((a, i) => {
+        if (i >= required || !a.optional) return a;
+        const rest: FilterArg = { ...a };
+        delete rest.optional;
+        return rest;
+      }),
+    };
+  }
+  return out;
+}
+
 function jsdoc(spec: FilterSpec | undefined): string {
   const parts: string[] = [];
   if (spec?.description) parts.push(spec.description);
@@ -361,32 +416,70 @@ function jsdoc(spec: FilterSpec | undefined): string {
   return text ? `/** ${text.replace(/\*\//g, "*\\/")} */ ` : "";
 }
 
+/**
+ * How many leading arguments each filter REQUIRES, per the engine.
+ *
+ * The upstream spec's `optional` flag describes what an argument means, not
+ * whether the call can leave it out: `fl.reduce`'s `initial_value` is flagged
+ * optional and sits in front of the required `code`, so `fl.reduce(code)` used to
+ * type-check and put the code in the initial-value slot (issue #221). Positional
+ * omission is only ever possible from the END, so a probed count of what the
+ * engine actually accepts is the authority here.
+ */
+function leadingRequired(): Record<string, number> {
+  if (!existsSync(LEADING_REQUIRED)) return {};
+  return (JSON.parse(readFileSync(LEADING_REQUIRED, "utf8")) as { minArgs: Record<string, number> }).minArgs;
+}
+const MIN_ARGS = leadingRequired();
+
+/** Index of the first argument that may be omitted — everything before it is required. */
+function requiredCount(name: string, args: FilterArg[]): number {
+  const firstOptional = args.findIndex((a) => a.optional);
+  return Math.max(MIN_ARGS[name] ?? 0, firstOptional === -1 ? args.length : firstOptional);
+}
+
+/** The authored type of one argument (an enumerated arg narrows to its members). */
+function argType(name: string, a: FilterArg): string {
+  const members = ARG_ENUMS[`${name}.${a.name}`];
+  // An enumerated arg narrows the string half of `Scalar` to the exact members;
+  // numbers and booleans are dropped from it, since a comparator mode is never
+  // one of those.
+  if (members) return `${members.map((m) => JSON.stringify(m)).join(" | ")} | Value`;
+  // A lambda filter's `code` argument also takes the body itself, typed for THIS
+  // filter's surface — so the bindings autocomplete from the call site and a
+  // binding from another surface is a compile error, with no surface named by
+  // hand (issue #221).
+  const surface = a.name === "code" ? LAMBDA_SURFACES[name] : undefined;
+  return surface ? `Scalar | Value | LambdaBody<${JSON.stringify(surface)}>` : "Scalar | Value";
+}
+
 function emitFactory(name: string, spec: FilterSpec | undefined): string {
   const doc = jsdoc(spec);
   if (spec?.args?.length) {
     const used = new Set<string>();
-    // Optional args (upstream `default`/`optional`) emit `name?: Value`; once one
-    // arg is optional every following arg is too (TS requires it). `filter()`
-    // drops omitted (undefined) args, so `fl.trim()` is valid and serializes clean.
-    let sawOptional = false;
+    const required = requiredCount(name, spec.args);
     const params: string[] = [];
-    const callArgs: string[] = [];
-    for (const a of spec.args) {
+    const fields: string[] = [];
+    const names: string[] = [];
+    for (const [i, a] of spec.args.entries()) {
       const pn = paramName(a.name, used);
-      sawOptional = sawOptional || !!a.optional;
-      const members = ARG_ENUMS[`${name}.${a.name}`];
-      // An enumerated arg narrows the string half of `Scalar` to the exact
-      // members; numbers and booleans are dropped from it, since a comparator
-      // mode is never one of those.
-      const type = members
-        ? `${members.map((m) => JSON.stringify(m)).join(" | ")} | Value`
-        : "Scalar | Value";
-      params.push(`${pn}${sawOptional ? "?" : ""}: ${type}`);
-      callArgs.push(`v(${pn})`);
+      names.push(pn);
+      const optional = i >= required;
+      const type = argType(name, a);
+      params.push(`${pn}${optional ? "?" : ""}: ${type}`);
+      fields.push(`${pn}${optional ? "?" : ""}: ${type}`);
     }
-    // Named args for discoverability + a variadic tail so filters the yaml
-    // under-specifies (e.g. variadic `concat`) still accept extra arguments.
-    return `  ${JSON.stringify(name)}: ${doc}(${params.join(", ")}, ...rest: (Scalar | Value)[]): FilterXdo => filter(${JSON.stringify(name)}, ${callArgs.join(", ")}, ...rest.map(v)),`;
+    // Two call forms over one implementation. Positional keeps the short call
+    // short; the named form is unambiguous for a filter with several arguments,
+    // which is where the slot of any one of them is hardest to see. A variadic
+    // tail rides the positional form so filters the yaml under-specifies (e.g.
+    // variadic `concat`) still accept extra arguments.
+    const positional = `(${params.join(", ")}, ...rest: (Scalar | Value)[]) => FilterXdo`;
+    const named = `(args: { ${fields.join("; ")} }) => FilterXdo`;
+    // The named form keys on the same sanitized identifiers the positional
+    // parameters use, so one filter has one spelling per argument.
+    const argNames = JSON.stringify(names);
+    return `  ${JSON.stringify(name)}: ${doc}slotted(${JSON.stringify(name)}, ${argNames}, ${required}) as ((${positional}) & (${named})),`;
   }
   return `  ${JSON.stringify(name)}: ${doc}(...args: (Scalar | Value)[]): FilterXdo => filter(${JSON.stringify(name)}, ...args.map(v)),`;
 }
@@ -410,10 +503,17 @@ function withArgEnums(specs: Record<string, FilterSpec>): Record<string, FilterS
 }
 
 function emit(cat: FilterCatalog): string {
-  const specs = withArgEnums(withDirectionNotes(cat.specs));
+  const specs = withEngineRequired(withArgEnums(withDirectionNotes(cat.specs)));
+  const requiredCounts: Record<string, number> = {};
+  for (const name of cat.names) {
+    const args = specs[name]?.args;
+    const required = args?.length ? requiredCount(name, args) : 0;
+    if (required > 0) requiredCounts[name] = required;
+  }
   const factories = cat.names.map((n) => emitFactory(n, specs[n])).join("\n");
   const typedCount = cat.names.filter((n) => specs[n]?.args?.length).length;
-  const imports = "{ filter, c }";
+  const imports = "{ filter, c, isTaggedValue }";
+  const lambdaImports = "{ LAMBDA_CODE_FILTERS, toLambdaValue }";
   const coerceHelper = [
     "",
     "/** A bare JS literal a filter argument accepts in place of a {@link Value}. */",
@@ -439,6 +539,75 @@ function emit(cat: FilterCatalog): string {
     "  return x;",
     "};",
     "",
+    "/**",
+    " * One implementation behind a filter's two call forms: positional, or a single",
+    " * object of named arguments.",
+    " *",
+    " * The named form exists because a positional slot is invisible at the call site",
+    " * (issue #221): `fl.reduce(code)` reads fine and puts the code in the",
+    " * initial-value slot. Naming the argument makes the slot impossible to get",
+    " * wrong, and it is the only readable form for the four-argument crypto filters.",
+    " *",
+    " * The two are told apart by what the first argument IS — a tagged value or a",
+    ' * bare scalar is positional; a plain object is the named form. `c.obj({…})`',
+    " * returns a tagged value, so an object-valued ARGUMENT is never mistaken for an",
+    " * argument object.",
+    " */",
+    "const slotted =",
+    "  (name: string, argNames: readonly string[], required: number) =>",
+    "  (...args: unknown[]): FilterXdo => {",
+    "    // An inline body resolves against the surface THIS filter runs at — the",
+    "    // call site knows it, so the author does not restate it.",
+    "    const surface = LAMBDA_CODE_FILTERS[name]?.surface;",
+    "    const body = (x: unknown): unknown =>",
+    "      surface === undefined ? x : toLambdaValue(x as Value, surface, `fl.${name}`);",
+    "    const first = args[0];",
+    "    const isNamed =",
+    "      args.length === 1 &&",
+    "      typeof first === \"object\" &&",
+    "      first !== null &&",
+    "      !Array.isArray(first) &&",
+    "      !isTaggedValue(first);",
+    "    if (!isNamed) {",
+    "      const supplied = args.map(body) as (Scalar | Value | undefined)[];",
+    "      assertArity(name, argNames, required, supplied.filter((a) => a !== undefined).length);",
+    "      return filter(name, ...supplied.map(v));",
+    "    }",
+    "    const named = Object.fromEntries(",
+    "      Object.entries(first as Record<string, unknown>).map(([k, x]) => [k, body(x)]),",
+    "    ) as Record<string, Scalar | Value | undefined>;",
+    "    // A hole in the NAMED form has its own message: the positional advice",
+    "    // (\"use the named form\") would be useless to someone already using it.",
+    "    const last = argNames.reduce((acc, n, i) => (named[n] !== undefined ? i : acc), -1);",
+    "    const hole = argNames.slice(0, last).findIndex((n) => named[n] === undefined);",
+    "    if (hole !== -1) {",
+    "      throw new Error(",
+    "        `fl.${name}: \\`${argNames[hole]}\\` is omitted but \\`${argNames[last]}\\` is supplied. Filter arguments are ` +",
+    "          `positional even in this form — the engine reads them by slot, so one in the middle cannot be skipped. ` +",
+    "          `Supply \\`${argNames[hole]}\\` too. (issue #221)`,",
+    "      );",
+    "    }",
+    "    assertArity(name, argNames, required, last + 1);",
+    "    return filter(name, ...argNames.map((n) => v(named[n])));",
+    "  };",
+    "",
+    "/**",
+    " * Refuse a call with fewer arguments than the engine requires (issue #221).",
+    " *",
+    " * The signature already says so, but a JavaScript caller — or an `any` that",
+    " * erased the type — reaches the same factory, and the engine's own answer to a",
+    " * short call is an argument-count error at runtime, on a deployed endpoint.",
+    " */",
+    "const assertArity = (name: string, argNames: readonly string[], required: number, got: number): void => {",
+    "  if (got >= required) return;",
+    "  throw new Error(",
+    "    `fl.${name} needs ${required} argument(s) — ${argNames.slice(0, required).join(\", \")} — but got ${got}. ` +",
+    "      `Filter arguments are positional and the engine refuses a short call, so a missing one cannot be inferred ` +",
+    "      `— not even where the filter's own documentation calls it optional, because omission only works from the ` +",
+    "      `END. (issue #221)`,",
+    "  );",
+    "};",
+    "",
   ].join("\n");
   return `/**
  * AUTO-GENERATED by scripts/codegen-filters.ts — DO NOT EDIT BY HAND.
@@ -452,6 +621,8 @@ function emit(cat: FilterCatalog): string {
  */
 import ${imports} from "../value.js";
 import type { Value } from "../value.js";
+import ${lambdaImports} from "../lambda.js";
+import type { LambdaBody } from "../lambda.js";
 import type { FilterXdo } from "../../types/xdo.js";
 ${coerceHelper}
 /** Distilled metadata for a filter (from the engine's filter/pipe/aggregate schema + LSP docs). */
@@ -467,6 +638,14 @@ export const FILTER_NAMES: readonly string[] = ${JSON.stringify(cat.names)};
 
 /** Per-filter metadata (only filters the sources document); drives agent grounding. */
 export const FILTER_SPECS: Readonly<Record<string, FilterSpec>> = ${JSON.stringify(specs)};
+
+/**
+ * How many leading arguments each filter REQUIRES — the count a real engine
+ * accepts, which is not always what the spec's \`optional\` flags imply (issue
+ * #221). The generated signatures enforce it; codegen reads it to tell a stored
+ * call it can rebuild from one it must carry through verbatim.
+ */
+export const FILTER_REQUIRED_ARGS: Readonly<Record<string, number>> = ${JSON.stringify(requiredCounts)};
 
 /** Typed, discoverable constructors for the value \`filters[]\` pipeline. */
 export const fl = {

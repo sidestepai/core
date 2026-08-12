@@ -23,14 +23,27 @@ export type ResponseDef = Value | Record<string, ResponseMember>;
 
 /**
  * Warn when a response-bearing def (query/function) has a top-level
- * `s.return(...)` (`mvp:return`) in its stack but declares no `response`. In these kinds the
- * response is driven **only** by the `response` field — `s.return` in the stack
- * does not populate it — so the def compiles cleanly into an endpoint whose
- * `result` is empty and that returns nothing, with no other signal. This is the
- * cheapest, non-breaking nudge (encoding is unchanged; see issue #1).
+ * `s.return(...)` (`mvp:return`) in its stack but declares no `response`.
+ *
+ * What this used to say — that the def "returns nothing" — is not what a live
+ * engine does, and the correction matters more than the warning did. Probed
+ * against a real ephemeral environment, over public HTTP for the query:
+ *
+ *   - a query whose whole stack is `s.return(c.text("done"))`, with no
+ *     `response`, answers `200 "done"`. The runtime `return` short-circuits the
+ *     stack and carries its own value out, regardless of the empty stored
+ *     `result` envelope.
+ *   - with BOTH, whichever executes decides: an early `s.return` that fires wins
+ *     over the declared `response`; if it does not fire, `response` applies.
+ *
+ * So the real cost is not an empty response — it is an UNTYPED one. `result`
+ * still encodes as `[]`, which is the only thing `InferResponse` can read, so a
+ * typed consumer of that endpoint sees nothing while the endpoint returns
+ * something. The declared `response` is what makes the shape knowable to the
+ * SDK, to a typed frontend, and to codegen.
  *
  * Only *top-level* `mvp:return`s are flagged: a `return` nested inside a
- * `conditional`/`foreach`/`group` is a legitimate early-return and never gates
+ * `conditional`/`foreach`/`group` is a legitimate early return and never gates
  * the declared response, so scanning the top of the stack avoids false alarms.
  */
 export function warnUnboundReturn(
@@ -45,10 +58,12 @@ export function warnUnboundReturn(
     severity: "warning",
     code: "response.unbound-return",
     message:
-      `${kind} "${name}" ends with s.return(...) but has no \`response\` field. ` +
-      `A ${kind}'s response is set by the \`response:\` field only — s.return does not ` +
-      `populate it, so this ${kind} returns nothing. Add \`response: <value>\` ` +
-      `(e.g. \`response: ref("...")\`).`,
+      `${kind} "${name}" ends with s.return(...) but has no \`response\` field. The value DOES ` +
+      `come back at runtime — a top-level s.return short-circuits the stack and carries its own ` +
+      `value out — but the stored response envelope is empty, so the shape is invisible to ` +
+      `InferResponse, to a typed frontend, and to codegen. Declare it too: \`response: <value>\` ` +
+      `(e.g. \`response: ref("...")\`). Where both exist, whichever executes wins — an early ` +
+      `s.return that fires beats the declared response.`,
   });
 }
 

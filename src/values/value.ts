@@ -5,6 +5,9 @@
  */
 import type { FilterXdo, TaggedValue, Tag } from "../types/xdo.js";
 import { TAGS } from "../types/xdo.js";
+// The lambda-body guard, applied in `filter()` below. The cycle back to this
+// module is deliberate and safe: `lambda.ts` reaches `c` only at call time.
+import { assertLambdaFilterArgs } from "./lambda.js";
 
 /** A sidestep authored value is just the stored tagged-value shape. */
 export type Value = TaggedValue;
@@ -605,6 +608,25 @@ export function out(name: string): Value {
 
 /** Build a `mvp_filter` chain entry: `{name, disabled:false, arg}`. */
 export function filter(name: string, ...args: (Value | undefined)[]): FilterXdo {
+  // A HOLE — an omitted argument with a supplied one after it — is the whole of
+  // issue #221's second half. Dropping it (below) would slide every later
+  // argument one slot forward, so the code lands in the initial-value slot and
+  // the engine refuses the call, or worse, silently reads the wrong thing.
+  // Omission is only ever meaningful from the END.
+  const last = args.reduce((acc, a, i) => (a !== undefined ? i : acc), -1);
+  const hole = args.slice(0, last).findIndex((a) => a === undefined);
+  if (hole !== -1) {
+    throw new Error(
+      `Filter \`${name}\`: argument ${hole + 1} is omitted but argument ${last + 1} is supplied. ` +
+        `Filter arguments are positional, so an omitted one in the middle would shift every argument after it ` +
+        `into the wrong slot. Pass a value for argument ${hole + 1}, or use the named form ` +
+        `— \`fl.${name}({ … })\` — which cannot mis-slot. (issue #221)`,
+    );
+  }
+  // A lambda filter's body is checked HERE — the one choke point every spelling
+  // passes through, `lam.*` or not (issue #221). It only fires where the body is
+  // an inspectable constant.
+  assertLambdaFilterArgs(name, args);
   // Drop omitted trailing args. Typed filter factories (fl.*) declare their
   // named params positionally, so calling one with fewer args (e.g. `fl.trim()`)
   // passes `undefined` here — without this it would serialize as a stray `null`.

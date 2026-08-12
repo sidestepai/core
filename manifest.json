@@ -1,6 +1,6 @@
 {
   "name": "sidestep",
-  "version": "4.1.37",
+  "version": "4.1.38",
   "description": "TypeScript SDK that compiles a typed Xano workspace into the importable packageExport JSON bundle.",
   "coverage": {
     "objectKinds": {
@@ -688,31 +688,6 @@
       "sPath": "api.call",
       "registered": true,
       "declarative": false
-    },
-    {
-      "surface": "api.lambda",
-      "storedName": "mvp:lambda",
-      "sPath": "api.lambda",
-      "registered": true,
-      "declarative": true,
-      "output": false,
-      "fields": [
-        {
-          "name": "as",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "code",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "timeout",
-          "type": "value",
-          "optional": true
-        }
-      ]
     },
     {
       "surface": "api.realtime_event",
@@ -2934,6 +2909,31 @@
       "sPath": "group",
       "registered": true,
       "declarative": false
+    },
+    {
+      "surface": "lambda",
+      "storedName": "mvp:lambda",
+      "sPath": "lambda",
+      "registered": true,
+      "declarative": true,
+      "output": false,
+      "fields": [
+        {
+          "name": "as",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "code",
+          "type": "value",
+          "optional": true
+        },
+        {
+          "name": "timeout",
+          "type": "value",
+          "optional": true
+        }
+      ]
     },
     {
       "surface": "math.add",
@@ -5701,8 +5701,7 @@
       "args": [
         {
           "name": "start",
-          "type": "int",
-          "optional": true
+          "type": "int"
         },
         {
           "name": "count",
@@ -6159,8 +6158,7 @@
       "args": [
         {
           "name": "check_claims",
-          "type": "json",
-          "optional": true
+          "type": "json"
         },
         {
           "name": "key",
@@ -6168,13 +6166,11 @@
         },
         {
           "name": "key_algorithm",
-          "type": "enum",
-          "optional": true
+          "type": "enum"
         },
         {
           "name": "content_algorithm",
-          "type": "enum",
-          "optional": true
+          "type": "enum"
         },
         {
           "name": "timeDrift",
@@ -6193,8 +6189,7 @@
       "args": [
         {
           "name": "headers",
-          "type": "json",
-          "optional": true
+          "type": "json"
         },
         {
           "name": "key",
@@ -6202,13 +6197,11 @@
         },
         {
           "name": "key_algorithm",
-          "type": "enum",
-          "optional": true
+          "type": "enum"
         },
         {
           "name": "content_algorithm",
-          "type": "enum",
-          "optional": true
+          "type": "enum"
         },
         {
           "name": "ttl",
@@ -6227,8 +6220,7 @@
       "args": [
         {
           "name": "check_claims",
-          "type": "json",
-          "optional": true
+          "type": "json"
         },
         {
           "name": "key",
@@ -6236,8 +6228,7 @@
         },
         {
           "name": "algorithm",
-          "type": "enum",
-          "optional": true
+          "type": "enum"
         },
         {
           "name": "timeDrift",
@@ -6256,8 +6247,7 @@
       "args": [
         {
           "name": "headers",
-          "type": "json",
-          "optional": true
+          "type": "json"
         },
         {
           "name": "key",
@@ -6265,8 +6255,7 @@
         },
         {
           "name": "algorithm",
-          "type": "enum",
-          "optional": true
+          "type": "enum"
         },
         {
           "name": "ttl",
@@ -6413,8 +6402,7 @@
       "args": [
         {
           "name": "algorithm",
-          "type": "enum",
-          "optional": true
+          "type": "enum"
         },
         {
           "name": "key",
@@ -6481,8 +6469,7 @@
       "args": [
         {
           "name": "algorithm",
-          "type": "enum",
-          "optional": true
+          "type": "enum"
         },
         {
           "name": "key",
@@ -7627,8 +7614,7 @@
       "args": [
         {
           "name": "initial_value",
-          "type": "int",
-          "optional": true
+          "type": "int"
         },
         {
           "name": "code",
