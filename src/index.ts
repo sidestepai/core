@@ -94,6 +94,7 @@ export {
 export type {
   LambdaSurface,
   LambdaBindings,
+  LambdaBody,
   LambdaOptions,
   AmbientBindings,
   IteratingBindings,
