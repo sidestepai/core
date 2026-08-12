@@ -100,10 +100,17 @@ describe("the entrypoint split", () => {
     expect(typeof lam.file).toBe("function");
   });
 
-  it("does not carry it on the isomorphic entry — a frontend bundle cannot read a file", () => {
-    expect("file" in isomorphicLam).toBe(false);
+  it("does not type it on the isomorphic entry — a frontend bundle cannot read a file", () => {
     // @ts-expect-error -- lam.file is node-only; import it from "@sidestep/core/node"
-    expect(isomorphicLam.file).toBeUndefined();
+    expect(typeof isomorphicLam.file).toBe("function");
+  });
+
+  it("directs a loosely-typed isomorphic call to the node entry instead of `not a function` (#257)", () => {
+    // The reported failure: `lam.file` reached through a position types didn't
+    // guard, off the isomorphic entry, saying only "lam.file is not a function".
+    const loose = isomorphicLam as unknown as { file: (p: string) => unknown };
+    expect(typeof loose.file).toBe("function");
+    expect(() => loose.file("./lambdas/concise.ts")).toThrow(/@sidestep\/core\/node/);
   });
 
   it("keeps fn and raw identical across both entries", () => {

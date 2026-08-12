@@ -909,7 +909,7 @@ function renderLambdaSection(): string[] {
     "",
     '- `lam.fn(({ $result, $this }) => $result + $this, { surface?, capture? })` — name a `surface` to check it here, or omit it and the call site checks it.',
     '- `lam.raw("return 1", { surface })` — text, same validation.',
-    '- `lam.file("./lambdas/total.ts")` — a default-exported function in its own type-checked module (`@sidestep/core/node`), read as text at build time. The deterministic option under a bundler, where a function\'s source is whatever the bundler emitted.',
+    '- `lam.file("./lambdas/total.ts")` — a default-exported function in its own type-checked module, read as text at build time. The deterministic option under a bundler, where a function\'s source is whatever the bundler emitted. NODE ONLY, and it is the `lam` import that changes: `import { lam } from "@sidestep/core/node"`. The isomorphic `lam` has no `file` (no filesystem in a browser bundle); its `fn` and `raw` are the same functions.',
     "",
     "A body is a FUNCTION BODY: it must `return` its value. Bindings by surface — an",
     "identifier outside its surface's set is undefined at runtime, and the SDK refuses",
