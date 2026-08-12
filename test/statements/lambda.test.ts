@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { c, ref, s, fl, lam, filter, withFilters, LAMBDA_CODE_FILTERS } from "../../src/index.js";
 import { FILTER_SPECS } from "../../src/values/generated/filters.generated.js";
 import { encodeStatement } from "../../src/statements/statement.js";
@@ -193,5 +195,40 @@ describe("s.lambda implies its surface", () => {
   it("Covers #221: refuses a filter binding written into the statement", () => {
     // @ts-expect-error -- $this is a filter binding; the statement surface has none
     expect(() => s.lambda({ as: "x", code: ({ $this }) => $this })).toThrow(/\$this/);
+  });
+});
+
+/**
+ * The emitted types and the runtime guard read two different tables — one in
+ * `scripts/codegen-filters.ts` (which cannot import from `src` at emit time) and
+ * one in `src/values/lambda.ts`. If they disagree, a filter's inline body is
+ * typed for one surface and checked against another, which is worse than either
+ * alone.
+ */
+describe("the codegen surface table and the runtime one agree", () => {
+  it("types every lambda filter's code argument for the surface it is checked at", () => {
+    const generated = readFileSync(
+      join(import.meta.dirname, "../../src/values/generated/filters.generated.ts"),
+      "utf8",
+    );
+    for (const [name, site] of Object.entries(LAMBDA_CODE_FILTERS)) {
+      // The emitted signature names the surface in `LambdaBody<"…">`, on the
+      // line that declares this filter.
+      const line = generated.split("\n").find((l) => l.startsWith(`  ${JSON.stringify(name)}:`));
+      expect(line, name).toBeDefined();
+      expect(line, name).toContain(`LambdaBody<${JSON.stringify(site.surface)}>`);
+    }
+  });
+
+  it("types no OTHER filter's argument as a lambda body", () => {
+    const generated = readFileSync(
+      join(import.meta.dirname, "../../src/values/generated/filters.generated.ts"),
+      "utf8",
+    );
+    for (const line of generated.split("\n")) {
+      const declared = /^ {2}"([^"]+)":/.exec(line)?.[1];
+      if (declared === undefined || !line.includes("LambdaBody<")) continue;
+      expect(Object.keys(LAMBDA_CODE_FILTERS), declared).toContain(declared);
+    }
   });
 });
