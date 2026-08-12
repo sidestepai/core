@@ -555,6 +555,59 @@ function argType(name: string, a: FilterArg): string {
   return surface ? `Scalar | Value | LambdaBody<${JSON.stringify(surface)}>` : "Scalar | Value";
 }
 
+/**
+ * Map a declared `result` string to the TypeScript type the fold should use.
+ *
+ * The declarations are the platform's, and they are believed only after being
+ * run: `_probe-filter-results` executed one filter per category on a live engine
+ * and confirmed each returns the JSON type declared (`append`, whose description
+ * contradicts its declaration, was included precisely because it looked wrong —
+ * the declaration won).
+ *
+ * `null` here means "no static type" — the filter is left out of the map and
+ * folds to `unknown`.
+ */
+function resultType(result: string | undefined): string | null {
+  switch (result) {
+    // `string` is `number_format`'s spelling of `text`; both return a JSON string.
+    case "text":
+    case "string":
+      return "string";
+    // `epochms` is a millisecond timestamp — a JSON number, not a Date.
+    case "int":
+    case "decimal":
+    case "epochms":
+      return "number";
+    case "bool":
+      return "boolean";
+    case "text[]":
+      return "string[]";
+    case "int[]":
+      return "number[]";
+    case "obj":
+      return "Record<string, unknown>";
+    case "<T>":
+      return "ElementResult";
+    case "<T>[]":
+      return "SameArrayResult";
+    // `any` (get/set/transform/json_decode/lambda/…) and `json` name a shape no
+    // declaration could pin down; absent → `unknown`.
+    default:
+      return null;
+  }
+}
+
+/** The `FilterResults` interface body — only filters with a modellable result. */
+function emitResultMap(names: readonly string[], specs: Record<string, FilterSpec>): string {
+  const lines: string[] = [];
+  for (const name of names) {
+    const ts = resultType(specs[name]?.result);
+    if (ts === null) continue;
+    lines.push(`  ${JSON.stringify(name)}: ${ts};`);
+  }
+  return `{\n${lines.join("\n")}\n}`;
+}
+
 function emitFactory(name: string, spec: FilterSpec | undefined): string {
   const doc = jsdoc(spec);
   if (spec?.args?.length) {
@@ -576,14 +629,17 @@ function emitFactory(name: string, spec: FilterSpec | undefined): string {
     // which is where the slot of any one of them is hardest to see. A variadic
     // tail rides the positional form so filters the yaml under-specifies (e.g.
     // variadic `concat`) still accept extra arguments.
-    const positional = `(${params.join(", ")}, ...rest: (Scalar | Value)[]) => FilterXdo`;
-    const named = `(args: { ${fields.join("; ")} }) => FilterXdo`;
+    // The phantom name parameter (`FilterXdo<"upper">`) is what lets a chain's
+    // result type be folded statically — see `ApplyFilters`.
+    const brand = `FilterXdo<${JSON.stringify(name)}>`;
+    const positional = `(${params.join(", ")}, ...rest: (Scalar | Value)[]) => ${brand}`;
+    const named = `(args: { ${fields.join("; ")} }) => ${brand}`;
     // The named form keys on the same sanitized identifiers the positional
     // parameters use, so one filter has one spelling per argument.
     const argNames = JSON.stringify(names);
     return `  ${JSON.stringify(name)}: ${doc}slotted(${JSON.stringify(name)}, ${argNames}, ${required}) as ((${positional}) & (${named})),`;
   }
-  return `  ${JSON.stringify(name)}: ${doc}(...args: (Scalar | Value)[]): FilterXdo => filter(${JSON.stringify(name)}, ...args.map(v)),`;
+  return `  ${JSON.stringify(name)}: ${doc}(...args: (Scalar | Value)[]): FilterXdo<${JSON.stringify(name)}> => filter(${JSON.stringify(name)}, ...args.map(v)),`;
 }
 
 /**
@@ -613,6 +669,7 @@ function emit(cat: FilterCatalog): string {
     if (required > 0) requiredCounts[name] = required;
   }
   const factories = cat.names.map((n) => emitFactory(n, specs[n])).join("\n");
+  const resultMap = emitResultMap(cat.names, specs);
   const typedCount = cat.names.filter((n) => specs[n]?.args?.length).length;
   const imports = "{ filter, c, isTaggedValue }";
   const lambdaImports = "{ LAMBDA_CODE_FILTERS, toLambdaValue }";
@@ -727,6 +784,22 @@ import ${lambdaImports} from "../lambda.js";
 import type { LambdaBody } from "../lambda.js";
 import type { FilterXdo } from "../../types/xdo.js";
 ${coerceHelper}
+/**
+ * Marker for a filter declared \`<T>\` — it returns the ELEMENT of the array it
+ * is given (\`first\`, \`last\`, \`array_pop\`). Never a value; only a fold signal.
+ */
+export interface ElementResult {
+  readonly __result: "element";
+}
+
+/**
+ * Marker for a filter declared \`<T>[]\` — it returns an array of the same
+ * element type it was given (\`reverse\`, \`unique\`, \`array_slice\`).
+ */
+export interface SameArrayResult {
+  readonly __result: "sameArray";
+}
+
 /** Distilled metadata for a filter (from the engine's filter/pipe/aggregate schema + LSP docs). */
 export interface FilterSpec {
   args?: Array<{ name: string; type: string; optional?: boolean; enum?: string[] }>;
@@ -740,6 +813,30 @@ export const FILTER_NAMES: readonly string[] = ${JSON.stringify(cat.names)};
 
 /** Per-filter metadata (only filters the sources document); drives agent grounding. */
 export const FILTER_SPECS: Readonly<Record<string, FilterSpec>> = ${JSON.stringify(specs)};
+
+/**
+ * Each filter's RESULT type, at the type level.
+ *
+ * Generated from the same \`result\` the specs above carry, so the two cannot
+ * drift. Two entries are markers rather than concrete types, mirroring the
+ * generic results upstream declares:
+ *
+ *   - {@link ElementResult} (\`<T>\`)   — the ELEMENT of the array it is given
+ *     (\`first\`, \`last\`, \`array_pop\`, …)
+ *   - {@link SameArrayResult} (\`<T>[]\`) — an array of the same element type
+ *     (\`reverse\`, \`unique\`, \`array_slice\`, …)
+ *
+ * A filter whose result is \`any\` — or one upstream declares nothing for — is
+ * absent from this map and folds to \`unknown\`. That is deliberate: \`get\`,
+ * \`set\`, \`transform\`, and \`json_decode\` genuinely produce a shape no
+ * declaration could name, and a confident wrong type is worse than an honest
+ * \`unknown\`.
+ *
+ * Verified against a live engine rather than trusted (\`_probe-filter-results\`):
+ * one filter per declared category was executed and its actual JSON type
+ * compared with the declaration.
+ */
+export interface FilterResults ${resultMap}
 
 /**
  * How many leading arguments each filter REQUIRES — the count a real engine

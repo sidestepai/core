@@ -78,6 +78,7 @@ export type {
 export { c, ref, inp, col, auth, caught, env, setting, sys, out, filter, withFilters } from "./values/value.js";
 export type { CaughtField } from "./values/value.js";
 export type { Value, RefValue, FilteredValue } from "./values/value.js";
+export type { ApplyFilter, ApplyFilters } from "./values/filter-result.js";
 export { obj } from "./values/obj.js";
 export type { ObjInput, ObjMember } from "./values/obj.js";
 // Lambda authoring: write a JavaScript body as a typed function whose parameters

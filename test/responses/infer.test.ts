@@ -241,7 +241,11 @@ describe("InferResponse — single-variable trace (U5, type-level)", () => {
     expectTypeOf<InferResponse<typeof setVarResponse>>().toEqualTypeOf<unknown>();
   });
 
-  it("a filtered response value degrades to unknown, even when its ref is traceable", () => {
+  it("a filtered response value whose filter cannot apply is unknown", () => {
+    // `first` returns the ELEMENT of an array; a `db.get` row is not an array,
+    // so there is no element type to report and the fold bottoms out. This used
+    // to be true of EVERY filtered value; now it is true only of the ones whose
+    // result genuinely cannot be named (see `filter-result.test.ts`).
     const filtered = query({
       verb: "GET",
       apiGroup: links,
@@ -253,7 +257,7 @@ describe("InferResponse — single-variable trace (U5, type-level)", () => {
     expectTypeOf<InferResponse<typeof filtered>>().toEqualTypeOf<unknown>();
   });
 
-  it("in a record response, a filtered key is unknown while sibling refs still trace", () => {
+  it("in a record response, an unfoldable filtered key is unknown while siblings trace", () => {
     const mixed = query({
       verb: "GET",
       apiGroup: links,
