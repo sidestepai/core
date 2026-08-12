@@ -104,3 +104,51 @@ describe("enum-constrained fields in the sandbox examples", () => {
     expect(missing, missing.join("\n")).toEqual([]);
   });
 });
+
+/**
+ * The lambda examples (issue #221). Each was live-deployed and returns the value
+ * its comment claims; these assert the part that can be checked offline — that
+ * the body reaching the wire is the authored one, at the right surface, in the
+ * right slot. The placeholder these replaced (`fl["reduce"](c.text("x"))`) was
+ * itself an instance of both bugs: a mis-slotted argument and a body that taught
+ * a binding contract nobody had written down.
+ */
+describe("the lambda examples", () => {
+  it("Covers #221: reduce sums with $result, from a filled initial-value slot", async () => {
+    const { filterReduce } = await import("../examples/sandbox/filters/array/reduce.js");
+    const stored = JSON.parse(JSON.stringify(filterReduce)) as {
+      stack: Array<{ context?: { filters?: Array<{ name: string; arg: Array<{ value: string }> }> } }>;
+    };
+    const reduce = stored.stack[0]?.context?.filters?.[0];
+    expect(reduce?.name).toBe("reduce");
+    expect(reduce?.arg[0]?.value).toBe("0");
+    expect(reduce?.arg[1]?.value).toBe("return $result + $this;");
+  });
+
+  it("uses lam.* rather than a bare c.text body in every lambda example", async () => {
+    const files = [
+      "filters/array/reduce.ts",
+      "filters/array/map.ts",
+      "filters/array/filter.ts",
+      "filters/array/some.ts",
+      "filters/array/every.ts",
+      "filters/array/find.ts",
+      "filters/array/findIndex.ts",
+      "filters/transform/lambda.ts",
+      "statements/lambda.ts",
+      "statements/lambda-file.ts",
+    ];
+    for (const file of files) {
+      const source = readFileSync(join(import.meta.dirname, "..", "examples/sandbox", file), "utf8");
+      expect(source, file).toMatch(/lam\.(fn|file|raw)\(/);
+    }
+  });
+
+  it("keeps a worked lam.file example, body and all", async () => {
+    const { lambdaFromFile } = await import("../examples/sandbox/statements/lambda-file.js");
+    const body = JSON.stringify(lambdaFromFile);
+    // The module's own text, read at build time — no transpile in between.
+    expect(body).toContain("const line = $this.qty * $this.price;");
+    expect(body).toContain("$this.qty >= 10");
+  });
+});

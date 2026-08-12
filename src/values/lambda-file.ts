@@ -46,6 +46,9 @@ import type { CaptureValue, LambdaOptions } from "./lambda.js";
 
 const PREFIX = "lam.file";
 
+/** This module's own path, so its frames can be told from the caller's. */
+const SELF = fileURLToPath(import.meta.url);
+
 /**
  * The directory of the module that called `lam.file`.
  *
@@ -58,16 +61,23 @@ const PREFIX = "lam.file";
  */
 function callerDir(): string {
   const stack = new Error().stack ?? "";
+  const frames: string[] = [];
   for (const line of stack.split("\n").slice(1)) {
     const match = /\((.*?):\d+:\d+\)\s*$/.exec(line) ?? /at (.*?):\d+:\d+\s*$/.exec(line);
     const raw = match?.[1];
-    if (raw === undefined) continue;
+    if (raw === undefined || raw.startsWith("node:")) continue;
     const path = raw.startsWith("file:") ? fileURLToPath(raw) : raw;
-    if (path.endsWith("lambda-file.ts") || path.endsWith("lambda-file.js")) continue;
-    if (path.startsWith("node:")) continue;
-    return dirname(path);
+    // Matched by PATH, not by filename: a user module may well be called
+    // `lambda-file.ts` too, and skipping it would resolve against the wrong dir.
+    if (path === SELF) continue;
+    frames.push(path);
   }
-  return process.cwd();
+  // A loader sits between this module and the authored one — vite-node, tsx, a
+  // bundler's runtime — and its frames are the first ones on the stack. The
+  // authored module is the first frame that is not one of them, so a workspace
+  // definition resolves its lambda the same way under `vitest`, `tsx`, and node.
+  const authored = frames.find((p) => !p.includes("/node_modules/") && !p.includes("\\node_modules\\"));
+  return dirname(authored ?? frames[0] ?? process.cwd());
 }
 
 /**

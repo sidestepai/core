@@ -1,13 +1,17 @@
 /**
  * `fl.some` filter (group: array).
  * Checks if at least one element in the array passes the test implemented by the provided function.
- *
- * Filters attach to a value with `withFilters(value, fl.<name>(...))`.
  */
-import { defineFunction, s, c, ref, withFilters, fl } from "@sidestep/core";
+import { defineFunction, s, c, ref, withFilters, fl, lam } from "@sidestep/core";
 
 export const filterSome = defineFunction({
   name: "ex_filter_some",
-  stack: [s.set_var("out", withFilters(c.array([3, 1, 2]), fl["some"](c.text("x"))))],
+  stack: [
+    s.set_var(
+      "out",
+      // true — 4 is over the threshold.
+      withFilters(c.array([1, 2, 3, 4]), fl.some(lam.fn(({ $this }) => $this > 3, { surface: "some" }))),
+    ),
+  ],
   response: ref("out"),
 });

@@ -883,7 +883,10 @@ function renderLambdaSection(): string[] {
     "",
   );
   const ambient = LAMBDA_BINDINGS["s.lambda"];
-  lines.push(`- every surface: ${ambient.map((b) => `\`${b}\``).join(" · ")} (+ the \`${LAMBDA_GLOBALS.join("\` / \`")}\` globals)`);
+  const tick = (x: string): string => `\`${x}\``;
+  lines.push(
+    `- every surface: ${ambient.map(tick).join(" · ")} (+ the ${LAMBDA_GLOBALS.map(tick).join(" / ")} globals)`,
+  );
   const extras = (surface: LambdaSurface): string[] =>
     LAMBDA_BINDINGS[surface].filter((b) => !ambient.includes(b));
   const byExtras = new Map<string, string[]>();
@@ -893,8 +896,8 @@ function renderLambdaSection(): string[] {
     byExtras.set(key, [...(byExtras.get(key) ?? []), surface]);
   }
   for (const [key, surfaces] of byExtras) {
-    const label = surfaces.map((x) => (x.includes(".") ? `\`${x}\`` : `\`fl.${x}\``)).join(" · ");
-    lines.push(`- ${label}: + ${key.split(" ").map((b) => `\`${b}\``).join(" · ")}`);
+    const label = surfaces.map((x) => tick(x.includes(".") ? x : `fl.${x}`)).join(" · ");
+    lines.push(`- ${label}: + ${key.split(" ").map(tick).join(" · ")}`);
   }
   lines.push(
     `- \`s.lambda\`: ambient only — no \`$this\`, no \`$parent\`, no \`$result\`.`,

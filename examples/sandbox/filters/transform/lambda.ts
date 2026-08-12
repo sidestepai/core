@@ -2,12 +2,22 @@
  * `fl.lambda` filter (group: transform).
  * Business logic using JavaScript.
  *
- * Filters attach to a value with `withFilters(value, fl.<name>(...))`.
+ * `fl.lambda` runs ONCE over the piped value, which it binds as `$this` —
+ * not `$parent`, and not the `$this`-per-element of the array filters.
  */
-import { defineFunction, s, c, ref, withFilters, fl } from "@sidestep/core";
+import { defineFunction, s, c, ref, withFilters, fl, lam } from "@sidestep/core";
 
 export const filterLambda = defineFunction({
   name: "ex_filter_lambda",
-  stack: [s.set_var("out", withFilters(c.text("value"), fl["lambda"](c.text("x"))))],
+  stack: [
+    s.set_var(
+      "out",
+      // "VALUE!" — the piped text, uppercased.
+      withFilters(
+        c.text("value"),
+        fl.lambda(lam.fn(({ $this }) => `${String($this).toUpperCase()}!`, { surface: "fl.lambda" })),
+      ),
+    ),
+  ],
   response: ref("out"),
 });

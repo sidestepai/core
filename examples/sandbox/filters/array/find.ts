@@ -1,13 +1,19 @@
 /**
  * `fl.find` filter (group: array).
- * Finds if all elements in the array pass the test implemented by the provided function.
+ * Returns the first element the body accepts.
  *
- * Filters attach to a value with `withFilters(value, fl.<name>(...))`.
+ * `$index` is bound alongside `$this`, so a positional test is available too.
  */
-import { defineFunction, s, c, ref, withFilters, fl } from "@sidestep/core";
+import { defineFunction, s, c, ref, withFilters, fl, lam } from "@sidestep/core";
 
 export const filterFind = defineFunction({
   name: "ex_filter_find",
-  stack: [s.set_var("out", withFilters(c.array([3, 1, 2]), fl["find"](c.text("x"))))],
+  stack: [
+    s.set_var(
+      "out",
+      // 3 — the first element over 2.
+      withFilters(c.array([1, 2, 3, 4]), fl.find(lam.fn(({ $this }) => $this > 2, { surface: "find" }))),
+    ),
+  ],
   response: ref("out"),
 });
