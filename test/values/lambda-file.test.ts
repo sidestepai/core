@@ -111,3 +111,47 @@ describe("the entrypoint split", () => {
     expect(lam.raw).toBe(isomorphicLam.raw);
   });
 });
+
+/**
+ * Regressions from the branch's own code review. Each of these was a way for a
+ * legal module to produce a wrong body — silently, which is the failure mode
+ * this whole surface exists to remove.
+ */
+describe("lam.file — module shapes that used to slip through", () => {
+  it("does not swallow a declaration that follows the default export", () => {
+    const body = lam.file("./lambdas/trailing-type.ts", { surface: "map" }).value ?? "";
+    expect(body).toBe("const row: Row = $this;\nreturn row.n * 2;");
+    expect(body).not.toContain("type Row");
+  });
+
+  it("refuses a second export, which would be undefined at runtime", () => {
+    let message = "";
+    try {
+      lam.file("./lambdas/named-export.ts", { surface: "map" });
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message).toContain("besides its default");
+    expect(message).toContain("export default");
+  });
+
+  it("refuses a value import and points at dynamic import()", () => {
+    let message = "";
+    try {
+      lam.file("./lambdas/value-import.ts", { surface: "s.lambda" });
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message).toContain("import type");
+    expect(message).toContain("import()");
+  });
+
+  it("keeps a type-only import, which costs the engine nothing", () => {
+    expect(() => lam.file("./lambdas/concise.ts", { surface: "map" })).not.toThrow();
+  });
+
+  it("accepts a body that declares its own $-prefixed locals", () => {
+    const body = lam.file("./lambdas/local-dollar.ts", { surface: "map" }).value ?? "";
+    expect(body).toContain("$tally");
+  });
+});

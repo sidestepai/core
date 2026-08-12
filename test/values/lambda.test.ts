@@ -284,3 +284,34 @@ describe("assertLambdaBody", () => {
     expect(() => assertLambdaBody("return $result + $this", "reduce")).not.toThrow();
   });
 });
+
+/**
+ * `$` is a legal JavaScript identifier character, so a body may declare its own
+ * `$`-prefixed names. Flagging those would be a build error on correct code —
+ * the worst failure this guard can have (see the plan's risk table), so a
+ * declaration site is recognized and excluded from the scan.
+ */
+describe("the guard leaves the body's own $-names alone", () => {
+  it("allows a const/let/var declared $-local", () => {
+    expect(() => lam.raw("const $tmp = 1;\nreturn $tmp;", { surface: "s.lambda" })).not.toThrow();
+    expect(() => lam.raw("let $a = 1, $b = 2;\nreturn $a + $b;", { surface: "s.lambda" })).not.toThrow();
+  });
+
+  it("allows a destructured $-local", () => {
+    expect(() => lam.raw("const { $a, $b } = $var;\nreturn $a + $b;", { surface: "s.lambda" })).not.toThrow();
+  });
+
+  it("allows an arrow parameter", () => {
+    expect(() => lam.raw("return $parent.map(($x) => $x + 1)", { surface: "map" })).not.toThrow();
+    expect(() => lam.raw("return $parent.reduce(($sum, $n) => $sum + $n, 0)", { surface: "map" })).not.toThrow();
+  });
+
+  it("allows a catch binding and a declared function", () => {
+    expect(() => lam.raw("try { return 1 } catch ($e) { return $e.message }", { surface: "s.lambda" })).not.toThrow();
+    expect(() => lam.raw("function $twice(n) { return n * 2 }\nreturn $twice(2);", { surface: "s.lambda" })).not.toThrow();
+  });
+
+  it("still rejects an undeclared binding-shaped name", () => {
+    expect(() => lam.raw("const $tmp = 1;\nreturn $tmp + $acc;", { surface: "reduce" })).toThrow(/\$acc/);
+  });
+});

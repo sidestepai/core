@@ -193,10 +193,12 @@ describe("fl.* filter catalog", () => {
     for (const name of ["set", "get", "unset", "has", "index_by", "array_remove", "append", "prepend"]) {
       expect(FILTER_SPECS[name]!.args![0], name).not.toMatchObject({ optional: true });
     }
+    // …and the factory refuses the call at build time rather than deferring it
+    // to the engine's own argument-count error on a deployed endpoint.
     // @ts-expect-error — `get` still demands its path.
-    fl.get();
+    expect(() => fl.get()).toThrow(/needs 1 argument/);
     // @ts-expect-error — so does `set`.
-    fl.set();
+    expect(() => fl.set()).toThrow(/needs 2 argument/);
   });
 
   it("the committed generated file is fresh vs the vendor snapshot", () => {
@@ -280,11 +282,11 @@ describe("leading-optional argument slotting (#221)", () => {
   });
 
   it("Covers #221: fl.reduce cannot be called with the code alone", () => {
+    // The type refuses it, and so does the factory — a JS caller, or an `any`
+    // that erased the type, would otherwise store the code in the initial-value
+    // slot and only find out on a deployed endpoint.
     // @ts-expect-error -- one argument means the code lands in the initial-value slot
-    const misSlotted = fl.reduce(c.text("return $result + $this"));
-    // What that call would have stored, and what the engine refuses: one
-    // argument, in the wrong slot. The type is what stops it being written.
-    expect(misSlotted.arg).toHaveLength(1);
+    expect(() => fl.reduce(c.text("return $result + $this"))).toThrow(/needs 2 argument/);
     // The positional call that IS well-formed keeps the slots in order.
     expect(fl.reduce(0, c.text("return $result + $this")).arg).toEqual([
       c.int(0),
@@ -375,5 +377,40 @@ describe("filter() argument holes (#221)", () => {
   it("still drops omitted TRAILING arguments, which is how absence is spelled", () => {
     expect(filter("trim", undefined).arg).toEqual([]);
     expect(filter("round", c.int(2), undefined).arg).toEqual([c.int(2)]);
+  });
+});
+
+/**
+ * Regressions from the branch's own code review — the two ways a short or
+ * gappy call could still reach the engine.
+ */
+describe("named-form and arity refusals (#221)", () => {
+  it("refuses a hole in the NAMED form, with advice that fits the form used", () => {
+    let message = "";
+    try {
+      // `decimals` skipped, `thousands_separator` supplied: the engine reads by
+      // slot, so this cannot be expressed at all.
+      fl.number_format({ thousands_separator: "," });
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message).toContain("decimals");
+    expect(message).toContain("thousands_separator");
+    // …and does NOT tell an author already using the named form to use it.
+    expect(message).not.toMatch(/use the named form/i);
+  });
+
+  it("allows the named form to omit from the END, which is how absence works", () => {
+    expect(fl.number_format({ decimals: 2 }).arg).toEqual([c.int(2)]);
+    expect(fl.number_format({ decimals: 2, decimal_separator: "." }).arg).toEqual([c.int(2), c.text(".")]);
+  });
+
+  it("refuses a short positional call a JS caller can still make", () => {
+    // The type refuses it; this is the same call from JavaScript, or through an
+    // `any` that erased the type. The engine's own answer would be an
+    // argument-count error on a deployed endpoint.
+    const untyped = fl as unknown as Record<string, (...a: unknown[]) => unknown>;
+    expect(() => untyped.reduce!(c.text("return $result"))).toThrow(/needs 2 argument/);
+    expect(() => untyped.crypto_jws_encode!(c.obj({}))).toThrow(/needs 3 argument/);
   });
 });

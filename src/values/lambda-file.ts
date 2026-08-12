@@ -39,6 +39,9 @@ import type { CaptureValue, LambdaOptions } from "./lambda.js";
 
 const PREFIX = "lam.file";
 
+/** Transpiling loaders whose frames sit between this module and the caller's. */
+const LOADER_FRAME = /[/\\]node_modules[/\\](?:\.pnpm[/\\][^/\\]+[/\\]node_modules[/\\])?(?:vite-node|vite|vitest|tsx|ts-node|jiti|esbuild-register|@esbuild-kit)[/\\]/;
+
 /** This module's own path, so its frames can be told from the caller's. */
 const SELF = fileURLToPath(import.meta.url);
 
@@ -65,11 +68,13 @@ function callerDir(): string {
     if (path === SELF) continue;
     frames.push(path);
   }
-  // A loader sits between this module and the authored one — vite-node, tsx, a
-  // bundler's runtime — and its frames are the first ones on the stack. The
-  // authored module is the first frame that is not one of them, so a workspace
-  // definition resolves its lambda the same way under `vitest`, `tsx`, and node.
-  const authored = frames.find((p) => !p.includes("/node_modules/") && !p.includes("\\node_modules\\"));
+  // A loader can sit between this module and the authored one — vite-node, tsx,
+  // ts-node — and its frames come first. Skipping those by NAME rather than
+  // skipping all of `node_modules` matters: a shared definitions package that
+  // ships its own lambda files lives in `node_modules` legitimately, and
+  // resolving its relative paths against the consuming app's directory would
+  // read the wrong file (or none).
+  const authored = frames.find((p) => !LOADER_FRAME.test(p));
   return dirname(authored ?? frames[0] ?? process.cwd());
 }
 
@@ -83,7 +88,7 @@ function callerDir(): string {
  * and type-only declarations are the exception: they exist for the author's
  * type-checker and vanish from the emitted body either way.
  */
-const ALLOWED_TOP_LEVEL = ["import", "export", "type", "interface", "declare"];
+const ALLOWED_TOP_LEVEL = ["type", "interface", "declare"];
 
 /**
  * Reject anything at the module's top level that would not survive extraction.
@@ -115,8 +120,33 @@ function assertOnlyDefaultExport(mask: string, path: string): void {
     if (/\s/.test(ch) || depth > 0) continue;
     if (!atStatementStart) continue;
     atStatementStart = false;
-    const word = /^[A-Za-z_$][A-Za-z0-9_$]*/.exec(mask.slice(i))?.[0];
+    const rest = mask.slice(i);
+    const word = /^[A-Za-z_$][A-Za-z0-9_$]*/.exec(rest)?.[0];
     if (word === undefined || ALLOWED_TOP_LEVEL.includes(word)) continue;
+    // `export default` is the point of the file. Any OTHER export is a value
+    // that never leaves this file — the engine receives the default export's
+    // body and nothing else — so `export const helper = …` beside it is
+    // undefined at runtime exactly like an unexported one would be.
+    if (word === "export") {
+      if (/^export\s+(?:default\b|type\b|interface\b)/.test(rest)) continue;
+      throw new Error(
+        `${PREFIX}: ${path} exports something besides its default. Only the default export's BODY is sent to the ` +
+          `engine, so a second export is undefined at runtime — the engine returns that failure as diagnostic text ` +
+          `in the value slot rather than as an error. A lambda module is one \`export default\` function and nothing ` +
+          `else: move it inside that function. (issue #221)`,
+      );
+    }
+    // A TYPE import vanishes at compile time and is free. A VALUE import does
+    // not: the module is never loaded, so the imported binding is undefined
+    // inside the body. Dependencies are reached with dynamic `import()`.
+    if (word === "import") {
+      if (/^import\s+type\b/.test(rest)) continue;
+      throw new Error(
+        `${PREFIX}: ${path} imports a value at the top level, which the engine never resolves — only the default ` +
+          `export's body is sent, so the import is undefined at runtime. Use \`import type\` for types, or reach a ` +
+          `dependency from inside the body with dynamic \`import()\`. (issue #221)`,
+      );
+    }
     // Name what the author actually declared, not the keyword in front of it.
     const declared = /^(?:const|let|var|function|class|async)\s+([A-Za-z_$][A-Za-z0-9_$]*)/.exec(mask.slice(i))?.[1];
     throw new Error(
@@ -126,6 +156,35 @@ function assertOnlyDefaultExport(mask: string, path: string): void {
         `(issue #221)`,
     );
   }
+}
+
+/**
+ * Length of the function expression starting at the beginning of `mask`.
+ *
+ * A block body ends at the `{` … `}` that closes it; a concise body ends at the
+ * first `;` or newline outside every bracket. Bracket-depth counting over the
+ * masked source, so a brace inside a string or a comment is not mistaken for
+ * either.
+ */
+function functionExtent(mask: string): number {
+  let depth = 0;
+  let seenBody = false;
+  for (let i = 0; i < mask.length; i++) {
+    const ch = mask[i] ?? "";
+    if (ch === "(" || ch === "[" || ch === "{") {
+      depth++;
+      if (ch === "{" && depth === 1) seenBody = true;
+      continue;
+    }
+    if (ch === ")" || ch === "]" || ch === "}") {
+      depth--;
+      // The closing brace of the body block ends the function.
+      if (depth === 0 && ch === "}" && seenBody) return i + 1;
+      continue;
+    }
+    if (depth === 0 && (ch === ";" || ch === "\n")) return i;
+  }
+  return mask.length;
 }
 
 /**
@@ -163,16 +222,21 @@ export function file(path: string, opts?: LambdaOptions<Record<string, CaptureVa
     throw new Error(`${PREFIX}: ${resolved} has more than one \`export default\`.`);
   }
 
-  const after = source.slice(marker.index + marker[0].length).trim();
-  const afterMask = mask.slice(marker.index + marker[0].length).trim();
-  if (!/^(?:async\s+)?(?:function\b|\(|[A-Za-z_$])/.test(afterMask)) {
+  const start = marker.index + marker[0].length;
+  const afterMask = mask.slice(start);
+  if (!/^\s*(?:async\s+)?(?:function\b|\(|[A-Za-z_$])/.test(afterMask)) {
     throw new Error(
       `${PREFIX}: ${resolved} default-exports something that is not a function. Export the lambda itself: ` +
         `\`export default ({ $this }: LambdaBindings<"map">) => …\`. (issue #221)`,
     );
   }
 
-  return lambdaValue(extractFunctionBody(after, PREFIX), opts, `${PREFIX}(${path})`);
+  // Slice to the END of the exported function, not to the file's last `}`. A
+  // module may legitimately declare a type after its default export, and taking
+  // the last brace would swallow it into the body — silently, and only sometimes
+  // as a syntax error.
+  const end = start + functionExtent(afterMask);
+  return lambdaValue(extractFunctionBody(source.slice(start, end), PREFIX), opts, `${PREFIX}(${path})`);
 }
 
 /**

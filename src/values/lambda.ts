@@ -508,6 +508,38 @@ export function maskNonCode(src: string): string {
   return out.join("");
 }
 
+/**
+ * Every `$identifier` the body DECLARES for itself — a local, a parameter, a
+ * catch binding.
+ *
+ * `$` is a legal identifier character, so a body may perfectly well write
+ * `const $tmp = …` or `$parent.map(($x) => $x + 1)`. Those are not engine
+ * bindings and flagging them would be a build error on correct code, which is
+ * the worst failure this guard can have. Declaration sites are recognized
+ * rather than parsed — the four shapes below cover what a lambda body actually
+ * writes — and anything recognized is excluded from the scan.
+ */
+function declaredLocals(mask: string): Set<string> {
+  const declared = new Set<string>();
+  const add = (text: string | undefined): void => {
+    for (const m of (text ?? "").matchAll(/\$[A-Za-z_][A-Za-z0-9_]*/g)) declared.add(m[0]);
+  };
+  // `const $x = …`, `let $a = 1, $b = 2`, `const { $a, $b } = …`. Each declarator
+  // contributes only the text BEFORE its `=`: an initializer may legitimately
+  // mention a real binding (`const $x = $acc`), and treating that as a
+  // declaration would whitelist the very name the scan exists to catch.
+  for (const m of mask.matchAll(/\b(?:const|let|var)\s+([^;\n]+)/g)) {
+    for (const declarator of (m[1] ?? "").split(",")) add(declarator.split("=")[0]);
+  }
+  for (const m of mask.matchAll(/\b(?:function|class)\s+(\$[A-Za-z0-9_]*)/g)) add(m[1]);
+  for (const m of mask.matchAll(/\bcatch\s*\(([^)]*)\)/g)) add(m[1]);
+  // Arrow parameters: `($x) => …`, `$x => …`, `async ($x, { $y }) => …`.
+  for (const m of mask.matchAll(/(\([^()]*\)|[A-Za-z_$][A-Za-z0-9_$]*)\s*=>/g)) add(m[1]);
+  // `function (…)` / method parameter lists.
+  for (const m of mask.matchAll(/\bfunction\b[^(]*\(([^)]*)\)/g)) add(m[1]);
+  return declared;
+}
+
 /** Every distinct `$identifier` referenced as code, in source order. Takes the
  * MASKED body, so one mask serves both checks in {@link assertLambdaBody}. */
 function dollarTokens(mask: string): string[] {
@@ -574,8 +606,9 @@ export function assertLambdaBody(body: string, surface: LambdaSurface, source = 
 
   const mask = maskNonCode(body);
   const legal = LAMBDA_BINDINGS[surface];
+  const locals = declaredLocals(mask);
   for (const token of dollarTokens(mask)) {
-    if (legal.includes(token)) continue;
+    if (legal.includes(token) || locals.has(token)) continue;
     const hint = suggestion(token, surface);
     throw new Error(
       `${source}: \`${token}\` is not a binding in a \`${surface}\` lambda body${hint ? ` — ${hint}` : ""}. ` +

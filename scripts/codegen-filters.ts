@@ -454,7 +454,7 @@ function emitFactory(name: string, spec: FilterSpec | undefined): string {
     // The named form keys on the same sanitized identifiers the positional
     // parameters use, so one filter has one spelling per argument.
     const argNames = JSON.stringify(names);
-    return `  ${JSON.stringify(name)}: ${doc}slotted(${JSON.stringify(name)}, ${argNames}) as ((${positional}) & (${named})),`;
+    return `  ${JSON.stringify(name)}: ${doc}slotted(${JSON.stringify(name)}, ${argNames}, ${required}) as ((${positional}) & (${named})),`;
   }
   return `  ${JSON.stringify(name)}: ${doc}(...args: (Scalar | Value)[]): FilterXdo => filter(${JSON.stringify(name)}, ...args.map(v)),`;
 }
@@ -528,7 +528,7 @@ function emit(cat: FilterCatalog): string {
     " * argument object.",
     " */",
     "const slotted =",
-    "  (name: string, argNames: readonly string[]) =>",
+    "  (name: string, argNames: readonly string[], required: number) =>",
     "  (...args: unknown[]): FilterXdo => {",
     "    const first = args[0];",
     "    const isNamed =",
@@ -537,10 +537,43 @@ function emit(cat: FilterCatalog): string {
     "      first !== null &&",
     "      !Array.isArray(first) &&",
     "      !isTaggedValue(first);",
-    "    if (!isNamed) return filter(name, ...(args as (Scalar | Value | undefined)[]).map(v));",
+    "    if (!isNamed) {",
+    "      const supplied = args as (Scalar | Value | undefined)[];",
+    "      assertArity(name, argNames, required, supplied.filter((a) => a !== undefined).length);",
+    "      return filter(name, ...supplied.map(v));",
+    "    }",
     "    const named = first as Record<string, Scalar | Value | undefined>;",
+    "    // A hole in the NAMED form has its own message: the positional advice",
+    "    // (\"use the named form\") would be useless to someone already using it.",
+    "    const last = argNames.reduce((acc, n, i) => (named[n] !== undefined ? i : acc), -1);",
+    "    const hole = argNames.slice(0, last).findIndex((n) => named[n] === undefined);",
+    "    if (hole !== -1) {",
+    "      throw new Error(",
+    "        `fl.${name}: \\`${argNames[hole]}\\` is omitted but \\`${argNames[last]}\\` is supplied. Filter arguments are ` +",
+    "          `positional even in this form — the engine reads them by slot, so one in the middle cannot be skipped. ` +",
+    "          `Supply \\`${argNames[hole]}\\` too. (issue #221)`,",
+    "      );",
+    "    }",
+    "    assertArity(name, argNames, required, last + 1);",
     "    return filter(name, ...argNames.map((n) => v(named[n])));",
     "  };",
+    "",
+    "/**",
+    " * Refuse a call with fewer arguments than the engine requires (issue #221).",
+    " *",
+    " * The signature already says so, but a JavaScript caller — or an `any` that",
+    " * erased the type — reaches the same factory, and the engine's own answer to a",
+    " * short call is an argument-count error at runtime, on a deployed endpoint.",
+    " */",
+    "const assertArity = (name: string, argNames: readonly string[], required: number, got: number): void => {",
+    "  if (got >= required) return;",
+    "  throw new Error(",
+    "    `fl.${name} needs ${required} argument(s) — ${argNames.slice(0, required).join(\", \")} — but got ${got}. ` +",
+    "      `Filter arguments are positional and the engine refuses a short call, so a missing one cannot be inferred ` +",
+    "      `— not even where the filter's own documentation calls it optional, because omission only works from the ` +",
+    "      `END. (issue #221)`,",
+    "  );",
+    "};",
     "",
   ].join("\n");
   return `/**
