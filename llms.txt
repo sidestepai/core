@@ -901,6 +901,7 @@ Microservices (the `microservice()` def and the statement that calls it):
 - `s.foreach_remove` [special]
 - `s.foreach` [special]
 - `s.group` [special]
+- `s.lambda({ as?: string; code?: value; timeout?: value })`
 - `s.precondition({ expr?: comparison; error_type?: string; error?: value; payload?: value })`
 - `s.return` [special]
 - `s.switch` [special]
@@ -929,7 +930,6 @@ Microservices (the `microservice()` def and the statement that calls it):
 ### api
 
 - `s.api.call` [special]
-- `s.api.lambda({ as?: string; code?: value; timeout?: value })`
 - `s.api.request` [special, output]
 - `s.api.stream({ value: value })`
 

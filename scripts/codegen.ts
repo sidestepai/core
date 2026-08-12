@@ -189,6 +189,11 @@ interface FactoryEntry {
  */
 const NAMESPACE_OVERRIDES: Readonly<Record<string, string>> = {
   "api.microservice": "microservice.request",
+  // A lambda runs wherever a stack runs — functions, tasks, middleware,
+  // triggers — so `s.api.lambda` said something false about where it is
+  // available (issue #221). The stored name is unchanged; only the authoring
+  // path moves. Mirrored by the `lambda` key in src/statements/surfaces.ts.
+  "api.lambda": "lambda",
 };
 
 /** Derive the namespace path + method from a schema filename basename. */

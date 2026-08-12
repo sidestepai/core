@@ -690,31 +690,6 @@
       "declarative": false
     },
     {
-      "surface": "api.lambda",
-      "storedName": "mvp:lambda",
-      "sPath": "api.lambda",
-      "registered": true,
-      "declarative": true,
-      "output": false,
-      "fields": [
-        {
-          "name": "as",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "code",
-          "type": "value",
-          "optional": true
-        },
-        {
-          "name": "timeout",
-          "type": "value",
-          "optional": true
-        }
-      ]
-    },
-    {
       "surface": "api.realtime_event",
       "storedName": "mvp:realtime_event",
       "sPath": "api.realtime_event",
@@ -2934,6 +2909,31 @@
       "sPath": "group",
       "registered": true,
       "declarative": false
+    },
+    {
+      "surface": "lambda",
+      "storedName": "mvp:lambda",
+      "sPath": "lambda",
+      "registered": true,
+      "declarative": true,
+      "output": false,
+      "fields": [
+        {
+          "name": "as",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "code",
+          "type": "value",
+          "optional": true
+        },
+        {
+          "name": "timeout",
+          "type": "value",
+          "optional": true
+        }
+      ]
     },
     {
       "surface": "math.add",

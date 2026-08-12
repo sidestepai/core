@@ -135,7 +135,7 @@ const READERS: Record<string, (v: unknown) => boolean | null> = {
 
 /** The stack that runs `code` at `surface`, ending in `set_var("out", …)`. */
 function stackFor(surface: string, code: Value): Parameters<typeof defineFunction>[0]["stack"] {
-  if (surface === "s.lambda") return [s.set_var("subtotal", c.int(7)), s.api.lambda({ as: "out", code })];
+  if (surface === "s.lambda") return [s.set_var("subtotal", c.int(7)), s.lambda({ as: "out", code })];
   if (surface === "fl.lambda") {
     return [s.set_var("subtotal", c.int(7)), s.set_var("out", withFilters(c.int(5), filter("lambda", code)))];
   }
@@ -205,13 +205,13 @@ add({
   id: "s.lambda.$var.value",
   surface: "s.lambda",
   asks: "Does $var carry the stack variables by name?",
-  stack: [s.set_var("subtotal", c.int(7)), s.api.lambda({ as: "out", code: c.text("return $var.subtotal") })],
+  stack: [s.set_var("subtotal", c.int(7)), s.lambda({ as: "out", code: c.text("return $var.subtotal") })],
 });
 add({
   id: "s.lambda.$input.value",
   surface: "s.lambda",
   asks: "Does $input carry the function input?",
-  stack: [s.api.lambda({ as: "out", code: c.text("return $input.qty") })],
+  stack: [s.lambda({ as: "out", code: c.text("return $input.qty") })],
   input: { qty: input.int() },
   runInput: { qty: 3 },
 });

@@ -1,6 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { c, ref, s, fl, lam, filter, withFilters, LAMBDA_CODE_FILTERS } from "../../src/index.js";
 import { FILTER_SPECS } from "../../src/values/generated/filters.generated.js";
+import { encodeStatement } from "../../src/statements/statement.js";
+import { decodeStatement } from "../../src/codegen/statement.js";
+import { DecodeContext } from "../../src/codegen/context.js";
+import { RefIndex } from "../../src/codegen/ref-index.js";
+import { printExpr } from "../../src/codegen/print.js";
+import { STATEMENT_SURFACES } from "../../src/statements/surfaces.js";
+import type { StackItemXdo } from "../../src/types/xdo.js";
 
 /**
  * The guard at the call sites (issue #221).
@@ -16,7 +23,7 @@ describe("the lambda statement", () => {
   it("Covers #221: refuses a body referencing a binding it does not have", () => {
     let message = "";
     try {
-      s.api.lambda({ as: "out", code: c.text("return $this * 2") });
+      s.lambda({ as: "out", code: c.text("return $this * 2") });
     } catch (e) {
       message = (e as Error).message;
     }
@@ -25,23 +32,23 @@ describe("the lambda statement", () => {
   });
 
   it("accepts a body using only the ambient bindings", () => {
-    expect(() => s.api.lambda({ as: "out", code: c.text("return $var.subtotal * 1.2") })).not.toThrow();
+    expect(() => s.lambda({ as: "out", code: c.text("return $var.subtotal * 1.2") })).not.toThrow();
   });
 
   it("accepts a lam.fn body authored for its surface", () => {
-    const stmt = s.api.lambda({ as: "out", code: lam.fn(({ $var }) => $var.subtotal, { surface: "s.lambda" }) });
+    const stmt = s.lambda({ as: "out", code: lam.fn(({ $var }) => $var.subtotal, { surface: "s.lambda" }) });
     expect(JSON.stringify(stmt)).toContain("return $var.subtotal;");
   });
 
   it("refuses a lam.fn body authored for a different surface", () => {
     const iterating = lam.fn(({ $this }) => $this * 2, { surface: "map" });
-    expect(() => s.api.lambda({ as: "out", code: iterating })).toThrow(/\$this/);
+    expect(() => s.lambda({ as: "out", code: iterating })).toThrow(/\$this/);
   });
 
   it("still carries an EMPTY body, which is what the editor saves for a new statement", () => {
     // Authoring one is refused (`lam.raw("")` throws); carrying one that already
     // exists is not, or a pulled workspace stops round-tripping.
-    expect(() => s.api.lambda({ as: "out", code: c.text("") })).not.toThrow();
+    expect(() => s.lambda({ as: "out", code: c.text("") })).not.toThrow();
   });
 });
 
@@ -120,5 +127,48 @@ describe("the lambda filters", () => {
       const args = FILTER_SPECS[name]?.args ?? [];
       expect(args[site.slot]?.name, name).toBe("code");
     }
+  });
+});
+
+/**
+ * The relocation (issue #221). A lambda runs wherever a stack runs — functions,
+ * tasks, middleware, triggers — so filing it under `s.api.*` said something
+ * false about where it is available. This is a rename of the authoring path
+ * only: the stored statement is unchanged, which is what keeps a pulled
+ * workspace round-tripping through the new key.
+ */
+describe("s.lambda", () => {
+  it("is reachable at s.lambda", () => {
+    expect(typeof s.lambda).toBe("function");
+  });
+
+  it("is gone from s.api — no alias, no shim", () => {
+    // @ts-expect-error -- the statement moved to `s.lambda`
+    expect(s.api.lambda).toBeUndefined();
+    expect("lambda" in s.api).toBe(false);
+  });
+
+  it("keeps the stored name and bytes exactly as they were", () => {
+    const stored = encodeStatement(s.lambda({ as: "x1", code: c.text("return 1"), timeout: c.int(10) }));
+    expect(stored.name).toBe("mvp:lambda");
+    expect(JSON.parse(JSON.stringify(stored)).input).toEqual([
+      { name: "code", value: "return 1", tag: "const", filters: [], expand: false, ignore: false, children: [] },
+      { name: "timeout", value: "10", tag: "const:int", filters: [], expand: false, ignore: false, children: [] },
+    ]);
+  });
+
+  it("is what codegen emits for a stored lambda statement", () => {
+    const stored = JSON.parse(
+      JSON.stringify(encodeStatement(s.lambda({ as: "x1", code: c.text("return 1") }))),
+    ) as StackItemXdo;
+    const ctx = new DecodeContext();
+    const source = printExpr(decodeStatement(ctx, RefIndex.fromPayload({}, ctx), stored, {}));
+    expect(source).toContain("s.lambda(");
+    expect(source).not.toContain("s.api.lambda(");
+  });
+
+  it("appears in the surface catalog under its new key", () => {
+    expect(STATEMENT_SURFACES).toContainEqual(["lambda", "mvp:lambda"]);
+    expect(STATEMENT_SURFACES.some(([key]) => key === "api.lambda")).toBe(false);
   });
 });

@@ -14,6 +14,12 @@
  * `scripts/codegen.ts`, which is what keeps the generated factory tree in
  * agreement with this key.
  *
+ * A second entry does the same: `lambda` is stored as `mvp:lambda` and the
+ * engine files its schema under the `api` namespace, but a lambda runs wherever
+ * a stack runs — in functions, tasks, middleware, and triggers, not only APIs —
+ * so filing it under `s.api.*` said something false about where it is available
+ * (issue #221). It is `s.lambda`, with the matching `NAMESPACE_OVERRIDES` entry.
+ *
  * One surface-pair shares a stored name (so the catalog has one fewer unique
  * stored name than surfaces): `util.get_raw_input`/`util.get_input` →
  * `mvp:get_input`.
@@ -33,7 +39,6 @@ export const STATEMENT_SURFACES: ReadonlyArray<readonly [string, string]> = [
   ["ai.external.mcp.tool.list", "mvp:mcp_list_tools"],
   ["ai.external.mcp.tool.run", "mvp:mcp_call_tool"],
   ["api.call", "mvp:workspace_run_endpoint"],
-  ["api.lambda", "mvp:lambda"],
   ["api.realtime_event", "mvp:realtime_event"],
   ["api.request", "mvp:api_request"],
   ["api.stream", "mvp:streaming_api_response"],
@@ -122,6 +127,7 @@ export const STATEMENT_SURFACES: ReadonlyArray<readonly [string, string]> = [
   ["function.call", "mvp:workspace_run_function"],
   ["function.run", "mvp:function"],
   ["group", "mvp:group"],
+  ["lambda", "mvp:lambda"],
   ["math.add", "mvp:math_add"],
   ["math.bitwise.and", "mvp:bitwise_and"],
   ["math.bitwise.or", "mvp:bitwise_or"],
