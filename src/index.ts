@@ -83,7 +83,14 @@ export type { ObjInput, ObjMember } from "./values/obj.js";
 // Lambda authoring: write a JavaScript body as a typed function whose parameters
 // ARE the engine's injected bindings, so `$acc` is a compile error rather than a
 // wrong value at runtime (issue #221). `lam.file` lives on `@sidestep/core/node`.
-export { lam, LAMBDA_BINDINGS, LAMBDA_GLOBALS, assertLambdaBody } from "./values/lambda.js";
+export {
+  lam,
+  LAMBDA_BINDINGS,
+  LAMBDA_GLOBALS,
+  LAMBDA_CODE_FILTERS,
+  LAMBDA_STATEMENTS,
+  assertLambdaBody,
+} from "./values/lambda.js";
 export type {
   LambdaSurface,
   LambdaBindings,

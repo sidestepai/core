@@ -377,7 +377,8 @@ function withEngineRequired(specs: Record<string, FilterSpec>): Record<string, F
       ...spec,
       args: spec.args.map((a, i) => {
         if (i >= required || !a.optional) return a;
-        const { optional: _dropped, ...rest } = a;
+        const rest: FilterArg = { ...a };
+        delete rest.optional;
         return rest;
       }),
     };

@@ -76,6 +76,89 @@ export const LAMBDA_BINDINGS: Readonly<Record<LambdaSurface, readonly string[]>>
 export const LAMBDA_GLOBALS: readonly string[] = ["console", "crypto"];
 
 /**
+ * Every filter that takes a JavaScript body → which positional slot the body
+ * occupies, and which binding set it runs against.
+ *
+ * The slot is fixed rather than looked up because it is what the guard has to
+ * key on: `filter()` sees positions, not argument names. `reduce`'s body is the
+ * SECOND argument (the accumulator's initial value comes first, and #221's other
+ * half is exactly that slot being invisible); every other lambda filter's is the
+ * first.
+ *
+ * `fl.transform` is deliberately absent. It takes an `expression`, not a
+ * JavaScript body — the probe showed it runs on a different evaluation path and
+ * refuses a `return` statement outright — so validating it against this contract
+ * would reject correct code. `test/values/filters.test.ts` enumerates the
+ * `code`-taking filters from `FILTER_SPECS` and fails if one is missing here.
+ */
+export const LAMBDA_CODE_FILTERS: Readonly<Record<string, { readonly slot: number; readonly surface: LambdaSurface }>> = {
+  lambda: { slot: 0, surface: "fl.lambda" },
+  map: { slot: 0, surface: "map" },
+  filter: { slot: 0, surface: "filter" },
+  some: { slot: 0, surface: "some" },
+  every: { slot: 0, surface: "every" },
+  find: { slot: 0, surface: "find" },
+  findIndex: { slot: 0, surface: "findIndex" },
+  reduce: { slot: 1, surface: "reduce" },
+};
+
+/**
+ * Run the body guard on a filter's code argument, where there is one to see.
+ *
+ * The choke point matters more than the form: an author who never adopts `lam.*`
+ * — who writes `fl.reduce(0, c.text("return $acc + $this"))`, or reaches for the
+ * low-level `filter()` — gets the same answer at the same moment as one who
+ * does. It fires only on an inspectable, unfiltered `const` body; a `ref`, an
+ * input, or a filtered value is left alone, because the guard must not pretend
+ * to check what it cannot read.
+ *
+ * An EMPTY body is left alone here too, though `lam.fn`/`lam.raw` refuse to
+ * author one: the editor saves a freshly-added lambda with no code at all, so a
+ * pulled workspace holding that default has to keep round-tripping. Authoring a
+ * blank body is a mistake; carrying one that already exists is not.
+ */
+export function assertLambdaFilterArgs(name: string, args: ReadonlyArray<Value | undefined>): void {
+  const site = LAMBDA_CODE_FILTERS[name];
+  if (site === undefined) return;
+  const code = args[site.slot];
+  if (!isInspectableBody(code) || code.value.trim() === "") return;
+  assertLambdaBody(code.value, site.surface, `fl.${name}`);
+}
+
+/**
+ * The statements that take a JavaScript body → the field carrying it and the
+ * bindings it runs against. One today; a table so a second cannot be added
+ * without deciding its surface.
+ */
+export const LAMBDA_STATEMENTS: Readonly<Record<string, { readonly field: string; readonly surface: LambdaSurface }>> = {
+  "mvp:lambda": { field: "code", surface: "s.lambda" },
+};
+
+/** Run the body guard on a statement's code field. See {@link assertLambdaFilterArgs}. */
+export function assertLambdaStatement(storedName: string, authored: Record<string, unknown>): void {
+  const site = LAMBDA_STATEMENTS[storedName];
+  if (site === undefined) return;
+  const code = authored[site.field];
+  if (!isInspectableBody(code) || code.value.trim() === "") return;
+  assertLambdaBody(code.value, site.surface, "s.lambda");
+}
+
+/**
+ * Whether a value's body text can be read at all: an unfiltered `const` string.
+ * A `ref`, an input binding, or a filtered value carries no text to check, and a
+ * guard that fired on those would be guessing.
+ */
+function isInspectableBody(code: unknown): code is Value & { value: string } {
+  return (
+    typeof code === "object" &&
+    code !== null &&
+    (code as Value).tag === "const" &&
+    typeof (code as Value).value === "string" &&
+    ((code as Value).filters?.length ?? 0) === 0
+  );
+}
+
+/**
  * Ambient request state, in scope at every surface.
  *
  * Typed `any` deliberately: `$var` holds the enclosing function's stack

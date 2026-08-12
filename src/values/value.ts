@@ -5,6 +5,9 @@
  */
 import type { FilterXdo, TaggedValue, Tag } from "../types/xdo.js";
 import { TAGS } from "../types/xdo.js";
+// The lambda-body guard, applied in `filter()` below. The cycle back to this
+// module is deliberate and safe: `lambda.ts` reaches `c` only at call time.
+import { assertLambdaFilterArgs } from "./lambda.js";
 
 /** A sidestep authored value is just the stored tagged-value shape. */
 export type Value = TaggedValue;
@@ -620,6 +623,10 @@ export function filter(name: string, ...args: (Value | undefined)[]): FilterXdo 
         `— \`fl.${name}({ … })\` — which cannot mis-slot. (issue #221)`,
     );
   }
+  // A lambda filter's body is checked HERE — the one choke point every spelling
+  // passes through, `lam.*` or not (issue #221). It only fires where the body is
+  // an inspectable constant.
+  assertLambdaFilterArgs(name, args);
   // Drop omitted trailing args. Typed filter factories (fl.*) declare their
   // named params positionally, so calling one with fewer args (e.g. `fl.trim()`)
   // passes `undefined` here — without this it would serialize as a stray `null`.
