@@ -1,5 +1,18 @@
 import { describe, it, expect } from "vitest";
-import { conditional, conditionalElif, expr, cmp, and, or } from "../src/statements/conditional.js";
+import {
+  conditional,
+  conditionalElif,
+  expr,
+  cmp,
+  and,
+  or,
+  type Condition,
+} from "../src/statements/conditional.js";
+import { whileLoop } from "../src/statements/special/loops.js";
+import { precondition } from "../src/statements/special/precondition.js";
+import { generated } from "../src/statements/generated/factories.generated.js";
+import { dbQuery } from "../src/statements/special/db.js";
+import { col } from "../src/values/value.js";
 import { encodeStatement } from "../src/statements/statement.js";
 import { setVar } from "../src/statements/set-var.js";
 import { defineFunction } from "../src/function/define.js";
@@ -101,7 +114,7 @@ describe("conditional", () => {
     const ctx = encodeStatement(
       conditional({
         when: and(
-          cmp(ref("status"), "like", c.text("%active%")),
+          cmp(ref("status"), "===", c.text("active")),
           or(expr(ref("n"), ">", c.int(0)), expr(ref("n"), "<", c.int(-10))),
         ),
         then: [setVar("hit", c.text("yes"))],
@@ -112,7 +125,7 @@ describe("conditional", () => {
     expect(top).toHaveLength(1);
     expect(top[0].type).toBe("group");
     const inner = top[0].group.expression;
-    expect(inner[0].statement.op).toBe("like"); // full operator set via cmp()
+    expect(inner[0].statement.op).toBe("==="); // cmp() on a condition: runtime-evaluable ops only
     expect(inner[1].type).toBe("group"); // the nested or(...)
     // OR semantics: first child or:false, second or:true.
     expect(inner[1].group.expression[0].or).toBe(false);
@@ -187,5 +200,49 @@ describe("conditional", () => {
     const ctx = xdo.run[0]!.context as any;
     expect(ctx.if.run[0].name).toBe("mvp:set_var");
     expect(ctx.else.run[0].name).toBe("mvp:set_var");
+  });
+});
+
+/**
+ * A condition the RUNTIME evaluates accepts a strictly narrower operator set
+ * than a database `where` does: the db-search-only operators (`in`, `like`,
+ * `between`, …) have no runtime implementation and fail the request with
+ * `Invalid op: <op>` the first time the branch is reached. Since that branch is
+ * usually a guard, the failure lands in production traffic rather than in a
+ * test. Refused at build time instead (#260).
+ */
+describe("condition operator set (#260)", () => {
+  const surfaces: Array<[string, (when: Condition) => unknown]> = [
+    ["s.conditional", (when) => conditional({ when, then: [setVar("x", c.int(1))] })],
+    ["elif", (when) => conditionalElif({ when, then: [setVar("x", c.int(1))] })],
+    ["s.while", (when) => whileLoop({ when, body: [setVar("x", c.int(1))] })],
+    ["s.precondition", (when) => precondition({ expr: when, error: c.text("no") })],
+    ["array.find", (when) => generated.array.find({ expr: ref("rows"), if: when, as: "hit" })],
+  ];
+
+  for (const [name, build] of surfaces) {
+    it(`${name} refuses a db-search-only operator`, () => {
+      expect(() => build(cmp(ref("status"), "in", c.text("[1,2]")))).toThrow(/Invalid op: in/);
+      // …including one buried inside a group.
+      expect(() =>
+        build(or(expr(ref("n"), ">", c.int(0)), cmp(ref("n"), "like", c.text("%1%")))),
+      ).toThrow(/database-search operator/);
+    });
+
+    it(`${name} accepts every operator the runtime evaluates`, () => {
+      for (const op of ["=", "==", "!=", "===", "!==", ">", ">=", "<", "<="] as const) {
+        expect(() => build(cmp(ref("n"), op, c.int(1)))).not.toThrow();
+      }
+    });
+  }
+
+  it("a db.query where still takes the full operator set", () => {
+    const q = dbQuery({
+      table: null,
+      where: cmp(col("status"), "in", c.text("[1,2]")),
+      as: "rows",
+    });
+    const search = (encodeStatement(q).context as any).search.expression;
+    expect(search[0].statement.op).toBe("in");
   });
 });

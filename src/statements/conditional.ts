@@ -22,7 +22,7 @@ import type { ConditionalContext, ConditionalElifContext } from "../types/xdo.js
 import type { Statement } from "./statement.js";
 import type { StatementAnnotations } from "./statement.js";
 import { encodeStatement, registerStatement, annotate } from "./statement.js";
-import { encodeComparison, type Condition } from "./expression.js";
+import { encodeRuntimeCondition, type Condition } from "./expression.js";
 
 export {
   expr,
@@ -31,6 +31,7 @@ export {
   or,
   mixed,
   encodeComparison,
+  encodeRuntimeCondition,
   encodeSearchExpression,
   type Comparison,
   type ComparisonOp,
@@ -55,7 +56,7 @@ export interface ConditionalElifArgs extends StatementAnnotations {
  */
 export function conditionalElif(args: ConditionalElifArgs): Statement {
   const context: ConditionalElifContext = {
-    expr: encodeComparison(args.when),
+    expr: encodeRuntimeCondition(args.when, "s.conditional elif `when`"),
     if: { run: args.then.map(encodeStatement) },
   };
   return annotate({ name: CONDITIONAL_ELIF, context, input: [] }, args);
@@ -72,7 +73,7 @@ export interface ConditionalArgs extends StatementAnnotations {
 /** A branching statement: `if (when) { then } [else if …] else { else }`. */
 export function conditional(args: ConditionalArgs): Statement {
   const context: ConditionalContext = {
-    expr: encodeComparison(args.when),
+    expr: encodeRuntimeCondition(args.when, "s.conditional `when`"),
     if: { run: args.then.map(encodeStatement) },
     elif: { run: (args.elif ?? []).map((e) => encodeStatement(conditionalElif(e))) },
     else: { run: (args.else ?? []).map(encodeStatement) },

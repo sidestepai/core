@@ -474,9 +474,14 @@ surface — `s.conditional`/`s.while` `when` (incl. each `elif` branch), and
 - `left`/`right` are `Value`s — `col("x")` (a table column), `ref`, `inp`, `auth(...)`, or `c.*`.
 - For the full operator set (`in`/`like`/`ilike`/`between`/`contains`/`overlaps`/`@>`/`~`/`search`/…)
   use `cmp(left, op, right, { ignoreEmpty? })`; compose nested boolean logic with `and(...)`/`or(...)`.
+- ⚠ The wider `cmp` operators are DATABASE-only (`where`, table view filter, db trigger
+  `search`). A RUNTIME condition — `s.conditional`/`elif`, `s.while`, `s.precondition`,
+  `array.*` `if` — takes the `expr` set only; the rest are refused at build time because
+  deployed they fail the request with `Invalid op: <op>` on that branch, usually a guard.
+  Spell membership out: `or(expr(x, "=", a), expr(x, "=", b))`.
 - A condition/`where` accepts a single `expr(...)`/`cmp(...)`, an `and()`/`or()` group, an array of
   those (ANDed), or (for `where`) a raw `Value`. `s.conditional`/`s.while`/`s.switch`, `db.query`,
-  `precondition`, and the `array.*` predicates all take the same shape.
+  `precondition`, and the `array.*` predicates all take the same TREE shape (operators per above).
 - ⚠ `mixed(a, { or: b }, { and: c })` reproduces a container whose terms do NOT all join the
   same way — the editor allows it, so pulled workspaces contain it. **Do not author it.** The
   stored form does not record the grouping, and the two places it can appear disagree: a
@@ -880,7 +885,7 @@ primary key `id`):
 - `s.db.query({ table, where?, additionalWhere?, bind?, sort?, paging?, external?, returnType?, distinct?, eval?, output?, lock?, addon?, as? })` — search.
   - `where` / `additionalWhere` — `expr(...)`, an `expr[]` (ANDed), or a raw `Value`. Rides `context.search`.
     - ⚠ `ignoreEmpty` DROPS the predicate when the operand is empty — it does not match zero rows. On an `in` comparison an empty list therefore returns the UNFILTERED set, so never use it to scope rows to a permitted-id list: an empty list of permissions returns everything.
-    - For the full operator set use `cmp(left, op, right, { ignoreEmpty? })` — `op`: `in`/`not in`/`like`/`ilike`/`between`/`contains`/`includes`/`overlaps`/`@>`/`~`/`search`/… plus the `expr` comparisons.
+    - For the full operator set use `cmp(left, op, right, { ignoreEmpty? })` — `op`: `in`/`not in`/`like`/`ilike`/`between`/`contains`/`includes`/`overlaps`/`@>`/`~`/`search`/… plus the `expr` comparisons. Database-only — a runtime condition takes the `expr` set only.
     - Compose nested boolean logic with `and(...)` / `or(...)` groups (also available on `addon()` `where`).
     - An operand may be a bare value (`col`/`inp`/`ref`/`auth`/`c.*`) OR a **filtered** value (`withFilters(...)`) inline. Hoisting into a prior `s.set_var` is a readability option, not a requirement.
   - `bind: [{ table, as?, join?, where? }]` — joins (`context.bind[]`). `join` defaults to `"inner"`. `as` defaults to the table name; two joins to the same table need distinct aliases.

@@ -357,6 +357,60 @@ export function encodeExpression(input: Condition): { expression: ExprNode[] } {
   return { expression: encodeContainer(nodes, false) };
 }
 
+// ---------------------------------------------------------------------------
+// Surface split: which operators the RUNTIME evaluates.
+// ---------------------------------------------------------------------------
+
+/**
+ * The operators a **runtime** condition can use — `s.conditional` (and each
+ * `elif`), `s.while`, `s.precondition`, and the `array.*` `if` predicates.
+ *
+ * These surfaces are evaluated by the stack as it runs, and the runtime
+ * comparison implements exactly this set. Everything else `cmp()` accepts
+ * (`in`, `like`, `ilike`, `between`, `contains`, `includes`, `overlaps`, `@>`,
+ * `~`, `search`, and their negations) is a DATABASE-search operator: it is
+ * compiled into SQL for a `where`/`search` and has no runtime implementation.
+ * Sending one into a condition stores and deploys clean, then fails the request
+ * with `Invalid op: <op>` the first time the branch is reached — which is
+ * usually a guard, i.e. the path that only runs when something is already
+ * wrong. Hence the build-time refusal. (Issue #260.)
+ *
+ * The editor draws the same line: its condition row offers these eight, its
+ * database-filter row the full set.
+ */
+const RUNTIME_OPS = new Set<string>(SUPPORTED_OPS);
+
+/** Whether `op` is one a runtime condition can evaluate. See {@link RUNTIME_OPS}. */
+export function isRuntimeConditionOp(op: unknown): boolean {
+  return typeof op === "string" && (RUNTIME_OPS.has(op) || op in OP_ALIASES);
+}
+
+/** Throw on the first DB-search-only operator anywhere in a runtime condition. */
+function assertRuntimeOps(node: SearchNode, surface: string): void {
+  if (isGroup(node) || isMixed(node)) {
+    for (const term of containerTerms(node)) assertRuntimeOps(term.node, surface);
+    return;
+  }
+  const op = node.op;
+  if (isRuntimeConditionOp(op)) return;
+  throw new Error(
+    `${surface}: operator "${op}" is a database-search operator and cannot be evaluated in a ` +
+      `condition — the request fails at runtime with \`Invalid op: ${op}\`. A condition ` +
+      `evaluates ${SUPPORTED_OPS.join(", ")} (and \`==\`). Keep "${op}" for a db.query/bulk/addon ` +
+      `\`where\`, a table view filter, or a database trigger \`search\`; in a condition, spell it ` +
+      `out — e.g. membership as \`or(expr(x, "=", a), expr(x, "=", b))\`.`,
+  );
+}
+
+/**
+ * {@link encodeExpression} for a surface the RUNTIME evaluates, refusing an
+ * operator that surface cannot run. `surface` names the caller for the message.
+ */
+export function encodeRuntimeCondition(input: Condition, surface: string): { expression: ExprNode[] } {
+  for (const node of Array.isArray(input) ? input : [input]) assertRuntimeOps(node, surface);
+  return encodeExpression(input);
+}
+
 /**
  * Encode a single binary comparison into the engine's `{expression:[…]}` shape.
  * Byte-identical to routing the comparison through {@link encodeExpression};

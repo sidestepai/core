@@ -21,7 +21,7 @@ import { CORE_MODULE, type DecodeContext } from "./context.js";
 import { arr, call, lit, obj, type Expr } from "./print.js";
 import { decodeValue } from "./value.js";
 import { isBlankGroupStatement } from "../validate/normalize.js";
-import { isSearchOp } from "../statements/expression.js";
+import { isRuntimeConditionOp, isSearchOp } from "../statements/expression.js";
 
 /** The narrow operators `expr()` accepts; anything else needs `cmp()`. */
 const NARROW_OPS = new Set(["=", "!=", ">", "<", ">=", "<="]);
@@ -71,13 +71,31 @@ export function isEmptyCondition(block: unknown): boolean {
 export function decodeConditionOrEmpty(
   ctx: DecodeContext,
   block: unknown,
+  opts?: DecodeConditionOpts,
 ): DecodedCondition | null {
   if (isEmptyCondition(block)) return { expr: arr([]), runtime: [] };
-  return decodeCondition(ctx, block);
+  return decodeCondition(ctx, block, opts);
+}
+
+/**
+ * `runtimeSurface` marks a condition the RUNTIME evaluates (`s.conditional`,
+ * `s.while`, `s.precondition`, the `array.*` predicates) rather than one the
+ * database compiles (`where`/`search`). Those surfaces evaluate a narrower
+ * operator set, and the encoder refuses the rest (#260) — so a stored tree
+ * carrying one is declined here instead of being emitted as a `cmp()` call the
+ * generated tree would throw on. Same contract as the blank-`op` decline below:
+ * the caller falls back to `raw()` and the bytes survive exactly.
+ */
+export interface DecodeConditionOpts {
+  readonly runtimeSurface?: boolean;
 }
 
 /** Decode one comparison node. */
-function decodeStatementNode(ctx: DecodeContext, node: ExprNode): DecodedCondition | null {
+function decodeStatementNode(
+  ctx: DecodeContext,
+  node: ExprNode,
+  opts?: DecodeConditionOpts,
+): DecodedCondition | null {
   const statement = (node as { statement?: { op?: unknown; left?: unknown; right?: unknown } })
     .statement;
   if (!statement || typeof statement.op !== "string") return null;
@@ -87,6 +105,10 @@ function decodeStatementNode(ctx: DecodeContext, node: ExprNode): DecodedConditi
   // verify over one unconfigured row; declining hands the caller its own exact
   // fallback (`raw()`, or a reported view) instead.
   if (!isSearchOp(statement.op)) return null;
+  // A db-search operator stored on a surface the runtime evaluates: unauthorable
+  // by construction, and it would fail the request if it ever ran. See
+  // {@link DecodeConditionOpts}.
+  if (opts?.runtimeSurface && !isRuntimeConditionOp(statement.op)) return null;
 
   const left = toValue(statement.left);
   const right = toValue(statement.right);
@@ -116,13 +138,17 @@ function decodeStatementNode(ctx: DecodeContext, node: ExprNode): DecodedConditi
 }
 
 /** Decode a sibling list, which is uniformly ANDed or uniformly ORed. */
-function decodeContainer(ctx: DecodeContext, nodes: readonly ExprNode[]): DecodedCondition[] | null {
+function decodeContainer(
+  ctx: DecodeContext,
+  nodes: readonly ExprNode[],
+  opts?: DecodeConditionOpts,
+): DecodedCondition[] | null {
   const out: DecodedCondition[] = [];
   for (const node of nodes) {
     const decoded =
       (node as { type?: unknown }).type === "group"
-        ? decodeGroup(ctx, node)
-        : decodeStatementNode(ctx, node);
+        ? decodeGroup(ctx, node, opts)
+        : decodeStatementNode(ctx, node, opts);
     if (!decoded) return null;
     out.push(decoded);
   }
@@ -171,7 +197,11 @@ function emitMixed(
 }
 
 /** Decode a `{type:"group"}` node into `and(...)` / `or(...)` / `mixed(...)`. */
-function decodeGroup(ctx: DecodeContext, node: ExprNode): DecodedCondition | null {
+function decodeGroup(
+  ctx: DecodeContext,
+  node: ExprNode,
+  opts?: DecodeConditionOpts,
+): DecodedCondition | null {
   const children = (node as { group?: { expression?: unknown } }).group?.expression;
   if (!Array.isArray(children)) return null;
 
@@ -192,7 +222,7 @@ function decodeGroup(ctx: DecodeContext, node: ExprNode): DecodedCondition | nul
         "is not carried into the tree",
     );
   }
-  const decoded = decodeContainer(ctx, children as ExprNode[]);
+  const decoded = decodeContainer(ctx, children as ExprNode[], opts);
   if (!decoded) return null;
 
   // The second sibling's `or` flag is what distinguishes the two join modes; a
@@ -220,12 +250,16 @@ function decodeGroup(ctx: DecodeContext, node: ExprNode): DecodedCondition | nul
  * Top-level siblings are always ANDed (`encodeExpression` passes `joinOr:false`),
  * so a single node decodes bare and several decode to the flat array form.
  */
-export function decodeCondition(ctx: DecodeContext, block: unknown): DecodedCondition | null {
+export function decodeCondition(
+  ctx: DecodeContext,
+  block: unknown,
+  opts?: DecodeConditionOpts,
+): DecodedCondition | null {
   const expression = (block as { expression?: unknown })?.expression;
   if (!Array.isArray(expression)) return null;
   if (expression.length === 0) return null;
 
-  const decoded = decodeContainer(ctx, expression as ExprNode[]);
+  const decoded = decodeContainer(ctx, expression as ExprNode[], opts);
   if (!decoded) return null;
 
   // Root siblings carry their own join, exactly like a group's do. A flat ORed

@@ -173,9 +173,12 @@ describe("conditionals", () => {
 describe("expression algebra", () => {
   it("decodes a narrow comparison to expr() and a wide one to cmp()", () => {
     expect(roundTrip(s.while({ when: expr(ref("i"), "<", c.int(3)), body: [] }))).toContain("expr(");
-    expect(roundTrip(s.while({ when: cmp(ref("name"), "like", c.text("%x%")), body: [] }))).toContain(
-      "cmp(",
-    );
+    // The wide operators live on the DATABASE side — a runtime condition cannot
+    // evaluate them and the encoder refuses one there (#260) — so the `cmp()`
+    // half of this pair is proven where it is actually legal.
+    expect(
+      roundTrip(s.db.query({ table: null, where: cmp(col("name"), "like", c.text("%x%")), as: "r" })),
+    ).toContain("cmp(");
   });
 
   it("preserves a nested and/or tree's structure", () => {
@@ -289,7 +292,11 @@ describe("expression algebra", () => {
 
   it("round-trips a comparison carrying ignoreEmpty, which expr() cannot express", () => {
     const source = roundTrip(
-      s.while({ when: cmp(ref("q"), "like", inp("term"), { ignoreEmpty: true }), body: [] }),
+      s.db.query({
+        table: null,
+        where: cmp(col("q"), "like", inp("term"), { ignoreEmpty: true }),
+        as: "r",
+      }),
     );
     expect(source).toContain("ignoreEmpty");
     expect(source).toContain("cmp(");

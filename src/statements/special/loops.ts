@@ -20,7 +20,7 @@ import type { Statement } from "../statement.js";
 import type { StatementAnnotations, StatementOptions } from "../statement.js";
 import { encodeStatement, registerStatement, annotate } from "../statement.js";
 import type { Value } from "../../values/value.js";
-import { encodeComparison } from "../conditional.js";
+import { encodeRuntimeCondition } from "../conditional.js";
 import type { Condition } from "../conditional.js";
 
 function valueFields(v: Value): { value: string; tag: string; filters: unknown[] } {
@@ -74,7 +74,7 @@ export interface WhileArgs extends StatementAnnotations {
 export function whileLoop(args: WhileArgs): Statement {
   return annotate({
     name: "mvp:while",
-    context: { expr: encodeComparison(args.when), run: run(args.body) },
+    context: { expr: encodeRuntimeCondition(args.when, "s.while `when`"), run: run(args.body) },
     input: [],
   }, args);
 }

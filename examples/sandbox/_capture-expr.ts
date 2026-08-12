@@ -64,7 +64,7 @@ const probeCondGroup = defineFunction({
     s.set_var("n", c.int(5)),
     s.conditional({
       when: and(
-        cmp(ref("status"), "like", c.text("%active%")),
+        cmp(ref("status"), "===", c.text("active")),
         or(expr(ref("n"), ">", c.int(0)), expr(ref("n"), "<", c.int(-10))),
       ),
       then: [s.set_var("hit", c.text("yes"))],
@@ -99,9 +99,9 @@ const probePreconditionGroup = defineFunction({
   stack: [
     s.set_var("n", c.int(5)),
     s.precondition({
-      expr: or(expr(ref("n"), ">", c.int(0)), cmp(ref("n"), "in", withFilters(c.text("[1,2,3]"), filter("json_decode")))),
+      expr: or(expr(ref("n"), ">", c.int(0)), cmp(ref("n"), "===", c.int(3))),
       error_type: "badrequest",
-      error: c.text("n must be positive or in the set"),
+      error: c.text("n must be positive or exactly 3"),
     }),
   ],
   response: ref("n"),

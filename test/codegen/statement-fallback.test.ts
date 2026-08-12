@@ -18,7 +18,7 @@ import { RefIndex } from "../../src/codegen/ref-index.js";
 import { decodeStatement } from "../../src/codegen/statement.js";
 import { printExpr } from "../../src/codegen/print.js";
 import { deriveGuid } from "../../src/refs/guid.js";
-import { ignored, c, s } from "../../src/index.js";
+import { ignored, c, s, cmp, col } from "../../src/index.js";
 import { encodeStatement } from "../../src/statements/statement.js";
 
 function fallbackDetail(stored: Record<string, unknown>): string {
@@ -110,6 +110,47 @@ describe("a conditional with an empty condition", () => {
       expect(source).toContain("when: []");
     });
   }
+
+  /**
+   * A db-search-only operator stored on a runtime-evaluated surface: the
+   * encoder now refuses it (#260), so emitting `cmp(…, "in", …)` here would
+   * generate a tree that throws the moment it loads — the same failure mode the
+   * blank-`op` decline exists to avoid. `raw()` keeps the bytes exact.
+   */
+  it("declines a db-search-only operator instead of emitting a cmp() that throws", () => {
+    const node = {
+      or: false,
+      type: "statement",
+      group: { expression: [] },
+      statement: {
+        op: "in",
+        left: { tag: "var", operand: "a", filters: [] },
+        right: { tag: "const", operand: "[1,2]", filters: [] },
+      },
+    };
+    const ctx = new DecodeContext();
+    const source = printExpr(
+      decodeStatement(ctx, new RefIndex(), conditional({ expression: [node] }) as never, {} as never),
+    );
+    expect(source).toContain("raw(");
+    expect(source).not.toContain('cmp(');
+    // …while the same operator in a db.query `where` still decodes to cmp():
+    // that surface is compiled by the database, which does implement it.
+    const queryCtx = new DecodeContext();
+    const querySource = printExpr(
+      decodeStatement(
+        queryCtx,
+        new RefIndex(),
+        encodeStatement(
+          s.db.query({ table: null, where: cmp(col("a"), "in", c.text("[1,2]")), as: "rows" }),
+        ) as never,
+        {} as never,
+      ),
+    );
+    expect(querySource).toContain("cmp(");
+    expect(querySource).toContain('"in"');
+    expect(querySource).not.toContain("raw(");
+  });
 
   it("never empties a condition it cannot spell uniformly", () => {
     // The load-bearing negative for the empty-condition rule above: a MIXED

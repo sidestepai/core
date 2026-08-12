@@ -32,7 +32,7 @@ import type { FilterXdo } from "../../types/xdo.js";
 import { leanInput } from "../lean-input.js";
 import { isIgnored } from "../../values/ignored.js";
 import { resolveEnumValue } from "./enum-guard.js";
-import { encodeComparison } from "../conditional.js";
+import { encodeRuntimeCondition } from "../conditional.js";
 import type { Condition } from "../conditional.js";
 import { assertLambdaStatement, coerceLambdaFields } from "../../values/lambda.js";
 
@@ -238,7 +238,14 @@ export function encodeFromSpec(spec: StatementSpec, authored: Authored): Stateme
         );
         break;
       case "context-compare":
-        setPath(context, rule.route.path, encodeComparison(provided as Condition));
+        setPath(
+          context,
+          rule.route.path,
+          // Every statement carrying a `comparison` rule (`precondition`, the
+          // `array.*` predicates) has its condition evaluated by the runtime,
+          // so the operator set is the runtime one. See #260.
+          encodeRuntimeCondition(provided as Condition, `${spec.name} "${rule.field}"`),
+        );
         break;
       case "input": {
         // An enum-constrained field takes the bare-literal shorthand and is

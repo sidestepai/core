@@ -1,7 +1,7 @@
 {
   "as": "",
   "name": "mvp:conditional",
-  "_xsid": "f:ee164a76-ec22-4086-893b-a44f336b9071",
+  "_xsid": "f:433790fd-6d10-4de3-848b-c7648799479f",
   "addon": [],
   "input": [],
   "mocks": {},
@@ -16,7 +16,7 @@
         {
           "as": "hit",
           "name": "mvp:set_var",
-          "_xsid": "f:ecbc3e35-7975-435c-a905-51055ebe2492",
+          "_xsid": "f:aba87abd-d7ae-4c34-b5a0-53802c557429",
           "addon": [],
           "input": [],
           "mocks": {},
@@ -45,7 +45,7 @@
         {
           "as": "hit",
           "name": "mvp:set_var",
-          "_xsid": "f:9bc2467a-e59d-4703-847d-e09654109d06",
+          "_xsid": "f:8f41c8dc-b50d-4a28-9eb9-21120f204047",
           "addon": [],
           "input": [],
           "mocks": {},
@@ -80,7 +80,7 @@
                   "expression": []
                 },
                 "statement": {
-                  "op": "like",
+                  "op": "===",
                   "left": {
                     "tag": "var",
                     "filters": [],
@@ -89,7 +89,7 @@
                   "right": {
                     "tag": "const",
                     "filters": [],
-                    "operand": "%active%"
+                    "operand": "active"
                   }
                 }
               },
