@@ -10,6 +10,11 @@
  */
 export * from "./index.js";
 
+// `lam` with the filesystem form attached (`lam.file`). This deliberately
+// SHADOWS the isomorphic `lam` re-exported above: a body read off disk cannot
+// resolve in a frontend bundle, so `lam.file` exists only on this entry.
+export { lam } from "./values/lambda-file.js";
+
 // node:fs artifact + bundle writers
 export { writeArtifact, writeBundle } from "./emit/write.js";
 

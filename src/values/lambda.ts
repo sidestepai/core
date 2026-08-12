@@ -153,18 +153,22 @@ export interface LambdaOptions<C extends Record<string, CaptureValue> = Record<s
 const PREFIX = "lam";
 
 /**
- * Extract the body text of an authored function.
+ * Extract the body text of a function from its SOURCE.
  *
  * Two forms reach here — a block body (`(b) => { … }`) and a concise expression
  * body (`(b) => expr`) — and they must produce the same text, because they are
  * the same lambda as far as the engine is concerned. The concise form becomes
  * `return <expr>;`.
+ *
+ * Exported so `lam.file` can extract from a file's default export with exactly
+ * the same rule the inline form uses — one extraction, so the two authoring
+ * forms cannot diverge.
  */
-function extractBody(fn: (...args: never[]) => unknown): string {
-  const src = String(fn).trim();
+export function extractFunctionBody(source: string, caller: string): string {
+  const src = source.trim();
   if (src.includes("[native code]")) {
     throw new Error(
-      `${PREFIX}.fn: this function has no readable source (it is native, bound, or otherwise not authored here), ` +
+      `${caller}: this function has no readable source (it is native, bound, or otherwise not authored here), ` +
         `so there is no body to send to the engine. Write the body inline as an arrow function, or use lam.raw(...) ` +
         `with the code as text. (issue #221)`,
     );
@@ -180,16 +184,16 @@ function extractBody(fn: (...args: never[]) => unknown): string {
     const open = mask.indexOf("{", closingParen(mask, kw[0].length));
     const close = mask.lastIndexOf("}");
     if (open === -1 || close <= open) {
-      throw new Error(`${PREFIX}.fn: could not find the function body in ${JSON.stringify(src.slice(0, 80))}.`);
+      throw new Error(`${caller}: could not find the function body in ${JSON.stringify(src.slice(0, 80))}.`);
     }
-    return src.slice(open + 1, close).trim();
+    return dedent(src.slice(open + 1, close).trim());
   }
 
   // Otherwise an arrow: everything after the top-level `=>`.
   const arrow = topLevelArrow(mask);
   if (arrow === -1) {
     throw new Error(
-      `${PREFIX}.fn: expected an arrow function or a function expression, got ${JSON.stringify(src.slice(0, 80))}. ` +
+      `${caller}: expected an arrow function or a function expression, got ${JSON.stringify(src.slice(0, 80))}. ` +
         `A class method or an object shorthand method does not extract; write it as an arrow function.`,
     );
   }
@@ -197,11 +201,32 @@ function extractBody(fn: (...args: never[]) => unknown): string {
   const restMask = mask.slice(arrow + 2).trim();
   if (restMask.startsWith("{")) {
     const close = restMask.lastIndexOf("}");
-    if (close === -1) throw new Error(`${PREFIX}.fn: unbalanced braces in the function body.`);
-    return rest.slice(1, close).trim();
+    if (close === -1) throw new Error(`${caller}: unbalanced braces in the function body.`);
+    return dedent(rest.slice(1, close).trim());
   }
   // Concise body: `(b) => expr` is `return expr;`.
   return `return ${rest.replace(/[;,]\s*$/, "")};`;
+}
+
+/**
+ * Strip the indentation an authored body inherited from where it was written.
+ *
+ * A lambda nested three levels deep in a workspace definition would otherwise
+ * store three levels of leading spaces, and the SAME lambda moved to the top
+ * level would store different bytes — a diff in a byte-exact corpus with no
+ * change in meaning. The block and file forms of one body also have to agree.
+ *
+ * Skipped when the body contains a backtick: a multi-line template literal's
+ * leading whitespace is part of its value, and no tokenizer-level check can tell
+ * which lines those are without tracking the literal across the dedent.
+ */
+function dedent(body: string): string {
+  if (body.includes("`")) return body;
+  const lines = body.split("\n");
+  const indents = lines.slice(1).filter((l) => l.trim() !== "").map((l) => /^[ \t]*/.exec(l)?.[0].length ?? 0);
+  const common = indents.length ? Math.min(...indents) : 0;
+  if (common === 0) return body;
+  return [lines[0], ...lines.slice(1).map((l) => l.slice(common))].join("\n");
 }
 
 /** Index just past the `)` closing the parameter list that opens at or after `from`. */
@@ -237,6 +262,8 @@ function topLevelArrow(mask: string): number {
  * blanked: they are code, and `` `${$var.x}` `` has to resolve `$var` as a real
  * binding reference.
  *
+ * Exported for `lam.file`, which scans a module's top level with it.
+ *
  * This is a tokenizer, not a parser. The SDK ships two runtime dependencies and
  * is not going to gain a JavaScript parser for this; what the scan needs is only
  * to know which `$identifier` occurrences are real references. Where the regex/
@@ -244,7 +271,7 @@ function topLevelArrow(mask: string): number {
  * treating the text as code — a missed `$` in a regex body would at worst report
  * a binding that is not there, and the tests pin the shapes that matter.
  */
-function maskNonCode(src: string): string {
+export function maskNonCode(src: string): string {
   const out: string[] = [];
   // Template-literal nesting: each entry is the depth of `{` inside a `${…}`.
   const templates: number[] = [];
@@ -492,8 +519,9 @@ export function assertLambdaBody(body: string, surface: LambdaSurface, source = 
 
 // --- capture ------------------------------------------------------------------------
 
-/** Serialize the capture list as the `const` prelude that opens the body. */
-function capturePrelude(capture: Record<string, unknown> | undefined, source: string): string {
+/** Serialize the capture list as the `const` prelude that opens the body.
+ * Exported so every `lam.*` form emits an identical prelude. */
+export function capturePrelude(capture: Record<string, unknown> | undefined, source: string): string {
   if (capture === undefined) return "";
   const lines: string[] = [];
   for (const [name, value] of Object.entries(capture)) {
@@ -538,7 +566,7 @@ function fn<S extends LambdaSurface = "reduce", C extends Record<string, Capture
   opts?: LambdaOptions<C> & { surface?: S },
 ): Value {
   const surface = (opts?.surface ?? "reduce") as LambdaSurface;
-  const extracted = extractBody(body as (...args: never[]) => unknown);
+  const extracted = extractFunctionBody(String(body), `${PREFIX}.fn`);
   const code = capturePrelude(opts?.capture, `${PREFIX}.fn`) + extracted;
   assertLambdaBody(code, surface, `${PREFIX}.fn`);
   return c.text(code);
