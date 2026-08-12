@@ -736,7 +736,8 @@ function suggestion(token: string, surface: LambdaSurface): string | undefined {
  * 1. an `$identifier` outside the surface's binding set — provably undefined at
  *    runtime, because a stack variable is only ever reachable as `$var.name`;
  * 2. a top-level `import`/`export`, which is a syntax error in a function body
- *    (dependencies are reached through dynamic `import()`);
+ *    (a dependency comes from {@link LAMBDA_MODULE_GLOBALS}, which needs no
+ *    specifier — see there for why a literal `import()` one is not portable);
  * 3. an empty body, which stores a statement the engine refuses at import.
  *
  * Exported so the statement and filter factories can run the same check on a
