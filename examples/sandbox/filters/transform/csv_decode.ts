@@ -8,6 +8,6 @@ import { defineFunction, s, c, ref, withFilters, fl } from "@sidestep/core";
 
 export const filterCsvDecode = defineFunction({
   name: "ex_filter_csv_decode",
-  stack: [s.set_var("out", withFilters(c.text("value"), fl["csv_decode"]()))],
+  stack: [s.set_var("out", withFilters(c.text("value"), fl["csv_decode"](c.text("x"), c.text("x"), c.text("x"))))],
   response: ref("out"),
 });

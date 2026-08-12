@@ -310,6 +310,19 @@ DESCRIPTION_NOTES.fsort =
   'numeric sort MUST spell "number" — anything else returns the right elements in the wrong order. ' +
   "`path` drills into each element.";
 
+// The CSV pair (issue #246). `csv_encode` and `csv_create` read as
+// interchangeable from their upstream sentences, and they are not: only
+// `csv_create` writes a header. Everything here is live-probed.
+DESCRIPTION_NOTES.csv_encode =
+  "Writes NO header row — values only. Each row contributes its own values in THAT row's key order, with no " +
+  "normalization across rows, so rows whose keys differ in order or count silently misalign columns rather than " +
+  "erroring. Non-scalar cells (nested objects/arrays) are JSON-encoded into the cell, and `false` writes as empty. " +
+  "If the piped array's elements are scalars rather than objects, the whole array is treated as ONE row and you get " +
+  "a single line. For a header, use `csv_create`.";
+DESCRIPTION_NOTES.csv_create =
+  "Direction: the piped value is the list of COLUMN NAMES (written as the header line); the `rows` argument carries " +
+  "the data rows. This is the header-writing counterpart to `csv_encode`, which emits values only.";
+
 /**
  * Descriptions that REPLACE the upstream one rather than adding to it (issue
  * #245).
@@ -459,14 +472,31 @@ function withCuratedDescriptions(specs: Record<string, FilterSpec>): Record<stri
 function withEngineRequired(specs: Record<string, FilterSpec>): Record<string, FilterSpec> {
   const out: Record<string, FilterSpec> = {};
   for (const [name, spec] of Object.entries(specs)) {
-    if (!spec.args?.length) {
+    // The engine can require MORE arguments than the spec describes at all —
+    // `jwe_encode`/`jwe_decode` carry no argument list upstream yet refuse a
+    // bare call (#246). Synthesize the missing slots so the arity is enforced;
+    // they are named positionally because only the COUNT is probed, and
+    // inventing a name would document a meaning nothing verified.
+    const declared = spec.args ?? [];
+    const min = MIN_ARGS[name] ?? 0;
+    const args =
+      min > declared.length
+        ? [
+            ...declared,
+            ...Array.from({ length: min - declared.length }, (_, i) => ({
+              name: `arg${declared.length + i + 1}`,
+              type: "any",
+            })),
+          ]
+        : declared;
+    if (!args.length) {
       out[name] = spec;
       continue;
     }
-    const required = requiredCount(name, spec.args);
+    const required = requiredCount(name, args);
     out[name] = {
       ...spec,
-      args: spec.args.map((a, i) => {
+      args: args.map((a, i) => {
         if (i >= required || !a.optional) return a;
         const rest: FilterArg = { ...a };
         delete rest.optional;
@@ -675,8 +705,8 @@ function emit(cat: FilterCatalog): string {
     "  throw new Error(",
     "    `fl.${name} needs ${required} argument(s) — ${argNames.slice(0, required).join(\", \")} — but got ${got}. ` +",
     "      `Filter arguments are positional and the engine refuses a short call, so a missing one cannot be inferred ` +",
-    "      `— not even where the filter's own documentation calls it optional, because omission only works from the ` +",
-    "      `END. (issue #221)`,",
+    "      `— not even where the filter's own documentation calls it optional. Some filters accept omission from the ` +",
+    "      `END and some require every argument regardless; which is which is probed, not declared. (issues #221, #246)`,",
     "  );",
     "};",
     "",

@@ -8,6 +8,6 @@ import { defineFunction, s, c, ref, withFilters, fl } from "@sidestep/core";
 
 export const filterCreateObject = defineFunction({
   name: "ex_filter_create_object",
-  stack: [s.set_var("out", withFilters(c.text("value"), fl["create_object"]()))],
+  stack: [s.set_var("out", withFilters(c.text("value"), fl["create_object"](c.array([1, 2]))))],
   response: ref("out"),
 });

@@ -8,6 +8,6 @@ import { defineFunction, s, c, ref, withFilters, fl } from "@sidestep/core";
 
 export const filterJweDecode = defineFunction({
   name: "ex_filter_jwe_decode",
-  stack: [s.set_var("out", withFilters(c.text("value"), fl["jwe_decode"]()))],
+  stack: [s.set_var("out", withFilters(c.text("value"), fl["jwe_decode"](c.text("x"))))],
   response: ref("out"),
 });
