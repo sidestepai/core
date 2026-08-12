@@ -838,6 +838,17 @@ export const FILTER_NOTES: Record<string, string> = {
     'are strcmp/strcasecmp, "natural"/"inatural" are the human-readable "a2 < a10" ' +
     'orderings. Default "itext". Anything else silently sorts as text, so a numeric ' +
     'sort MUST spell "number"; the path arg drills into each element',
+  // The CSV pair reads as interchangeable and is not: only `csv_create` writes a
+  // header, and `csv_encode`'s per-row column order misaligns heterogeneous rows
+  // with no error at all (#246).
+  csv_encode:
+    "writes NO header — values only, each row in THAT row's key order with no normalization " +
+    "across rows, so rows whose keys differ in order or count silently misalign columns. " +
+    "Nested cells are JSON-encoded and `false` writes empty. A piped array of SCALARS is " +
+    "treated as one row. Use `csv_create` for a header",
+  csv_create:
+    "the header-writing counterpart to `csv_encode`: the PIPED value is the list of column " +
+    "names (written as the header line) and `rows` carries the data rows",
   // Non-obvious names.
   epochms_transform: 'applies a relative shift (e.g. "+1 day") to the timestamp',
   unpick: "returns the object without the named keys (inverse of a pick)",

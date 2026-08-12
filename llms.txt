@@ -655,9 +655,9 @@ engine change.
 - `fl.crypto_jwe_encode(headers: json, key: json, key_algorithm: enum, content_algorithm: enum, ttl?: int): text`
 - `fl.crypto_jws_decode(check_claims: json, key: json, algorithm: enum, timeDrift?: int): json`
 - `fl.crypto_jws_encode(headers: json, key: json, algorithm: enum, ttl?: int): text`
-- `fl.csv_create(rows: text[], separator: text, enclosure: text, escape: text): text`
+- `fl.csv_create(rows: text[], separator: text, enclosure: text, escape: text): text` — the header-writing counterpart to `csv_encode`: the PIPED value is the list of column names (written as the header line) and `rows` carries the data rows
 - `fl.csv_decode(separator: text, enclosure: text, escape: text): any`
-- `fl.csv_encode(separator: text, enclosure: text, escape: text): text`
+- `fl.csv_encode(separator: text, enclosure: text, escape: text): text` — writes NO header — values only, each row in THAT row's key order with no normalization across rows, so rows whose keys differ in order or count silently misalign columns. Nested cells are JSON-encoded and `false` writes empty. A piped array of SCALARS is treated as one row. Use `csv_create` for a header
 - `fl.csv_parse(separator: text, enclosure: text, escape: text): any`
 - `fl.decrypt(algorithm: enum, key: text, iv: text): text`
 - `fl.detect_encoding(encodings?: text): text`

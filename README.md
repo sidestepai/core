@@ -1154,6 +1154,23 @@ sources.
 - **A bare scalar works in any `fl.*` argument.** `fl.get("a.b", 0)` encodes identically to
   `fl.get(c.text("a.b"), c.int(0))`; strings, numbers and booleans are all wrapped for you.
   Objects and arrays still need `c.obj`/`c.array`.
+- **Some filters require an argument their own docs call optional.** Filter arguments are
+  positional, and a short call is refused by the engine before the filter runs — so
+  `fl.csv_encode()` and `fl.number_format()` are compile errors here rather than a failure on
+  a deployed endpoint. Which filters those are is probed, not declared: `fl.round()` is also
+  documented optional and genuinely works. Pass every argument the signature shows without a
+  `?`; the runtime guard names the count if you reach it from JavaScript.
+
+  ```ts
+  withFilters(ref("rows"), fl.csv_encode(",", '"', "\\")), // not fl.csv_encode()
+  ```
+
+- **`fl.csv_encode` writes no header — `fl.csv_create` is the one that does.** They read as
+  interchangeable and are not. `csv_encode` emits each row's values in *that row's* key order
+  with no normalization across rows, so rows whose keys differ in order or count misalign
+  columns silently; nested cells are JSON-encoded, `false` writes empty, and a piped array of
+  scalars collapses to a single line. `csv_create` takes the column names as its **piped**
+  value and the data as its `rows` argument.
 - **Only `fl.fsort({ type: "number" })` sorts numerically.** Every other comparator —
   including a spelling the engine does not recognize — sorts as case-insensitive text,
   silently and with no error, so `[2, 10, 1]` comes back `[1, 10, 2]`. A lexicographic sort
