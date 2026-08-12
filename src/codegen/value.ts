@@ -330,6 +330,39 @@ function decodeFilter(stored: FilterXdo): Candidate | null {
 }
 
 /**
+ * Decode a stored filter array to the source expressions that rebuild it.
+ *
+ * Shared by the two places a filter chain is stored: inside a value
+ * (`{value, tag, filters}`, handled by `decodeValue`) and on a statement's
+ * result binding (`output.filters`, handled by the statement decoder). Both want
+ * the same thing — `fl.*` calls where the catalog can name the filter, a
+ * verbatim literal where it cannot — so both read it from here.
+ *
+ * Never fails: an unnameable filter degrades to a literal that still re-encodes
+ * to the stored bytes, so a chain is always recoverable even when part of it is
+ * unrecognized.
+ */
+export function decodeFilterChain(filters: readonly FilterXdo[]): {
+  exprs: Expr[];
+  symbols: string[];
+} {
+  const exprs: Expr[] = [];
+  const symbols = new Set<string>();
+  for (const stored of filters) {
+    const decoded = decodeFilter(stored);
+    // `decodeFilter` only returns null on a shape `literalFilter` also refuses;
+    // fall back to the literal rather than dropping a stored filter.
+    if (!decoded) {
+      exprs.push(lit(stored));
+      continue;
+    }
+    exprs.push(decoded.expr);
+    for (const symbol of decoded.symbols) symbols.add(symbol);
+  }
+  return { exprs, symbols: [...symbols] };
+}
+
+/**
  * Rebuild the plain-JSON record behind a `{}`-plus-`set` object constant — the
  * form `c.obj({…})` writes and the editor stores (issue #248). Null when the
  * chain is anything else (a `set` whose value is a live reference, a filter that

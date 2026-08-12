@@ -19,17 +19,20 @@
  * whichever REPRODUCES THE STORED BYTES. A wrong guess cannot emit wrong source; it
  * fails the same comparison every other decode decision goes through.
  */
-import type { StackItemXdo } from "../types/xdo.js";
+import type { FilterXdo, StackItemXdo } from "../types/xdo.js";
 import type { Statement } from "../statements/statement.js";
 import { hasUnreadableInput } from "../validate/normalize.js";
-import { lit, obj, type Expr } from "./print.js";
+import { decodeFilterChain } from "./value.js";
+import { arr, lit, obj, type Expr } from "./print.js";
 
 /** What a stored statement carries beyond its factory's declared arguments. */
 export interface EnvelopePassthrough {
-  /** `{disabled?, description?}` as a factory argument — empty when both are at their default. */
+  /** `{disabled?, description?, asFilters?}` as a factory argument — empty when all are at their default. */
   readonly annotations: Record<string, unknown>;
   /** The same members as source entries, for whichever call shape wins. */
   readonly entries: ReadonlyArray<readonly [string, Expr]>;
+  /** Symbols the entries need from `@sidestep/core` (`fl` for a filter chain). */
+  readonly symbols: readonly string[];
   /**
    * Stored `input[]` entries for a statement whose schema declares none.
    *
@@ -54,6 +57,7 @@ export interface EnvelopePassthrough {
 export function envelopePassthrough(stored: StackItemXdo): EnvelopePassthrough {
   const annotations: Record<string, unknown> = {};
   const entries: Array<readonly [string, Expr]> = [];
+  const symbols: string[] = [];
 
   const description = (stored as { description?: unknown }).description;
   if (typeof description === "string" && description !== "") {
@@ -67,6 +71,23 @@ export function envelopePassthrough(stored: StackItemXdo): EnvelopePassthrough {
     entries.push(["disabled", lit(true)]);
   }
 
+  // The filter chain on the result binding (`… as $x|upper`). It rides the same
+  // "offer both call shapes, keep whichever reproduces the bytes" machinery as
+  // the annotations above, for the same reason: no factory declares it as an
+  // argument, and which slot absorbs it is not knowable from here.
+  //
+  // Carried only when the statement actually binds a result. A chain stored
+  // against no `as` cannot run, and `asFilters` refuses it — re-emitting one
+  // would produce source that throws on its own re-encode. Such a statement
+  // keeps its `output` block by the ordinary route instead.
+  const outputFilters = (stored as { output?: { filters?: unknown } | null }).output?.filters;
+  if (stored.as && Array.isArray(outputFilters) && outputFilters.length > 0) {
+    const chain = decodeFilterChain(outputFilters as FilterXdo[]);
+    annotations.asFilters = outputFilters;
+    entries.push(["asFilters", arr(chain.exprs)]);
+    symbols.push(...chain.symbols);
+  }
+
   // An `input[]` the engine cannot reach is dropped rather than carried: the
   // normalizer elides it on both sides of the round trip, so spreading it here
   // would put an envelope literal in the generated source to preserve bytes the
@@ -77,7 +98,7 @@ export function envelopePassthrough(stored: StackItemXdo): EnvelopePassthrough {
       ? input
       : undefined;
 
-  return { annotations, entries, undeclaredInput };
+  return { annotations, entries, symbols, undeclaredInput };
 }
 
 /** One way of passing the annotations: the arguments to call, and the source to emit. */

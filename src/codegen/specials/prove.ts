@@ -100,6 +100,10 @@ export function prove(
       continue;
     }
     ctx.use(CORE_MODULE, "s");
+    // A recovered `asFilters` chain emits `fl.*` calls; register the symbol only
+    // on the candidate that actually won, so a declined attempt cannot add an
+    // unused import to the generated file.
+    for (const symbol of passthrough.symbols) ctx.use(CORE_MODULE, symbol);
     const expression = call(`s.${path}`, ...candidate.source);
     return entries.length > 0 ? spread(expression, entries) : expression;
   }
