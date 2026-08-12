@@ -194,8 +194,14 @@ describe("s.db.query signature is complete", () => {
  * nothing), and that it does not retype the bound variable (the filter changes
  * the runtime value, the declared type does not follow). Drop either and the
  * remaining prose actively misleads. Re-measure before raising it again.
+ *
+ * Raised 6,250 → 6,350 for `bulk.add`'s `allowIdField` (issue #259) — a silent
+ * data-corruption gate that had no entry at all. The engine drops `id` from
+ * every row without it and nothing says so, so a reader who is not told writes
+ * foreign keys against ids the rows never got. Condensed to one line carrying
+ * the default, the `seed` contrast, and the one case that must set it.
  */
-const SPECIALS_CEILING = 6_250;
+const SPECIALS_CEILING = 6_350;
 
 describe("Specials block stays lean", () => {
   it(`is under ${SPECIALS_CEILING.toLocaleString()} tokens`, () => {

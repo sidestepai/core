@@ -331,6 +331,10 @@ const product = table({
 });
 ```
 
+Pinning an `id` this way is a `seed` property, not a general bulk-insert one: the runtime
+statement `s.db.bulk.add` **drops `id` from every row** unless you pass `allowIdField: true`,
+assigning the next sequence value instead.
+
 Deploy is a full replace, so re-deploying re-seeds cleanly — no duplicate rows. Seed
 data travels only in the deploy package (resolved at deploy time); it never enters the
 compiled workspace bundle.

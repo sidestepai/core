@@ -32,6 +32,41 @@ describe("structural db specials", () => {
     expect(s.db.bulk.update({ table: T, items: c.array([]) }).name).toBe("mvp:dbo_bulkupdate");
   });
 
+  it("db.bulk.add rejects literal items carrying an id without allowIdField (issue #259)", () => {
+    // The engine STRIPS `id` from every item unless allow_id_field is on, and
+    // says nothing — the rows land on sequence ids and foreign keys point at the
+    // wrong rows. Fail at the call site instead.
+    expect(() =>
+      s.db.bulk.add({ table: T, items: c.array([{ id: 1, email: "a@example.com" }]) }),
+    ).toThrow(/allowIdField/);
+    // Explicitly off is still an author's choice to let the engine assign ids —
+    // but it is a CHOICE, so it must be stated rather than defaulted into.
+    expect(() =>
+      s.db.bulk.add({ table: T, items: c.array([{ id: 1 }]), allowIdField: false }),
+    ).not.toThrow();
+    expect(() =>
+      s.db.bulk.add({ table: T, items: c.array([{ id: 1 }]), allowIdField: true }),
+    ).not.toThrow();
+    // Id-free literals pass untouched.
+    expect(() => s.db.bulk.add({ table: T, items: c.array([{ email: "a@example.com" }]) })).not.toThrow();
+  });
+
+  it("db.bulk.add's id guard never fires on an opaque or non-add items value (issue #259)", () => {
+    // `ref("rows")` is a runtime variable — its contents are unknowable here, so
+    // the guard must stay silent rather than guess.
+    expect(() => s.db.bulk.add({ table: T, items: ref("rows") })).not.toThrow();
+    expect(() => s.db.bulk.add({ table: T, items: inp("rows") })).not.toThrow();
+    // A filtered literal has been reshaped by the chain; what reaches the engine
+    // is no longer the bytes we can read.
+    expect(() =>
+      s.db.bulk.add({ table: T, items: withFilters(c.array([{ id: 1 }]), filter("first")) }),
+    ).not.toThrow();
+    // bulk.update/patch key their rows BY id — the engine keeps it there, so
+    // there is nothing to warn about.
+    expect(() => s.db.bulk.update({ table: T, items: c.array([{ id: 1 }]) })).not.toThrow();
+    expect(() => s.db.bulk.patch({ table: T, items: c.array([{ id: 1 }]) })).not.toThrow();
+  });
+
   it("db.bulk.delete encodes the where DSL through context.search (same shape as db.query)", () => {
     // The modern where DSL (expr/cmp/and/or) must produce the operand-based
     // {expression:[…]} search, identical to db.query — not a raw passthrough.
