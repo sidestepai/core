@@ -215,7 +215,13 @@ assertFacts("llms.txt Quickstart facts", QUICKSTART_FACTS);
  * fit. Ratchet down after a real reduction.
  */
 const DEPLOY_CEILING = 800;
-const GOTCHAS_CEILING = 3_500;
+/**
+ * Raised 3,500 → 3,550 for one clause on the `seed` entry (issue #259): id-pinning
+ * is a `seed` property, and the runtime `s.db.bulk.add` drops `id` instead. The
+ * entry already promised pinning without saying where the promise ends, which is
+ * exactly the reading that cost someone a debugging session — a warning, not prose.
+ */
+const GOTCHAS_CEILING = 3_550;
 
 describe("prose sections stay lean", () => {
   it(`Deploy is under ${DEPLOY_CEILING.toLocaleString()} tokens`, () => {

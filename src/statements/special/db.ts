@@ -1347,9 +1347,61 @@ export interface DbBulkAddArgs extends StatementOptions {
   table: DbTableRef;
   /** The rows to insert (an array value). */
   items: Value;
-  /** Permit explicit `id` values in the rows. */
+  /**
+   * Honor an explicit `id` on each row (`allow_id_field`).
+   *
+   * ⚠ **Unset/`false` means the engine STRIPS `id` from every item** and assigns
+   * the next sequence value instead — silently, with no error and no warning.
+   * The rows then sit at ids nothing else expects, which surfaces much later as
+   * a foreign key pointing at the wrong row (issue #259).
+   *
+   * This is the opposite of a `table` `seed`, where supplying `id` pins it. If
+   * you are inserting rows whose ids other rows reference, set this to `true`.
+   * Set it to `false` explicitly to state that engine-assigned ids are intended.
+   */
   allowIdField?: boolean;
   as?: string;
+}
+
+/**
+ * Reject a `bulk.add` whose literal rows carry an `id` the engine would throw
+ * away (issue #259).
+ *
+ * Only fires where the rows are actually READABLE — an unfiltered `const:array`
+ * literal. A `ref`/`inp` items value is a runtime variable whose contents cannot
+ * be known here, and a filtered literal has been reshaped by its chain, so both
+ * are left alone rather than guessed at. That makes this a partial net by
+ * construction; the `allowIdField` doc and the manifest entry carry the rest.
+ *
+ * It does not fire on PULLED code either: the editor stores `allow_id_field`
+ * explicitly (see the `db_bulk_add` golden, which recorded it present and
+ * `false`), so codegen emits an explicit `allowIdField` and takes the early
+ * return. Only hand-authored SDK code that never mentions the gate reaches the
+ * throw — which is the code that was silently losing ids.
+ */
+function assertBulkAddIds(args: DbBulkAddArgs): void {
+  if (args.allowIdField !== undefined) return;
+  const items = args.items;
+  if (items.tag !== "const:array" || items.filters.length > 0) return;
+  let rows: unknown;
+  try {
+    rows = JSON.parse(items.value);
+  } catch {
+    return;
+  }
+  if (!Array.isArray(rows)) return;
+  const withId = rows.findIndex(
+    (r) => typeof r === "object" && r !== null && !Array.isArray(r) && "id" in r,
+  );
+  if (withId === -1) return;
+  throw new Error(
+    `db.bulk.add: item ${withId} carries an \`id\`, but \`allowIdField\` is not set — the engine ` +
+      `DROPS \`id\` from every row unless it is on, assigning the next sequence value instead, ` +
+      `with no error. Rows land at ids nothing else expects and foreign keys written against ` +
+      `them point at the wrong rows. Pass \`allowIdField: true\` to pin the ids you supplied, ` +
+      `or \`allowIdField: false\` to state that engine-assigned ids are intended. (Unlike a table ` +
+      `\`seed\`, where supplying \`id\` pins it.) (issue #259)`,
+  );
 }
 
 /**
@@ -1368,8 +1420,15 @@ function bulkStatement(
   return { name, context: { dbo: dboBinding(table, tableAlias) }, as: as ?? "", input };
 }
 
-/** `db.bulk.add <table>` — insert many rows (`mvp:dbo_bulkadd`). */
+/**
+ * `db.bulk.add <table>` — insert many rows (`mvp:dbo_bulkadd`).
+ *
+ * ⚠ An `id` on a row is DISCARDED unless {@link DbBulkAddArgs.allowIdField} is
+ * `true` — see that field. Literal rows carrying one are rejected here rather
+ * than silently renumbered by the engine (issue #259).
+ */
 export function dbBulkAdd(args: DbBulkAddArgs): Statement {
+  assertBulkAddIds(args);
   // `allow_id_field?=false` — omitted when unset (engine schema + editor).
   return annotate(bulkStatement("mvp:dbo_bulkadd", args.table, args.as, [
     ...(args.allowIdField === undefined
