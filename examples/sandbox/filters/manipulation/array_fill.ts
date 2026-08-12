@@ -8,6 +8,6 @@ import { defineFunction, s, c, ref, withFilters, fl } from "@sidestep/core";
 
 export const filterArrayFill = defineFunction({
   name: "ex_filter_array_fill",
-  stack: [s.set_var("out", withFilters(c.array([3, 1, 2]), fl["array_fill"](c.int(2))))],
+  stack: [s.set_var("out", withFilters(c.array([3, 1, 2]), fl["array_fill"](c.int(2), c.int(2))))],
   response: ref("out"),
 });

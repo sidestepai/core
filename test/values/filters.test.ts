@@ -9,8 +9,8 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { fl, FILTER_NAMES, FILTER_SPECS } from "../../src/values/generated/filters.generated.js";
-import { c, ref } from "../../src/values/value.js";
+import { fl, FILTER_NAMES, FILTER_SPECS, FILTER_REQUIRED_ARGS } from "../../src/values/generated/filters.generated.js";
+import { c, ref, filter } from "../../src/values/value.js";
 
 const ROOT = join(import.meta.dirname, "../..");
 
@@ -248,5 +248,132 @@ describe("fl.fsort comparator modes (#198)", () => {
     // discoverable only by trying spellings against a live engine.
     const llms = readFileSync(new URL("../../llms.txt", import.meta.url), "utf8");
     expect(llms).toContain('"text"|"itext"|"natural"|"inatural"|"number"');
+  });
+});
+
+/**
+ * #221 (the "Related" batch). Several filters declare an OPTIONAL argument in
+ * front of a required one. A positional call can only omit from the end, so
+ * omitting the leading one slid every later argument a slot forward: the code
+ * `fl.reduce(code)` type-checked and put the code in the initial-value slot, and
+ * the engine refused the call at runtime with an argument-count error. The eight
+ * argument counts here are probed, not declared — `vendor/filters-leading-required
+ * .json`, written by `scripts/probe-lambda-bindings.ts`.
+ */
+describe("leading-optional argument slotting (#221)", () => {
+  /** The engine-required count for each affected filter, as probed. */
+  const PROBED: Record<string, number> = {
+    reduce: 2,
+    array_fill: 2,
+    encrypt: 3,
+    decrypt: 3,
+    crypto_jws_encode: 3,
+    crypto_jws_decode: 3,
+    crypto_jwe_encode: 4,
+    crypto_jwe_decode: 4,
+  };
+
+  it("requires every argument the engine requires", () => {
+    for (const [name, count] of Object.entries(PROBED)) {
+      expect(FILTER_REQUIRED_ARGS[name], name).toBe(count);
+    }
+  });
+
+  it("Covers #221: fl.reduce cannot be called with the code alone", () => {
+    // @ts-expect-error -- one argument means the code lands in the initial-value slot
+    const misSlotted = fl.reduce(c.text("return $result + $this"));
+    // What that call would have stored, and what the engine refuses: one
+    // argument, in the wrong slot. The type is what stops it being written.
+    expect(misSlotted.arg).toHaveLength(1);
+    // The positional call that IS well-formed keeps the slots in order.
+    expect(fl.reduce(0, c.text("return $result + $this")).arg).toEqual([
+      c.int(0),
+      c.text("return $result + $this"),
+    ]);
+  });
+
+  it("Covers #221 Related: the named form places each argument in its own slot", () => {
+    const named = fl.crypto_jws_encode({ headers: c.obj({}), key: "secret", algorithm: "HS256" });
+    expect(named.arg).toEqual([c.obj({}), c.text("secret"), c.text("HS256")]);
+    // …and encodes identically to the positional call.
+    expect(named).toEqual(fl.crypto_jws_encode(c.obj({}), "secret", "HS256"));
+  });
+
+  it("gives every affected filter a named form that slots correctly", () => {
+    const cases: Array<[unknown, unknown[]]> = [
+      [fl.reduce({ initial_value: 0, code: "return $result + $this" }), [c.int(0), c.text("return $result + $this")]],
+      [fl.array_fill({ start: 0, count: 3 }), [c.int(0), c.int(3)]],
+      [fl.encrypt({ algorithm: "aes-256-ctr", key: "k", iv: "iv" }), [c.text("aes-256-ctr"), c.text("k"), c.text("iv")]],
+      [fl.decrypt({ algorithm: "aes-256-ctr", key: "k", iv: "iv" }), [c.text("aes-256-ctr"), c.text("k"), c.text("iv")]],
+      [fl.crypto_jws_decode({ check_claims: c.obj({}), key: "k", algorithm: "HS256" }), [c.obj({}), c.text("k"), c.text("HS256")]],
+      [
+        fl.crypto_jwe_encode({ headers: c.obj({}), key: "k", key_algorithm: "A128KW", content_algorithm: "A128CBC-HS256" }),
+        [c.obj({}), c.text("k"), c.text("A128KW"), c.text("A128CBC-HS256")],
+      ],
+      [
+        fl.crypto_jwe_decode({ check_claims: c.obj({}), key: "k", key_algorithm: "A128KW", content_algorithm: "A128CBC-HS256" }),
+        [c.obj({}), c.text("k"), c.text("A128KW"), c.text("A128CBC-HS256")],
+      ],
+    ];
+    for (const [built, expected] of cases) {
+      expect((built as { arg: unknown[] }).arg).toEqual(expected);
+    }
+  });
+
+  it("keeps a trailing optional argument omittable in both forms", () => {
+    expect(fl.reduce(0, c.text("return 1")).arg).toHaveLength(2);
+    expect(fl.reduce({ initial_value: 0, code: c.text("return 1") }).arg).toHaveLength(2);
+    expect(fl.reduce({ initial_value: 0, code: c.text("return 1"), timeout: 30 }).arg).toHaveLength(3);
+  });
+
+  it("leaves filters without a leading optional exactly as they were", () => {
+    expect(fl.get("a.b").arg).toEqual([c.text("a.b")]);
+    expect(fl.get("a.b", 0).arg).toEqual([c.text("a.b"), c.int(0)]);
+    expect(fl.map(c.text("return $this")).arg).toEqual([c.text("return $this")]);
+    // The array filters the `path`-optional probe relaxed still take no argument.
+    expect(fl.filter_null().arg).toEqual([]);
+  });
+
+  it("tells an argument object apart from an object-valued argument", () => {
+    // `c.obj(...)` is a tagged value, so it is a positional argument — not an
+    // argument object — even though it is object-shaped.
+    expect(fl.get(c.obj({ a: 1 })).arg).toEqual([c.obj({ a: 1 })]);
+  });
+
+  /**
+   * The drift guard. A spec refresh that introduces another leading-optional
+   * filter must not silently reintroduce the class: either the engine-probed
+   * count covers it, or this fails until someone probes it.
+   */
+  it("classifies every leading-optional filter in the catalog", () => {
+    const unclassified: string[] = [];
+    for (const [name, spec] of Object.entries(FILTER_SPECS)) {
+      const args = spec.args ?? [];
+      const lastRequired = args.reduce((acc, a, i) => (a.optional ? acc : i), -1);
+      const firstOptional = args.findIndex((a) => a.optional);
+      if (firstOptional === -1 || lastRequired < firstOptional) continue;
+      // An optional argument sits in front of a required one: the count must say
+      // so, or the positional form can still mis-slot.
+      if ((FILTER_REQUIRED_ARGS[name] ?? 0) <= firstOptional) unclassified.push(name);
+    }
+    expect(unclassified).toEqual([]);
+  });
+});
+
+describe("filter() argument holes (#221)", () => {
+  it("refuses an omitted argument with a supplied one after it", () => {
+    let message = "";
+    try {
+      filter("reduce", undefined, c.text("return $result"));
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message).toContain("argument 1 is omitted");
+    expect(message).toContain("issue #221");
+  });
+
+  it("still drops omitted TRAILING arguments, which is how absence is spelled", () => {
+    expect(filter("trim", undefined).arg).toEqual([]);
+    expect(filter("round", c.int(2), undefined).arg).toEqual([c.int(2)]);
   });
 });

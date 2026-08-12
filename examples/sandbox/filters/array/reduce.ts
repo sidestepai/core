@@ -8,6 +8,6 @@ import { defineFunction, s, c, ref, withFilters, fl } from "@sidestep/core";
 
 export const filterReduce = defineFunction({
   name: "ex_filter_reduce",
-  stack: [s.set_var("out", withFilters(c.array([3, 1, 2]), fl["reduce"](c.text("x"))))],
+  stack: [s.set_var("out", withFilters(c.array([3, 1, 2]), fl["reduce"](c.int(2), c.text("x"))))],
   response: ref("out"),
 });

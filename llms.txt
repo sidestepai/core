@@ -633,7 +633,7 @@ engine change.
 - `fl.append(value: <T>, path: text): <T>[]`
 - `fl.array_diff(value: <T>[]): <T>[]`
 - `fl.array_diff_assoc(value: <T>[]): <T>[]`
-- `fl.array_fill(start?: int, count: int): any[]`
+- `fl.array_fill(start: int, count: int): any[]`
 - `fl.array_fill_keys(keys?: any[]): any[]`
 - `fl.array_intersect(value: <T>[]): <T>[]`
 - `fl.array_intersect_assoc(value: <T>[]): <T>[]`
@@ -651,18 +651,18 @@ engine change.
 - `fl.contains(search: text): bool` — piped value is the subject text; the arg is the substring searched for
 - `fl.convert_encoding(to: text, from: text): text`
 - `fl.create_object(values?: <T>[]): any`
-- `fl.crypto_jwe_decode(check_claims?: json, key: json, key_algorithm?: enum, content_algorithm?: enum, timeDrift?: int): json`
-- `fl.crypto_jwe_encode(headers?: json, key: json, key_algorithm?: enum, content_algorithm?: enum, ttl?: int): text`
-- `fl.crypto_jws_decode(check_claims?: json, key: json, algorithm?: enum, timeDrift?: int): json`
-- `fl.crypto_jws_encode(headers?: json, key: json, algorithm?: enum, ttl?: int): text`
+- `fl.crypto_jwe_decode(check_claims: json, key: json, key_algorithm: enum, content_algorithm: enum, timeDrift?: int): json`
+- `fl.crypto_jwe_encode(headers: json, key: json, key_algorithm: enum, content_algorithm: enum, ttl?: int): text`
+- `fl.crypto_jws_decode(check_claims: json, key: json, algorithm: enum, timeDrift?: int): json`
+- `fl.crypto_jws_encode(headers: json, key: json, algorithm: enum, ttl?: int): text`
 - `fl.csv_create(rows: text[], separator?: text, enclosure?: text, escape?: text): text`
 - `fl.csv_decode(separator?: text, enclosure?: text, escape?: text): any`
 - `fl.csv_encode(separator?: text, enclosure?: text, escape?: text): text`
 - `fl.csv_parse(separator?: text, enclosure?: text, escape?: text): any`
-- `fl.decrypt(algorithm?: enum, key: text, iv: text): text`
+- `fl.decrypt(algorithm: enum, key: text, iv: text): text`
 - `fl.detect_encoding(encodings?: text): text`
 - `fl.div(value: decimal): decimal`
-- `fl.encrypt(algorithm?: enum, key: text, iv: text): text`
+- `fl.encrypt(algorithm: enum, key: text, iv: text): text`
 - `fl.ends_with(search: text): bool` — piped value is the subject text; the arg is the substring searched for
 - `fl.epochms_add_ms(milliseconds: int): epochms`
 - `fl.epochms_add_secs(seconds: int): epochms`
@@ -716,7 +716,7 @@ engine change.
 - `fl.pow(exp: <T>): decimal`
 - `fl.prepend(value: <T>, path: text): <T>[]`
 - `fl.range(start: int, stop: int): int[]`
-- `fl.reduce(initial_value?: int, code: text, timeout?: int): any[]`
+- `fl.reduce(initial_value: int, code: text, timeout?: int): any[]`
 - `fl.regex_match(subject: text): text[]`
 - `fl.regex_match_all(subject: text): text[]`
 - `fl.regex_quote(delimiter?: text): text`

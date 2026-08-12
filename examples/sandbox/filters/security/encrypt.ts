@@ -8,6 +8,6 @@ import { defineFunction, s, c, ref, withFilters, fl } from "@sidestep/core";
 
 export const filterEncrypt = defineFunction({
   name: "ex_filter_encrypt",
-  stack: [s.set_var("out", withFilters(c.text("Hello World"), fl["encrypt"](c.text("field"), c.text("x"))))],
+  stack: [s.set_var("out", withFilters(c.text("Hello World"), fl["encrypt"](c.text("x"), c.text("field"), c.text("x"))))],
   response: ref("out"),
 });

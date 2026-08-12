@@ -20,7 +20,7 @@ import type { FilterXdo, TaggedValue } from "../types/xdo.js";
 import { TAGS } from "../types/xdo.js";
 import { auth, c, caught, col, env, inp, out, ref, setting, withFilters } from "../values/value.js";
 import type { BlankTag, Value } from "../values/value.js";
-import { FILTER_NAMES, fl } from "../values/generated/filters.generated.js";
+import { FILTER_NAMES, FILTER_REQUIRED_ARGS, fl } from "../values/generated/filters.generated.js";
 import { obj as objValue } from "../values/obj.js";
 import { parseObjExpr } from "./obj-expr.js";
 import { CODEGEN_MODULE, CORE_MODULE, type DecodeContext } from "./context.js";
@@ -296,6 +296,14 @@ function decodeFilter(stored: FilterXdo): Candidate | null {
   // `filter()` hard-codes `disabled: false`, so a filter stored without that key
   // — or with it true — has no `fl.*` form and rides through verbatim instead.
   if (!known || (stored.disabled ?? false) !== false || !Array.isArray(stored.arg)) {
+    return literalFilter(stored);
+  }
+  // A stored call with fewer arguments than the engine requires is a call the
+  // typed factory refuses to spell (issue #221): the omitted slot is a LEADING
+  // one, so writing it positionally would put the next argument in the wrong
+  // place. The stored bytes are still the stored bytes, so it rides through
+  // verbatim rather than being reshaped into a call that would not compile.
+  if (stored.arg.length < (FILTER_REQUIRED_ARGS[stored.name] ?? 0)) {
     return literalFilter(stored);
   }
 

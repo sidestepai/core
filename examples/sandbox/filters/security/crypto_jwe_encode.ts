@@ -8,6 +8,6 @@ import { defineFunction, s, c, ref, withFilters, fl } from "@sidestep/core";
 
 export const filterCryptoJweEncode = defineFunction({
   name: "ex_filter_crypto_jwe_encode",
-  stack: [s.set_var("out", withFilters(c.text("Hello World"), fl["crypto_jwe_encode"](c.obj({}))))],
+  stack: [s.set_var("out", withFilters(c.text("Hello World"), fl["crypto_jwe_encode"](c.obj({}), c.obj({}), c.text("field"), c.text("x"))))],
   response: ref("out"),
 });
