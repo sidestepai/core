@@ -1118,18 +1118,26 @@ export function isDefaultEnvelopeMember(key: string, v: unknown): boolean {
  * statement that shapes no result), `{filters:[]}` (lean parser form), and
  * `{items:[],filters:[],customize:false}` (full persisted form) are all the same
  * "no output customization" state. Drop the key from both sides when empty;
- * keep it (and recurse) when it carries selected `items` or `customize:true`.
+ * keep it (and recurse) when it carries selected `items`, `customize:true`, or a
+ * `filters` chain.
  *
  * The `null` arm matters for the same reason as `input:null`: the SDK emits the
  * full form, so without it every result-less statement in a pulled workspace
  * fails its re-encode proof and degrades to `raw()`.
+ *
+ * The `filters` arm is NOT symmetry for its own sake — it is the whole reason a
+ * statement's `as` filter chain (`… as $x|to_upper`) survives a round trip. This
+ * predicate is the oracle the proof is judged against, so while it ignored
+ * `filters` a decoder that dropped them compared EQUAL to the workspace it had
+ * just lost data from. Widening it back would restore that silence.
  */
 export function isEmptyOutput(v: unknown): boolean {
   if (v === null) return true;
   if (typeof v !== "object" || Array.isArray(v)) return false;
-  const o = v as { items?: unknown; customize?: unknown };
+  const o = v as { items?: unknown; customize?: unknown; filters?: unknown };
   const noItems = o.items === undefined || (Array.isArray(o.items) && o.items.length === 0);
-  return noItems && o.customize !== true;
+  const noFilters = o.filters === undefined || (Array.isArray(o.filters) && o.filters.length === 0);
+  return noItems && noFilters && o.customize !== true;
 }
 
 /**
