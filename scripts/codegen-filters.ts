@@ -383,10 +383,16 @@ const DESCRIPTION_OVERRIDES: Record<string, string> = {
  * Typing the argument as the literal union refuses the lying spellings where an
  * author writes them, at compile time, rather than asserting anything about
  * what the engine accepts — it accepts all of them, which is the whole problem.
- * `c.text("decimal")` still compiles, because it is still a `Value`; that is the
- * same deliberate escape hatch `raw()` is, and it is also what lets a pulled
- * workspace holding one round-trip instead of becoming un-exportable (the
- * lesson from the middleware `input` flip).
+ *
+ * The union alone does not reach `c.text("decimal")`, which is still a `Value`
+ * and was for a while left compiling on the reasoning that refusing it would
+ * make a pulled workspace holding one un-exportable. That reasoning turned out
+ * to be wrong: when a guard refuses a filter, codegen falls back to the degraded
+ * `{name, disabled, arg}` literal, which re-encodes byte-identically and never
+ * reaches the guard at all. So `ENUM_ARG_FILTERS` in `src/values/enum-arg.ts`
+ * now refuses it at the `filter()` choke point, and the round trip is unharmed.
+ * A test asserts that table and this one agree, so an enum added here cannot
+ * ship without a runtime guard behind it.
  *
  * The set is read off the engine's filter implementation, not probed: a probe
  * can only show which spellings behave differently, and four of these five are

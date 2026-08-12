@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { fl, FILTER_NAMES, FILTER_SPECS, FILTER_REQUIRED_ARGS } from "../../src/values/generated/filters.generated.js";
 import { c, ref, filter } from "../../src/values/value.js";
+import { ENUM_ARG_FILTERS } from "../../src/values/enum-arg.js";
 
 const ROOT = join(import.meta.dirname, "../..");
 
@@ -228,21 +229,28 @@ describe("fl.fsort comparator modes (#198)", () => {
     }
   });
 
-  it("refuses the spellings that lie, at compile time", () => {
+  it("refuses the spellings that lie, at compile time AND at runtime", () => {
     // Neither is in the engine's switch — both fall through to `itext` and sort
-    // as text. The failure is silent, so the type is the only place it can be
-    // caught.
-    // @ts-expect-error — "decimal" is not a comparator mode; a numeric sort is "number".
-    fl.fsort("score", "decimal");
-    // @ts-expect-error — "int" is not a comparator mode; a numeric sort is "number".
-    fl.fsort("score", "int");
+    // as text, silently. The literal union catches the bare spelling; the
+    // runtime guard (#198, see the `fl.fsort enumerated argument` block below)
+    // catches it again for a JS caller or an `any` that erased the type.
+    expect(() => {
+      // @ts-expect-error — "decimal" is not a comparator mode; a numeric sort is "number".
+      fl.fsort("score", "decimal");
+    }).toThrow(/not one of/);
+    expect(() => {
+      // @ts-expect-error — "int" is not a comparator mode; a numeric sort is "number".
+      fl.fsort("score", "int");
+    }).toThrow(/not one of/);
   });
 
-  it("still lets a Value through, so a pulled workspace round-trips", () => {
-    // The deliberate escape hatch, and the reason this is a typing change rather
-    // than a throw: codegen emits a stored `"decimal"` as `c.text("decimal")`,
-    // and a workspace holding one has to stay exportable.
-    expect(fl.fsort("score", c.text("decimal")).arg[1]).toEqual(c.text("decimal"));
+  it("refuses a wrong comparator wrapped in c.text, which the union cannot see", () => {
+    // This spelling was left compiling for a while on the reasoning that a
+    // pulled workspace holding `"decimal"` had to stay exportable. It does — but
+    // that is codegen's degraded `{name, arg}` filter form doing the work (see
+    // test/codegen/value.test.ts), NOT the authoring surface accepting a value
+    // the engine silently mis-sorts. The two are independent, so refuse here.
+    expect(() => fl.fsort("score", c.text("decimal"))).toThrow(/not one of/);
   });
 
   it("names the accepted set in llms.txt rather than the word `enum`", () => {
@@ -527,6 +535,61 @@ describe("curated filter descriptions", () => {
     // it here names the filter, which that test cannot.
     for (const [name, spec] of Object.entries(FILTER_SPECS)) {
       expect(spec.description ?? "", `fl.${name} description`).not.toMatch(/#\d+/);
+    }
+  });
+});
+
+/**
+ * `fl.fsort`'s comparator is an enumerated argument the engine does not validate
+ * (issue #198). The generated signature narrows it to a literal union; this is
+ * the other half — the `c.text(...)` spelling the union cannot see.
+ */
+describe("fl.fsort enumerated argument (#198)", () => {
+  it("refuses a comparator the engine would silently downgrade to text", () => {
+    let message = "";
+    try {
+      fl.fsort(c.text("score"), c.text("decimal"));
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message).toContain('"decimal"');
+    expect(message).toContain('"number"');
+    expect(message).toContain("issue #198");
+  });
+
+  it("refuses the other plausible wrong spelling too", () => {
+    expect(() => fl.fsort(c.text("score"), c.text("int"))).toThrow(/not one of/);
+  });
+
+  it("accepts every member of the union, in both spellings", () => {
+    for (const m of ["text", "itext", "natural", "inatural", "number"]) {
+      expect(() => fl.fsort(c.text("score"), c.text(m))).not.toThrow();
+      expect(() => fl.fsort("score", m as "number")).not.toThrow();
+    }
+  });
+
+  it("leaves alone what it cannot read, and the editor's unset dropdown", () => {
+    expect(() => fl.fsort(c.text("score"), ref("mode"))).not.toThrow();
+    expect(() => filter("fsort", c.text("score"), c.text(""))).not.toThrow();
+    // No comparator at all is the documented default ("itext"), not an error.
+    expect(() => fl.fsort(c.text("score"))).not.toThrow();
+  });
+
+  it("keeps the runtime table and the codegen enum in agreement", () => {
+    // ARG_ENUMS drives the emitted literal union; ENUM_ARG_FILTERS drives the
+    // runtime guard. If they drift, an enum ships with a union but no guard —
+    // which is exactly the state #198 left behind.
+    for (const [name, spec] of Object.entries(ENUM_ARG_FILTERS)) {
+      const arg = FILTER_SPECS[name]?.args?.[spec.slot];
+      expect(arg?.name, `fl.${name} slot ${spec.slot}`).toBe(spec.arg);
+      expect(arg?.enum, `fl.${name}.${spec.arg} members`).toEqual([...spec.members]);
+    }
+    // …and the converse: every enumerated arg in the catalog has a guard.
+    for (const [name, spec] of Object.entries(FILTER_SPECS)) {
+      for (const a of spec.args ?? []) {
+        if (a.enum === undefined) continue;
+        expect(ENUM_ARG_FILTERS[name], `fl.${name}.${a.name} has an enum but no runtime guard`).toBeDefined();
+      }
     }
   });
 });

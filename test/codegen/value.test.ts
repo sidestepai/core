@@ -375,6 +375,38 @@ describe("decodeValue — transform expressions (issue #245 guard)", () => {
   }
 });
 
+describe("decodeValue — fsort comparator (issue #198 guard)", () => {
+  it("carries a stored non-member comparator through the degraded filter form", () => {
+    // The authoring surface refuses `fl.fsort(path, c.text("decimal"))` because
+    // the engine silently sorts as text. A real workspace can still hold one, so
+    // pulling it must not be a hard error — and must re-encode byte-identically.
+    // This is the evidence that refusing at author time costs no round trip.
+    const stored: TaggedValue = {
+      value: "[]",
+      tag: "const:array",
+      filters: [
+        {
+          name: "fsort",
+          disabled: false,
+          arg: [
+            { value: "score", tag: "const", filters: [] },
+            { value: "decimal", tag: "const", filters: [] },
+          ],
+        },
+      ],
+    };
+    const source = roundTrip(stored);
+    expect(source).not.toContain("fl.fsort(");
+    expect(source).toContain('name: "fsort"');
+  });
+
+  it("still decodes a VALID comparator through the readable fl.fsort form", () => {
+    const source = roundTrip(withFilters(c.array([]), fl.fsort(c.text("score"), c.text("number"))));
+    expect(source).toContain("fl.fsort(");
+    expect(source).not.toContain('name: "fsort"');
+  });
+});
+
 describe("c.blank — the editor's unconfigured value box", () => {
   // 13 of the 16 `value-fallback` rows in the survey corpus were this: a value
   // cell added in the editor and never filled in. The decode was already exact,

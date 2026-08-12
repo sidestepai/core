@@ -9,6 +9,7 @@ import { TAGS } from "../types/xdo.js";
 // module is deliberate and safe: `lambda.ts` reaches `c` only at call time.
 import { assertLambdaFilterArgs } from "./lambda.js";
 import { assertExpressionFilterArgs } from "./expression-arg.js";
+import { assertEnumFilterArgs } from "./enum-arg.js";
 
 /** A sidestep authored value is just the stored tagged-value shape. */
 export type Value = TaggedValue;
@@ -735,6 +736,11 @@ export function filter(name: string, ...args: (Value | undefined)[]): FilterXdo 
   // reject correct code — and checking it against nothing let a `$this` that
   // silently resolves to null ship as a wrong answer with HTTP 200.
   assertExpressionFilterArgs(name, args);
+  // And an enumerated argument whose wrong spellings the engine accepts in
+  // silence (issue #198). The emitted signature narrows these to a literal
+  // union, which the `c.text(...)` spelling — the one codegen emits, and the one
+  // every example in the wild uses — walks straight past.
+  assertEnumFilterArgs(name, args);
   // Drop omitted trailing args. Typed filter factories (fl.*) declare their
   // named params positionally, so calling one with fewer args (e.g. `fl.trim()`)
   // passes `undefined` here — without this it would serialize as a stray `null`.
