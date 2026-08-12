@@ -104,10 +104,24 @@ describe("the lambda filters", () => {
   });
 
   it("leaves a filter that is not a lambda surface alone", () => {
-    // `fl.transform` takes an expression on a different evaluation path — a
-    // `$this` there is legal and means something else.
-    expect(() => fl.transform(c.text("$this"))).not.toThrow();
     expect(() => fl.concat(c.text("$acc"))).not.toThrow();
+  });
+
+  it("does not apply the LAMBDA contract to fl.transform's expression", () => {
+    // `fl.transform` runs on the expression path, so the lambda contract does
+    // not describe it: `$result` is refused in a lambda body outside `reduce`,
+    // while `$0` is exactly what an expression should say. The expression guard
+    // owns this argument (issue #245) — it refuses `$this` on its own grounds,
+    // with its own message, and this is the one that must NOT fire.
+    expect(() => fl.transform(c.text("$0 * 2"))).not.toThrow();
+    let message = "";
+    try {
+      fl.transform(c.text("$this"));
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message).toContain("issue #245");
+    expect(message).not.toContain("issue #221");
   });
 
   /**

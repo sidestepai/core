@@ -749,7 +749,7 @@ engine change.
 - `fl.to_epoch_ms(timezone?: text): int`
 - `fl.to_epoch_sec(timezone?: text): int`
 - `fl.to_epochms(timezone?: text): epochms`
-- `fl.transform(expression: text): any`
+- `fl.transform(expression: text): any` — `expression` is Xano Expression Engine source, NOT a JS body — no `return`, and the piped value is `$0` (or `$$`), NOT `$this` (which is null here). `$var`/`$input`/`$env`/`$auth` resolve and filters pipe inside it: `$0 * 2`, `$0|sort|join:","`. Parenthesize a pipe inside an object literal — `{ s: ($0|sort|join:",") }` — or its comma is read as the key separator and later keys vanish silently. For JavaScript use `lambda`
 - `fl.trim(mask?: text): text`
 - `fl.unique(path?: text): <T>[]`
 - `fl.unpick(keys: text): <T>` — returns the object without the named keys (inverse of a pick)

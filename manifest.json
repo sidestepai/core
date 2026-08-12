@@ -8261,7 +8261,7 @@
       "typed": false,
       "result": "any",
       "group": "transform",
-      "description": "Converts text into an expression, processes it, and returns the result"
+      "description": "Treats the PIPED TEXT as Xano Expression Engine source, evaluates it, and returns the result. Takes no argument. `$var`, `$input`, `$env` and `$auth` resolve inside it; there is no operand binding (`$0` is null) because the operand IS the source. For an expression OVER a value, use fl.transform."
     },
     {
       "name": "to_int",
@@ -8299,7 +8299,7 @@
       ],
       "result": "any",
       "group": "manipulation",
-      "description": "Processes an expression with local data bound to the $this variable"
+      "description": "Evaluates a Xano Expression Engine expression over the piped value. NOT a JavaScript body — there is no `return`, and the piped value binds POSITIONALLY as `$0` (or `$$`), NOT as `$this` (which resolves to null here, yielding a wrong answer with no error). `$var`, `$input`, `$env` and `$auth` also resolve, and filters may be piped inside the expression: `$0 * 2`, `$0|sort|join:\",\"`, `{ id: $0.id, total: $0.qty * $0.price }`. PARENTHESIZE a pipe used inside an object/array literal — `{ s: ($0|sort|join:\",\") }` — or the filter argument's comma is read as the key separator, returning null and silently dropping every later key. For JavaScript use fl.lambda, whose body does bind `$this`."
     },
     {
       "name": "trim",

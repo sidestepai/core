@@ -341,6 +341,40 @@ describe("decodeValue — regex values (issue #128 guard)", () => {
   });
 });
 
+describe("decodeValue — transform expressions (issue #245 guard)", () => {
+  it("decodes an expression the guard accepts through the readable fl.transform form", () => {
+    const source = roundTrip(withFilters(c.array([3, 1, 2]), fl.transform('$0|sort|join:","')));
+    expect(source).toContain("fl.transform(");
+    expect(source).not.toContain("rawValue");
+  });
+
+  // `$this` resolves to null on this path and a `return` is JavaScript, so
+  // AUTHORING either is refused — but a real workspace can hold one (the
+  // engine's own filter description teaches `$this`), and pulling that workspace
+  // must not be a hard error. `roundTrip` evaluates the emitted source and
+  // asserts it re-encodes to the same bytes, so these prove the degraded form is
+  // both compilable and exact.
+  for (const [what, expression] of [
+    ["a `$this` binding", "$this * 2"],
+    ["a JavaScript body", "return $0 * 2"],
+  ] as const) {
+    it(`carries ${what} through the degraded filter form instead of throwing`, () => {
+      const stored: TaggedValue = {
+        value: "5",
+        tag: "const:int",
+        filters: [
+          { name: "transform", disabled: false, arg: [{ value: expression, tag: "const", filters: [] }] },
+        ],
+      };
+      const source = roundTrip(stored);
+      // The readable `fl.transform(...)` form would throw when evaluated, so the
+      // decoder must not reach for it.
+      expect(source).not.toContain("fl.transform(");
+      expect(source).toContain('name: "transform"');
+    });
+  }
+});
+
 describe("c.blank — the editor's unconfigured value box", () => {
   // 13 of the 16 `value-fallback` rows in the survey corpus were this: a value
   // cell added in the editor and never filled in. The decode was already exact,

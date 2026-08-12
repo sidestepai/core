@@ -85,11 +85,13 @@ export const LAMBDA_GLOBALS: readonly string[] = ["console", "crypto"];
  * half is exactly that slot being invisible); every other lambda filter's is the
  * first.
  *
- * `fl.transform` is deliberately absent. It takes an `expression`, not a
- * JavaScript body — the probe showed it runs on a different evaluation path and
- * refuses a `return` statement outright — so validating it against this contract
- * would reject correct code. `test/values/filters.test.ts` enumerates the
- * `code`-taking filters from `FILTER_SPECS` and fails if one is missing here.
+ * `fl.transform` is deliberately absent. It takes Xano Expression Engine source,
+ * not a JavaScript body, and binds the operand as `$0` rather than `$this` — so
+ * validating it against THIS contract would reject correct code. It has its own
+ * guard, on its own probed contract, in `./expression-arg.ts` (issue #245); a
+ * `return` there is not merely refused but sometimes silently mis-evaluated.
+ * `test/values/filters.test.ts` enumerates the `code`-taking filters from
+ * `FILTER_SPECS` and fails if one is missing here.
  */
 export const LAMBDA_CODE_FILTERS: Readonly<Record<string, { readonly slot: number; readonly surface: LambdaSurface }>> = {
   lambda: { slot: 0, surface: "fl.lambda" },

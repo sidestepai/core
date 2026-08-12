@@ -1193,6 +1193,20 @@ sources.
   bindings as free identifiers — so destructure them. `(b) => b.$this * 2` would emit
   `return b.$this * 2` with `b` undefined at runtime, and the SDK refuses it.
 
+  **`fl.transform` is not one of these.** It sits next to them and reads like one, but it
+  takes a Xano *expression* — no `return`, and the piped value binds as `$0` (or `$$`),
+  not `$this`. A `$this` there resolves to null and the call still returns HTTP 200, so
+  the SDK refuses both spellings at author time and points at `$0`.
+
+  ```ts
+  // An expression over the piped value — not a JS body.
+  withFilters(ref("prices"), fl.transform("$0 * 1.2")),
+
+  // Parenthesize a pipe inside an object literal, or the filter argument's comma is read
+  // as the key separator and every later key silently vanishes.
+  withFilters(ref("items"), fl.transform('{ names: ($0|sort|join:","), n: ($0|count) }')),
+  ```
+
   For a body built away from its call site, `lam.*` names the surface explicitly:
 
   ```ts

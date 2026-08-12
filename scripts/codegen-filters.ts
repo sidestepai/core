@@ -287,6 +287,39 @@ for (const n of [
 }
 
 /**
+ * Descriptions that REPLACE the upstream one rather than adding to it (issue
+ * #245).
+ *
+ * The pipe-direction notes above append, because upstream's sentence is merely
+ * incomplete. These filters' upstream descriptions are *false*, and appending a
+ * correction to a false sentence leaves the false sentence in `manifest.json`
+ * and `llms.txt` for an agent to read first. `transform`'s upstream text —
+ * "Processes an expression with local data bound to the $this variable" — names
+ * a binding that does not exist on that path: a live probe
+ * (`vendor/transform-expression.json`) has `$this` resolving to null, while the
+ * operand arrives as `$0`. That one word is what issue #245 was reported from.
+ *
+ * Lives here (not in the vendor JSON) so `--refresh` cannot clobber it. Carries
+ * no issue number or file path: these strings ship into `manifest.json` and
+ * `llms.txt`, which `test/manifest/llms-no-opinion.test.ts` keeps free of
+ * dev-process references. The provenance lives in `src/values/expression-arg.ts`.
+ */
+const DESCRIPTION_OVERRIDES: Record<string, string> = {
+  transform:
+    "Evaluates a Xano Expression Engine expression over the piped value. NOT a JavaScript body — there is no `return`, " +
+    "and the piped value binds POSITIONALLY as `$0` (or `$$`), NOT as `$this` (which resolves to null here, yielding a " +
+    "wrong answer with no error). `$var`, `$input`, `$env` and `$auth` also resolve, and filters may be piped inside " +
+    "the expression: `$0 * 2`, `$0|sort|join:\",\"`, `{ id: $0.id, total: $0.qty * $0.price }`. PARENTHESIZE a pipe " +
+    "used inside an object/array literal — `{ s: ($0|sort|join:\",\") }` — or the filter argument's comma is read as " +
+    "the key separator, returning null and silently dropping every later key. For JavaScript use fl.lambda, whose " +
+    "body does bind `$this`.",
+  to_expr:
+    "Treats the PIPED TEXT as Xano Expression Engine source, evaluates it, and returns the result. Takes no argument. " +
+    "`$var`, `$input`, `$env` and `$auth` resolve inside it; there is no operand binding (`$0` is null) because the " +
+    "operand IS the source. For an expression OVER a value, use fl.transform.",
+};
+
+/**
  * Bare scalars are accepted for EVERY filter argument (#229, superseding the
  * path-only coercion of #76).
  *
@@ -368,6 +401,12 @@ const LAMBDA_SURFACES: Readonly<Record<string, string>> = {
 function withDirectionNotes(specs: Record<string, FilterSpec>): Record<string, FilterSpec> {
   const out: Record<string, FilterSpec> = {};
   for (const [name, spec] of Object.entries(specs)) {
+    // An override REPLACES; a note APPENDS. See {@link DESCRIPTION_OVERRIDES}.
+    const override = DESCRIPTION_OVERRIDES[name];
+    if (override !== undefined) {
+      out[name] = { ...spec, description: override };
+      continue;
+    }
     const note = PIPE_DIRECTION_NOTES[name];
     out[name] = note
       ? { ...spec, description: spec.description ? `${spec.description} ${note}` : note }

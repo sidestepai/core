@@ -414,3 +414,74 @@ describe("named-form and arity refusals (#221)", () => {
     expect(() => untyped.crypto_jws_encode!(c.obj({}))).toThrow(/needs 3 argument/);
   });
 });
+
+/**
+ * `fl.transform` takes Xano Expression Engine source, not a JavaScript body
+ * (issue #245). The two spellings refused here are the ones a live probe showed
+ * returning a WRONG value with HTTP 200 rather than throwing — see
+ * `vendor/transform-expression.json`.
+ */
+describe("fl.transform expression argument (#245)", () => {
+  it("refuses a binding that resolves to null on this path, and names $0", () => {
+    let message = "";
+    try {
+      fl.transform(c.text("$this * 2"));
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message).toContain("$this");
+    expect(message).toContain("$0");
+    expect(message).toContain("issue #245");
+  });
+
+  it("refuses each of the other surfaces' bindings too", () => {
+    for (const unbound of ["$parent", "$index", "$result"]) {
+      expect(() => fl.transform(c.text(`${unbound}.a`))).toThrow(/not bound in an expression/);
+    }
+  });
+
+  it("refuses a JavaScript body, and points at fl.lambda", () => {
+    // The reported failure: fatal at runtime with "Not numeric."
+    expect(() => fl.transform(c.text("return $0 * 2"))).toThrow(/fl\.lambda/);
+    // The two that do NOT throw at runtime — they return "const x" and false.
+    expect(() => fl.transform(c.text("const x = $0; return x"))).toThrow(/JavaScript body/);
+    expect(() => fl.transform(c.text("$0 => $0 * 2"))).toThrow(/arrow function/);
+  });
+
+  it("accepts the forms the engine actually evaluates", () => {
+    // Probed live: 5 → 10, 5 → 10, [3,1,2] → "1,2,3", 5 → {"raw":5,…}.
+    expect(fl.transform(c.text("$0 * 2")).arg).toEqual([c.text("$0 * 2")]);
+    expect(fl.transform("$$ * 2").arg).toEqual([c.text("$$ * 2")]);
+    expect(() => fl.transform('$0|sort|join:","')).not.toThrow();
+    expect(() => fl.transform("{ raw: $0, doubled: $0 * 2 }")).not.toThrow();
+    expect(() => fl.transform("$var.subtotal + $input.qty")).not.toThrow();
+  });
+
+  it("does not mistake a string literal's contents for JavaScript", () => {
+    // `;` and `=>` inside a quoted literal are payload, not syntax.
+    expect(() => fl.transform(c.text('$0|split:";"'))).not.toThrow();
+    expect(() => fl.transform(c.text('$0 ~ " => "'))).not.toThrow();
+  });
+
+  it("reads `return` as a keyword, not as part of a name", () => {
+    // `$` and `.` are word boundaries, so a naive \breturn\b matches both of
+    // these — and a workspace may legitimately hold a var or key named `return`.
+    expect(() => fl.transform(c.text("$return * 2"))).not.toThrow();
+    expect(() => fl.transform(c.text("$0.return"))).not.toThrow();
+    expect(() => fl.transform(c.text("return $0"))).toThrow(/JavaScript body/);
+  });
+
+  it("blanks an unterminated literal rather than letting its tail reach the scan", () => {
+    // No closing quote, so everything after it is payload with nowhere to end.
+    expect(() => fl.transform(c.text('$0 ~ "oops; return'))).not.toThrow();
+  });
+
+  it("leaves alone what it cannot read: a ref, and the editor's empty default", () => {
+    expect(() => fl.transform(ref("expr_from_db"))).not.toThrow();
+    expect(() => filter("transform", c.text(""))).not.toThrow();
+  });
+
+  it("fires at the low-level choke point too, not only through fl.*", () => {
+    expect(() => filter("transform", c.text("$this"))).toThrow(/issue #245/);
+  });
+});

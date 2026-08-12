@@ -819,6 +819,16 @@ export const FILTER_NOTES: Record<string, string> = {
     "`code` is a JS body run per element; the ACCUMULATOR is `$result` (there is no `$acc`) and " +
     "`initial_value` is REQUIRED — omitting it would slot the code as the initial value",
   lambda: "runs a JS body once over the piped value, which it binds as `$this` (NOT `$parent`)",
+  // The one filter next to `lambda` that is NOT a lambda. It reads as one, its
+  // upstream description names a `$this` that does not exist on its path, and
+  // both wrong spellings can return a plausible value with HTTP 200 — so the
+  // note has to say what the binding IS, not only what it isn't.
+  transform:
+    "`expression` is Xano Expression Engine source, NOT a JS body — no `return`, and the piped value is " +
+    "`$0` (or `$$`), NOT `$this` (which is null here). `$var`/`$input`/`$env`/`$auth` resolve and filters " +
+    "pipe inside it: `$0 * 2`, `$0|sort|join:\",\"`. Parenthesize a pipe inside an object literal — " +
+    "`{ s: ($0|sort|join:\",\") }` — or its comma is read as the key separator and later keys vanish " +
+    "silently. For JavaScript use `lambda`",
   // The sort mode is the whole behavior of this filter, and picking it wrong is
   // SILENT — every unrecognized spelling falls through to `itext`, so the array
   // comes back sorted as case-insensitive text with no error anywhere. That is
