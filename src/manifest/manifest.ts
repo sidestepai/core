@@ -26,6 +26,8 @@ import {
 import { isRegisteredStatement } from "../statements/statement.js";
 import { isRegisteredKind } from "../kinds/kind.js";
 import { TAGS } from "../types/xdo.js";
+import { LAMBDA_BINDINGS, LAMBDA_GLOBALS } from "../values/lambda.js";
+import type { LambdaSurface } from "../values/lambda.js";
 import { FILTER_NAMES, FILTER_SPECS } from "../values/generated/filters.generated.js";
 import { FIELD_METHODS } from "../fields/generated/field-methods.generated.js";
 import { COMMANDS, FLAGS, flagKey, flagSummary } from "../emit/commands.js";
@@ -804,12 +806,19 @@ export const FILTER_NOTES: Record<string, string> = {
   // "empty" is a specific set of values, not just null.
   filter_empty: 'keeps entries that are not empty ("", null, 0, "0", false, [], {})',
   first_notempty: 'first value that is not empty ("", null, 0, "0", false, [], {})',
-  // The `code`/lambda arg is a JS expression body, not a column path.
-  map: "`code` is a JS expression body run per element",
-  every: "`code` is a JS boolean expression run per element (true for all?)",
-  some: "`code` is a JS boolean expression run per element (true for any?)",
-  findIndex: "`code` is a JS boolean expression; returns the first matching index",
-  lambda: "runs a JavaScript expression body",
+  // The `code` arg is a JS FUNCTION BODY (it must `return`), not a column path,
+  // and which identifiers it can see depends on the filter — see **Lambda bodies**.
+  // Build it with `lam.fn`, which makes the bindings the function's parameters.
+  map: "`code` is a JS body run per element, over `$this`/`$index`/`$parent` — build it with `lam.fn`",
+  filter: "`code` is a JS body run per element (keep it? true/false), over `$this`/`$index`/`$parent`",
+  every: "`code` is a JS body run per element (true for all?), over `$this`/`$index`/`$parent`",
+  some: "`code` is a JS body run per element (true for any?), over `$this`/`$index`/`$parent`",
+  find: "`code` is a JS body run per element; returns the first element it accepts",
+  findIndex: "`code` is a JS body run per element; returns the first matching index",
+  reduce:
+    "`code` is a JS body run per element; the ACCUMULATOR is `$result` (there is no `$acc`) and " +
+    "`initial_value` is REQUIRED — omitting it would slot the code as the initial value",
+  lambda: "runs a JS body once over the piped value, which it binds as `$this` (NOT `$parent`)",
   // The sort mode is the whole behavior of this filter, and picking it wrong is
   // SILENT — every unrecognized spelling falls through to `itext`, so the array
   // comes back sorted as case-insensitive text with no error anywhere. That is
@@ -846,6 +855,71 @@ export const SELF_EVIDENT_FILTERS: ReadonlySet<string> = new Set([
  * Render the manifest as `llms.txt` — a concise, link-free plaintext grounding
  * doc an agent can read to learn how to author a sidestep workspace.
  */
+/**
+ * The one canonical statement of the lambda binding contract (issue #221).
+ *
+ * Generated from {@link LAMBDA_BINDINGS} — the same table the build-time guard
+ * reads and the same one the live probe agreed with — so the docs cannot
+ * disagree with what the SDK enforces or with what the engine does. Before this,
+ * the contract was written down nowhere at all: the reporter guessed `$acc` for
+ * reduce's accumulator, and nothing between the keystroke and production
+ * disagreed.
+ */
+function renderLambdaSection(): string[] {
+  const lines: string[] = ["## Lambda bodies (JavaScript)", ""];
+  lines.push(
+    "The lambda statement (`s.lambda({ as, code, timeout? })`) and eight filters run a",
+    "JavaScript body. **Write the body with `lam.fn`, not `c.text`** — the bindings are",
+    "the function's parameters, so the editor supplies them and a wrong name is a",
+    "compile error instead of a wrong value at runtime:",
+    "",
+    '- `lam.fn(({ $result, $this }) => $result + $this)` — the body; `surface` picks the binding set.',
+    '- `lam.raw("return 1", { surface })` — text, same validation.',
+    '- `lam.file("./lambdas/total.ts")` — a default-exported function in its own type-checked module (`@sidestep/core/node`).',
+    "",
+    "A body is a FUNCTION BODY: it must `return` its value. Bindings by surface — an",
+    "identifier outside its surface's set is undefined at runtime, and the SDK refuses",
+    "it at build time whichever spelling you use:",
+    "",
+  );
+  const ambient = LAMBDA_BINDINGS["s.lambda"];
+  lines.push(`- every surface: ${ambient.map((b) => `\`${b}\``).join(" · ")} (+ the \`${LAMBDA_GLOBALS.join("\` / \`")}\` globals)`);
+  const extras = (surface: LambdaSurface): string[] =>
+    LAMBDA_BINDINGS[surface].filter((b) => !ambient.includes(b));
+  const byExtras = new Map<string, string[]>();
+  for (const surface of Object.keys(LAMBDA_BINDINGS) as LambdaSurface[]) {
+    if (surface === "s.lambda") continue;
+    const key = extras(surface).join(" ");
+    byExtras.set(key, [...(byExtras.get(key) ?? []), surface]);
+  }
+  for (const [key, surfaces] of byExtras) {
+    const label = surfaces.map((x) => (x.includes(".") ? `\`${x}\`` : `\`fl.${x}\``)).join(" · ");
+    lines.push(`- ${label}: + ${key.split(" ").map((b) => `\`${b}\``).join(" · ")}`);
+  }
+  lines.push(
+    `- \`s.lambda\`: ambient only — no \`$this\`, no \`$parent\`, no \`$result\`.`,
+    "",
+    "`$result` is `reduce`'s ACCUMULATOR (there is no `$acc`). `$this` is the element in",
+    "an iterating filter and the piped value in `fl.lambda`; `$parent` is the whole array",
+    "and exists only on the iterating filters. A stack variable is reached as",
+    "`$var.name` — it is NOT also injected as a bare `$name`.",
+    "",
+    "Three hazards, all live-verified:",
+    "",
+    "- ⚠ A body that THROWS does not fail the request: the engine returns its diagnostic",
+    "  TEXT as the value with HTTP 200, so the failure reads as bad data. Validate before",
+    "  consuming a lambda result numerically, and prefer a `lam.*` body, which cannot fail",
+    "  this way for a binding reason.",
+    "- ⚠ A top-level `import`/`export` is a syntax error — the body is a function body, not",
+    "  a module. Reach a dependency with dynamic `import()`: `const m = await import(\"…\")`.",
+    "- ⚠ `console` output goes to the request LOG, not stdout.",
+    "",
+    "TypeScript annotations survive in the body, and top-level `await` works.",
+    "",
+  );
+  return lines;
+}
+
 export function renderLlmsTxt(m: Manifest): string {
   const lines: string[] = [];
   lines.push(`# ${m.name} v${m.version}`, "");
@@ -1479,6 +1553,8 @@ export function renderLlmsTxt(m: Manifest): string {
   const byName = m.filters.filter((fl) => !fl.typed).map((fl) => fl.name);
   lines.push("", `Other filters (reachable as \`fl.<name>\`, variadic): ${byName.join(", ")}.`, "");
 
+  lines.push(...renderLambdaSection());
+
   lines.push("## Statements", "");
   lines.push(
     "Reachable through the `s` namespace: `s.<path>({...})`. Declarative statements",
@@ -1518,7 +1594,7 @@ export function renderLlmsTxt(m: Manifest): string {
     "",
     "Array blocks (an `if`/`transform` is applied per item):",
     "",
-    "- `s.array.map({ source, as?, transform? })` — `transform` is either a per-item `Value` expression (each item maps to that value) or a **record of values** (each item maps to an object with those keys). Use `ref(\"$this\")` for the item and `ref(\"$index\")` for its position.",
+    "- `s.array.map({ source, as?, transform? })` — `transform` is either a per-item `Value` expression (each item maps to that value) or a **record of values** (each item maps to an object with those keys). Use `ref(\"$this\")` for the item and `ref(\"$index\")` for its position. These are THIS statement's own bindings, in a value expression — not the JavaScript lambda contract (see **Lambda bodies**), which binds a different set per surface and is written with `lam.fn`.",
     "- `s.array.union({ source, with?, as?, transform? })` — set-union two arrays.",
     "",
     "DB reads/writes (`table` is a def handle or name; `fieldName` defaults to the",

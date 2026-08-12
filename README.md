@@ -1162,6 +1162,43 @@ sources.
   name is assigned at import and is not knowable from a `table()` def, so it has to be
   hardcoded after inspecting the deployed table. A typed path requires an engine change
   ([issue #35](https://github.com/sidestepai/core/issues/35)).
+- **A JavaScript body is written with `lam.fn`, not `c.text`.** The lambda statement
+  (`s.lambda`) and eight filters (`fl.map`/`filter`/`some`/`every`/`find`/`findIndex`/
+  `reduce`/`lambda`) run JavaScript against a small, closed set of injected identifiers —
+  and which ones are in scope depends on the surface. `lam.fn` makes those identifiers the
+  function's **parameters**, so your editor supplies them and a wrong name is a compile
+  error rather than a wrong value in production:
+
+  ```ts
+  // reduce's accumulator is `$result`. Autocomplete says so; `$acc` does not compile.
+  withFilters(ref("prices"), fl.reduce({ initial_value: 0, code: lam.fn(({ $result, $this }) => $result + $this) })),
+
+  // The statement surface binds ambient state only — no `$this`, no `$parent`.
+  s.lambda({ as: "total", code: lam.fn(({ $var }) => $var.subtotal * 1.2, { surface: "s.lambda" }) }),
+
+  // Nothing from the enclosing scope crosses implicitly — declare what the body needs.
+  s.lambda({ as: "vat", code: lam.fn(({ $var }, { rate }) => $var.total * rate, { surface: "s.lambda", capture: { rate } }) }),
+  ```
+
+  A body big enough to want its own type-checked module is `lam.file("./lambdas/total.ts")`
+  (from `@sidestep/core/node`), which reads a default-exported function of the same shape.
+  `lam.raw(code)` is the text escape hatch, guarded identically. The full binding table per
+  surface is in `llms.txt` under **Lambda bodies**.
+
+  Three things to know, all live-verified against a real engine:
+
+  - A body that **throws does not fail the request** — the engine returns its diagnostic
+    text as the value with HTTP 200, so the failure arrives as bad data rather than an
+    error. That is engine behavior and not interceptable from an SDK; validate before
+    consuming a lambda result numerically, and prefer a `lam.*` body, which cannot fail
+    that way for a binding reason.
+  - The body is a **function body, not a module**: it must `return`, and a top-level
+    `import` is a syntax error. Reach a dependency with dynamic `import()`.
+  - `console` output goes to the **request log**, not stdout.
+
+  A plain `c.text(...)` body is still accepted and gets the same build-time check — the
+  guard sits at the call site, not inside `lam.*` — so an unknown `$identifier` fails
+  whichever way you write it ([issue #221](https://github.com/sidestepai/core/issues/221)).
 - **`c.expression("…")` is carried through verbatim and NOT validated.** SideStep does not
   parse it or type-check it; nothing inside participates in `InferResponse`, so a var named
   there is invisible to a rename that updates every typed `ref()`. A malformed expression
