@@ -1,0 +1,1887 @@
+{
+  "note": "Issue #246 — engine-required arity vs. catalog-declared. Regenerate with scripts/probe-filter-arity.ts.",
+  "traps": [
+    {
+      "name": "array_fill_keys",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": 1,
+      "mismatch": true,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "array_slice",
+      "declaredArgs": 2,
+      "declaredRequired": 0,
+      "engineRequired": 1,
+      "mismatch": true,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "create_object",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": 1,
+      "mismatch": true,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "csv_create",
+      "declaredArgs": 4,
+      "declaredRequired": 1,
+      "engineRequired": 4,
+      "mismatch": true,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "csv_decode",
+      "declaredArgs": 3,
+      "declaredRequired": 0,
+      "engineRequired": 3,
+      "mismatch": true,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "csv_encode",
+      "declaredArgs": 3,
+      "declaredRequired": 0,
+      "engineRequired": 3,
+      "mismatch": true,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "csv_parse",
+      "declaredArgs": 3,
+      "declaredRequired": 0,
+      "engineRequired": 3,
+      "mismatch": true,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "jwe_decode",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": 1,
+      "mismatch": true,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "jwe_encode",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": 1,
+      "mismatch": true,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "number_format",
+      "declaredArgs": 3,
+      "declaredRequired": 0,
+      "engineRequired": 3,
+      "mismatch": true,
+      "sample": "non-arity error"
+    }
+  ],
+  "all": [
+    {
+      "name": "abs",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "acos",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "acosh",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "add",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "addslashes",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "append",
+      "declaredArgs": 2,
+      "declaredRequired": 2,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "array_diff",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "array_diff_assoc",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "array_entries",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "array_fill",
+      "declaredArgs": 2,
+      "declaredRequired": 2,
+      "engineRequired": 2,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "array_fill_keys",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": 1,
+      "mismatch": true,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "array_intersect",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "array_intersect_assoc",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "array_keys",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "array_merge",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "array_merge_recursive",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "array_pop",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "array_push",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "array_remove",
+      "declaredArgs": 3,
+      "declaredRequired": 2,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "array_shift",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "array_shuffle",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "array_slice",
+      "declaredArgs": 2,
+      "declaredRequired": 0,
+      "engineRequired": 1,
+      "mismatch": true,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "array_unshift",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "array_values",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "asin",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "asinh",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "atan",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "atanh",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "avg",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "base64_decode",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "base64_decode_urlsafe",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "base64_encode",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "base64_encode_urlsafe",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "base_convert",
+      "declaredArgs": 2,
+      "declaredRequired": 2,
+      "engineRequired": 2,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "bin2hex",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "bindec",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "bitwise_and",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "bitwise_not",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "bitwise_or",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "bitwise_xor",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "capitalize",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "ceil",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "concat",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "contains",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "convert_encoding",
+      "declaredArgs": 2,
+      "declaredRequired": 2,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "cos",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "count",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "create_object",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": 1,
+      "mismatch": true,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "create_object_from_entries",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "crypto_jwe_decode",
+      "declaredArgs": 5,
+      "declaredRequired": 4,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "crypto_jwe_encode",
+      "declaredArgs": 5,
+      "declaredRequired": 4,
+      "engineRequired": 4,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "crypto_jws_decode",
+      "declaredArgs": 4,
+      "declaredRequired": 3,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "crypto_jws_encode",
+      "declaredArgs": 4,
+      "declaredRequired": 3,
+      "engineRequired": 3,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "csv_create",
+      "declaredArgs": 4,
+      "declaredRequired": 1,
+      "engineRequired": 4,
+      "mismatch": true,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "csv_decode",
+      "declaredArgs": 3,
+      "declaredRequired": 0,
+      "engineRequired": 3,
+      "mismatch": true,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "csv_encode",
+      "declaredArgs": 3,
+      "declaredRequired": 0,
+      "engineRequired": 3,
+      "mismatch": true,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "csv_parse",
+      "declaredArgs": 3,
+      "declaredRequired": 0,
+      "engineRequired": 3,
+      "mismatch": true,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "decbin",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "dechex",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "decoct",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "decrypt",
+      "declaredArgs": 3,
+      "declaredRequired": 3,
+      "engineRequired": 3,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "deg2rad",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "detect_encoding",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "div",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "empty",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "encrypt",
+      "declaredArgs": 3,
+      "declaredRequired": 3,
+      "engineRequired": 3,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "ends_with",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "epochms_add_ms",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "epochms_add_secs",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "epochms_date",
+      "declaredArgs": 2,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "epochms_from_format",
+      "declaredArgs": 2,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "epochms_transform",
+      "declaredArgs": 2,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "eq",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "escape",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "even",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "every",
+      "declaredArgs": 2,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "exp",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "filter",
+      "declaredArgs": 2,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "filter_empty",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "filter_empty_array",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "filter_empty_object",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "filter_empty_text",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "filter_false",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "filter_null",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "filter_zero",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "find",
+      "declaredArgs": 2,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "findIndex",
+      "declaredArgs": 2,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "first",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "first_notempty",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "first_notnull",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "flatten",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "floor",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "from_utf8",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "fsort",
+      "declaredArgs": 3,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "get",
+      "declaredArgs": 2,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "gt",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "gte",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "has",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "hex2bin",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "hexdec",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "hmac_md5",
+      "declaredArgs": 2,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "hmac_sha1",
+      "declaredArgs": 2,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "hmac_sha256",
+      "declaredArgs": 2,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "hmac_sha384",
+      "declaredArgs": 2,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "hmac_sha512",
+      "declaredArgs": 2,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "icontains",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "iends_with",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "in",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "index_by",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "is_array",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "is_bool",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "is_decimal",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "is_int",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "is_object",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "is_text",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "is_uuid",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "istarts_with",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "join",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "json_decode",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "json_encode",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "jwe_decode",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": 1,
+      "mismatch": true,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "jwe_encode",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": 1,
+      "mismatch": true,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "lambda",
+      "declaredArgs": 2,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "last",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "list_encodings",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "ln",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "log",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "log10",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "lower",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "lt",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "lte",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "ltrim",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "map",
+      "declaredArgs": 2,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "max",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "md5",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "min",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "mod",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "mul",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "ne",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "not",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "num_max",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "num_min",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "number_format",
+      "declaredArgs": 3,
+      "declaredRequired": 0,
+      "engineRequired": 3,
+      "mismatch": true,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "octdec",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "odd",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "pick",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "pow",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "prepend",
+      "declaredArgs": 2,
+      "declaredRequired": 2,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "product",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "querystring_parse",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "rad2deg",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "range",
+      "declaredArgs": 2,
+      "declaredRequired": 2,
+      "engineRequired": 2,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "reduce",
+      "declaredArgs": 3,
+      "declaredRequired": 2,
+      "engineRequired": 2,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "regex_match",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "regex_match_all",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "regex_quote",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "regex_replace",
+      "declaredArgs": 2,
+      "declaredRequired": 2,
+      "engineRequired": 2,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "regex_test",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "reverse",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "round",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "rtrim",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "safe_array",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "secureid_decode",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "secureid_encode",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "set",
+      "declaredArgs": 2,
+      "declaredRequired": 2,
+      "engineRequired": 2,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "set_conditional",
+      "declaredArgs": 3,
+      "declaredRequired": 3,
+      "engineRequired": 3,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "set_ifnotempty",
+      "declaredArgs": 2,
+      "declaredRequired": 2,
+      "engineRequired": 2,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "set_ifnotnull",
+      "declaredArgs": 2,
+      "declaredRequired": 2,
+      "engineRequired": 2,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "sha1",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "sha256",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "sha384",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "sha512",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "sin",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "some",
+      "declaredArgs": 2,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "sort",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "split",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "sprintf",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "sql_alias",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "sql_esc",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "sqrt",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "starts_with",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "string_replace",
+      "declaredArgs": 2,
+      "declaredRequired": 2,
+      "engineRequired": 2,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "strip_accents",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "strip_tags",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "stripos",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "strlen",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "strpos",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "sub",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "substr",
+      "declaredArgs": 2,
+      "declaredRequired": 2,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "sum",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "tan",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "text_escape",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "text_unescape",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "to_bool",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "to_decimal",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "to_epoch_day",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "to_epoch_hour",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "to_epoch_minute",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "to_epoch_ms",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "to_epoch_sec",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "to_epochms",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "to_expr",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "to_int",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "to_text",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "to_utf8",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "transform",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "trim",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "uid",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "unique",
+      "declaredArgs": 1,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "unpick",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "unset",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "upper",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "url_addarg",
+      "declaredArgs": 3,
+      "declaredRequired": 2,
+      "engineRequired": 2,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "url_decode",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "url_decode_rfc3986",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "url_delarg",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "url_encode",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "url_encode_rfc3986",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "url_getarg",
+      "declaredArgs": 2,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "url_hasarg",
+      "declaredArgs": 1,
+      "declaredRequired": 1,
+      "engineRequired": 1,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "url_parse",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "uuid4",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    },
+    {
+      "name": "xml_decode",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "yaml_decode",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": "non-arity error"
+    },
+    {
+      "name": "yaml_encode",
+      "declaredArgs": 0,
+      "declaredRequired": 0,
+      "engineRequired": null,
+      "mismatch": false,
+      "sample": ""
+    }
+  ]
+}

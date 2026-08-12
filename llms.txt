@@ -6,7 +6,7 @@ Author a Xano workspace in TypeScript: build typed objects, register them on a
 `new Xano()` instance, and call `.export()` to get one importable bundle. Compile
 with `sidestep export ./xano/index.js`.
 
-Coverage: object kinds 24/30, statement surfaces 214/214, filters 225 (129 typed).
+Coverage: object kinds 24/30, statement surfaces 214/214, filters 225 (131 typed).
 Not authorable here: branch, market_item, realtime_channel, run.job, run.service, tablemap — these cannot be authored and do not survive a pull; see `coverage.objectKinds.unmodeled` in `manifest.json`.
 
 Full reference: this doc shows the authoring signature for every kind, statement, and
@@ -634,14 +634,14 @@ engine change.
 - `fl.array_diff(value: <T>[]): <T>[]`
 - `fl.array_diff_assoc(value: <T>[]): <T>[]`
 - `fl.array_fill(start: int, count: int): any[]`
-- `fl.array_fill_keys(keys?: any[]): any[]`
+- `fl.array_fill_keys(keys: any[]): any[]`
 - `fl.array_intersect(value: <T>[]): <T>[]`
 - `fl.array_intersect_assoc(value: <T>[]): <T>[]`
 - `fl.array_merge(value: <T>[]): <T>[]`
 - `fl.array_merge_recursive(value: <T>[]): <T>[]`
 - `fl.array_push(value: <T>): <T>[]`
 - `fl.array_remove(value: <T>, path: text, strict?: bool): <T>[]`
-- `fl.array_slice(offset?: int, length?: int): <T>[]`
+- `fl.array_slice(offset: int, length?: int): <T>[]`
 - `fl.array_unshift(value: <T>): <T>[]`
 - `fl.base_convert(from_base: any, to_base: any): text`
 - `fl.bitwise_and(value: int): int`
@@ -650,15 +650,15 @@ engine change.
 - `fl.concat(value: any): text`
 - `fl.contains(search: text): bool` — piped value is the subject text; the arg is the substring searched for
 - `fl.convert_encoding(to: text, from: text): text`
-- `fl.create_object(values?: <T>[]): any`
+- `fl.create_object(values: <T>[]): any`
 - `fl.crypto_jwe_decode(check_claims: json, key: json, key_algorithm: enum, content_algorithm: enum, timeDrift?: int): json`
 - `fl.crypto_jwe_encode(headers: json, key: json, key_algorithm: enum, content_algorithm: enum, ttl?: int): text`
 - `fl.crypto_jws_decode(check_claims: json, key: json, algorithm: enum, timeDrift?: int): json`
 - `fl.crypto_jws_encode(headers: json, key: json, algorithm: enum, ttl?: int): text`
-- `fl.csv_create(rows: text[], separator?: text, enclosure?: text, escape?: text): text`
-- `fl.csv_decode(separator?: text, enclosure?: text, escape?: text): any`
-- `fl.csv_encode(separator?: text, enclosure?: text, escape?: text): text`
-- `fl.csv_parse(separator?: text, enclosure?: text, escape?: text): any`
+- `fl.csv_create(rows: text[], separator: text, enclosure: text, escape: text): text`
+- `fl.csv_decode(separator: text, enclosure: text, escape: text): any`
+- `fl.csv_encode(separator: text, enclosure: text, escape: text): text`
+- `fl.csv_parse(separator: text, enclosure: text, escape: text): any`
 - `fl.decrypt(algorithm: enum, key: text, iv: text): text`
 - `fl.detect_encoding(encodings?: text): text`
 - `fl.div(value: decimal): decimal`
@@ -699,6 +699,8 @@ engine change.
 - `fl.index_by(path: text): <T>[]`
 - `fl.istarts_with(search: text): bool` — case-insensitive; piped value is the subject, the arg is the substring
 - `fl.join(separator: text): text`
+- `fl.jwe_decode(arg1: any)`
+- `fl.jwe_encode(arg1: any)`
 - `fl.lambda(code: text, timeout?: int): any` — runs a JS body once over the piped value, which it binds as `$this` (NOT `$parent`)
 - `fl.log(base: <T>): decimal`
 - `fl.lt(value: <T>): bool`
@@ -711,7 +713,7 @@ engine change.
 - `fl.ne(value: <T>): bool`
 - `fl.num_max(value: any): decimal`
 - `fl.num_min(value: any): decimal`
-- `fl.number_format(decimals?: int, decimal_separator?: text, thousands_separator?: text): string`
+- `fl.number_format(decimals: int, decimal_separator: text, thousands_separator: text): string`
 - `fl.pick(keys: text): <T>`
 - `fl.pow(exp: <T>): decimal`
 - `fl.prepend(value: <T>, path: text): <T>[]`
@@ -759,7 +761,7 @@ engine change.
 - `fl.url_getarg(key: text, default?: text): text`
 - `fl.url_hasarg(key: text): text`
 
-Other filters (reachable as `fl.<name>`, variadic): abs, acos, acosh, addslashes, array_entries, array_keys, array_pop, array_shift, array_shuffle, array_values, asin, asinh, atan, atanh, avg, base64_decode, base64_decode_urlsafe, base64_encode, base64_encode_urlsafe, bin2hex, bindec, bitwise_not, capitalize, ceil, cos, count, create_object_from_entries, decbin, dechex, decoct, deg2rad, empty, escape, even, exp, first, flatten, floor, from_utf8, hex2bin, hexdec, is_array, is_bool, is_decimal, is_int, is_object, is_text, is_uuid, json_decode, json_encode, jwe_decode, jwe_encode, last, list_encodings, ln, log10, lower, max, min, not, octdec, odd, product, querystring_parse, rad2deg, reverse, safe_array, sin, sort, sprintf, sql_alias, sql_esc, sqrt, strip_accents, strlen, sum, tan, text_escape, text_unescape, to_bool, to_decimal, to_expr, to_int, to_text, to_utf8, uid, upper, url_decode, url_decode_rfc3986, url_encode, url_encode_rfc3986, url_parse, uuid4, xml_decode, yaml_decode, yaml_encode.
+Other filters (reachable as `fl.<name>`, variadic): abs, acos, acosh, addslashes, array_entries, array_keys, array_pop, array_shift, array_shuffle, array_values, asin, asinh, atan, atanh, avg, base64_decode, base64_decode_urlsafe, base64_encode, base64_encode_urlsafe, bin2hex, bindec, bitwise_not, capitalize, ceil, cos, count, create_object_from_entries, decbin, dechex, decoct, deg2rad, empty, escape, even, exp, first, flatten, floor, from_utf8, hex2bin, hexdec, is_array, is_bool, is_decimal, is_int, is_object, is_text, is_uuid, json_decode, json_encode, last, list_encodings, ln, log10, lower, max, min, not, octdec, odd, product, querystring_parse, rad2deg, reverse, safe_array, sin, sort, sprintf, sql_alias, sql_esc, sqrt, strip_accents, strlen, sum, tan, text_escape, text_unescape, to_bool, to_decimal, to_expr, to_int, to_text, to_utf8, uid, upper, url_decode, url_decode_rfc3986, url_encode, url_encode_rfc3986, url_parse, uuid4, xml_decode, yaml_decode, yaml_encode.
 
 ## Lambda bodies (JavaScript)
 

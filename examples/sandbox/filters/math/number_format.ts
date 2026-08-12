@@ -8,6 +8,6 @@ import { defineFunction, s, c, ref, withFilters, fl } from "@sidestep/core";
 
 export const filterNumberFormat = defineFunction({
   name: "ex_filter_number_format",
-  stack: [s.set_var("out", withFilters(c.decimal(6.5), fl["number_format"]()))],
+  stack: [s.set_var("out", withFilters(c.decimal(6.5), fl["number_format"](c.int(2), c.text("x"), c.text("x"))))],
   response: ref("out"),
 });

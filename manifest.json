@@ -38,7 +38,7 @@
       "total": 214
     },
     "filters": {
-      "typed": 129,
+      "typed": 131,
       "total": 225
     }
   },
@@ -5719,8 +5719,7 @@
       "args": [
         {
           "name": "keys",
-          "type": "any[]",
-          "optional": true
+          "type": "any[]"
         }
       ],
       "result": "any[]",
@@ -5859,8 +5858,7 @@
       "args": [
         {
           "name": "offset",
-          "type": "int",
-          "optional": true
+          "type": "int"
         },
         {
           "name": "length",
@@ -6135,8 +6133,7 @@
       "args": [
         {
           "name": "values",
-          "type": "<T>[]",
-          "optional": true
+          "type": "<T>[]"
         }
       ],
       "result": "any",
@@ -6278,23 +6275,20 @@
         },
         {
           "name": "separator",
-          "type": "text",
-          "optional": true
+          "type": "text"
         },
         {
           "name": "enclosure",
-          "type": "text",
-          "optional": true
+          "type": "text"
         },
         {
           "name": "escape",
-          "type": "text",
-          "optional": true
+          "type": "text"
         }
       ],
       "result": "text",
       "group": "transform",
-      "description": "Creates a CSV format data stream from a list of column names and their corresponding data rows."
+      "description": "Creates a CSV format data stream from a list of column names and their corresponding data rows. Direction: the piped value is the list of COLUMN NAMES (written as the header line); the `rows` argument carries the data rows. This is the header-writing counterpart to `csv_encode`, which emits values only."
     },
     {
       "name": "csv_decode",
@@ -6303,18 +6297,15 @@
       "args": [
         {
           "name": "separator",
-          "type": "text",
-          "optional": true
+          "type": "text"
         },
         {
           "name": "enclosure",
-          "type": "text",
-          "optional": true
+          "type": "text"
         },
         {
           "name": "escape",
-          "type": "text",
-          "optional": true
+          "type": "text"
         }
       ],
       "result": "any",
@@ -6328,23 +6319,20 @@
       "args": [
         {
           "name": "separator",
-          "type": "text",
-          "optional": true
+          "type": "text"
         },
         {
           "name": "enclosure",
-          "type": "text",
-          "optional": true
+          "type": "text"
         },
         {
           "name": "escape",
-          "type": "text",
-          "optional": true
+          "type": "text"
         }
       ],
       "result": "text",
       "group": "transform",
-      "description": "Encodes the value and returns the result in CSV format"
+      "description": "Encodes the value and returns the result in CSV format Writes NO header row — values only. Each row contributes its own values in THAT row's key order, with no normalization across rows, so rows whose keys differ in order or count silently misalign columns rather than erroring. Non-scalar cells (nested objects/arrays) are JSON-encoded into the cell, and `false` writes as empty. If the piped array's elements are scalars rather than objects, the whole array is treated as ONE row and you get a single line. For a header, use `csv_create`."
     },
     {
       "name": "csv_parse",
@@ -6353,18 +6341,15 @@
       "args": [
         {
           "name": "separator",
-          "type": "text",
-          "optional": true
+          "type": "text"
         },
         {
           "name": "enclosure",
-          "type": "text",
-          "optional": true
+          "type": "text"
         },
         {
           "name": "escape",
-          "type": "text",
-          "optional": true
+          "type": "text"
         }
       ],
       "result": "any",
@@ -7225,13 +7210,25 @@
     {
       "name": "jwe_decode",
       "fl": "fl.jwe_decode",
-      "typed": false,
+      "typed": true,
+      "args": [
+        {
+          "name": "arg1",
+          "type": "any"
+        }
+      ],
       "description": "Decodes the JWE token and return the result"
     },
     {
       "name": "jwe_encode",
       "fl": "fl.jwe_encode",
-      "typed": false,
+      "typed": true,
+      "args": [
+        {
+          "name": "arg1",
+          "type": "any"
+        }
+      ],
       "description": "Encodes the value and return the result as a JWE token"
     },
     {
@@ -7485,18 +7482,15 @@
       "args": [
         {
           "name": "decimals",
-          "type": "int",
-          "optional": true
+          "type": "int"
         },
         {
           "name": "decimal_separator",
-          "type": "text",
-          "optional": true
+          "type": "text"
         },
         {
           "name": "thousands_separator",
-          "type": "text",
-          "optional": true
+          "type": "text"
         }
       ],
       "result": "string",

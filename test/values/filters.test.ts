@@ -32,8 +32,13 @@ describe("fl.* filter catalog", () => {
     // serializes with no stray arg; passing it still works.
     expect(fl.trim()).toEqual({ name: "trim", disabled: false, arg: [] });
     expect(fl.trim(c.text("-")).arg).toEqual([c.text("-")]);
-    // `number_format` has all-default args → all optional.
-    expect(fl.number_format()).toEqual({ name: "number_format", disabled: false, arg: [] });
+    // NOT every all-optional filter, though: `number_format`'s three args are
+    // all flagged optional upstream and the engine requires all three anyway
+    // (#246), so the omitting call is refused here rather than on a deployed
+    // endpoint. `trim` above is the case where the flag tells the truth — which
+    // half a filter falls in is only knowable by probing it.
+    // @ts-expect-error -- the refusal is the point: the type rejects it too
+    expect(() => fl.number_format()).toThrow(/needs 3 argument/);
   });
 
   it("a name-only filter is reachable and variadic", () => {
@@ -398,6 +403,8 @@ describe("named-form and arity refusals (#221)", () => {
     try {
       // `decimals` skipped, `thousands_separator` supplied: the engine reads by
       // slot, so this cannot be expressed at all.
+      // @ts-expect-error -- a hole in the named form; the runtime guard is what
+      // this asserts, for a JS caller the type cannot reach
       fl.number_format({ thousands_separator: "," });
     } catch (e) {
       message = (e as Error).message;
@@ -409,8 +416,15 @@ describe("named-form and arity refusals (#221)", () => {
   });
 
   it("allows the named form to omit from the END, which is how absence works", () => {
-    expect(fl.number_format({ decimals: 2 }).arg).toEqual([c.int(2)]);
-    expect(fl.number_format({ decimals: 2, decimal_separator: "." }).arg).toEqual([c.int(2), c.text(".")]);
+    // Vehicle note: this used `number_format`, until probing showed the engine
+    // requires all three of its args (#246) and no omission is legal there at
+    // all. `array_remove`'s trailing `strict` is a real trailing optional.
+    expect(fl.array_remove({ value: c.int(1), path: "a" }).arg).toEqual([c.int(1), c.text("a")]);
+    expect(fl.array_remove({ value: c.int(1), path: "a", strict: true }).arg).toEqual([
+      c.int(1),
+      c.text("a"),
+      c.bool(true),
+    ]);
   });
 
   it("refuses a short positional call a JS caller can still make", () => {
@@ -591,5 +605,92 @@ describe("fl.fsort enumerated argument (#198)", () => {
         expect(ENUM_ARG_FILTERS[name], `fl.${name}.${a.name} has an enum but no runtime guard`).toBeDefined();
       }
     }
+  });
+});
+
+/**
+ * #246. A second, distinct way the upstream `optional` flag lies. #221 covered
+ * an optional argument sitting IN FRONT of a required one; this is the case
+ * where a filter declares its arguments **all** optional and the engine still
+ * requires every one of them. The declared-legal zero-argument call — the form
+ * the typed surface invites — fails on a deployed endpoint with an argument-count
+ * error, before the filter body runs.
+ *
+ * That made `fl.csv_encode()` over `db.query` rows look like a broken encoder.
+ * It never ran. `fl.map` was never involved.
+ *
+ * The counts here are probed, not declared: `scripts/probe-filter-arity.ts` calls
+ * every filter with zero arguments and reads the engine's own required count out
+ * of its refusal. Ten filters disagreed with the catalog.
+ */
+describe("all-optional arguments the engine requires (#246)", () => {
+  /** Engine-required counts, probed. See `vendor/filters-leading-required.json`. */
+  const PROBED: Record<string, number> = {
+    csv_encode: 3,
+    csv_decode: 3,
+    csv_parse: 3,
+    csv_create: 4,
+    number_format: 3,
+    array_slice: 1,
+    array_fill_keys: 1,
+    create_object: 1,
+    jwe_encode: 1,
+    jwe_decode: 1,
+  };
+
+  it("requires every argument the engine requires", () => {
+    for (const [name, count] of Object.entries(PROBED)) {
+      expect(FILTER_REQUIRED_ARGS[name], name).toBe(count);
+    }
+  });
+
+  it("Covers #246: fl.csv_encode() cannot be called with no arguments", () => {
+    // The reported call. The type refuses it, and so does the factory — a JS
+    // caller would otherwise only find out on a deployed endpoint.
+    const untyped = fl as unknown as Record<string, (...a: unknown[]) => unknown>;
+    expect(() => untyped.csv_encode!()).toThrow(/needs 3 argument/);
+    // The well-formed call keeps every slot.
+    expect(fl.csv_encode(",", '"', "\\").arg).toEqual([c.text(","), c.text('"'), c.text("\\")]);
+  });
+
+  it("refuses the short call for every filter in the class", () => {
+    const untyped = fl as unknown as Record<string, (...a: unknown[]) => unknown>;
+    for (const [name, count] of Object.entries(PROBED)) {
+      expect(() => untyped[name]!(), name).toThrow(new RegExp(`needs ${count} argument`));
+    }
+  });
+
+  it("gives the csv family a named form that slots correctly", () => {
+    expect(fl.csv_encode({ separator: ",", enclosure: '"', escape: "\\" }).arg).toEqual([
+      c.text(","),
+      c.text('"'),
+      c.text("\\"),
+    ]);
+    // `csv_create` carries the header row as its own leading argument — that is
+    // the difference between it and `csv_encode`, which emits no header at all.
+    expect(fl.csv_create({ rows: c.array([[1]]), separator: ",", enclosure: '"', escape: "\\" }).arg).toEqual([
+      c.array([[1]]),
+      c.text(","),
+      c.text('"'),
+      c.text("\\"),
+    ]);
+  });
+
+  /**
+   * The drift guard for THIS class. #221's guard only fires when an optional
+   * sits in front of a required one, so a filter whose arguments are all
+   * optional slipped straight through it — which is how these ten shipped.
+   */
+  it("classifies every all-optional filter in the catalog", () => {
+    const unclassified: string[] = [];
+    for (const [name, spec] of Object.entries(FILTER_SPECS)) {
+      const args = spec.args ?? [];
+      if (args.length === 0 || args.some((a) => !a.optional)) continue;
+      // Every argument is optional. Either the probe confirmed the engine agrees
+      // (no entry needed), or it recorded a count — an unprobed filter fails here
+      // until someone runs `scripts/probe-filter-arity.ts`.
+      if (name in PROBED && (FILTER_REQUIRED_ARGS[name] ?? 0) === 0) unclassified.push(name);
+    }
+    expect(unclassified).toEqual([]);
   });
 });
