@@ -715,8 +715,9 @@ export function assertLambdaBody(body: string, surface: LambdaSurface, source = 
     const hint = suggestion(token, surface);
     throw new Error(
       `${source}: \`${token}\` is not a binding in a \`${surface}\` lambda body${hint ? ` — ${hint}` : ""}. ` +
-        `It is undefined at runtime, and a lambda that throws comes back as its own diagnostic TEXT in the value ` +
-        `slot with HTTP 200, so the failure reads as bad data rather than an error. ` +
+        `It reads as undefined at runtime and raises NOTHING: the body runs, \`typeof\` reports "undefined", the ` +
+        `value comes back null with HTTP 200, and a defensive \`typeof x !== "undefined"\` guard takes the wrong ` +
+        `branch. Author time is the only place this is catchable. ` +
         `Bound here: ${legal.join(", ")} (plus the ${LAMBDA_GLOBALS.join(" / ")} globals). ` +
         `A stack variable is reached as \`$var.name\`, never as \`$name\`. (issue #221)`,
     );
