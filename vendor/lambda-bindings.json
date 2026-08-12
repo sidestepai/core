@@ -1267,74 +1267,36 @@
       "value": "Deno,queueMicrotask,atob,btoa,createImageBitmap,caches,crypto,fetch,EventSource,reportError,structuredClone,onunhandledrejection,navigator,alert,confirm,prompt,localStorage,sessionStorage,name,close,closed,onerror,onload,onbeforeunload,onunload,__SENTRY__,aws4,axios,cryptojs,ethers,fastXmlParser,jose,require,_,rjsf,DateTime,luxon,mailparser,math,moment"
     },
     {
-      "id": "s.lambda.quirk.inline_typeof",
+      "id": "s.lambda.shared_text.typeof",
       "surface": "s.lambda",
-      "asks": "QUIRK: `typeof $this !== \"undefined\"` inline — wrong in a filter body.",
+      "asks": "One body text at both surfaces: what does `typeof $this` report?",
       "verdict": "ok",
-      "value": "false"
+      "value": "undefined",
+      "expected": "undefined"
     },
     {
-      "id": "fl.lambda.quirk.inline_typeof",
+      "id": "fl.lambda.shared_text.typeof",
       "surface": "fl.lambda",
-      "asks": "QUIRK: `typeof $this !== \"undefined\"` inline — wrong in a filter body.",
+      "asks": "One body text at both surfaces: what does `typeof $this` report?",
       "verdict": "ok",
-      "value": "false"
+      "value": "number",
+      "expected": "number"
     },
     {
-      "id": "s.lambda.quirk.parenthesized",
+      "id": "s.lambda.shared_text.guard",
       "surface": "s.lambda",
-      "asks": "The same check parenthesized.",
+      "asks": "One body text at both surfaces: does the ordinary defensive guard answer for ITS OWN surface?",
       "verdict": "ok",
-      "value": "false"
+      "value": "false",
+      "expected": "false"
     },
     {
-      "id": "fl.lambda.quirk.parenthesized",
+      "id": "fl.lambda.shared_text.guard",
       "surface": "fl.lambda",
-      "asks": "The same check parenthesized.",
+      "asks": "One body text at both surfaces: does the ordinary defensive guard answer for ITS OWN surface?",
       "verdict": "ok",
-      "value": "true"
-    },
-    {
-      "id": "s.lambda.quirk.single_quoted",
-      "surface": "s.lambda",
-      "asks": "The same check with a single-quoted literal.",
-      "verdict": "ok",
-      "value": "false"
-    },
-    {
-      "id": "fl.lambda.quirk.single_quoted",
-      "surface": "fl.lambda",
-      "asks": "The same check with a single-quoted literal.",
-      "verdict": "ok",
-      "value": "true"
-    },
-    {
-      "id": "s.lambda.quirk.via_local",
-      "surface": "s.lambda",
-      "asks": "The same check through a local — the spelling this probe uses.",
-      "verdict": "ok",
-      "value": "false"
-    },
-    {
-      "id": "fl.lambda.quirk.via_local",
-      "surface": "fl.lambda",
-      "asks": "The same check through a local — the spelling this probe uses.",
-      "verdict": "ok",
-      "value": "false"
-    },
-    {
-      "id": "s.lambda.quirk.direct_typeof",
-      "surface": "s.lambda",
-      "asks": "What `typeof $this` reports on its own.",
-      "verdict": "ok",
-      "value": "undefined"
-    },
-    {
-      "id": "fl.lambda.quirk.direct_typeof",
-      "surface": "fl.lambda",
-      "asks": "What `typeof $this` reports on its own.",
-      "verdict": "ok",
-      "value": "undefined"
+      "value": "true",
+      "expected": "true"
     },
     {
       "id": "fl.transform.$this",
@@ -1509,7 +1471,7 @@
       "surface": "arity",
       "asks": "crypto_jws_encode: is a 3-argument call accepted?",
       "verdict": "ok",
-      "value": "eyJhbGciOiJIUzI1NiJ9.eyJAeGFubyI6IntcInN1YlwiOlwidTFcIn0iLCJpYXQiOjE3ODY1MDQ2OTAsIm5iZiI6MTc4NjUwNDY5MH0.Ca4K1W5cDudrvNQb7SqTivjaCKmK4NKuFm7QWbb-0pc"
+      "value": "eyJhbGciOiJIUzI1NiJ9.eyJAeGFubyI6IntcInN1YlwiOlwidTFcIn0iLCJpYXQiOjE3ODY1NjgxMDUsIm5iZiI6MTc4NjU2ODEwNX0.2T4c6AHnj-ZB_OMYeShsVdirJLEwDC4iL1JdrzMJ_Qc"
     },
     {
       "id": "slotting.crypto_jws_decode.short",
@@ -1586,7 +1548,7 @@
       "surface": "arity",
       "asks": "crypto_jwe_encode: is a 4-argument call accepted?",
       "verdict": "ok",
-      "value": "eyJhbGciOiJBMTI4S1ciLCJlbmMiOiJBMTI4Q0JDLUhTMjU2IiwiemlwIjoiREVGIn0.FnF1TA2sOc4Zfbk0NeJ_o9Gh7Bfftz8-HUgVztsn5e6gK5I8_4TSFw.XG_nU8SIBFum9GLmAZUPAg.Prl_u3Lh5LGbXbNDF7Vx4OsiGV6gZomEPBvYSY8nSu7fnLVzQCPzM0PxPtPssUabvQ49hM12S8t3D4swhlbRxQ.L0tP9-CiAFBq9wYMq65p3w"
+      "value": "eyJhbGciOiJBMTI4S1ciLCJlbmMiOiJBMTI4Q0JDLUhTMjU2IiwiemlwIjoiREVGIn0.TSGm6GGkUPItc31X3IUkbwcX-4r6CbDPh72u3ddXC3jj63JAximvTg.aVMJlSuAjm6Jfuu1B_LIlQ.MZ42BkuPwqtSLcbVdAd8NBgkJJAuk1W4LBw7pLFvqfg5qjdDPCeK1Oi1FtyVSwV-rDorPhaujkZTTttFmuTKUA.TOauSYzHqgDSn3tYDT3fiQ"
     },
     {
       "id": "slotting.crypto_jwe_decode.short",

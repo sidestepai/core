@@ -21,7 +21,9 @@
  *     off the returned value, not the status code. Every binding case therefore
  *     runs the same `typeof X !== "undefined"` predicate, and each surface has its
  *     own reader for how that predicate comes back (a `filter` body returns
- *     survivors, `findIndex` an index, and so on).
+ *     survivors, `findIndex` an index, and so on). Reading an identifier the
+ *     surface does not bind is not a throw at all — it reads as unset — so the
+ *     predicate, not the error, is what settles a binding.
  *   - The load-bearing question is whether a stack variable is ALSO injected as a
  *     bare `$name` identifier. If it were, a whitelist guard (any `$identifier`
  *     outside the contract is an author error) would be unsound, so that is
@@ -35,12 +37,13 @@
  *   tsx scripts/probe-lambda-bindings.ts     # reads XANO_VALIDATE_* from .env
  * Writes `vendor/lambda-bindings.json` (the recorded contract + its evidence).
  */
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { workspace, defineFunction, s, c, ref, input, withFilters, filter, serializeBundle } from "../src/index.js";
 import type { Value } from "../src/index.js";
 import { resolveValidateConfig } from "../src/validate/config.js";
 import { MetaClient } from "../src/validate/meta-client.js";
+import { calcSignatureJson } from "../src/workspace/export.js";
 
 const ROOT = join(import.meta.dirname, "..");
 
@@ -81,6 +84,8 @@ interface Case {
   runInput?: Record<string, unknown>;
   /** For a binding case: the identifier under test, and whether it should be bound. */
   binding?: { name: string; expected: boolean; read: (value: unknown) => boolean | null };
+  /** The exact value the engine must return. A difference fails the run. */
+  expect?: unknown;
 }
 
 const cases: Case[] = [];
@@ -97,17 +102,7 @@ function add(case_: Omit<Case, "fn"> & { stack: Parameters<typeof defineFunction
 /** `[1,2,3,4]` — the array every iterating-filter case runs over. */
 const nums = () => c.array([1, 2, 3, 4]);
 
-/**
- * The one body every binding case runs: true exactly when the identifier is bound.
- *
- * The comparison is PARENTHESIZED, and that is not cosmetic. An unparenthesized
- * `... !== "undefined"` evaluates to `false` inside a filter body even where the
- * same body reports `typeof $this` as `"number"` and computes `$this * 2` as
- * `10`. Parenthesizing it, or single-quoting the literal, gives the answer the
- * three direct probes agree on. Whatever the engine is doing there, probing
- * through the bare spelling would have recorded a false "unbound", so the
- * spelling is pinned here and its variants are recorded as evidence below.
- */
+/** The one body every binding case runs: true exactly when the identifier is bound. */
 const isBound = (name: string) => c.text(`const t = typeof ${name};\nreturn (t !== "undefined");`);
 
 /**
@@ -133,16 +128,43 @@ const READERS: Record<string, (v: unknown) => boolean | null> = {
   reduce: (v) => (typeof v === "boolean" ? v : null),
 };
 
+/**
+ * The SDK refuses a lambda body that names a `$identifier` the surface does not
+ * bind, or that declares module syntax — the whole point of those guards, and
+ * the reason this probe cannot author its own bodies directly. It has to: half
+ * the binding matrix is "is `$index` bound HERE?", and `top_level_import` asks
+ * what the engine does with the syntax the SDK rejects. An answer only exists if
+ * the body reaches the engine.
+ *
+ * So a probed body is authored as a placeholder that every guard accepts, and
+ * the real text is put back in the exported bundle ({@link restoreBodies}). One
+ * escape rather than one per guard, and it stays correct as guards are added.
+ * Nothing else in the SDK is bypassed, and the guards themselves are covered by
+ * the unit tests.
+ */
+const parked = new Map<string, string>();
+
+/** A guard-clean stand-in for `code`, registered for restoration at export. */
+function park(code: Value): Value {
+  const real = String((code as { value: unknown }).value);
+  // A bare string literal: valid as a lambda body AND as an expression, so one
+  // placeholder clears every surface's guard.
+  const placeholder = `"ZZ_PARKED_${parked.size}_ZZ"`;
+  parked.set(placeholder, real);
+  return { ...code, value: placeholder } as Value;
+}
+
 /** The stack that runs `code` at `surface`, ending in `set_var("out", …)`. */
 function stackFor(surface: string, code: Value): Parameters<typeof defineFunction>[0]["stack"] {
-  if (surface === "s.lambda") return [s.set_var("subtotal", c.int(7)), s.lambda({ as: "out", code })];
+  const body = park(code);
+  if (surface === "s.lambda") return [s.set_var("subtotal", c.int(7)), s.lambda({ as: "out", code: body })];
   if (surface === "fl.lambda") {
-    return [s.set_var("subtotal", c.int(7)), s.set_var("out", withFilters(c.int(5), filter("lambda", code)))];
+    return [s.set_var("subtotal", c.int(7)), s.set_var("out", withFilters(c.int(5), filter("lambda", body)))];
   }
   if (surface === "reduce") {
-    return [s.set_var("subtotal", c.int(7)), s.set_var("out", withFilters(nums(), filter("reduce", c.int(0), code)))];
+    return [s.set_var("subtotal", c.int(7)), s.set_var("out", withFilters(nums(), filter("reduce", c.int(0), body)))];
   }
-  return [s.set_var("subtotal", c.int(7)), s.set_var("out", withFilters(nums(), filter(surface, code)))];
+  return [s.set_var("subtotal", c.int(7)), s.set_var("out", withFilters(nums(), filter(surface, body)))];
 }
 
 // --- binding matrix: every surface × every candidate ---------------------------------
@@ -249,16 +271,49 @@ const behaviors: Array<[string, string, string]> = [
   ["empty_body", "What does an empty body produce?", ""],
   ["console.captured", "Does console.log break the body?", "console.log('probe'); return 'after-log'"],
   ["globalThis", "Which globals are reachable?", "return Object.keys(globalThis).slice(0, 40).join(',')"],
-  // The quirk that shaped `isBound` above: the same body, four spellings.
-  ["quirk.inline_typeof", "QUIRK: `typeof $this !== \"undefined\"` inline — wrong in a filter body.", 'return typeof $this !== "undefined"'],
-  ["quirk.parenthesized", "The same check parenthesized.", 'return (typeof $this) !== "undefined"'],
-  ["quirk.single_quoted", "The same check with a single-quoted literal.", "return typeof $this !== 'undefined'"],
-  ["quirk.via_local", "The same check through a local — the spelling this probe uses.", 'const t = typeof $this;\nreturn t !== "undefined";'],
-  ["quirk.direct_typeof", "What `typeof $this` reports on its own.", "return typeof $this"],
 ];
 for (const [id, asks, code] of behaviors) {
   add({ id: `s.lambda.${id}`, surface: "s.lambda", asks, stack: stackFor("s.lambda", c.text(code)) });
   add({ id: `fl.lambda.${id}`, surface: "fl.lambda", asks, stack: stackFor("fl.lambda", c.text(code)) });
+}
+
+// --- one body text, two surfaces (#247) -------------------------------------------------
+
+/**
+ * Every case above already runs its body at `s.lambda` and then at `fl.lambda`
+ * with BYTE-IDENTICAL text, and that is deliberate.
+ *
+ * The engine compiles a body once and caches the compiled form keyed on its
+ * text. It used to capture the calling surface's bindings into that compiled
+ * form, so the surface that ran a given text FIRST decided which identifiers
+ * existed for the other: a filter body first compiled for a statement call had
+ * no `$this` at all, reported `typeof $this` as `"undefined"` with the value
+ * sitting in the payload, and took the wrong branch of the ordinary
+ * `typeof x !== "undefined"` guard — with no error, so it read as bad data.
+ * That was #247, misfiled at the time as a quoting quirk because the probe
+ * order made it look quote-sensitive; the real discriminator was which surface
+ * compiled first, and with more than one engine replica it only landed when
+ * both calls hit the same one.
+ *
+ * Fixed engine-side. These two cases are the regression check: they are CHECKED
+ * rather than merely recorded, so the run fails if a compiled body ever again
+ * answers for the wrong surface. Do not "fix" them by making the two surfaces
+ * use different text — identical text is the whole point.
+ */
+const SHARED_TEXT: Array<[string, string, string, unknown, unknown]> = [
+  // id, code, asks, expected at s.lambda, expected at fl.lambda
+  ["shared_text.typeof", "return typeof $this", "One body text at both surfaces: what does `typeof $this` report?", "undefined", "number"],
+  [
+    "shared_text.guard",
+    'return typeof $this !== "undefined"',
+    "One body text at both surfaces: does the ordinary defensive guard answer for ITS OWN surface?",
+    false,
+    true,
+  ],
+];
+for (const [id, code, asks, atStatement, atFilter] of SHARED_TEXT) {
+  add({ id: `s.lambda.${id}`, surface: "s.lambda", asks, stack: stackFor("s.lambda", c.text(code)), expect: atStatement });
+  add({ id: `fl.lambda.${id}`, surface: "fl.lambda", asks, stack: stackFor("fl.lambda", c.text(code)), expect: atFilter });
 }
 
 // --- fl.transform: same contract at all? (#221 "Related", deferred by the plan) ----------
@@ -267,13 +322,13 @@ add({
   id: "fl.transform.$this",
   surface: "fl.transform",
   asks: "Does fl.transform take an XanoScript expression over $this rather than a JS body?",
-  stack: [s.set_var("out", withFilters(c.int(5), filter("transform", c.text("$this"))))],
+  stack: [s.set_var("out", withFilters(c.int(5), filter("transform", park(c.text("$this")))))],
 });
 add({
   id: "fl.transform.js_body",
   surface: "fl.transform",
   asks: "Does fl.transform accept a JS lambda body at all?",
-  stack: [s.set_var("out", withFilters(c.int(5), filter("transform", c.text("return $this * 2"))))],
+  stack: [s.set_var("out", withFilters(c.int(5), filter("transform", park(c.text("return $this * 2")))))],
 });
 
 // --- leading-optional argument slotting (#221 "Related") ----------------------------------
@@ -419,9 +474,30 @@ function render(v: unknown): string {
   return typeof v === "string" ? v : JSON.stringify(v) ?? String(v);
 }
 
+/**
+ * Puts back every body {@link park} parked, and re-signs — the bundle carries a
+ * signature over its payload, so the swap has to happen on the tree before it is
+ * serialized rather than on the JSON text.
+ */
+function restoreBodies(exported: unknown): string {
+  const walk = (node: unknown): unknown => {
+    if (typeof node === "string") return parked.get(node) ?? node;
+    if (Array.isArray(node)) return node.map(walk);
+    if (node !== null && typeof node === "object") {
+      return Object.fromEntries(Object.entries(node).map(([k, v]) => [k, walk(v)]));
+    }
+    return node;
+  };
+  const restored = walk(exported) as Record<string, unknown>;
+  // The signature covers the payload the swap just rewrote, so drop the stale
+  // one and re-sign rather than shipping a signature over the placeholders.
+  delete restored.sig;
+  return serializeBundle({ ...restored, sig: calcSignatureJson(restored) } as never);
+}
+
 async function main(): Promise<void> {
   const ws = workspace("lambda_binding_probe").registerFunctions(cases.map((c_) => c_.fn));
-  const bundle = serializeBundle((ws as unknown as { export(): unknown }).export());
+  const bundle = restoreBodies((ws as unknown as { export(): unknown }).export());
 
   const client = new MetaClient(resolveValidateConfig());
   console.error(`Importing ${cases.length} probe functions → sandbox…`);
@@ -457,6 +533,14 @@ async function main(): Promise<void> {
         );
       }
     }
+    if (case_.expect !== undefined) {
+      row.expected = render(case_.expect);
+      if (verdict !== "ok" || value !== case_.expect) {
+        mismatches.push(
+          `${case_.id}: expected ${render(case_.expect)}, engine says ${render(exception ?? value).slice(0, 120)}`,
+        );
+      }
+    }
     evidence.push(row);
     if (!case_.binding) console.error(`${case_.id.padEnd(34)} ${verdict.padEnd(10)} ${render(exception ?? value).slice(0, 120)}`);
   }
@@ -468,6 +552,12 @@ async function main(): Promise<void> {
   // Read the arity ladder: the smallest argument count the engine did not refuse
   // as "too few". That count is how many arguments the generated signature has to
   // require, regardless of which of them the upstream spec flags optional.
+  //
+  // REPORTED, NOT WRITTEN. `vendor/filters-leading-required.json` is owned by
+  // `probe-filter-arity.ts`, which asks the same question of EVERY filter (#246);
+  // this probe only ladders the handful in {@link SLOTTING}, so writing the file
+  // from here would silently drop the rest and under-require them in codegen.
+  // A disagreement below means one of the two probes needs re-running.
   const minArgs: Record<string, number> = {};
   for (const spec of SLOTTING) {
     const rungs = evidence.filter((r) => String(r.id).startsWith(`arity.${spec.name}.`));
@@ -476,22 +566,15 @@ async function main(): Promise<void> {
       .map((r) => Number(String(r.id).split(".").pop()));
     minArgs[spec.name] = accepted.length ? Math.min(...accepted) : spec.full.length;
   }
-  console.error(`\nengine-required argument counts:`);
-  for (const [name, k] of Object.entries(minArgs)) console.error(`  ${name.padEnd(20)} ${k}`);
-
-  writeFileSync(
-    join(ROOT, "vendor/filters-leading-required.json"),
-    JSON.stringify(
-      {
-        note:
-          "How many arguments the ENGINE requires for filters whose upstream spec marks a LEADING argument optional. A leading optional cannot be omitted positionally — the next argument slides into its slot and the engine refuses the call — so `codegen:filters` requires the first `minArgs` arguments of each filter listed here. Regenerate with `tsx scripts/probe-lambda-bindings.ts` against a sandbox.",
-        probedAt: new Date().toISOString().slice(0, 10),
-        minArgs,
-      },
-      null,
-      2,
-    ) + "\n",
-  );
+  const recorded = JSON.parse(readFileSync(join(ROOT, "vendor/filters-leading-required.json"), "utf8")) as {
+    minArgs: Record<string, number>;
+  };
+  console.error(`\nengine-required argument counts (vs vendor/filters-leading-required.json):`);
+  for (const [name, k] of Object.entries(minArgs)) {
+    const was = recorded.minArgs[name];
+    console.error(`  ${name.padEnd(20)} ${k}${was === k ? "" : `   DIFFERS from recorded ${was ?? "(absent)"}`}`);
+    if (was !== k) mismatches.push(`arity ${name}: engine requires ${k}, vendor/filters-leading-required.json records ${was ?? "nothing"}`);
+  }
 
   writeFileSync(
     join(ROOT, "vendor/lambda-bindings.json"),
