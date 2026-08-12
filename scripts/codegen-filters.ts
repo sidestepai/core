@@ -261,17 +261,26 @@ function paramName(raw: string, used: Set<string>): string {
 }
 
 /**
- * Curated pipe-direction notes (issue #22). Several text filters disagree on
- * what the PIPED value means vs the named argument, and getting it backwards
- * silently inverts the check with no type or runtime error — a real
- * correctness/security hazard for a guard. The arg names already encode it
- * (`search` = needle to look for, `subject` = text operated on), but only if you
- * know the convention, so spell it out at the call site. Lives here (not in the
- * vendor JSON) so `--refresh` can't clobber it. See {@link jsdoc}.
+ * Curated notes that APPEND to the upstream description, for filters whose
+ * upstream text is INCOMPLETE — true as far as it goes, silent about the part
+ * that bites. Contrast {@link DESCRIPTION_OVERRIDES}, which replaces text that
+ * is outright false; appending to a false sentence would leave the false
+ * sentence in front of its own correction.
+ *
+ * Lives here (not in the vendor JSON) so `--refresh` can't clobber it. Carries
+ * no issue numbers or file paths: these strings reach `manifest.json` and
+ * `llms.txt`, which `test/manifest/llms-no-opinion.test.ts` keeps free of
+ * dev-process references. See {@link jsdoc}.
  */
-const PIPE_DIRECTION_NOTES: Record<string, string> = {};
+const DESCRIPTION_NOTES: Record<string, string> = {};
+
+// Pipe direction (issue #22). Several text filters disagree on what the PIPED
+// value means vs the named argument, and getting it backwards silently inverts
+// the check with no type or runtime error — a real correctness/security hazard
+// for a guard. The arg names already encode it (`search` = needle to look for,
+// `subject` = text operated on), but only if you know the convention.
 for (const n of ["contains", "icontains", "starts_with", "istarts_with", "ends_with", "iends_with"]) {
-  PIPE_DIRECTION_NOTES[n] = "Direction: the piped value is the subject text; the argument is the substring searched for.";
+  DESCRIPTION_NOTES[n] = "Direction: the piped value is the subject text; the argument is the substring searched for.";
 }
 for (const n of [
   "regex_test",
@@ -282,9 +291,57 @@ for (const n of [
   "regex_get_all_matches",
   "regex_get_first_match",
 ]) {
-  PIPE_DIRECTION_NOTES[n] =
+  DESCRIPTION_NOTES[n] =
     "Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains. Build the pattern with c.regex(...) (delimiter-wrapped); a bare c.text(...) is rejected.";
 }
+
+// The comparator mode is the whole behavior of `fsort`, and the upstream
+// sentence does not mention the `type` argument at all (issue #198). Picking it
+// wrong is SILENT: every unrecognized spelling falls through to `itext`, so the
+// array comes back sorted as case-insensitive text with no error anywhere —
+// which is how "top N by score/distance/recency" returns the right rows in the
+// wrong order. `FILTER_NOTES` already carries this into the lean `llms.txt`
+// catalog; without this note the JSDoc an IDE shows, and `manifest.json`, still
+// say nothing about it.
+DESCRIPTION_NOTES.fsort =
+  'Only `type: "number"` compares NUMERICALLY. "text"/"itext" are case-sensitive/insensitive string ' +
+  'compares, "natural"/"inatural" are the human-readable "a2 < a10" orderings, and the default is ' +
+  '"itext". An unrecognized spelling silently falls through to "itext" rather than erroring, so a ' +
+  'numeric sort MUST spell "number" — anything else returns the right elements in the wrong order. ' +
+  "`path` drills into each element.";
+
+/**
+ * Descriptions that REPLACE the upstream one rather than adding to it (issue
+ * #245).
+ *
+ * The pipe-direction notes above append, because upstream's sentence is merely
+ * incomplete. These filters' upstream descriptions are *false*, and appending a
+ * correction to a false sentence leaves the false sentence in `manifest.json`
+ * and `llms.txt` for an agent to read first. `transform`'s upstream text —
+ * "Processes an expression with local data bound to the $this variable" — names
+ * a binding that does not exist on that path: a live probe
+ * (`vendor/transform-expression.json`) has `$this` resolving to null, while the
+ * operand arrives as `$0`. That one word is what issue #245 was reported from.
+ *
+ * Lives here (not in the vendor JSON) so `--refresh` cannot clobber it. Carries
+ * no issue number or file path: these strings ship into `manifest.json` and
+ * `llms.txt`, which `test/manifest/llms-no-opinion.test.ts` keeps free of
+ * dev-process references. The provenance lives in `src/values/expression-arg.ts`.
+ */
+const DESCRIPTION_OVERRIDES: Record<string, string> = {
+  transform:
+    "Evaluates a Xano Expression Engine expression over the piped value. NOT a JavaScript body — there is no `return`, " +
+    "and the piped value binds POSITIONALLY as `$0` (or `$$`), NOT as `$this` (which resolves to null here, yielding a " +
+    "wrong answer with no error). `$var`, `$input`, `$env` and `$auth` also resolve, and filters may be piped inside " +
+    "the expression: `$0 * 2`, `$0|sort|join:\",\"`, `{ id: $0.id, total: $0.qty * $0.price }`. PARENTHESIZE a pipe " +
+    "used inside an object/array literal — `{ s: ($0|sort|join:\",\") }` — or the filter argument's comma is read as " +
+    "the key separator, returning null and silently dropping every later key. For JavaScript use fl.lambda, whose " +
+    "body does bind `$this`.",
+  to_expr:
+    "Treats the PIPED TEXT as Xano Expression Engine source, evaluates it, and returns the result. Takes no argument. " +
+    "`$var`, `$input`, `$env` and `$auth` resolve inside it; there is no operand binding (`$0` is null) because the " +
+    "operand IS the source. For an expression OVER a value, use fl.transform.",
+};
 
 /**
  * Bare scalars are accepted for EVERY filter argument (#229, superseding the
@@ -326,10 +383,16 @@ for (const n of [
  * Typing the argument as the literal union refuses the lying spellings where an
  * author writes them, at compile time, rather than asserting anything about
  * what the engine accepts — it accepts all of them, which is the whole problem.
- * `c.text("decimal")` still compiles, because it is still a `Value`; that is the
- * same deliberate escape hatch `raw()` is, and it is also what lets a pulled
- * workspace holding one round-trip instead of becoming un-exportable (the
- * lesson from the middleware `input` flip).
+ *
+ * The union alone does not reach `c.text("decimal")`, which is still a `Value`
+ * and was for a while left compiling on the reasoning that refusing it would
+ * make a pulled workspace holding one un-exportable. That reasoning turned out
+ * to be wrong: when a guard refuses a filter, codegen falls back to the degraded
+ * `{name, disabled, arg}` literal, which re-encodes byte-identically and never
+ * reaches the guard at all. So `ENUM_ARG_FILTERS` in `src/values/enum-arg.ts`
+ * now refuses it at the `filter()` choke point, and the round trip is unharmed.
+ * A test asserts that table and this one agree, so an enum added here cannot
+ * ship without a runtime guard behind it.
  *
  * The set is read off the engine's filter implementation, not probed: a probe
  * can only show which spellings behave differently, and four of these five are
@@ -359,16 +422,25 @@ const LAMBDA_SURFACES: Readonly<Record<string, string>> = {
 };
 
 /**
- * Fold the curated pipe-direction notes into each affected filter's
- * `description`. Done here (rather than only in the emitted JSDoc) so the note
- * rides `FILTER_SPECS` into the manifest and `llms.txt` too — the agent that hit
- * this had to open `manifest.json` to disambiguate, so that surface is exactly
- * where the hint belongs. Returns a new specs map; the input is left untouched.
+ * Fold the curated descriptions into each affected filter's `description` — an
+ * {@link DESCRIPTION_OVERRIDES} entry replaces it, a {@link DESCRIPTION_NOTES}
+ * entry appends to it.
+ *
+ * Done here (rather than only in the emitted JSDoc) so the corrected text rides
+ * `FILTER_SPECS` into the manifest and `llms.txt` too — the agent that hit this
+ * had to open `manifest.json` to disambiguate, so that surface is exactly where
+ * the hint belongs. Returns a new specs map; the input is left untouched.
  */
-function withDirectionNotes(specs: Record<string, FilterSpec>): Record<string, FilterSpec> {
+function withCuratedDescriptions(specs: Record<string, FilterSpec>): Record<string, FilterSpec> {
   const out: Record<string, FilterSpec> = {};
   for (const [name, spec] of Object.entries(specs)) {
-    const note = PIPE_DIRECTION_NOTES[name];
+    // An override REPLACES; a note APPENDS. See {@link DESCRIPTION_OVERRIDES}.
+    const override = DESCRIPTION_OVERRIDES[name];
+    if (override !== undefined) {
+      out[name] = { ...spec, description: override };
+      continue;
+    }
+    const note = DESCRIPTION_NOTES[name];
     out[name] = note
       ? { ...spec, description: spec.description ? `${spec.description} ${note}` : note }
       : spec;
@@ -503,7 +575,7 @@ function withArgEnums(specs: Record<string, FilterSpec>): Record<string, FilterS
 }
 
 function emit(cat: FilterCatalog): string {
-  const specs = withEngineRequired(withArgEnums(withDirectionNotes(cat.specs)));
+  const specs = withEngineRequired(withArgEnums(withCuratedDescriptions(cat.specs)));
   const requiredCounts: Record<string, number> = {};
   for (const name of cat.names) {
     const args = specs[name]?.args;

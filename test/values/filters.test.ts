@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { fl, FILTER_NAMES, FILTER_SPECS, FILTER_REQUIRED_ARGS } from "../../src/values/generated/filters.generated.js";
 import { c, ref, filter } from "../../src/values/value.js";
+import { ENUM_ARG_FILTERS } from "../../src/values/enum-arg.js";
 
 const ROOT = join(import.meta.dirname, "../..");
 
@@ -228,21 +229,28 @@ describe("fl.fsort comparator modes (#198)", () => {
     }
   });
 
-  it("refuses the spellings that lie, at compile time", () => {
+  it("refuses the spellings that lie, at compile time AND at runtime", () => {
     // Neither is in the engine's switch — both fall through to `itext` and sort
-    // as text. The failure is silent, so the type is the only place it can be
-    // caught.
-    // @ts-expect-error — "decimal" is not a comparator mode; a numeric sort is "number".
-    fl.fsort("score", "decimal");
-    // @ts-expect-error — "int" is not a comparator mode; a numeric sort is "number".
-    fl.fsort("score", "int");
+    // as text, silently. The literal union catches the bare spelling; the
+    // runtime guard (#198, see the `fl.fsort enumerated argument` block below)
+    // catches it again for a JS caller or an `any` that erased the type.
+    expect(() => {
+      // @ts-expect-error — "decimal" is not a comparator mode; a numeric sort is "number".
+      fl.fsort("score", "decimal");
+    }).toThrow(/not one of/);
+    expect(() => {
+      // @ts-expect-error — "int" is not a comparator mode; a numeric sort is "number".
+      fl.fsort("score", "int");
+    }).toThrow(/not one of/);
   });
 
-  it("still lets a Value through, so a pulled workspace round-trips", () => {
-    // The deliberate escape hatch, and the reason this is a typing change rather
-    // than a throw: codegen emits a stored `"decimal"` as `c.text("decimal")`,
-    // and a workspace holding one has to stay exportable.
-    expect(fl.fsort("score", c.text("decimal")).arg[1]).toEqual(c.text("decimal"));
+  it("refuses a wrong comparator wrapped in c.text, which the union cannot see", () => {
+    // This spelling was left compiling for a while on the reasoning that a
+    // pulled workspace holding `"decimal"` had to stay exportable. It does — but
+    // that is codegen's degraded `{name, arg}` filter form doing the work (see
+    // test/codegen/value.test.ts), NOT the authoring surface accepting a value
+    // the engine silently mis-sorts. The two are independent, so refuse here.
+    expect(() => fl.fsort("score", c.text("decimal"))).toThrow(/not one of/);
   });
 
   it("names the accepted set in llms.txt rather than the word `enum`", () => {
@@ -412,5 +420,176 @@ describe("named-form and arity refusals (#221)", () => {
     const untyped = fl as unknown as Record<string, (...a: unknown[]) => unknown>;
     expect(() => untyped.reduce!(c.text("return $result"))).toThrow(/needs 2 argument/);
     expect(() => untyped.crypto_jws_encode!(c.obj({}))).toThrow(/needs 3 argument/);
+  });
+});
+
+/**
+ * `fl.transform` takes Xano Expression Engine source, not a JavaScript body
+ * (issue #245). The two spellings refused here are the ones a live probe showed
+ * returning a WRONG value with HTTP 200 rather than throwing — see
+ * `vendor/transform-expression.json`.
+ */
+describe("fl.transform expression argument (#245)", () => {
+  it("refuses a binding that resolves to null on this path, and names $0", () => {
+    let message = "";
+    try {
+      fl.transform(c.text("$this * 2"));
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message).toContain("$this");
+    expect(message).toContain("$0");
+    expect(message).toContain("issue #245");
+  });
+
+  it("refuses each of the other surfaces' bindings too", () => {
+    for (const unbound of ["$parent", "$index", "$result"]) {
+      expect(() => fl.transform(c.text(`${unbound}.a`))).toThrow(/not bound in an expression/);
+    }
+  });
+
+  it("refuses a JavaScript body, and points at fl.lambda", () => {
+    // The reported failure: fatal at runtime with "Not numeric."
+    expect(() => fl.transform(c.text("return $0 * 2"))).toThrow(/fl\.lambda/);
+    // The two that do NOT throw at runtime — they return "const x" and false.
+    expect(() => fl.transform(c.text("const x = $0; return x"))).toThrow(/JavaScript body/);
+    expect(() => fl.transform(c.text("$0 => $0 * 2"))).toThrow(/arrow function/);
+  });
+
+  it("accepts the forms the engine actually evaluates", () => {
+    // Probed live: 5 → 10, 5 → 10, [3,1,2] → "1,2,3", 5 → {"raw":5,…}.
+    expect(fl.transform(c.text("$0 * 2")).arg).toEqual([c.text("$0 * 2")]);
+    expect(fl.transform("$$ * 2").arg).toEqual([c.text("$$ * 2")]);
+    expect(() => fl.transform('$0|sort|join:","')).not.toThrow();
+    expect(() => fl.transform("{ raw: $0, doubled: $0 * 2 }")).not.toThrow();
+    expect(() => fl.transform("$var.subtotal + $input.qty")).not.toThrow();
+  });
+
+  it("does not mistake a string literal's contents for JavaScript", () => {
+    // `;` and `=>` inside a quoted literal are payload, not syntax.
+    expect(() => fl.transform(c.text('$0|split:";"'))).not.toThrow();
+    expect(() => fl.transform(c.text('$0 ~ " => "'))).not.toThrow();
+  });
+
+  it("reads `return` as a keyword, not as part of a name", () => {
+    // `$` and `.` are word boundaries, so a naive \breturn\b matches both of
+    // these — and a workspace may legitimately hold a var or key named `return`.
+    expect(() => fl.transform(c.text("$return * 2"))).not.toThrow();
+    expect(() => fl.transform(c.text("$0.return"))).not.toThrow();
+    expect(() => fl.transform(c.text("return $0"))).toThrow(/JavaScript body/);
+  });
+
+  it("blanks an unterminated literal rather than letting its tail reach the scan", () => {
+    // No closing quote, so everything after it is payload with nowhere to end.
+    expect(() => fl.transform(c.text('$0 ~ "oops; return'))).not.toThrow();
+  });
+
+  it("leaves alone what it cannot read: a ref, and the editor's empty default", () => {
+    expect(() => fl.transform(ref("expr_from_db"))).not.toThrow();
+    expect(() => filter("transform", c.text(""))).not.toThrow();
+  });
+
+  it("fires at the low-level choke point too, not only through fl.*", () => {
+    expect(() => filter("transform", c.text("$this"))).toThrow(/issue #245/);
+  });
+});
+
+/**
+ * Curated descriptions — the two mechanisms in `scripts/codegen-filters.ts` and
+ * the facts they carry.
+ *
+ * The freshness test above proves the generated file matches a rebuild from the
+ * committed vendor snapshot, which is NOT the same guarantee: deleting a
+ * curated entry changes both sides equally and stays green. These assertions
+ * pin the corrections themselves, so an upstream `--refresh` cannot quietly
+ * restore a description the SDK has established is wrong or incomplete.
+ */
+describe("curated filter descriptions", () => {
+  it("REPLACES a false description rather than appending to it (#245)", () => {
+    const d = FILTER_SPECS.transform?.description ?? "";
+    // The upstream sentence names a binding that does not exist on this path.
+    // Appending a correction after it would leave this text for an agent to
+    // read first, so it must be gone entirely — not merely followed by a fix.
+    expect(d).not.toContain("bound to the $this variable");
+    expect(d).toContain("$0");
+    expect(d).toContain("NOT a JavaScript body");
+  });
+
+  it("APPENDS to a description that is incomplete rather than wrong (#198)", () => {
+    const d = FILTER_SPECS.fsort?.description ?? "";
+    // Upstream's sentence is true, just silent about the argument that matters —
+    // so it is kept, and the comparator trap is added after it.
+    expect(d).toContain("Sort an array of elements");
+    expect(d).toContain('Only `type: "number"` compares NUMERICALLY');
+    expect(d).toContain("silently falls through");
+  });
+
+  it("keeps `to_expr` distinct from `transform` — source vs operand (#245)", () => {
+    const d = FILTER_SPECS.to_expr?.description ?? "";
+    expect(d).toContain("PIPED TEXT");
+    expect(d).toContain("no operand binding");
+  });
+
+  it("carries no dev-process references into the specs the artifacts are built from", () => {
+    // `manifest.json`/`llms.txt` are checked by llms-no-opinion.test.ts; catching
+    // it here names the filter, which that test cannot.
+    for (const [name, spec] of Object.entries(FILTER_SPECS)) {
+      expect(spec.description ?? "", `fl.${name} description`).not.toMatch(/#\d+/);
+    }
+  });
+});
+
+/**
+ * `fl.fsort`'s comparator is an enumerated argument the engine does not validate
+ * (issue #198). The generated signature narrows it to a literal union; this is
+ * the other half — the `c.text(...)` spelling the union cannot see.
+ */
+describe("fl.fsort enumerated argument (#198)", () => {
+  it("refuses a comparator the engine would silently downgrade to text", () => {
+    let message = "";
+    try {
+      fl.fsort(c.text("score"), c.text("decimal"));
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message).toContain('"decimal"');
+    expect(message).toContain('"number"');
+    expect(message).toContain("issue #198");
+  });
+
+  it("refuses the other plausible wrong spelling too", () => {
+    expect(() => fl.fsort(c.text("score"), c.text("int"))).toThrow(/not one of/);
+  });
+
+  it("accepts every member of the union, in both spellings", () => {
+    for (const m of ["text", "itext", "natural", "inatural", "number"]) {
+      expect(() => fl.fsort(c.text("score"), c.text(m))).not.toThrow();
+      expect(() => fl.fsort("score", m as "number")).not.toThrow();
+    }
+  });
+
+  it("leaves alone what it cannot read, and the editor's unset dropdown", () => {
+    expect(() => fl.fsort(c.text("score"), ref("mode"))).not.toThrow();
+    expect(() => filter("fsort", c.text("score"), c.text(""))).not.toThrow();
+    // No comparator at all is the documented default ("itext"), not an error.
+    expect(() => fl.fsort(c.text("score"))).not.toThrow();
+  });
+
+  it("keeps the runtime table and the codegen enum in agreement", () => {
+    // ARG_ENUMS drives the emitted literal union; ENUM_ARG_FILTERS drives the
+    // runtime guard. If they drift, an enum ships with a union but no guard —
+    // which is exactly the state #198 left behind.
+    for (const [name, spec] of Object.entries(ENUM_ARG_FILTERS)) {
+      const arg = FILTER_SPECS[name]?.args?.[spec.slot];
+      expect(arg?.name, `fl.${name} slot ${spec.slot}`).toBe(spec.arg);
+      expect(arg?.enum, `fl.${name}.${spec.arg} members`).toEqual([...spec.members]);
+    }
+    // …and the converse: every enumerated arg in the catalog has a guard.
+    for (const [name, spec] of Object.entries(FILTER_SPECS)) {
+      for (const a of spec.args ?? []) {
+        if (a.enum === undefined) continue;
+        expect(ENUM_ARG_FILTERS[name], `fl.${name}.${a.name} has an enum but no runtime guard`).toBeDefined();
+      }
+    }
   });
 });

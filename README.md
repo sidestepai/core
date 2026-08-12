@@ -1154,6 +1154,17 @@ sources.
 - **A bare scalar works in any `fl.*` argument.** `fl.get("a.b", 0)` encodes identically to
   `fl.get(c.text("a.b"), c.int(0))`; strings, numbers and booleans are all wrapped for you.
   Objects and arrays still need `c.obj`/`c.array`.
+- **Only `fl.fsort({ type: "number" })` sorts numerically.** Every other comparator —
+  including a spelling the engine does not recognize — sorts as case-insensitive text,
+  silently and with no error, so `[2, 10, 1]` comes back `[1, 10, 2]`. A lexicographic sort
+  agrees with a numeric one whenever the values share a digit count, so this looks correct
+  on small data and goes wrong on real data: a "top N by score/distance/recency" endpoint
+  returns the right rows in the wrong order. The union rejects the two plausible wrong
+  spellings (`"decimal"`, `"int"`) outright.
+
+  ```ts
+  withFilters(ref("rows"), fl.fsort({ path: "score", type: "number", asc: true })),
+  ```
 - **`col()` does not resolve to a stored value inside a `db.edit` `row`.** To
   read-modify-write a column — incrementing a counter — `db.get` the row first and pipe its
   bound value through a filter. `col()` evaluates to `null` there, so `fl.add(1)` computes
@@ -1192,6 +1203,20 @@ sources.
   The parameters are a fiction — only the **body** is sent, and the engine injects the
   bindings as free identifiers — so destructure them. `(b) => b.$this * 2` would emit
   `return b.$this * 2` with `b` undefined at runtime, and the SDK refuses it.
+
+  **`fl.transform` is not one of these.** It sits next to them and reads like one, but it
+  takes a Xano *expression* — no `return`, and the piped value binds as `$0` (or `$$`),
+  not `$this`. A `$this` there resolves to null and the call still returns HTTP 200, so
+  the SDK refuses both spellings at author time and points at `$0`.
+
+  ```ts
+  // An expression over the piped value — not a JS body.
+  withFilters(ref("prices"), fl.transform("$0 * 1.2")),
+
+  // Parenthesize a pipe inside an object literal, or the filter argument's comma is read
+  // as the key separator and every later key silently vanishes.
+  withFilters(ref("items"), fl.transform('{ names: ($0|sort|join:","), n: ($0|count) }')),
+  ```
 
   For a body built away from its call site, `lam.*` names the surface explicitly:
 
