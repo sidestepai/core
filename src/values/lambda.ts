@@ -508,9 +508,9 @@ export function maskNonCode(src: string): string {
   return out.join("");
 }
 
-/** Every distinct `$identifier` referenced as code in `body`, in source order. */
-function dollarTokens(body: string): string[] {
-  const mask = maskNonCode(body);
+/** Every distinct `$identifier` referenced as code, in source order. Takes the
+ * MASKED body, so one mask serves both checks in {@link assertLambdaBody}. */
+function dollarTokens(mask: string): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   // Not preceded by an identifier character, so `a.$x` (a property) and `x$y`
@@ -572,8 +572,9 @@ export function assertLambdaBody(body: string, surface: LambdaSurface, source = 
     );
   }
 
+  const mask = maskNonCode(body);
   const legal = LAMBDA_BINDINGS[surface];
-  for (const token of dollarTokens(body)) {
+  for (const token of dollarTokens(mask)) {
     if (legal.includes(token)) continue;
     const hint = suggestion(token, surface);
     throw new Error(
@@ -585,7 +586,6 @@ export function assertLambdaBody(body: string, surface: LambdaSurface, source = 
     );
   }
 
-  const mask = maskNonCode(body);
   // `import(` / `import.meta` are the dynamic forms and stay legal; a bare
   // `import`/`export` keyword in statement position is the module-only syntax the
   // engine rejects outright.
@@ -627,6 +627,23 @@ export function capturePrelude(capture: Record<string, unknown> | undefined, sou
 // --- the surface ------------------------------------------------------------------------
 
 /**
+ * The last step of every `lam.*` form: prepend the capture prelude, validate for
+ * the surface, and emit the `const:text` a hand-written `c.text(...)` produced.
+ *
+ * One function so the three authoring forms cannot drift apart — a body that
+ * `lam.fn` accepts is one `lam.raw` and `lam.file` accept, byte for byte.
+ */
+export function lambdaValue(
+  body: string,
+  opts: LambdaOptions<Record<string, CaptureValue>> | undefined,
+  source: string,
+): Value {
+  const code = capturePrelude(opts?.capture, source) + body;
+  assertLambdaBody(code, opts?.surface ?? "reduce", source);
+  return c.text(code);
+}
+
+/**
  * Author a lambda body as a typed TypeScript function.
  *
  * The first parameter destructures the bindings for the surface, so the editor
@@ -648,11 +665,7 @@ function fn<S extends LambdaSurface = "reduce", C extends Record<string, Capture
   body: (bindings: LambdaBindings<S>, captured: C) => unknown,
   opts?: LambdaOptions<C> & { surface?: S },
 ): Value {
-  const surface = (opts?.surface ?? "reduce") as LambdaSurface;
-  const extracted = extractFunctionBody(String(body), `${PREFIX}.fn`);
-  const code = capturePrelude(opts?.capture, `${PREFIX}.fn`) + extracted;
-  assertLambdaBody(code, surface, `${PREFIX}.fn`);
-  return c.text(code);
+  return lambdaValue(extractFunctionBody(String(body), `${PREFIX}.fn`), opts, `${PREFIX}.fn`);
 }
 
 /**
@@ -663,10 +676,7 @@ function fn<S extends LambdaSurface = "reduce", C extends Record<string, Capture
  * extracted, so the guard cannot be sidestepped by choosing this form.
  */
 function raw(code: string, opts?: LambdaOptions<Record<string, CaptureValue>>): Value {
-  const surface = opts?.surface ?? "reduce";
-  const full = capturePrelude(opts?.capture, `${PREFIX}.raw`) + code;
-  assertLambdaBody(full, surface, `${PREFIX}.raw`);
-  return c.text(full);
+  return lambdaValue(code, opts, `${PREFIX}.raw`);
 }
 
 /**

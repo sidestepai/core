@@ -33,15 +33,8 @@
 import { readFileSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { c } from "./value.js";
 import type { Value } from "./value.js";
-import {
-  assertLambdaBody,
-  capturePrelude,
-  extractFunctionBody,
-  lam as isomorphicLam,
-  maskNonCode,
-} from "./lambda.js";
+import { extractFunctionBody, lam as isomorphicLam, lambdaValue, maskNonCode } from "./lambda.js";
 import type { CaptureValue, LambdaOptions } from "./lambda.js";
 
 const PREFIX = "lam.file";
@@ -99,8 +92,7 @@ const ALLOWED_TOP_LEVEL = ["import", "export", "type", "interface", "declare"];
  * own body are not mistaken for top-level statements. This is the same tokenizer
  * the binding scan uses — no parser, and no dependency on one.
  */
-function assertOnlyDefaultExport(source: string, path: string): void {
-  const mask = maskNonCode(source);
+function assertOnlyDefaultExport(mask: string, path: string): void {
   let depth = 0;
   let atStatementStart = true;
   for (let i = 0; i < mask.length; i++) {
@@ -144,7 +136,6 @@ function assertOnlyDefaultExport(source: string, path: string): void {
  * function; its body is extracted and validated exactly as {@link lam.fn}'s is.
  */
 export function file(path: string, opts?: LambdaOptions<Record<string, CaptureValue>>): Value {
-  const surface = opts?.surface ?? "reduce";
   const resolved = isAbsolute(path) ? path : resolve(callerDir(), path);
 
   let source: string;
@@ -157,9 +148,9 @@ export function file(path: string, opts?: LambdaOptions<Record<string, CaptureVa
     );
   }
 
-  assertOnlyDefaultExport(source, resolved);
-
   const mask = maskNonCode(source);
+  assertOnlyDefaultExport(mask, resolved);
+
   const marker = /(^|[;}\n])\s*export\s+default\s+/.exec(mask);
   if (marker === null) {
     throw new Error(
@@ -181,9 +172,7 @@ export function file(path: string, opts?: LambdaOptions<Record<string, CaptureVa
     );
   }
 
-  const body = capturePrelude(opts?.capture, PREFIX) + extractFunctionBody(after, PREFIX);
-  assertLambdaBody(body, surface, `${PREFIX}(${path})`);
-  return c.text(body);
+  return lambdaValue(extractFunctionBody(after, PREFIX), opts, `${PREFIX}(${path})`);
 }
 
 /**
