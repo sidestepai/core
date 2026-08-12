@@ -26,7 +26,7 @@ import {
 import { isRegisteredStatement } from "../statements/statement.js";
 import { isRegisteredKind } from "../kinds/kind.js";
 import { TAGS } from "../types/xdo.js";
-import { LAMBDA_BINDINGS, LAMBDA_GLOBALS } from "../values/lambda.js";
+import { LAMBDA_BINDINGS, LAMBDA_GLOBALS, LAMBDA_MODULE_GLOBALS } from "../values/lambda.js";
 import type { LambdaSurface } from "../values/lambda.js";
 import { FILTER_NAMES, FILTER_SPECS } from "../values/generated/filters.generated.js";
 import { FIELD_METHODS } from "../fields/generated/field-methods.generated.js";
@@ -886,6 +886,23 @@ export const SELF_EVIDENT_FILTERS: ReadonlySet<string> = new Set([
  * reduce's accumulator, and nothing between the keystroke and production
  * disagreed.
  */
+/** Wrap `items` into ` · `-joined lines that stay inside the doc's column width. */
+function wrapList(items: readonly string[], indent: string, width = 84): string[] {
+  const lines: string[] = [];
+  let line = "";
+  for (const item of items) {
+    const next = line === "" ? indent + item : `${line} · ${item}`;
+    if (next.length > width && line !== "") {
+      lines.push(line + " ·");
+      line = indent + item;
+    } else {
+      line = next;
+    }
+  }
+  if (line !== "") lines.push(line);
+  return lines;
+}
+
 function renderLambdaSection(): string[] {
   const lines: string[] = ["## Lambda bodies (JavaScript)", ""];
   lines.push(
@@ -941,14 +958,25 @@ function renderLambdaSection(): string[] {
     "and exists only on the iterating filters. A stack variable is reached as",
     "`$var.name` — it is NOT also injected as a bare `$name`.",
     "",
-    "Three hazards, all live-verified:",
+    "Three hazards and the dependency route, all live-verified:",
     "",
     "- ⚠ A body that THROWS does not fail the request: the engine returns its diagnostic",
     "  TEXT as the value with HTTP 200, so the failure reads as bad data. Validate before",
     "  consuming a lambda result numerically, and prefer a `lam.*` body, which cannot fail",
     "  this way for a binding reason.",
     "- ⚠ A top-level `import`/`export` is a syntax error — the body is a function body, not",
-    "  a module. Reach a dependency with dynamic `import()`: `const m = await import(\"…\")`.",
+    "  a module. Reach a dependency through the PRELOADED globals below, which need no",
+    "  specifier. A dynamic `import(\"…\")` or `require(\"…\")` with a LITERAL specifier is not",
+    "  portable: on an instance that bundles the body before running it, every literal",
+    "  specifier is resolved ahead of time against a filesystem where none of them exist, so",
+    "  `await import(\"node:crypto\")` comes back as the TEXT `Could not resolve \"node:crypto\"`",
+    "  with HTTP 200. Other instances resolve it at run time and it works — so it is",
+    "  instance-dependent, and only the globals are not.",
+    "- Preloaded globals, live-probed — no specifier, so these work everywhere:",
+    ...wrapList(LAMBDA_MODULE_GLOBALS.map(tick), "  "),
+    "  …plus `fetch`, `Buffer`, `TextEncoder`/`TextDecoder`, and the `crypto` above",
+    "  (`randomUUID`, `createHmac`, `subtle` all present). `Object.keys(globalThis)`",
+    "  inside a body lists whatever else a given instance carries.",
     "- ⚠ `console` output goes to the request LOG, not stdout.",
     "",
     "TypeScript annotations survive in the body, and top-level `await` works.",

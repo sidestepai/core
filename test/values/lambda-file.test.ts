@@ -142,7 +142,9 @@ describe("lam.file — module shapes that used to slip through", () => {
     expect(message).toContain("export default");
   });
 
-  it("refuses a value import and points at dynamic import()", () => {
+  // #265: the message points at the preloaded globals, not at dynamic `import()`
+  // — whose literal specifier does not resolve on every instance.
+  it("refuses a value import and points at the preloaded globals", () => {
     let message = "";
     try {
       lam.file("./lambdas/value-import.ts", { surface: "s.lambda" });
@@ -150,7 +152,8 @@ describe("lam.file — module shapes that used to slip through", () => {
       message = (e as Error).message;
     }
     expect(message).toContain("import type");
-    expect(message).toContain("import()");
+    expect(message).toContain("PRELOADED globals");
+    expect(message).not.toMatch(/dynamic `import\(\)`/);
   });
 
   it("keeps a type-only import, which costs the engine nothing", () => {

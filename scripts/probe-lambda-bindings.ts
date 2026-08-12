@@ -261,7 +261,20 @@ const behaviors: Array<[string, string, string]> = [
   ["unknown_dollar.read", "What happens when an unbound $identifier is READ?", "return $nope + 1"],
   ["top_level_import", "Is a top-level import a syntax error?", "import { join } from 'node:path'; return typeof join"],
   ["top_level_export", "Is a top-level export a syntax error?", "export const x = 1; return 1"],
-  ["dynamic_import", "Does dynamic import() resolve?", "const m = await import('node:path'); return typeof m.join"],
+  // #265: whether a LITERAL specifier resolves is a property of the instance,
+  // not of the platform, so these four are recorded together and read together.
+  // An instance that BUNDLES the body resolves every literal specifier ahead of
+  // time against a filesystem where none of them exist, and answers every one of
+  // these with a BUILD-time `Could not resolve "…"`. An instance that transpiles
+  // resolves at run time, so the first three succeed and only `import_unresolvable`
+  // fails — with the RUNTIME's own wording (`Module not found "file:///…"`).
+  // Which wording comes back is therefore the discriminator, and it is why a
+  // success here must never be written down as "dependencies are reached with
+  // `import()`". Reachable on both: the globals below.
+  ["dynamic_import", "Does a literal import('node:…') resolve? (#265: instance-dependent)", "const m = await import('node:path'); return typeof m.join"],
+  ["dynamic_import.npm", "Does a literal import('npm:…') resolve? (#265)", "const m = await import('npm:lodash'); return typeof m"],
+  ["require.literal", "Does a literal require('…') resolve? (#265)", "const m = await require('lodash'); return typeof m.map"],
+  ["import_unresolvable", "DISCRIMINATOR: which layer answers a specifier that cannot exist — the bundler (build time) or the runtime (run time)?", "const m = await import('./zz-no-such-module-265.js'); return typeof m"],
   ["require", "Is require() available?", "return typeof require"],
   ["ts_syntax.annotation", "Does a TypeScript type annotation survive?", "const x: number = 1; return x"],
   ["ts_syntax.as", "Does a TypeScript `as` cast survive?", "const x = 1 as number; return x"],
@@ -270,7 +283,10 @@ const behaviors: Array<[string, string, string]> = [
   ["no_return", "What does a body with no return produce?", "1 + 1"],
   ["empty_body", "What does an empty body produce?", ""],
   ["console.captured", "Does console.log break the body?", "console.log('probe'); return 'after-log'"],
-  ["globalThis", "Which globals are reachable?", "return Object.keys(globalThis).slice(0, 40).join(',')"],
+  // Every key, not a slice: this list is what `LAMBDA_MODULE_GLOBALS` documents
+  // as the portable dependency route (#265), and a unit test checks the two
+  // against each other. A truncated record would silently under-document it.
+  ["globalThis", "Which globals are reachable?", "return Object.keys(globalThis).join(',')"],
 ];
 for (const [id, asks, code] of behaviors) {
   add({ id: `s.lambda.${id}`, surface: "s.lambda", asks, stack: stackFor("s.lambda", c.text(code)) });
@@ -518,7 +534,14 @@ async function main(): Promise<void> {
       surface: case_.surface,
       asks: case_.asks,
       verdict,
-      ...(exception === undefined ? { value: render(value).slice(0, 400) } : { exception: exception.slice(0, 300) }),
+      // 400 chars keeps a recorded answer readable — except the global list,
+      // where the WHOLE list is the answer: it is what `LAMBDA_MODULE_GLOBALS`
+      // documents as the portable dependency route (#265), and a unit test
+      // checks that list against this row. Truncating it here would fail a
+      // correctly documented global for sitting past the cut.
+      ...(exception === undefined
+        ? { value: render(value).slice(0, case_.id.endsWith("globalThis") ? 4000 : 400) }
+        : { exception: exception.slice(0, 300) }),
     };
 
     if (case_.binding) {

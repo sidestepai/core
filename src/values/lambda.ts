@@ -76,6 +76,49 @@ export const LAMBDA_BINDINGS: Readonly<Record<LambdaSurface, readonly string[]>>
 export const LAMBDA_GLOBALS: readonly string[] = ["console", "crypto"];
 
 /**
+ * The libraries the engine preloads as GLOBALS in a lambda body — the only
+ * dependency route that works on every instance (issue #265).
+ *
+ * A body is prepared for execution in one of two ways depending on the
+ * instance's executor generation, and the two disagree about `import()`:
+ *
+ *   - one transpiles the body and lets the runtime resolve a specifier when the
+ *     `import()` actually runs, so `node:*`, `npm:*`, a bare package and a URL
+ *     all resolve;
+ *   - the other BUNDLES the body before running it, which resolves every
+ *     LITERAL specifier ahead of time against the container's filesystem —
+ *     where none of them exist. `await import("node:crypto")` comes back as the
+ *     text `Could not resolve "node:crypto"`, with HTTP 200. A literal
+ *     `require("axios")` fails there for the same reason.
+ *
+ * These names need no specifier, so they are unaffected by which generation
+ * runs the body. Live-probed from `Object.keys(globalThis)` inside a body; the
+ * evidence is `s.lambda.globalThis` in `vendor/lambda-bindings.json`, and
+ * `test/values/lambda.test.ts` fails if this list drifts from it.
+ *
+ * Not exhaustive by design: it lists what an author is likely to reach for. A
+ * body can always read `Object.keys(globalThis)` for its own instance.
+ */
+export const LAMBDA_MODULE_GLOBALS: readonly string[] = [
+  "_",
+  "aws4",
+  "axios",
+  "cryptojs",
+  "DateTime",
+  "ethers",
+  "fastXmlParser",
+  "jose",
+  "luxon",
+  "mailparser",
+  "math",
+  "moment",
+  "nodemailer",
+  "socks",
+  "uuid",
+  "utils",
+];
+
+/**
  * Every filter that takes a JavaScript body → which positional slot the body
  * occupies, and which binding set it runs against.
  *
@@ -723,16 +766,21 @@ export function assertLambdaBody(body: string, surface: LambdaSurface, source = 
     );
   }
 
-  // `import(` / `import.meta` are the dynamic forms and stay legal; a bare
-  // `import`/`export` keyword in statement position is the module-only syntax the
-  // engine rejects outright.
+  // `import(` / `import.meta` are the dynamic forms and stay legal — they run on
+  // some instances (see LAMBDA_MODULE_GLOBALS) and this is not the place to
+  // refuse working code; a bare `import`/`export` keyword in statement position
+  // is the module-only syntax the engine rejects outright, everywhere.
   const moduleSyntax = /(^|[;{}\n])\s*(import|export)\b(?![\s]*[.(])/.exec(mask);
   if (moduleSyntax) {
     const kw = moduleSyntax[2];
     throw new Error(
       `${source}: a top-level \`${kw}\` is a syntax error in a lambda body — the body is a function body, not a ` +
-        `module, so it must \`return\` its value and cannot declare module syntax. Reach a dependency with dynamic ` +
-        `\`import()\` instead: \`const m = await import("...")\`. (issue #221)`,
+        `module, so it must \`return\` its value and cannot declare module syntax. Reach a dependency through the ` +
+        `PRELOADED globals, which need no specifier: ${LAMBDA_MODULE_GLOBALS.join(", ")} (plus ` +
+        `${LAMBDA_GLOBALS.join(" / ")}, fetch, Buffer, TextEncoder). A dynamic \`import("...")\` or ` +
+        `\`require("...")\` with a literal specifier is NOT portable: on an instance that bundles the body before ` +
+        `running it, every literal specifier is resolved ahead of time and none of them exist, so the call comes ` +
+        `back as the text \`Could not resolve "..."\` with HTTP 200. (issues #221, #265)`,
     );
   }
 }

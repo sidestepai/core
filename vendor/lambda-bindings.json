@@ -1129,16 +1129,58 @@
     {
       "id": "s.lambda.dynamic_import",
       "surface": "s.lambda",
-      "asks": "Does dynamic import() resolve?",
+      "asks": "Does a literal import('node:…') resolve? (#265: instance-dependent)",
       "verdict": "ok",
       "value": "function"
     },
     {
       "id": "fl.lambda.dynamic_import",
       "surface": "fl.lambda",
-      "asks": "Does dynamic import() resolve?",
+      "asks": "Does a literal import('node:…') resolve? (#265: instance-dependent)",
       "verdict": "ok",
       "value": "function"
+    },
+    {
+      "id": "s.lambda.dynamic_import.npm",
+      "surface": "s.lambda",
+      "asks": "Does a literal import('npm:…') resolve? (#265)",
+      "verdict": "ok",
+      "value": "object"
+    },
+    {
+      "id": "fl.lambda.dynamic_import.npm",
+      "surface": "fl.lambda",
+      "asks": "Does a literal import('npm:…') resolve? (#265)",
+      "verdict": "ok",
+      "value": "object"
+    },
+    {
+      "id": "s.lambda.require.literal",
+      "surface": "s.lambda",
+      "asks": "Does a literal require('…') resolve? (#265)",
+      "verdict": "ok",
+      "value": "function"
+    },
+    {
+      "id": "fl.lambda.require.literal",
+      "surface": "fl.lambda",
+      "asks": "Does a literal require('…') resolve? (#265)",
+      "verdict": "ok",
+      "value": "function"
+    },
+    {
+      "id": "s.lambda.import_unresolvable",
+      "surface": "s.lambda",
+      "asks": "DISCRIMINATOR: which layer answers a specifier that cannot exist — the bundler (build time) or the runtime (run time)?",
+      "verdict": "ok",
+      "value": "[Line 1:Char 11] Module not found \"file:///tmp/zz-no-such-module-265.js\"."
+    },
+    {
+      "id": "fl.lambda.import_unresolvable",
+      "surface": "fl.lambda",
+      "asks": "DISCRIMINATOR: which layer answers a specifier that cannot exist — the bundler (build time) or the runtime (run time)?",
+      "verdict": "ok",
+      "value": "[Line 1:Char 11] Module not found \"file:///tmp/zz-no-such-module-265.js\"."
     },
     {
       "id": "s.lambda.require",
@@ -1257,14 +1299,14 @@
       "surface": "s.lambda",
       "asks": "Which globals are reachable?",
       "verdict": "ok",
-      "value": "Deno,queueMicrotask,atob,btoa,createImageBitmap,caches,crypto,fetch,EventSource,reportError,structuredClone,onunhandledrejection,navigator,alert,confirm,prompt,localStorage,sessionStorage,name,close,closed,onerror,onload,onbeforeunload,onunload,__SENTRY__,aws4,axios,cryptojs,ethers,fastXmlParser,jose,require,_,rjsf,DateTime,luxon,mailparser,math,moment"
+      "value": "Deno,queueMicrotask,atob,btoa,createImageBitmap,caches,crypto,fetch,EventSource,reportError,structuredClone,onunhandledrejection,navigator,alert,confirm,prompt,localStorage,sessionStorage,name,close,closed,onerror,onload,onbeforeunload,onunload,__SENTRY__,aws4,axios,cryptojs,ethers,fastXmlParser,jose,require,_,rjsf,DateTime,luxon,mailparser,math,moment,dns,http,https,net,url,nodemailer,socks,promisify,uuid,zeebe,utils,azure,Buffer,clearInterval,clearTimeout,performance,process,setInterval,setTimeout,self"
     },
     {
       "id": "fl.lambda.globalThis",
       "surface": "fl.lambda",
       "asks": "Which globals are reachable?",
       "verdict": "ok",
-      "value": "Deno,queueMicrotask,atob,btoa,createImageBitmap,caches,crypto,fetch,EventSource,reportError,structuredClone,onunhandledrejection,navigator,alert,confirm,prompt,localStorage,sessionStorage,name,close,closed,onerror,onload,onbeforeunload,onunload,__SENTRY__,aws4,axios,cryptojs,ethers,fastXmlParser,jose,require,_,rjsf,DateTime,luxon,mailparser,math,moment"
+      "value": "Deno,queueMicrotask,atob,btoa,createImageBitmap,caches,crypto,fetch,EventSource,reportError,structuredClone,onunhandledrejection,navigator,alert,confirm,prompt,localStorage,sessionStorage,name,close,closed,onerror,onload,onbeforeunload,onunload,__SENTRY__,aws4,axios,cryptojs,ethers,fastXmlParser,jose,require,_,rjsf,DateTime,luxon,mailparser,math,moment,dns,http,https,net,url,nodemailer,socks,promisify,uuid,zeebe,utils,azure,Buffer,clearInterval,clearTimeout,performance,process,setInterval,setTimeout,self"
     },
     {
       "id": "s.lambda.shared_text.typeof",
@@ -1471,7 +1513,7 @@
       "surface": "arity",
       "asks": "crypto_jws_encode: is a 3-argument call accepted?",
       "verdict": "ok",
-      "value": "eyJhbGciOiJIUzI1NiJ9.eyJAeGFubyI6IntcInN1YlwiOlwidTFcIn0iLCJpYXQiOjE3ODY1NjgxMDUsIm5iZiI6MTc4NjU2ODEwNX0.2T4c6AHnj-ZB_OMYeShsVdirJLEwDC4iL1JdrzMJ_Qc"
+      "value": "eyJhbGciOiJIUzI1NiJ9.eyJAeGFubyI6IntcInN1YlwiOlwidTFcIn0iLCJpYXQiOjE3ODY1NzU0OTUsIm5iZiI6MTc4NjU3NTQ5NX0.D7To-MVcHjvF_wRBlx9hCbKiAiUAGqd1RTwvFycF0po"
     },
     {
       "id": "slotting.crypto_jws_decode.short",
@@ -1548,7 +1590,7 @@
       "surface": "arity",
       "asks": "crypto_jwe_encode: is a 4-argument call accepted?",
       "verdict": "ok",
-      "value": "eyJhbGciOiJBMTI4S1ciLCJlbmMiOiJBMTI4Q0JDLUhTMjU2IiwiemlwIjoiREVGIn0.TSGm6GGkUPItc31X3IUkbwcX-4r6CbDPh72u3ddXC3jj63JAximvTg.aVMJlSuAjm6Jfuu1B_LIlQ.MZ42BkuPwqtSLcbVdAd8NBgkJJAuk1W4LBw7pLFvqfg5qjdDPCeK1Oi1FtyVSwV-rDorPhaujkZTTttFmuTKUA.TOauSYzHqgDSn3tYDT3fiQ"
+      "value": "eyJhbGciOiJBMTI4S1ciLCJlbmMiOiJBMTI4Q0JDLUhTMjU2IiwiemlwIjoiREVGIn0.P0QoEkniGK4p1FPWLEJ4kVQbYmvzdkWkNpgubRAe_OfAhnmjZrieIQ.lPZprgAQ0M2HDDWbTkuUqw.7sXLYSAEvvY0c37gpxiQaU3OcuqL9fjPOee16UdoHrEkuKgblS82niAkIl4v21K7Y4g__blysJXR_voOis97uA.kOMH4BIozVVPje7Wr7jA6Q"
     },
     {
       "id": "slotting.crypto_jwe_decode.short",

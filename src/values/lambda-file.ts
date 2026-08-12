@@ -34,7 +34,14 @@ import { readFileSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Value } from "./value.js";
-import { extractFunctionBody, lam as isomorphicLam, lambdaValue, maskNonCode } from "./lambda.js";
+import {
+  extractFunctionBody,
+  lam as isomorphicLam,
+  lambdaValue,
+  maskNonCode,
+  LAMBDA_GLOBALS,
+  LAMBDA_MODULE_GLOBALS,
+} from "./lambda.js";
 import type { CaptureValue, LambdaOptions } from "./lambda.js";
 
 const PREFIX = "lam.file";
@@ -138,13 +145,16 @@ function assertOnlyDefaultExport(mask: string, path: string): void {
     }
     // A TYPE import vanishes at compile time and is free. A VALUE import does
     // not: the module is never loaded, so the imported binding is undefined
-    // inside the body. Dependencies are reached with dynamic `import()`.
+    // inside the body. Dependencies come from the preloaded globals — a literal
+    // `import()`/`require()` specifier does not resolve on every instance (#265).
     if (word === "import") {
       if (/^import\s+type\b/.test(rest)) continue;
       throw new Error(
         `${PREFIX}: ${path} imports a value at the top level, which the engine never resolves — only the default ` +
           `export's body is sent, so the import is undefined at runtime. Use \`import type\` for types, or reach a ` +
-          `dependency from inside the body with dynamic \`import()\`. (issue #221)`,
+          `dependency through the PRELOADED globals, which need no specifier and are the only route that works on ` +
+          `every instance: ${LAMBDA_MODULE_GLOBALS.join(", ")} (plus ${LAMBDA_GLOBALS.join(" / ")}, fetch, Buffer, ` +
+          `TextEncoder). (issues #221, #265)`,
       );
     }
     // Name what the author actually declared, not the keyword in front of it.
