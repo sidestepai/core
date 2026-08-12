@@ -7103,9 +7103,9 @@
           "type": "text"
         }
       ],
-      "result": "<T>[]",
+      "result": "{ [key: string]: <T>[] }",
       "group": "array",
-      "description": "Create a new array indexed off of the value of each item's path"
+      "description": "Groups the piped array into an OBJECT keyed by each item's path — every value is an ARRAY of the items sharing that key, even when only one item does. So a lookup reads `idx[key][0]`, not `idx[key]`; the singular spelling yields null rather than erroring. Items whose path is missing or non-scalar are dropped."
     },
     {
       "name": "is_array",

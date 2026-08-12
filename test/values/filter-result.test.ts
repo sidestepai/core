@@ -76,6 +76,20 @@ describe("ApplyFilter — generic results", () => {
     expect(true).toBe(true);
   });
 
+  it("`index_by` is a group-by — a record of ARRAYS, not the array it was given", () => {
+    // Live-probed: `[{"id":7,…},{"id":9,…},{"id":7,…}] |index_by:"id"` returns
+    // {"7":[{…},{…}],"9":[{…}]} — every value an array, one match included.
+    // The catalog declares `<T>[]`, which would fold to the input array and let
+    // `idx[key].name` type-check while being null at runtime.
+    expectTypeOf<ApplyFilter<{ id: number; name: string }[], "index_by">>().toEqualTypeOf<
+      Record<string, { id: number; name: string }[]>
+    >();
+    expectTypeOf<ApplyFilters<{ id: number }[], [F<"index_by">]>>().toEqualTypeOf<
+      Record<string, { id: number }[]>
+    >();
+    expect(true).toBe(true);
+  });
+
   it("a generic filter over a non-array bottoms out rather than guessing", () => {
     expectTypeOf<ApplyFilter<string, "first">>().toEqualTypeOf<unknown>();
     expectTypeOf<ApplyFilter<string, "reverse">>().toEqualTypeOf<unknown>();

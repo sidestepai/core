@@ -849,6 +849,11 @@ export const FILTER_NOTES: Record<string, string> = {
   csv_create:
     "the header-writing counterpart to `csv_encode`: the PIPED value is the list of column " +
     "names (written as the header line) and `rows` carries the data rows",
+  // A group-by whose name reads as a lookup table. The singular spelling
+  // `idx[key].name` is null at runtime rather than an error (#267).
+  index_by:
+    "a GROUP-BY: every value is an ARRAY of the items sharing that key, even when only one does, " +
+    "so a lookup reads `idx[key][0]`. Items whose path is missing or non-scalar are dropped",
   // Non-obvious names.
   epochms_transform: 'applies a relative shift (e.g. "+1 day") to the timestamp',
   unpick: "returns the object without the named keys (inverse of a pick)",
