@@ -397,16 +397,22 @@ const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
         }),
       ),
   },
-  // conditional with a nested AND/OR group over the full operator set (cmp +
-  // and/or), proven byte-exact against a live capture: verifies the `{type:"group"}`
-  // node shape and per-node `or` flags on the conditional surface (Gap A).
+  // conditional with a nested AND/OR group (cmp + and/or), proven byte-exact
+  // against a live capture: verifies the `{type:"group"}` node shape and
+  // per-node `or` flags on the conditional surface (Gap A).
+  //
+  // The operator is a runtime one on purpose. This golden used to carry `like`,
+  // which the engine STORES happily on a conditional and then cannot evaluate —
+  // the request dies with `Invalid op: like` when the branch runs (#260). Byte
+  // parity was never the property at risk there; the fixture is re-captured with
+  // `===` so it proves the group shape with a comparison that also runs.
   {
     fixture: "conditional_group",
     build: () =>
       encodeStatement(
         conditional({
           when: and(
-            cmp(ref("status"), "like", c.text("%active%")),
+            cmp(ref("status"), "===", c.text("active")),
             or(expr(ref("n"), ">", c.int(0)), expr(ref("n"), "<", c.int(-10))),
           ),
           then: [setVar("hit", c.text("yes"))],

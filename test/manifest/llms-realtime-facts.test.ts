@@ -268,7 +268,14 @@ describe("def-shape signatures list every field", () => {
 // unguessable and silent, so it is grounding the model cannot do without; it also
 // covers `realtimeChannel`/`tool`/`realtimeMessage` in one clause. Compressed
 // twice before raising (~150 tokens over → 92).
-const DEF_SHAPES_CEILING = 7_800;
+// Raised 7,800 → 7,900 for the condition-operator split (#260). The wider `cmp`
+// operators (`in`, `like`, `between`, …) STORE and deploy clean on a condition
+// and then fail the request with `Invalid op: <op>` the first time that branch
+// runs — and the branch is typically a guard, so it surfaces in production
+// traffic rather than in a test. Nothing about the shared expression tree hints
+// that the two surfaces evaluate different operator sets, so the model cannot
+// derive it. Compressed twice (~160 tokens over → 67) before raising.
+const DEF_SHAPES_CEILING = 7_900;
 
 describe("object def shapes section stays lean", () => {
   it(`is under ${DEF_SHAPES_CEILING.toLocaleString()} tokens`, () => {

@@ -186,7 +186,12 @@ function recoverRule(
       // use, so it inverts through the shared algebra rather than one of its own.
       // This is what makes the predicate-taking statements (`array.find`,
       // `array.filter`, `array.every`, …) readable instead of raw.
-      const condition = decodeCondition(ctx, getPath(context, rule.route.path));
+      // Every `comparison` rule sits on a runtime-evaluated surface
+      // (`precondition`, the `array.*` predicates), so the narrower operator set
+      // applies — matching what the encoder accepts. See #260.
+      const condition = decodeCondition(ctx, getPath(context, rule.route.path), {
+        runtimeSurface: true,
+      });
       if (!condition) return null;
       return {
         field: rule.field,

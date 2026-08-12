@@ -51,7 +51,16 @@ export const conditionalElifChain = defineFunction({
   response: ref("grade"),
 });
 
-/** Gate 4 — a grouped condition: full operator set (`cmp`) composed with `and`/`or`. */
+/**
+ * Gate 4 — a grouped condition: `cmp` composed with `and`/`or`.
+ *
+ * ⚠ A condition is evaluated by the RUNTIME, which compares with
+ * `= != === !== > >= < <=` only. The db-search operators `cmp` also accepts
+ * (`in`, `like`, `between`, `contains`, …) are compiled into SQL for a
+ * `db.query`/`bulk` `where` and have no runtime form — the SDK refuses them
+ * here rather than let the request fail on the branch (#260). Spell membership
+ * out with `or(...)`, as below.
+ */
 export const conditionalGrouped = defineFunction({
   name: "ex_conditional_grouped",
   stack: [
@@ -59,7 +68,7 @@ export const conditionalGrouped = defineFunction({
     s.set_var("n", c.int(5)),
     s.conditional({
       when: and(
-        cmp(ref("status"), "like", c.text("%active%")),
+        or(cmp(ref("status"), "===", c.text("active")), cmp(ref("status"), "===", c.text("trial"))),
         or(expr(ref("n"), ">", c.int(0)), expr(ref("n"), "<", c.int(-10))),
       ),
       then: [s.set_var("ok", c.text("yes"))],

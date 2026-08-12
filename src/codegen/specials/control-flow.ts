@@ -75,7 +75,7 @@ const updateVar: SpecialDecoder = (a) => {
 /** One `elif` branch of a conditional. */
 function decodeElifBranch(a: SpecialArgs, branch: unknown): { expr: Expr; runtime: unknown } | null {
   const context = (branch as { context?: unknown }).context;
-  const when = decodeConditionOrEmpty(a.ctx, getPath(context, "expr"));
+  const when = decodeConditionOrEmpty(a.ctx, getPath(context, "expr"), { runtimeSurface: true });
   if (!when) return declineHere("conditional: an elif branch's expr is not a decodable condition");
   const body = a.decodeStack(getPath(context, "if.run"));
   return {
@@ -89,7 +89,7 @@ function decodeElifBranch(a: SpecialArgs, branch: unknown): { expr: Expr; runtim
 
 /** `if (when) { then } [else if …] [else { … }]`. */
 const conditional: SpecialDecoder = (a) => {
-  const when = decodeConditionOrEmpty(a.ctx, getPath(a.stored.context, "expr"));
+  const when = decodeConditionOrEmpty(a.ctx, getPath(a.stored.context, "expr"), { runtimeSurface: true });
   if (!when) return declineHere("conditional: context.expr is not a decodable condition");
 
   const then = nested(a, "if.run");
@@ -227,7 +227,7 @@ function loopDecoder(path: string, storedField: string, defField: string): Speci
 
 /** `while (when) { body }`. */
 const whileLoop: SpecialDecoder = (a) => {
-  const when = decodeConditionOrEmpty(a.ctx, getPath(a.stored.context, "expr"));
+  const when = decodeConditionOrEmpty(a.ctx, getPath(a.stored.context, "expr"), { runtimeSurface: true });
   if (!when) return declineHere("while: context.expr is not a decodable condition");
   const body = a.decodeStack(getPath(a.stored.context, "run"));
   return prove(
