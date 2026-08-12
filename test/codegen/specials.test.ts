@@ -1947,3 +1947,95 @@ describe("envelope passthrough — description and disabled", () => {
     expect(source).toContain("disabled: true");
   });
 });
+
+/**
+ * `asFilters` — the filter chain on a statement's result binding.
+ *
+ * Every case here goes through `roundTrip`, so it is not "the decoder emitted
+ * something that looks right" but "the emitted source, evaluated against the
+ * real authoring surface and re-encoded, reproduces the stored bytes". That is
+ * the only check that would have caught the original defect, where the filters
+ * were dropped and the comparison still passed because `normalize` erased the
+ * key from both sides.
+ */
+describe("statement result filters (asFilters)", () => {
+  /** The chain is present, in author order — asserted on content, not layout. */
+  function expectChain(source: string, calls: string[]): void {
+    expect(source).toContain("asFilters: [");
+    const at = calls.map((call) => source.indexOf(call));
+    expect(at, `source: ${source}`).not.toContain(-1);
+    expect(at).toEqual([...at].sort((a, b) => a - b));
+  }
+
+  it("round-trips a single filter on a generated statement", () => {
+    const source = roundTrip(s.security.create_uuid({ as: "token", asFilters: [fl.upper()] }));
+    expectChain(source, ["fl.upper()"]);
+    expect(source).not.toContain("raw(");
+  });
+
+  it("round-trips a filter carrying arguments", () => {
+    const source = roundTrip(
+      s.security.create_uuid({ as: "token", asFilters: [fl.substr(c.int(0), c.int(8))] }),
+    );
+    expect(source).toContain("fl.substr(c.int(0), c.int(8))");
+  });
+
+  it("round-trips a multi-filter chain in author order", () => {
+    const source = roundTrip(
+      s.security.create_uuid({ as: "token", asFilters: [fl.trim(), fl.upper()] }),
+    );
+    expectChain(source, ["fl.trim()", "fl.upper()"]);
+  });
+
+  it("round-trips a chain on a hand-written special", () => {
+    const source = roundTrip(s.set_var("greeting", c.text("hi"), { asFilters: [fl.upper()] }));
+    expectChain(source, ["fl.upper()"]);
+    expect(source).not.toContain("raw(");
+  });
+
+  it("carries a filter the catalog cannot name, verbatim rather than dropped", () => {
+    // A future or renamed filter has no `fl.*` form. The bytes still have to
+    // survive, so it degrades to a literal inside the chain — never to silence.
+    const stored = encodeStatement(s.security.create_uuid({ as: "token" }));
+    const withUnknown = {
+      ...stored,
+      output: {
+        items: [],
+        customize: false,
+        filters: [{ name: "not_a_real_filter", disabled: false, arg: [] }],
+      },
+    };
+    const ctx = new DecodeContext();
+    const source = printExpr(decodeStatement(ctx, EMPTY_REFS, withUnknown));
+    expect(source).toContain("not_a_real_filter");
+    expect(normalize(encodeStatement(evaluate(source)))).toEqual(normalize(withUnknown));
+  });
+
+  it("does not invent a chain for a statement that binds nothing", () => {
+    // `asFilters` refuses a statement with no `as`, so emitting one would make
+    // source that throws on its own re-encode. The `output` block rides as-is.
+    const stored = encodeStatement(s.update_var("total", c.int(1)));
+    const withFiltersNoAs = {
+      ...stored,
+      as: "",
+      output: { items: [], customize: false, filters: [fl.upper()] },
+    };
+    const source = printExpr(decodeStatement(new DecodeContext(), EMPTY_REFS, withFiltersNoAs));
+    expect(source).not.toContain("asFilters");
+    expect(normalize(encodeStatement(evaluate(source)))).toEqual(normalize(withFiltersNoAs));
+  });
+
+  it("keeps a chain and the statement's other arguments together", () => {
+    const source = roundTrip(
+      s.security.create_uuid({
+        as: "token",
+        asFilters: [fl.upper()],
+        description: "why",
+        disabled: true,
+      }),
+    );
+    expectChain(source, ["fl.upper()"]);
+    expect(source).toContain('description: "why"');
+    expect(source).toContain("disabled: true");
+  });
+});

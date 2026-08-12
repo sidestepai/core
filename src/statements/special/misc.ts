@@ -25,13 +25,15 @@
  *       the schema transform (auth_table via !map:dbo:constant → table guid).
  */
 import type { Statement, AsShapeBrand } from "../statement.js";
+import type { FilterXdo } from "../../types/xdo.js";
+import type { ApplyFilters } from "../../values/filter-result.js";
 import { encodeStatement, registerStatement } from "../statement.js";
 import type { Value } from "../../values/value.js";
 import { c, isTaggedValue } from "../../values/value.js";
 import { resolveRef } from "../../refs/guid.js";
 import type { ObjectRef } from "../../refs/guid.js";
 import { annotate } from "../statement.js";
-import type { StatementAnnotations } from "../statement.js";
+import type { StatementAnnotations, StatementOptions } from "../statement.js";
 
 function vf(v: Value): { value: string; tag: string; filters: unknown[] } {
   return { value: v.value, tag: v.tag, filters: v.filters };
@@ -44,7 +46,7 @@ function vf(v: Value): { value: string; tag: string; filters: unknown[] } {
 //   array_map   → { output_type:"value", collection:<source>, transform_value?:<map> }
 //   array_union → { left:<source>, right?:<other>, transform_value?:<map> }
 
-export interface ArrayMapArgs extends StatementAnnotations {
+export interface ArrayMapArgs extends StatementOptions {
   /** The source array → stored `collection`. */
   source: Value;
   as?: string;
@@ -116,7 +118,7 @@ export function arrayMap(a: ArrayMapArgs): Statement {
   return annotate({ name: "mvp:array_map", context, as: a.as ?? "", input: [] }, a);
 }
 
-export interface ArrayUnionArgs extends StatementAnnotations {
+export interface ArrayUnionArgs extends StatementOptions {
   /** The base array → stored `left`. */
   source: Value;
   /** The array to union in → stored `right`. */
@@ -158,7 +160,7 @@ export function comment(text = "", a?: StatementAnnotations): Statement {
 
 // --- raw input / post-process ---------------------------------------------
 
-export interface GetRawInputArgs extends StatementAnnotations {
+export interface GetRawInputArgs extends StatementOptions {
   as?: string;
   /** Body decoding (`json`, `raw`, …). */
   encoding?: Value;
@@ -357,7 +359,7 @@ function publishServerValue(server: RealtimePublishServer): { value: string; tag
 
 // --- auth token (declarative) ----------------------------------------------
 
-export interface CreateAuthTokenArgs<As extends string = string> extends StatementAnnotations {
+export interface CreateAuthTokenArgs<As extends string = string> extends StatementOptions {
   /**
    * The auth table the token authenticates against.
    *
@@ -383,9 +385,12 @@ export interface CreateAuthTokenArgs<As extends string = string> extends Stateme
  * instead of `unknown` — the token is always a JWT string. The brand is phantom;
  * the emitted statement bytes are unchanged.
  */
-export function createAuthToken<const As extends string = "">(
-  a: CreateAuthTokenArgs<As>,
-): Statement & AsShapeBrand<As, string> {
+export function createAuthToken<
+  const As extends string = "",
+  const Fs extends readonly FilterXdo[] = readonly [],
+>(
+  a: CreateAuthTokenArgs<As> & { asFilters?: Fs },
+): Statement & AsShapeBrand<As, ApplyFilters<string, Fs>> {
   return annotate({
     name: "mvp:create_auth",
     context: {},
@@ -405,7 +410,7 @@ export function createAuthToken<const As extends string = "">(
       ...(a.extras === undefined ? [] : [{ name: "extras", ...vf(a.extras) }]),
       ...(a.expiration === undefined ? [] : [{ name: "expiration", ...vf(a.expiration) }]),
     ],
-  } as unknown as Statement & AsShapeBrand<As, string>, a);
+  } as unknown as Statement & AsShapeBrand<As, ApplyFilters<string, Fs>>, a);
 }
 
 // --- security.create_guid ---------------------------------------------------
@@ -421,15 +426,18 @@ export function createAuthToken<const As extends string = "">(
  *
  * Branded `AsShapeBrand<As, string>` so a `ref("<as>")` traces to `string`.
  */
-export function createGuid<const As extends string = "">(
-  a: { as?: As } & StatementAnnotations = {},
-): Statement & AsShapeBrand<As, string> {
+export function createGuid<
+  const As extends string = "",
+  const Fs extends readonly FilterXdo[] = readonly [],
+>(
+  a: { as?: As } & StatementOptions & { asFilters?: Fs } = {},
+): Statement & AsShapeBrand<As, ApplyFilters<string, Fs>> {
   return annotate({
     name: "mvp:guid",
     context: {},
     as: a.as ?? "",
     input: [],
-  }, a) as unknown as Statement & AsShapeBrand<As, string>;
+  }, a) as unknown as Statement & AsShapeBrand<As, ApplyFilters<string, Fs>>;
 }
 
 // --- expect.to_throw (structural) ------------------------------------------

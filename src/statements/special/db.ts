@@ -29,6 +29,8 @@
 import type { Statement, AsShapeBrand } from "../statement.js";
 import { encodeStatement, registerStatement } from "../statement.js";
 import type { Value } from "../../values/value.js";
+import type { FilterXdo } from "../../types/xdo.js";
+import type { ApplyFilters } from "../../values/filter-result.js";
 import { c } from "../../values/value.js";
 import { resolveRef } from "../../refs/guid.js";
 import type { ObjectRef } from "../../refs/guid.js";
@@ -45,7 +47,7 @@ import type { OutputPath, OutputRoot, QualifiedCol } from "./output-select.js";
 import { encodeSearch, encodeSort, encodeEval, qualifyAggregateEvals } from "./db-search.js";
 import type { DbWhere, SortDirective, DbEval, EvalFields, AggregateRow } from "./db-search.js";
 import { annotate } from "../statement.js";
-import type { StatementAnnotations } from "../statement.js";
+import type { StatementAnnotations, StatementOptions } from "../statement.js";
 export type { DbWhere, SortDir, SortDirective, DbEval, DbEvalFilter } from "./db-search.js";
 
 /**
@@ -530,7 +532,7 @@ export interface DbGetArgs<
   As extends string = string,
   Cols extends readonly OutputPath<ColsOf<T>>[] = readonly ColsOf<T>[],
   A extends readonly AddonSpec[] = readonly AddonSpec[],
-> extends StatementAnnotations {
+> extends StatementOptions {
   /**
    * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
    * Absent unless set — Xano writes it on some statements and not others, so it
@@ -586,7 +588,10 @@ export function dbGet<
   const As extends string = "",
   const Cols extends readonly OutputPath<ColsOf<T>>[] = readonly [],
   const A extends readonly AddonSpec[] = readonly [],
->(args: DbGetArgs<T, As, Cols, A>): DbResult<As, WithAddons<RowShapeOf<T, Cols>, A> | null> {
+  const Fs extends readonly FilterXdo[] = readonly [],
+>(
+  args: DbGetArgs<T, As, Cols, A> & { asFilters?: Fs },
+): DbResult<As, ApplyFilters<WithAddons<RowShapeOf<T, Cols>, A> | null, Fs>> {
   return annotate(dboStatement(
     "mvp:dbo_getby",
     args.table,
@@ -601,7 +606,7 @@ export function dbGet<
     ],
     { output: args.output, addon: args.addon },
     args.tableAlias,
-  ) as DbResult<As, WithAddons<RowShapeOf<T, Cols>, A> | null>, args);
+  ) as DbResult<As, ApplyFilters<WithAddons<RowShapeOf<T, Cols>, A> | null, Fs>>, args);
 }
 
 export interface DbGetByIdArgs<
@@ -609,7 +614,7 @@ export interface DbGetByIdArgs<
   As extends string = string,
   Cols extends readonly OutputPath<ColsOf<T>>[] = readonly ColsOf<T>[],
   A extends readonly AddonSpec[] = readonly AddonSpec[],
-> extends StatementAnnotations {
+> extends StatementOptions {
   /**
    * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
    * Absent unless set — Xano writes it on some statements and not others, so it
@@ -647,7 +652,10 @@ export function dbGetById<
   const As extends string = "",
   const Cols extends readonly OutputPath<ColsOf<T>>[] = readonly [],
   const A extends readonly AddonSpec[] = readonly [],
->(args: DbGetByIdArgs<T, As, Cols, A>): DbResult<As, WithAddons<RowShapeOf<T, Cols>, A> | null> {
+  const Fs extends readonly FilterXdo[] = readonly [],
+>(
+  args: DbGetByIdArgs<T, As, Cols, A> & { asFilters?: Fs },
+): DbResult<As, ApplyFilters<WithAddons<RowShapeOf<T, Cols>, A> | null, Fs>> {
   return annotate(dboStatement(
     "mvp:dbo_get",
     args.table,
@@ -655,10 +663,10 @@ export function dbGetById<
     [entry("id", args.id)],
     { output: args.output, addon: args.addon },
     args.tableAlias,
-  ) as DbResult<As, WithAddons<RowShapeOf<T, Cols>, A> | null>, args);
+  ) as DbResult<As, ApplyFilters<WithAddons<RowShapeOf<T, Cols>, A> | null, Fs>>, args);
 }
 
-export interface DbDelArgs<T extends ObjectRef = ObjectRef> extends StatementAnnotations {
+export interface DbDelArgs<T extends ObjectRef = ObjectRef> extends StatementOptions {
   /**
    * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
    * Absent unless set — Xano writes it on some statements and not others, so it
@@ -696,7 +704,7 @@ export function dbDel<T extends ObjectRef>(args: DbDelArgs<T>): Statement {
   ), args);
 }
 
-export interface DbHasArgs<T extends ObjectRef = ObjectRef, As extends string = string> extends StatementAnnotations {
+export interface DbHasArgs<T extends ObjectRef = ObjectRef, As extends string = string> extends StatementOptions {
   /**
    * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
    * Absent unless set — Xano writes it on some statements and not others, so it
@@ -716,9 +724,11 @@ export interface DbHasArgs<T extends ObjectRef = ObjectRef, As extends string = 
 /** `db.has <table>` — test whether a record exists by a field match (`mvp:dbo_hasby`).
  * Binds a **boolean** (the engine's `__self: bool` output), so it's branded with
  * `as` + `boolean` for `InferResponse` — table-independent, unlike the row ops. */
-export function dbHas<T extends ObjectRef, const As extends string = "">(
-  args: DbHasArgs<T, As>,
-): DbResult<As, boolean> {
+export function dbHas<T extends ObjectRef, const As extends string = "",
+  const Fs extends readonly FilterXdo[] = readonly [],
+>(
+  args: DbHasArgs<T, As> & { asFilters?: Fs },
+): DbResult<As, ApplyFilters<boolean, Fs>> {
   return annotate(dboStatement(
     "mvp:dbo_hasby",
     args.table,
@@ -726,7 +736,7 @@ export function dbHas<T extends ObjectRef, const As extends string = "">(
     [entry("field_name", c.text(args.fieldName ?? "id")), entry("field_value", args.fieldValue)],
     {},
     args.tableAlias,
-  ) as DbResult<As, boolean>, args);
+  ) as DbResult<As, ApplyFilters<boolean, Fs>>, args);
 }
 
 export interface DbPatchArgs<
@@ -734,7 +744,7 @@ export interface DbPatchArgs<
   As extends string = string,
   Cols extends readonly OutputPath<ColsOf<T>>[] = readonly ColsOf<T>[],
   A extends readonly AddonSpec[] = readonly AddonSpec[],
-> extends StatementAnnotations {
+> extends StatementOptions {
   /**
    * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
    * Absent unless set — Xano writes it on some statements and not others, so it
@@ -775,7 +785,10 @@ export function dbPatch<
   const As extends string = "",
   const Cols extends readonly OutputPath<ColsOf<T>>[] = readonly [],
   const A extends readonly AddonSpec[] = readonly [],
->(args: DbPatchArgs<T, As, Cols, A>): DbResult<As, WithAddons<RowShapeOf<T, Cols>, A>> {
+  const Fs extends readonly FilterXdo[] = readonly [],
+>(
+  args: DbPatchArgs<T, As, Cols, A> & { asFilters?: Fs },
+): DbResult<As, ApplyFilters<WithAddons<RowShapeOf<T, Cols>, A>, Fs>> {
   return annotate(dboStatement(
     "mvp:dbo_patch",
     args.table,
@@ -787,10 +800,10 @@ export function dbPatch<
     ],
     { output: args.output, addon: args.addon },
     args.tableAlias,
-  ) as DbResult<As, WithAddons<RowShapeOf<T, Cols>, A>>, args);
+  ) as DbResult<As, ApplyFilters<WithAddons<RowShapeOf<T, Cols>, A>, Fs>>, args);
 }
 
-export interface DbTruncateArgs extends StatementAnnotations {
+export interface DbTruncateArgs extends StatementOptions {
   /**
    * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
    * Absent unless set — Xano writes it on some statements and not others, so it
@@ -1001,7 +1014,7 @@ export interface DbAddArgs<
   As extends string = string,
   Cols extends readonly OutputPath<ColsOf<T>>[] = readonly ColsOf<T>[],
   A extends readonly AddonSpec[] = readonly AddonSpec[],
-> extends StatementAnnotations {
+> extends StatementOptions {
   /**
    * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
    * Absent unless set — Xano writes it on some statements and not others, so it
@@ -1057,7 +1070,10 @@ export function dbAdd<
   const As extends string = "",
   const Cols extends readonly OutputPath<ColsOf<T>>[] = readonly [],
   const A extends readonly AddonSpec[] = readonly [],
->(args: DbAddArgs<T, As, Cols, A>): DbResult<As, WithAddons<RowShapeOf<T, Cols>, A>> {
+  const Fs extends readonly FilterXdo[] = readonly [],
+>(
+  args: DbAddArgs<T, As, Cols, A> & { asFilters?: Fs },
+): DbResult<As, ApplyFilters<WithAddons<RowShapeOf<T, Cols>, A>, Fs>> {
   const data = args.row !== undefined ? expandRow(requireBoundTable(args.table, "row"), args.row, "add") : (args.data ?? []);
   return annotate(dboStatement(
     "mvp:dbo_add",
@@ -1067,7 +1083,7 @@ export function dbAdd<
     { output: args.output, addon: args.addon },
     args.tableAlias,
     args.enforceHiddenFields,
-  ) as DbResult<As, WithAddons<RowShapeOf<T, Cols>, A>>, args);
+  ) as DbResult<As, ApplyFilters<WithAddons<RowShapeOf<T, Cols>, A>, Fs>>, args);
 }
 
 export interface DbEditArgs<
@@ -1075,7 +1091,7 @@ export interface DbEditArgs<
   As extends string = string,
   Cols extends readonly OutputPath<ColsOf<T>>[] = readonly ColsOf<T>[],
   A extends readonly AddonSpec[] = readonly AddonSpec[],
-> extends StatementAnnotations {
+> extends StatementOptions {
   /**
    * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
    * Absent unless set — Xano writes it on some statements and not others, so it
@@ -1141,7 +1157,10 @@ export function dbEdit<
   const As extends string = "",
   const Cols extends readonly OutputPath<ColsOf<T>>[] = readonly [],
   const A extends readonly AddonSpec[] = readonly [],
->(args: DbEditArgs<T, As, Cols, A>): DbResult<As, WithAddons<RowShapeOf<T, Cols>, A>> {
+  const Fs extends readonly FilterXdo[] = readonly [],
+>(
+  args: DbEditArgs<T, As, Cols, A> & { asFilters?: Fs },
+): DbResult<As, ApplyFilters<WithAddons<RowShapeOf<T, Cols>, A>, Fs>> {
   const data = args.row !== undefined ? expandRow(requireBoundTable(args.table, "row"), args.row, "edit") : (args.data ?? []);
   return annotate(dboStatement(
     "mvp:dbo_editby",
@@ -1155,7 +1174,7 @@ export function dbEdit<
     { output: args.output, addon: args.addon },
     args.tableAlias,
     args.enforceHiddenFields,
-  ) as DbResult<As, WithAddons<RowShapeOf<T, Cols>, A>>, args);
+  ) as DbResult<As, ApplyFilters<WithAddons<RowShapeOf<T, Cols>, A>, Fs>>, args);
 }
 
 /**
@@ -1173,7 +1192,7 @@ export function dbEdit<
  * of the db family.
  */
 
-export interface DbAddOrEditArgs<T extends ObjectRef = ObjectRef, As extends string = string> extends StatementAnnotations {
+export interface DbAddOrEditArgs<T extends ObjectRef = ObjectRef, As extends string = string> extends StatementOptions {
   /**
    * Refuse to auto-wire request inputs the endpoint did not explicitly bind.
    *
@@ -1214,9 +1233,11 @@ export interface DbAddOrEditArgs<T extends ObjectRef = ObjectRef, As extends str
 /** `db.add_or_edit <table>` — upsert a record by a field match (`mvp:dbo_addoreditby`).
  * Binds the **full upserted row** (`$inst->toArray()`, the edit-or-insert result),
  * so it's branded with `as` + the row shape for `InferResponse`. */
-export function dbAddOrEdit<T extends ObjectRef, const As extends string = "">(
-  args: DbAddOrEditArgs<T, As>,
-): DbResult<As, FullRowShapeOf<T>> {
+export function dbAddOrEdit<T extends ObjectRef, const As extends string = "",
+  const Fs extends readonly FilterXdo[] = readonly [],
+>(
+  args: DbAddOrEditArgs<T, As> & { asFilters?: Fs },
+): DbResult<As, ApplyFilters<FullRowShapeOf<T>, Fs>> {
   const data = args.row !== undefined ? expandRow(requireBoundTable(args.table, "row"), args.row, "edit") : (args.data ?? []);
   const input: Array<LeanInput & { ignore?: boolean }> = [
     leanInput("field_name", c.text(args.fieldName ?? "id")),
@@ -1231,10 +1252,10 @@ export function dbAddOrEdit<T extends ObjectRef, const As extends string = "">(
     },
     as: args.as ?? "",
     input,
-  } as DbResult<As, FullRowShapeOf<T>>, args);
+  } as DbResult<As, ApplyFilters<FullRowShapeOf<T>, Fs>>, args);
 }
 
-export interface DbSchemaArgs extends StatementAnnotations {
+export interface DbSchemaArgs extends StatementOptions {
   /**
    * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
    * Absent unless set — Xano writes it on some statements and not others, so it
@@ -1267,7 +1288,7 @@ export function dbSchema(args: DbSchemaArgs): Statement {
  */
 export type DbResponseType = "list" | "single" | (string & {});
 
-export interface DbDirectQueryArgs extends StatementAnnotations {
+export interface DbDirectQueryArgs extends StatementOptions {
   /** The raw SQL to run (stored verbatim as `context.code`). */
   sql: string;
   /** Result shape: `"list"` (default) or `"single"`. */
@@ -1315,7 +1336,7 @@ export function dbDirectQuery(args: DbDirectQueryArgs): Statement {
 //   snowflake share the format and stay modeled-by-analogy (1 of 5 captured).
 // ---------------------------------------------------------------------------
 
-export interface DbBulkAddArgs extends StatementAnnotations {
+export interface DbBulkAddArgs extends StatementOptions {
   /**
    * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
    * Absent unless set — Xano writes it on some statements and not others, so it
@@ -1358,7 +1379,7 @@ export function dbBulkAdd(args: DbBulkAddArgs): Statement {
   ], args.tableAlias), args);
 }
 
-export interface DbBulkDeleteArgs<As extends string = string> extends StatementAnnotations {
+export interface DbBulkDeleteArgs<As extends string = string> extends StatementOptions {
   /**
    * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
    * Absent unless set — Xano writes it on some statements and not others, so it
@@ -1392,9 +1413,11 @@ export interface DbBulkDeleteArgs<As extends string = string> extends StatementA
  * Binds the **deleted-row count** (the engine's `__self: int` output), so it's
  * branded with `as` + `number` for `InferResponse` — table-independent.
  */
-export function dbBulkDelete<const As extends string = "">(
-  args: DbBulkDeleteArgs<As>,
-): DbResult<As, number> {
+export function dbBulkDelete<const As extends string = "",
+  const Fs extends readonly FilterXdo[] = readonly [],
+>(
+  args: DbBulkDeleteArgs<As> & { asFilters?: Fs },
+): DbResult<As, ApplyFilters<number, Fs>> {
   const context: Record<string, unknown> = { dbo: dboBinding(args.table, args.tableAlias) };
   const search = encodeSearch(args.where);
   if (search !== undefined) context.search = search;
@@ -1404,11 +1427,11 @@ export function dbBulkDelete<const As extends string = "">(
   // so the runtime literal is a plain `Statement` regardless.
   return annotate({ name: "mvp:dbo_bulkdelete", context, as: args.as ?? "", input: [] } as unknown as DbResult<
     As,
-    number
+    ApplyFilters<number, Fs>
   >, args);
 }
 
-export interface DbBulkWriteArgs<T extends ObjectRef = ObjectRef, As extends string = string> extends StatementAnnotations {
+export interface DbBulkWriteArgs<T extends ObjectRef = ObjectRef, As extends string = string> extends StatementOptions {
   /**
    * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
    * Absent unless set — Xano writes it on some statements and not others, so it
@@ -1427,16 +1450,20 @@ export interface DbBulkWriteArgs<T extends ObjectRef = ObjectRef, As extends str
 /** `db.bulk.patch <table>` — partial-update many rows (`mvp:dbo_bulkpatch`).
  * Binds the **patched-row LIST** (the engine's `__self[]` row output), so it's
  * branded with `as` + the row-list shape for `InferResponse`. */
-export function dbBulkPatch<T extends ObjectRef, const As extends string = "">(
-  args: DbBulkWriteArgs<T, As>,
-): DbResult<As, FullRowShapeOf<T>[]> {
+export function dbBulkPatch<
+  T extends ObjectRef,
+  const As extends string = "",
+  const Fs extends readonly FilterXdo[] = readonly [],
+>(
+    args: DbBulkWriteArgs<T, As> & { asFilters?: Fs },
+): DbResult<As, ApplyFilters<FullRowShapeOf<T>[], Fs>> {
   return annotate(bulkStatement(
     "mvp:dbo_bulkpatch",
     args.table,
     args.as,
     [leanInput("items", args.items)],
     args.tableAlias,
-  ) as DbResult<As, FullRowShapeOf<T>[]>, args);
+  ) as DbResult<As, ApplyFilters<FullRowShapeOf<T>[], Fs>>, args);
 }
 
 /**
@@ -1840,7 +1867,7 @@ export interface DbQueryArgs<
   RT extends DbReturnType = DbReturnType,
   E extends readonly DbEval[] = readonly DbEval[],
   AG extends DbAggregate = DbAggregate,
-> extends StatementAnnotations {
+> extends StatementOptions {
   /**
    * SQL alias for the bound table (`context.dbo.as`), used to qualify columns.
    * Absent unless set — Xano writes it on some statements and not others, so it
@@ -1942,9 +1969,10 @@ export function dbQuery<
   const RT extends DbReturnType = "list",
   const E extends readonly DbEval[] = readonly [],
   const AG extends DbAggregate = DbAggregate,
+  const Fs extends readonly FilterXdo[] = readonly [],
 >(
-  args: DbQueryArgs<T, As, Cols, A, P, RT, E, AG>,
-): DbResult<As, QueryResult<RowShapeOf<T, Cols>, A, P, RT, E, AG>> {
+  args: DbQueryArgs<T, As, Cols, A, P, RT, E, AG> & { asFilters?: Fs },
+): DbResult<As, ApplyFilters<QueryResult<RowShapeOf<T, Cols>, A, P, RT, E, AG>, Fs>> {
   // An unbound (`null`) table has no columns to shadow and no name to qualify
   // with, exactly as in an addon's `null` branch.
   if (args.table !== null) {
@@ -2063,7 +2091,7 @@ export function dbQuery<
       addon: args.addon,
       addonOffset: usesPagingEnvelope ? "items[]" : undefined,
     }),
-  } as unknown as DbResult<As, QueryResult<RowShapeOf<T, Cols>, A, P, RT, E, AG>>, args);
+  } as unknown as DbResult<As, ApplyFilters<QueryResult<RowShapeOf<T, Cols>, A, P, RT, E, AG>, Fs>>, args);
 }
 
 export interface DbTransactionArgs extends StatementAnnotations {
@@ -2096,7 +2124,7 @@ const EXTERNAL_SQL_NAME: Record<ExternalSqlEngine, string> = {
   snowflake: "mvp:dbo_external_snowflake_query",
 };
 
-export interface DbExternalQueryArgs extends StatementAnnotations {
+export interface DbExternalQueryArgs extends StatementOptions {
   /** Which external database engine to target. */
   engine: ExternalSqlEngine;
   sql: string;

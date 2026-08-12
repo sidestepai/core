@@ -8,7 +8,7 @@
  * `name`, optional `as`, and `context`. The registry maps statement name →
  * factory so the eventual ~500-statement catalog plugs in here.
  */
-import type { StackItemXdo } from "../types/xdo.js";
+import type { FilterXdo, StackItemXdo } from "../types/xdo.js";
 
 /**
  * The type-level contract linking a branded db statement (the **producer** —
@@ -47,15 +47,66 @@ export interface StatementAnnotations {
 }
 
 /**
- * Apply {@link StatementAnnotations} to a built statement.
+ * {@link StatementAnnotations} plus the result-filter option, for the statements
+ * that bind an `as` variable.
+ *
+ * Split from the annotations rather than folded into them so `asFilters` is only
+ * offered where there is a binding to attach it to: a statement that returns
+ * nothing (`precondition`, `switch`, `while`, …) should not surface the option
+ * in autocomplete at all. The runtime guard in {@link assertBindsAs} still
+ * backs this up for callers that reach past the types.
+ */
+export interface StatementOptions extends StatementAnnotations {
+  /**
+   * Filters piped onto the result before it is bound — the editor's
+   * `return as token | upper`.
+   *
+   * Authored from the same `fl.*` catalog as value filters and applied in
+   * order, so `asFilters: [fl.trim(), fl.upper()]` trims and then upper-cases.
+   *
+   * The bound variable is RETYPED by the chain: `InferResponse` folds each
+   * filter's declared result, so a `db.query` bound through `[fl.count()]` is a
+   * `number`. Filters the engine declares as returning `any` (`get`, `set`,
+   * `json_decode`, …) fold to `unknown` — see `values/filter-result.ts`.
+   */
+  asFilters?: FilterXdo[];
+}
+
+/**
+ * Apply {@link StatementOptions} to a built statement.
  *
  * Only members that were actually authored are copied, so a factory's own
  * `description` (a few statements route one) is not clobbered by an absent key.
+ *
+ * `asFilters` merges into the `output` envelope rather than replacing it: a db
+ * statement's column selection (`output.items`) and its result filters live in
+ * the same block, and dropping one to write the other would silently discard
+ * whichever the factory set first.
  */
-export function annotate<T extends Statement>(stmt: T, a?: StatementAnnotations): T {
+export function annotate<T extends Statement>(stmt: T, a?: StatementOptions): T {
   if (a?.disabled !== undefined) stmt.disabled = a.disabled;
   if (a?.description !== undefined) stmt.description = a.description;
+  if (a?.asFilters !== undefined && a.asFilters.length > 0) {
+    assertBindsAs(stmt, "asFilters");
+    stmt.output = { ...((stmt.output ?? {}) as Record<string, unknown>), filters: a.asFilters };
+  }
   return stmt;
+}
+
+/**
+ * Refuse an option that filters a result the statement never binds.
+ *
+ * The engine reads a statement's filter chain off the `as` argument, so without
+ * a binding there is nothing for the chain to attach to — the filters would be
+ * persisted and never run. Caught at author time because the failure is
+ * otherwise invisible: the deploy succeeds and the filter simply does nothing.
+ */
+export function assertBindsAs(stmt: Statement, option: string): void {
+  if (stmt.as) return;
+  throw new Error(
+    `"${stmt.name}" binds no \`as\` variable, so \`${option}\` has nothing to filter. ` +
+      "Bind the result with `as` first, or drop the option.",
+  );
 }
 
 /** What a statement factory returns before base-envelope encoding. */

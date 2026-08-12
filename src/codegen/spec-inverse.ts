@@ -216,14 +216,33 @@ function shapesNothing(output: unknown): boolean {
   return deepEqual(normalize({ output }), {});
 }
 
-/** Build the reserved envelope entries (`description`, `output`) a spec allows. */
-function envelopeEntries(spec: StatementSpec, stored: StackItemXdo): Recovered[] {
+/**
+ * Build the reserved envelope entries (`description`, `output`) a spec allows.
+ *
+ * `carriesAsFilters` says the passthrough is already recovering the stored
+ * `output.filters` as an `asFilters` argument. The two spellings are mutually
+ * exclusive by construction — the authoring surface throws when both are set —
+ * so the filters are dropped from the `output` literal here rather than emitted
+ * twice into source that would refuse to build. What remains of `output` (a
+ * column selection, a `customize` flag) still rides as a literal, and an
+ * `output` left with nothing but the filters is dropped entirely.
+ */
+function envelopeEntries(
+  spec: StatementSpec,
+  stored: StackItemXdo,
+  carriesAsFilters: boolean,
+): Recovered[] {
   const out: Recovered[] = [];
   const description = (stored as { description?: unknown }).description;
   if (spec.envelope?.description && typeof description === "string" && description !== "") {
     out.push({ field: "description", runtime: description, expr: lit(description), isDefault: false });
   }
-  const storedOutput = (stored as { output?: unknown }).output;
+  let storedOutput = (stored as { output?: unknown }).output;
+  if (carriesAsFilters && storedOutput !== null && typeof storedOutput === "object") {
+    const rest = { ...(storedOutput as Record<string, unknown>) };
+    delete rest.filters;
+    storedOutput = rest;
+  }
   if (spec.output && storedOutput !== undefined && !shapesNothing(storedOutput)) {
     out.push({ field: "output", runtime: storedOutput, expr: lit(storedOutput), isDefault: false });
   }
@@ -258,7 +277,13 @@ export function decodeFromSpec(ctx: DecodeContext, stored: StackItemXdo): Expr |
       );
     }
   }
-  recovered.push(...envelopeEntries(spec, stored));
+  // Read the passthrough before the envelope entries: whether it recovered the
+  // stored `output.filters` as an `asFilters` argument decides whether those
+  // same filters may also ride inside the `output` literal.
+  const passthroughForOutput = envelopePassthrough(stored);
+  recovered.push(
+    ...envelopeEntries(spec, stored, passthroughForOutput.annotations.asFilters !== undefined),
+  );
 
   // Leanest first: a field sitting at its rule default reads as noise, and the
   // proof below is what licenses dropping it.
@@ -274,7 +299,7 @@ export function decodeFromSpec(ctx: DecodeContext, stored: StackItemXdo): Expr |
   // field, and `description` for every spec whose envelope profile did not permit
   // one — so an annotated `precondition`, `send_email`, `setheader`, or
   // `template_string` degraded to a spread purely for carrying a comment.)
-  const passthrough = envelopePassthrough(stored);
+  const passthrough = passthroughForOutput;
 
   for (const sPath of SPATHS_BY_NAME.get(stored.name) ?? []) {
     const factory = leafOf(sPath);
@@ -310,6 +335,9 @@ export function decodeFromSpec(ctx: DecodeContext, stored: StackItemXdo): Expr |
       }
 
       ctx.use(CORE_MODULE, "s");
+      // A recovered `asFilters` chain emits `fl.*` calls. Registered only on the
+      // winning candidate, so a declined attempt cannot leave an unused import.
+      for (const symbol of passthrough.symbols) ctx.use(CORE_MODULE, symbol);
       // A spec whose envelope profile permits a `description` recovers it as an
       // ordinary field, and the passthrough carries the SAME stored key — so both
       // would print, and an object literal with two `description:` members is

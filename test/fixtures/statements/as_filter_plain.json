@@ -1,0 +1,24 @@
+{
+  "as": "token",
+  "name": "mvp:uuid4",
+  "_xsid": "f:56dd922a-0bfc-4b23-b26d-b84336d66cfb",
+  "addon": [],
+  "input": [],
+  "mocks": {},
+  "output": {
+    "items": [],
+    "filters": [
+      {
+        "arg": [],
+        "name": "upper",
+        "disabled": false
+      }
+    ],
+    "customize": false
+  },
+  "context": {},
+  "runtime": null,
+  "disabled": false,
+  "description": "",
+  "settings_registry": null
+}

@@ -17,7 +17,7 @@
  * confirmed byte-exact.
  */
 import type { Statement } from "../statement.js";
-import type { StatementAnnotations } from "../statement.js";
+import type { StatementAnnotations, StatementOptions } from "../statement.js";
 import { encodeStatement, registerStatement, annotate } from "../statement.js";
 import type { Value } from "../../values/value.js";
 import { encodeComparison } from "../conditional.js";
@@ -31,7 +31,7 @@ function run(body: Statement[]): unknown[] {
   return body.map(encodeStatement);
 }
 
-export interface ForArgs extends StatementAnnotations {
+export interface ForArgs extends StatementOptions {
   /** Loop variable name (the index). */
   as: string;
   /** Iteration count. */
@@ -48,7 +48,7 @@ export function forLoop(args: ForArgs): Statement {
   }, args);
 }
 
-export interface ForeachArgs extends StatementAnnotations {
+export interface ForeachArgs extends StatementOptions {
   /** Loop variable name (the current item). */
   as: string;
   /** The list to iterate. */

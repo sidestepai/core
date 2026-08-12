@@ -246,6 +246,11 @@ function argSignature(spec: StatementSpec): { type: string; allOptional: boolean
   // so gating them on the envelope profile only hid them from autocomplete.
   // `output` shaping is per-statement, and stays gated. See encodeFromSpec.
   fields.push("disabled?: boolean", "description?: string");
+  // `asFilters` pipes the result through the filter catalog before it is bound,
+  // so it is offered ONLY where there is a binding to attach it to. Gating it on
+  // the `as` rule keeps the impossible call out of autocomplete entirely rather
+  // than leaving the author to discover the runtime guard.
+  if (spec.rules.some((r) => r.route.kind === "as")) fields.push("asFilters?: FilterXdo[]");
   if (spec.output) fields.push("output?: OutputAuthored");
   const allOptional = spec.rules.every((r) => r.optional || r.default !== undefined);
   return { type: fields.length ? `{ ${fields.join("; ")} }` : "Record<string, never>", allOptional };
@@ -322,6 +327,7 @@ import type { Statement } from "../statement.js";
 import type { Authored, OutputAuthored } from "../schema-dsl/interpret.js";
 import { encodeFromSpec } from "../schema-dsl/interpret.js";
 import type { Value } from "../../values/value.js";
+import type { FilterXdo } from "../../types/xdo.js";
 import type { LambdaBody } from "../../values/lambda.js";
 import type { Condition } from "../conditional.js";
 import { GENERATED_SPECS } from "./specs.generated.js";

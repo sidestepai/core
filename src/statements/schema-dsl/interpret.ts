@@ -28,6 +28,7 @@
 import type { Statement } from "../statement.js";
 import { registerStatement, annotate } from "../statement.js";
 import type { Value } from "../../values/value.js";
+import type { FilterXdo } from "../../types/xdo.js";
 import { leanInput } from "../lean-input.js";
 import { isIgnored } from "../../values/ignored.js";
 import { resolveEnumValue } from "./enum-guard.js";
@@ -114,6 +115,11 @@ export interface StatementSpec {
  * three stored members may be set; omitted members keep their empty default.
  * `filters` attaches a filter chain to the result variable; `customize`/`items`
  * drive response field-mapping. Merged over the spec's default `output` shape.
+ *
+ * Prefer `asFilters` for the filter chain — it is typed, reaches every statement
+ * rather than the subset declaring an `output`, and guards the no-binding case.
+ * `filters` here remains the escape hatch for a chain the typed surface cannot
+ * express; setting both throws.
  */
 export interface OutputAuthored {
   filters?: unknown[];
@@ -123,15 +129,15 @@ export interface OutputAuthored {
 
 /**
  * Authored inputs for a spec-driven statement, keyed by field name. Besides the
- * spec's rule fields, three reserved envelope keys are honored: `disabled` and
- * `description` ({@link StatementAnnotations} — accepted on every statement) and
- * `output` (an {@link OutputAuthored} shaping the result envelope, only where the
- * statement carries one). No engine statement routes a rule field by any of those
- * three names, so they are unambiguous.
+ * spec's rule fields, four reserved envelope keys are honored: `disabled`,
+ * `description`, and `asFilters` ({@link StatementAnnotations} — accepted on
+ * every statement) and `output` (an {@link OutputAuthored} shaping the result
+ * envelope, only where the statement carries one). No engine statement routes a
+ * rule field by any of those four names, so they are unambiguous.
  */
 export type Authored = Record<
   string,
-  string | boolean | Value | Condition | OutputAuthored | undefined
+  string | boolean | Value | Condition | OutputAuthored | FilterXdo[] | undefined
 >;
 
 function valueFields(v: Value): { value: string; tag: string; filters: unknown[] } {
@@ -255,16 +261,30 @@ export function encodeFromSpec(spec: StatementSpec, authored: Authored): Stateme
   // is honoured on every statement, profile or not, because `encodeStatement`
   // writes the member unconditionally. `annotate` applies `disabled` the same way.
   if (env?.description) stmt.description = "";
+  const authoredOut = authored.output as OutputAuthored | undefined;
+  const asFilters = authored.asFilters as FilterXdo[] | undefined;
+  // Two spellings of one concept. `asFilters` is the documented surface and the
+  // reserved `output` key is the escape hatch; authoring both invites them to
+  // disagree, and silently picking a winner is how a filter chain goes missing.
+  if (asFilters?.length && authoredOut?.filters !== undefined) {
+    throw new Error(
+      `Statement "${spec.name}": \`asFilters\` and \`output.filters\` both set the same ` +
+        "filter chain. Keep `asFilters` and drop `output.filters`.",
+    );
+  }
   annotate(stmt, {
     disabled: typeof authored.disabled === "boolean" ? authored.disabled : undefined,
     description: typeof authored.description === "string" ? authored.description : undefined,
+    asFilters,
   });
   if (env?.settingsRegistry) stmt.settings_registry = [];
   if (spec.output) {
     const base = env?.richOutput ? { customize: false, filters: [], items: [] } : { filters: [] };
-    // Reserved envelope key: authored output shaping merged over the default.
-    const authoredOut = authored.output as OutputAuthored | undefined;
-    stmt.output = authoredOut ? { ...base, ...pickDefined(authoredOut) } : base;
+    // Reserved envelope key: authored output shaping merged over the default —
+    // and over whatever `annotate` already wrote, so an `asFilters` chain on a
+    // spec that also declares `output` is not overwritten by the empty default.
+    const fromAnnotate = (stmt.output ?? {}) as Record<string, unknown>;
+    stmt.output = { ...base, ...fromAnnotate, ...(authoredOut ? pickDefined(authoredOut) : {}) };
   }
   if (env?.addon) stmt.addon = [];
   return stmt;

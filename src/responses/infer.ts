@@ -27,6 +27,7 @@
  *      the author narrows or overrides via `responseShape`.
  */
 import type { Value, RefValue, FilteredValue } from "../values/value.js";
+import type { ApplyFilters } from "../values/filter-result.js";
 import type { AsShapeBrand } from "../statements/statement.js";
 import type { Prettify } from "../fields/value-types.js";
 
@@ -120,13 +121,21 @@ type TraceVar<Name extends string, S> = Name extends `${infer Base}.${infer Path
 
 /**
  * Resolve one response {@link Value} to its type against the branded stack `S`.
- * A filtered value degrades to `unknown` first (a filter can reshape it with no
- * static signal); otherwise a branded `ref` traces to the statement that
- * produced it ({@link TraceVar}); anything else (a non-ref value, an untraceable
- * ref) is `unknown` — the honest floor.
+ *
+ * A FILTERED value resolves its base and then folds the chain over it
+ * ({@link ApplyFilters}), so `withFilters(ref("rows"), fl.count())` is `number`
+ * rather than `unknown`. It used to degrade to `unknown` outright, on the
+ * grounds that a filter reshapes a value with no static signal — true when
+ * written, but the catalog does declare a result for 190 of the 225 filters, and
+ * those declarations are live-verified. The remaining filters (`get`, `set`,
+ * `json_decode`, …) still land on `unknown` through the fold itself.
+ *
+ * Otherwise a branded `ref` traces to the statement that produced it
+ * ({@link TraceVar}); anything else (a non-ref value, an untraceable ref) is
+ * `unknown` — the honest floor.
  */
-type ResolveValue<V, S> = V extends FilteredValue
-  ? unknown
+type ResolveValue<V, S> = V extends FilteredValue<infer Base, infer Chain>
+  ? ApplyFilters<ResolveValue<Base, S>, Chain>
   : V extends RefValue<infer Name>
     ? TraceVar<Name, S>
     : unknown;

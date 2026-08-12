@@ -24,12 +24,14 @@ import {
   dbBulkUpdate,
   dbBulkDelete,
   dbExternalQuery,
+  dbGet,
   dbQuery,
 } from "../../src/statements/special/db.js";
 import { apiCall } from "../../src/statements/special/calls.js";
 import { agent, table, f, query, apiGroup, input } from "../../src/index.js";
 import { obj } from "../../src/values/obj.js";
 import { c, inp, ref, col, filter, withFilters } from "../../src/values/value.js";
+import { fl } from "../../src/values/generated/filters.generated.js";
 
 /** Table def reused by the bulk rows — its dbo guid derives from `name`. */
 const capUsers = table({ name: "cap_users", schema: { name: f.text({}) } });
@@ -37,6 +39,11 @@ const capUsers = table({ name: "cap_users", schema: { name: f.text({}) } });
 const capPosts = table({ name: "posts", schema: { published: f.bool(), score: f.decimal() } });
 const capRows = () =>
   withFilters(c.text('[{"name":"a"},{"name":"b"}]'), [filter("json_decode")]);
+/**
+ * Table for the `as_filter_selection` row. The stored `context.dbo.id` derives
+ * from the table NAME, so reproducing the name reproduces the captured id.
+ */
+const capAsFilterUsers = table({ name: "users", schema: { email: f.text({}) } });
 
 /** The realtime.publish rows' payload — an object literal, stored as a `const:expr2`. */
 const capPublishData = () => obj({ a: 1 });
@@ -136,6 +143,32 @@ const emptyObj = () => ({ value: "", tag: "const:obj", filters: [] });
 const STATEMENT_CORPUS: Array<{ fixture: string; build: () => unknown }> = [
   { fixture: "math_add", build: () => encodeStatement(mathAdd("x1", c.int(1))) },
   { fixture: "bitwise_and", build: () => encodeStatement(bitwiseAnd("x9", c.int(123))) },
+  // A statement's result-filter chain (`… as $token|upper`), stored in the
+  // envelope's `output.filters`. Captured live: the plain chain, a chain whose
+  // filters carry arguments, and — the one worth pinning — a db read where a
+  // column selection and a filter chain share one `output` block.
+  {
+    fixture: "as_filter_plain",
+    build: () => stmt("mvp:uuid4", { as: "token", asFilters: [fl.upper()] }),
+  },
+  {
+    fixture: "as_filter_args",
+    build: () =>
+      stmt("mvp:uuid4", { as: "token", asFilters: [fl.upper(), fl.substr(c.int(0), c.int(8))] }),
+  },
+  {
+    fixture: "as_filter_selection",
+    build: () =>
+      encodeStatement(
+        dbGet({
+          table: capAsFilterUsers,
+          fieldValue: inp("id"),
+          output: ["id", "email"],
+          as: "user",
+          asFilters: [fl.get(c.text("email"))],
+        }),
+      ),
+  },
   { fixture: "object_keys", build: () => encodeStatement(objectKeys("x2", objArg())) },
   { fixture: "object_values", build: () => encodeStatement(objectValues("x2", objArg())) },
   { fixture: "object_entries", build: () => encodeStatement(objectEntries("x2", objArg())) },

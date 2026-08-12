@@ -1053,6 +1053,32 @@ statement also carries `description` and `disabled`** — inline on the object-a
 a trailing options object on the positional specials. `disabled: true` is Xano's
 commented-out state: the step stays in the stack and the engine skips it.
 
+**Filter a statement's result as it binds.** Any statement with an `as` also takes
+`asFilters` — the editor's `return as <var> | upper` — applied in order, from the same
+`fl.*` catalog as value filters:
+
+```ts
+s.security.create_uuid({ as: "token", asFilters: [fl.upper()] })
+s.set_var("email", inp("raw"), { asFilters: [fl.trim(), fl.lower()] })
+```
+
+It saves a follow-up `s.set_var` for the common "bind it in a different shape" case. A
+statement that binds nothing does not offer the option.
+
+**The chain retypes the value.** `InferResponse` folds each filter's declared result, so a
+filtered binding reports what it actually holds rather than `unknown`:
+
+```ts
+s.db.query({ table: users, as: "rows", asFilters: [fl.count()] })       // rows: number
+s.db.query({ table: users, as: "rows", asFilters: [fl.reverse(), fl.first()] })  // rows: Row
+withFilters(ref("rows"), fl.count())                                    // number
+```
+
+Filters the engine declares as returning `any` — `get`, `set`, `transform`, `json_decode` —
+fold to `unknown`, since no declaration could name their shape. Note this models a filter's
+OUTPUT, not its input: a filter applied to a value it cannot accept returns `null` at
+runtime rather than erroring, and still types as its declared result.
+
 **Fields with a fixed set of values take a bare literal.** Where the engine accepts only
 certain spellings, the field's type is that set, so autocomplete offers them and a typo is a
 compile error rather than a runtime failure after deploy:

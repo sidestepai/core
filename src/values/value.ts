@@ -32,7 +32,26 @@ export type RefValue<Name extends string = string> = Value & { readonly __ref: N
  * as `unknown` (the honest floor, matching how the Xano engine degrades a
  * filtered result to `json`). Overriding via `responseShape` remains available.
  */
-export type FilteredValue = Value & { readonly __filtered: true };
+export type FilteredValue<
+  Base = unknown,
+  Chain extends readonly unknown[] = readonly unknown[],
+> = Value & {
+  readonly __filtered: true;
+  /** Phantom: the value the chain was applied to, so its type can be folded. */
+  readonly __base?: Base;
+  /** Phantom: the flattened filter chain, in application order. */
+  readonly __chain?: Chain;
+};
+
+/** Flatten one level of `withFilters`'s spread-or-array argument list. */
+export type FlattenFilters<Fs extends readonly unknown[]> = Fs extends readonly [
+  infer Head,
+  ...infer Tail,
+]
+  ? Head extends readonly unknown[]
+    ? [...Head, ...FlattenFilters<Tail>]
+    : [Head, ...FlattenFilters<Tail>]
+  : [];
 
 /**
  * A {@link Value} produced by {@link col} (or a filter chain built from one). The
@@ -709,8 +728,19 @@ export function out(name: string): Value {
   return val(name, "output");
 }
 
-/** Build a `mvp_filter` chain entry: `{name, disabled:false, arg}`. */
-export function filter(name: string, ...args: (Value | undefined)[]): FilterXdo {
+/**
+ * Build a `mvp_filter` chain entry: `{name, disabled:false, arg}`.
+ *
+ * Generic in the name so a literal call carries it at the type level
+ * (`filter("upper")` is a `FilterXdo<"upper">`), which is what lets a chain's
+ * result type be folded. A `string` name — the escape-hatch spelling, and what a
+ * decoded workspace passes — widens to `FilterXdo<string>` and folds to
+ * `unknown`, exactly as before.
+ */
+export function filter<const N extends string>(
+  name: N,
+  ...args: (Value | undefined)[]
+): FilterXdo<N> {
   // A HOLE — an omitted argument with a supplied one after it — is the whole of
   // issue #221's second half. Dropping it (below) would slide every later
   // argument one slot forward, so the code lands in the initial-value slot and
@@ -752,10 +782,11 @@ export function filter(name: string, ...args: (Value | undefined)[]): FilterXdo 
  * (the canonical form, `withFilters(v, fl.trim(), fl.lower())`); the array form
  * (`withFilters(v, [fl.trim(), fl.lower()])`) is also accepted — both are flattened.
  */
-export function withFilters<V extends Value>(
+export function withFilters<V extends Value, const Fs extends readonly (FilterXdo | FilterXdo[])[]>(
   value: V,
-  ...filters: (FilterXdo | FilterXdo[])[]
-): FilteredValue & (V extends ColValue ? { readonly __col: true } : unknown) {
+  ...filters: Fs
+): FilteredValue<V, FlattenFilters<Fs>> &
+  (V extends ColValue ? { readonly __col: true } : unknown) {
   const added = filters.flat();
   // Guard the pattern-piped regex footgun (issue #128): when a regex filter is
   // the first thing applied to a bare `const` value, that value IS the pattern —
@@ -779,11 +810,16 @@ export function withFilters<V extends Value>(
         `c.regex(${JSON.stringify(value.value)}) instead of c.text(...). (issue #128)`,
     );
   }
-  // `__filtered` is a phantom carrier — the runtime object is the plain
-  // `{value, tag, filters}` Value; the cast marks the type as filter-reshaped so
-  // `InferResponse` degrades it to `unknown`. A `col()`-derived chain keeps the
-  // `__col` brand so `withFilters(col("x"), fl.add(...))` is rejected in a `row`
-  // just like a bare `col()` (issue #32) — the wrapped form is the actual footgun.
-  return { ...value, filters: [...value.filters, ...added] } as FilteredValue &
+  // `__filtered`, `__base`, and `__chain` are phantom carriers — the runtime
+  // object is the plain `{value, tag, filters}` Value. They record what the chain
+  // was applied to and which filters it holds, so `InferResponse` can FOLD the
+  // chain to a result type instead of degrading it to `unknown`. A `col()`-derived
+  // chain keeps the `__col` brand so `withFilters(col("x"), fl.add(...))` is
+  // rejected in a `row` just like a bare `col()` (issue #32) — the wrapped form is
+  // the actual footgun.
+  return { ...value, filters: [...value.filters, ...added] } as unknown as FilteredValue<
+    V,
+    FlattenFilters<Fs>
+  > &
     (V extends ColValue ? { readonly __col: true } : unknown);
 }

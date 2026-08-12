@@ -11,8 +11,10 @@
  * to `number | null` while `ref("geo.latitude")` bottoms out at `unknown`.
  */
 import type { Statement, AsShapeBrand } from "../statement.js";
+import type { FilterXdo } from "../../types/xdo.js";
+import type { ApplyFilters } from "../../values/filter-result.js";
 import type { Value } from "../../values/value.js";
-import type { StatementAnnotations } from "../statement.js";
+import type { StatementOptions } from "../statement.js";
 import { generated } from "../generated/factories.generated.js";
 
 /**
@@ -52,7 +54,7 @@ export interface IpLookupResult {
   };
 }
 
-export interface IpLookupArgs<As extends string = string> extends StatementAnnotations {
+export interface IpLookupArgs<As extends string = string> extends StatementOptions {
   /** The IP address to geolocate. */
   value: Value;
   /** Bind the nested {@link IpLookupResult} (or `null`) to this stack variable. */
@@ -67,13 +69,15 @@ export interface IpLookupArgs<As extends string = string> extends StatementAnnot
  * a dotted `ref` into the real, nested shape instead of `unknown`. The brand is
  * phantom — the emitted statement is byte-identical to the generated factory's.
  */
-export function ipLookup<const As extends string = "">(
-  a: IpLookupArgs<As>,
-): Statement & AsShapeBrand<As, IpLookupResult | null> {
+export function ipLookup<const As extends string = "",
+  const Fs extends readonly FilterXdo[] = readonly [],
+>(
+  a: IpLookupArgs<As> & { asFilters?: Fs },
+): Statement & AsShapeBrand<As, ApplyFilters<IpLookupResult | null, Fs>> {
   return generated.util.ip_lookup({
     as: a.as,
     value: a.value,
     disabled: a.disabled,
     description: a.description,
-  }) as Statement & AsShapeBrand<As, IpLookupResult | null>;
+  }) as Statement & AsShapeBrand<As, ApplyFilters<IpLookupResult | null, Fs>>;
 }

@@ -43,11 +43,26 @@ export const TAGS = [
 
 export type Tag = (typeof TAGS)[number];
 
-/** A filter in a `mvp_filter` chain: `{name, disabled, arg}`. */
-export interface FilterXdo {
+/**
+ * A filter in a `mvp_filter` chain: `{name, disabled, arg}`.
+ *
+ * `N` is a **phantom** carrier for the filter's name, set by the `fl.*` factories
+ * (`fl.upper()` is a `FilterXdo<"upper">`) and never present at runtime — `name`
+ * already holds it. It exists so a chain's RESULT type can be folded statically:
+ * knowing a chain is `["trim", "upper"]` rather than `string[]` is what lets
+ * `withFilters`/`asFilters` report `string` instead of `unknown`.
+ *
+ * It defaults to `string`, so every existing `FilterXdo` position — stored
+ * envelopes, decoder output, the `filter()` escape hatch — keeps working
+ * unchanged and simply folds to `unknown`, the honest floor for a chain whose
+ * names are not statically known.
+ */
+export interface FilterXdo<N extends string = string> {
   name: string;
   disabled: boolean;
   arg: TaggedValue[];
+  /** Phantom: the filter's name at the type level. Never present at runtime. */
+  readonly __filter?: N;
 }
 
 /** The core tagged value: `{value, tag, filters}`. Values serialize as strings. */

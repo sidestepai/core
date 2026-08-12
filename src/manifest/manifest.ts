@@ -1619,6 +1619,7 @@ export function renderLlmsTxt(m: Manifest): string {
     "",
     "- `s.set_var(name, value)` · `s.update_var(name, value)` · `s.return(value)` · `s.comment(text)` — positional.",
     "- **Every** statement takes `disabled?`/`description?` — annotations on the stack item, not args: `disabled: true` is Xano's \"disable step\" (kept in the stack, skipped at runtime), `description` the note beside it. Inline on object-arg factories; a trailing object on the positional ones (`s.set_var(\"x\", v, { disabled: true })`).",
+    "- **Statements with an `as`** also take `asFilters?` — `fl.*` filters on the RESULT as it binds, in order, same slot as `disabled`: `s.set_var(\"x\", v, { asFilters: [fl.trim(), fl.lower()] })`. Saves a follow-up `set_var`. Throws without an `as`. The bound variable is RETYPED by the chain (`db.query` + `[fl.count()]` → `number`); filters whose result the engine declares as `any` (`get`, `set`, `json_decode`, …) fold to `unknown`.",
     "- `s.conditional({ when, then, elif?, else? })` — if/elif/else. `when` is a condition (`expr`/`cmp`/`and`/`or`); `elif` is an ordered `[{ when, then }]` (each an else-if branch); `then`/`else` are `Statement[]`.",
     "- `s.for({ as, count, body })` — **count-bounded** loop (`as` is the index), NOT from/to.",
     "- `s.foreach({ as, list, body })` — iterate `list`; `as` is the current item.",
