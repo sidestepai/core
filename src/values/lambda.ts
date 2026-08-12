@@ -365,7 +365,7 @@ export function extractFunctionBody(source: string, caller: string): string {
       throw new Error(`${caller}: could not find the function body in ${JSON.stringify(src.slice(0, 80))}.`);
     }
     assertDestructuredParams(src.slice(kw[0].length, open), mask.slice(open + 1, close), caller);
-    return dedent(src.slice(open + 1, close).trim());
+    return stripKeepNames(dedent(src.slice(open + 1, close).trim()));
   }
 
   // Otherwise an arrow: everything after the top-level `=>`.
@@ -382,10 +382,69 @@ export function extractFunctionBody(source: string, caller: string): string {
   if (restMask.startsWith("{")) {
     const close = restMask.lastIndexOf("}");
     if (close === -1) throw new Error(`${caller}: unbalanced braces in the function body.`);
-    return dedent(rest.slice(1, close).trim());
+    return stripKeepNames(dedent(rest.slice(1, close).trim()));
   }
   // Concise body: `(b) => expr` is `return expr;`.
-  return `return ${rest.replace(/[;,]\s*$/, "")};`;
+  return stripKeepNames(`return ${rest.replace(/[;,]\s*$/, "")};`);
+}
+
+/**
+ * Undo esbuild's `keepNames` rewrite, which the body would otherwise ship.
+ *
+ * A body is read back with `Function.prototype.toString`, and under a `.ts`
+ * loader — `tsx`, which is how the CLI evaluates a TypeScript entry — that
+ * returns TRANSPILED source, not what the author wrote. esbuild runs with
+ * `keepNames: true`, so every function that gets its name by INFERENCE is
+ * wrapped in a call to a module-scope helper:
+ *
+ * ```
+ * function round(n){…}__name(round,"round");   // a declaration
+ * const g=__name(function(n){…},"g");          // a named function expression
+ * const h=__name(n=>n,"h");                    // a named arrow
+ * class K{static{__name(this,"K")}…}           // a class
+ * ```
+ *
+ * The helper is defined at MODULE scope and the body travels alone, so what
+ * reaches the engine calls an identifier that is not there — and a throwing body
+ * comes back as its own diagnostic text in the value slot with HTTP 200 (issue
+ * #256). Anonymous callbacks (`items.map((i) => …)`) get no name to keep and are
+ * untouched, which is why most lambdas in a project work and hide this.
+ *
+ * `__name(X, "n")` evaluates to `X`, and a function's `.name` is meaningless in a
+ * body shipped as TEXT — so removing the wrapper restores exactly the source the
+ * author wrote, rather than refusing it. The declaration form is dropped whole
+ * (it is a bare `round;` expression statement once unwrapped); everywhere else
+ * the first argument is spliced in, which is safe unparenthesized because name
+ * inference only fires in a value position (an initializer, a property, an
+ * argument), never in statement position.
+ *
+ * Helpers this does NOT know how to undo are refused by {@link assertLambdaBody}
+ * instead — a build error, never a wrong value at runtime.
+ */
+function stripKeepNames(body: string): string {
+  let out = body;
+  // One call per pass, re-masking each time: a nested `__name` shifts every
+  // index after it, and the innermost calls are reached by repetition.
+  for (;;) {
+    const mask = maskNonCode(out);
+    const call = /(^|[^A-Za-z0-9_$.])__name\s*\(/.exec(mask);
+    if (call === null) break;
+    const start = call.index + (call[1] ?? "").length;
+    const open = mask.indexOf("(", start);
+    const close = closingParen(mask, start) - 1;
+    // An unbalanced call is not something to guess at — leave it for the guard.
+    if (close <= open) break;
+    const args = out.slice(open + 1, close);
+    const comma = splitTopLevel(maskNonCode(args))[0]?.length ?? args.length;
+    const first = args.slice(0, comma).trim();
+    // `}__name(round,"round");` — the whole statement exists only to set the
+    // name, so it goes rather than becoming a no-op `round;`.
+    const before = mask.slice(0, start);
+    const isStatement = /(^|[;{}])\s*$/.test(before) && /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(first);
+    const trailing = isStatement ? /^\s*;?/.exec(out.slice(close + 1))?.[0].length ?? 0 : 0;
+    out = out.slice(0, start) + (isStatement ? "" : first) + out.slice(close + 1 + trailing);
+  }
+  return out.trim();
 }
 
 /**
@@ -665,10 +724,10 @@ export function maskNonCode(src: string): string {
  * rather than parsed — the four shapes below cover what a lambda body actually
  * writes — and anything recognized is excluded from the scan.
  */
-function declaredLocals(mask: string): Set<string> {
+function declaredLocals(mask: string, pattern = /\$[A-Za-z_][A-Za-z0-9_]*/g): Set<string> {
   const declared = new Set<string>();
   const add = (text: string | undefined): void => {
-    for (const m of (text ?? "").matchAll(/\$[A-Za-z_][A-Za-z0-9_]*/g)) declared.add(m[0]);
+    for (const m of (text ?? "").matchAll(pattern)) declared.add(m[0]);
   };
   // `const $x = …`, `let $a = 1, $b = 2`, `const { $a, $b } = …`. Each declarator
   // contributes only the text BEFORE its `=`: an initializer may legitimately
@@ -689,19 +748,71 @@ function declaredLocals(mask: string): Set<string> {
 /** Every distinct `$identifier` referenced as code, in source order. Takes the
  * MASKED body, so one mask serves both checks in {@link assertLambdaBody}. */
 function dollarTokens(mask: string): string[] {
+  return tokens(mask, /(^|[^A-Za-z0-9_$.])(\$[A-Za-z_][A-Za-z0-9_]*)/g);
+}
+
+/**
+ * Every distinct identifier matching `pattern` (capture group 2 is the name), in
+ * source order. Takes the MASKED body.
+ *
+ * `skipKeys` drops occurrences in object-LITERAL key position (`{ h2: 1 }`),
+ * where the name is a property rather than a reference to anything. Decided per
+ * OCCURRENCE, so a name used as both a key and a reference still reports. Off
+ * for the `$`-binding scan, which predates this and has its own pinned
+ * behaviour.
+ */
+function tokens(mask: string, pattern: RegExp, skipKeys = false): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   // Not preceded by an identifier character, so `a.$x` (a property) and `x$y`
   // (part of a longer name) are not references to a `$x` binding.
-  for (const m of mask.matchAll(/(^|[^A-Za-z0-9_$.])(\$[A-Za-z_][A-Za-z0-9_]*)/g)) {
+  for (const m of mask.matchAll(pattern)) {
     const name = m[2] ?? "";
-    if (name !== "" && !seen.has(name)) {
-      seen.add(name);
-      out.push(name);
+    if (name === "" || seen.has(name)) continue;
+    if (skipKeys) {
+      const before = mask.slice(0, m.index + (m[1] ?? "").length).trimEnd().slice(-1);
+      const after = mask.slice(m.index + m[0].length).trimStart().slice(0, 1);
+      // `{ h2: … }` / `…, h2: …` — a key. A ternary branch (`x ? h2 : y`) and a
+      // `case h2:` are real references and are not preceded by `{` or `,`.
+      if (after === ":" && (before === "{" || before === ",")) continue;
     }
+    seen.add(name);
+    out.push(name);
   }
   return out;
 }
+
+/**
+ * The bundler helpers a transpiled body is known to reference, and what each one
+ * means the author wrote.
+ *
+ * `__name` never reaches here — {@link stripKeepNames} undoes it. The rest are
+ * emitted only when a loader downlevels syntax the engine's runtime supports
+ * natively, so seeing one means the body was transpiled harder than expected:
+ * there is no safe rewrite, and a build error is the whole point (issue #256).
+ */
+const BUNDLER_HELPERS: Readonly<Record<string, string>> = {
+  __name: "a named inner function",
+  __publicField: "a class field",
+  __privateGet: "a #private field", __privateSet: "a #private field",
+  __privateAdd: "a #private field", __privateMethod: "a #private method",
+  __decorateClass: "a decorator", __decorateParam: "a parameter decorator",
+  __async: "async/await", __generator: "a generator", __await: "await",
+  __forAwait: "for await", __yieldStar: "yield*",
+  __spreadValues: "an object spread", __spreadProps: "an object spread",
+  __objRest: "a rest destructuring", __restKey: "a rest destructuring",
+  __pow: "the `**` operator", __using: "`using`", __callDispose: "`using`",
+  __toESM: "an import", __toCommonJS: "an export", __require: "a require",
+  __awaiter: "async/await", __assign: "an object spread", __rest: "a rest destructuring",
+  __decorate: "a decorator", __extends: "a class", __spreadArray: "an array spread",
+};
+
+/**
+ * Identifiers a body may legitimately write with a `__` prefix, so the helper
+ * guard cannot fail a correct body. `__proto__` is an object-literal key and a
+ * property name; the two Node globals are neither defined nor harmful to name.
+ */
+const HELPER_LOOKALIKES: ReadonlySet<string> = new Set(["__proto__", "__dirname", "__filename"]);
 
 /**
  * The binding an unknown `$identifier` most likely meant, or undefined.
@@ -767,6 +878,8 @@ export function assertLambdaBody(body: string, surface: LambdaSurface, source = 
     );
   }
 
+  assertNoBundlerHelpers(mask, source);
+
   // `import(` / `import.meta` are the dynamic forms and stay legal — they run on
   // some instances (see LAMBDA_MODULE_GLOBALS) and this is not the place to
   // refuse working code; a bare `import`/`export` keyword in statement position
@@ -782,6 +895,39 @@ export function assertLambdaBody(body: string, surface: LambdaSurface, source = 
         `\`require("...")\` with a literal specifier is NOT portable: on an instance that bundles the body before ` +
         `running it, every literal specifier is resolved ahead of time and none of them exist, so the call comes ` +
         `back as the text \`Could not resolve "..."\` with HTTP 200. (issues #221, #265)`,
+    );
+  }
+}
+
+/**
+ * Refuse a body carrying a bundler helper the loader left behind.
+ *
+ * The body is read back from the LIVE function, so under a `.ts` loader it is
+ * transpiled source. {@link stripKeepNames} undoes the one rewrite that is
+ * safely undoable; anything else that survives references a module-scope helper
+ * the body travels without, which is a `ReferenceError` at runtime — and the
+ * engine hands a throwing body back as its own diagnostic TEXT in the value slot
+ * with HTTP 200, so the wrong value is the only symptom. Build time is the only
+ * place it is catchable (issue #256).
+ *
+ * Only `__`-prefixed identifiers are considered, minus what the body declares
+ * for itself and {@link HELPER_LOOKALIKES} — a correct body failing this guard
+ * would be the worst outcome it can have.
+ */
+function assertNoBundlerHelpers(mask: string, source: string): void {
+  const declared = declaredLocals(mask, /__[A-Za-z0-9_$]*/g);
+  for (const token of tokens(mask, /(^|[^A-Za-z0-9_$.])(__[A-Za-z][A-Za-z0-9_$]*)/g, true)) {
+    if (declared.has(token) || HELPER_LOOKALIKES.has(token)) continue;
+    const wrote = BUNDLER_HELPERS[token];
+    throw new Error(
+      `${source}: \`${token}\` is a bundler helper, not something this body can call — the body was TRANSPILED ` +
+        `before it could be read back${wrote ? `, because it writes ${wrote}` : ""}. An inline body is recovered ` +
+        `from the live function with \`toString()\`, and a \`.ts\` loader (tsx/esbuild, which is how a TypeScript ` +
+        `entry is evaluated) returns rewritten source. The helper is defined at MODULE scope and only the body ` +
+        `travels, so \`${token}\` is undefined at runtime: the body throws, and the engine returns that failure as ` +
+        `TEXT in the value slot with HTTP 200 — a wrong value, not an error. ` +
+        `Move the body to its own module and load it with \`lam.file(...)\`, or write it as text with ` +
+        `\`lam.raw(...)\`; neither is transpiled. (issue #256)`,
     );
   }
 }
@@ -810,6 +956,51 @@ export function capturePrelude(capture: Record<string, unknown> | undefined, sou
   return lines.length ? lines.join("\n") + "\n" : "";
 }
 
+/**
+ * Refuse a capture key the loader renamed inside the body but not in the prelude.
+ *
+ * A capture key is destructured from the body's second parameter, so it is an
+ * ordinary binding — and when it collides with a MODULE-scope name of its own
+ * (`import { CURRENCY_SYMBOLS }` in the file that also captures it), esbuild
+ * renames the inner one to `CURRENCY_SYMBOLS2` to keep the two apart. It renames
+ * the declaration and every reference together, so a body-local collision stays
+ * correct; the capture is the one case that does not, because the declaration is
+ * the prelude {@link capturePrelude} writes AFTER the rename, under the original
+ * name. The body then reads a free `CURRENCY_SYMBOLS2` — a `ReferenceError` that
+ * the engine returns as TEXT with HTTP 200 (issue #256).
+ *
+ * Refused rather than renamed back. `foo2` in a body that captures `foo` is not
+ * PROVABLY the rename — an author may have written a genuinely free `foo2`, and
+ * silently binding that to captured data would turn a `ReferenceError` into a
+ * plausible wrong number, which is the failure this whole guard exists to stop.
+ */
+function assertCaptureNotRenamed(
+  body: string,
+  capture: Record<string, unknown> | undefined,
+  source: string,
+): void {
+  if (capture === undefined) return;
+  const keys = Object.keys(capture);
+  if (keys.length === 0) return;
+  const mask = maskNonCode(body);
+  const declared = declaredLocals(mask, /[A-Za-z_$][A-Za-z0-9_$]*/g);
+  for (const token of tokens(mask, /(^|[^A-Za-z0-9_$.])([A-Za-z_$][A-Za-z0-9_$]*[0-9])/g, true)) {
+    if (declared.has(token)) continue;
+    const key = keys.find((k) => new RegExp(`^${k.replace(/\$/g, "\\$")}[0-9]+$`).test(token));
+    if (key === undefined) continue;
+    throw new Error(
+      `${source}: capture key \`${key}\` collides with a module-scope binding of the same name, so the body was ` +
+        `rewritten to read \`${token}\` — which the capture prelude does not declare. An inline body is recovered ` +
+        `from the live function with \`toString()\`, and a \`.ts\` loader (tsx/esbuild) renames one of two same-named ` +
+        `bindings; the prelude is written afterwards, under the ORIGINAL name. As it stands \`${token}\` is undefined ` +
+        `at runtime: the body throws, and the engine returns that failure as TEXT in the value slot with HTTP 200 — ` +
+        `a wrong value, not an error. Give the capture a key that nothing at module scope shares — it does not have ` +
+        `to keep the name of what it carries (\`capture: { <newName>: ${key} }\`, destructured as ` +
+        `\`(_, { <newName> }) => …\`) — or move the body to its own module with \`lam.file(...)\`. (issue #256)`,
+    );
+  }
+}
+
 // --- the surface ------------------------------------------------------------------------
 
 /**
@@ -824,7 +1015,10 @@ export function lambdaValue(
   opts: LambdaOptions<Record<string, CaptureValue>> | undefined,
   source: string,
 ): Value {
+  // The prelude first: it is what validates the keys, and a key that is not an
+  // identifier deserves that message rather than one about a rename.
   const code = capturePrelude(opts?.capture, source) + body;
+  assertCaptureNotRenamed(body, opts?.capture, source);
   // No surface named: the call site validates, and it is the one that knows.
   // What comes back is an ordinary `const:text`, so the statement and filter
   // guards see it exactly as they see a hand-written `c.text(...)`.

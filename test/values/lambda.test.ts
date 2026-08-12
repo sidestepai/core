@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { extractFunctionBody } from "../../src/values/lambda.js";
 import { c, fl, lam, LAMBDA_BINDINGS, LAMBDA_GLOBALS, LAMBDA_MODULE_GLOBALS, assertLambdaBody } from "../../src/index.js";
 import type { LambdaSurface } from "../../src/index.js";
 
@@ -412,5 +413,168 @@ describe("lam.fn without a surface defers to the call site", () => {
 
   it("still checks at construction when a surface IS named", () => {
     expect(() => lam.raw("return $result", { surface: "map" })).toThrow(/\$result/);
+  });
+});
+
+/**
+ * Issue #256. An inline body is read back off the LIVE function, so under a `.ts`
+ * loader it is transpiled source rather than what the author wrote. Two rewrites
+ * leaked into shipped bodies, and both were silent: `export` succeeded, the
+ * engine handed the body's own `ReferenceError` back as TEXT in the value slot
+ * with HTTP 200, and the only symptom was wrong data (an empty ledger, a seed
+ * that inserted nothing).
+ *
+ * The transpiled shapes are pinned as LITERAL text — captured from `tsx`, which
+ * is how the CLI evaluates a TypeScript entry — rather than by writing a source
+ * function and hoping this runner's transform rewrites it the same way. What
+ * esbuild emits for a given input is the fixture; whether vitest happens to
+ * apply `keepNames` is not something these assertions should depend on.
+ */
+describe("a transpiled body (issue #256)", () => {
+  // Each entry is exactly what `toString()` returned under tsx for the source in
+  // its name, and what the body has to become for the engine to run it.
+  const KEEP_NAMES: ReadonlyArray<readonly [string, string, string]> = [
+    [
+      "a function declaration",
+      'function round(n){return Math.round(n)}__name(round,"round");return round($var.x)',
+      "function round(n){return Math.round(n)}return round($var.x)",
+    ],
+    [
+      "a named arrow",
+      'const round=__name(n=>Math.round(n*100)/100,"round");return{v:round($var.x)}',
+      "const round=n=>Math.round(n*100)/100;return{v:round($var.x)}",
+    ],
+    [
+      "a named function expression",
+      'const g=__name(function(n){return n},"g");return g($var.x)',
+      "const g=function(n){return n};return g($var.x)",
+    ],
+    [
+      "a class",
+      'class K{static{__name(this,"K")}m(){return 2}}return new K().m()+$var.x',
+      "class K{static{}m(){return 2}}return new K().m()+$var.x",
+    ],
+    [
+      "nested named functions",
+      'const a=__name(()=>{const b=__name(()=>1,"b");return b()},"a");return a()+$var.x',
+      "const a=()=>{const b=()=>1;return b()};return a()+$var.x",
+    ],
+  ];
+
+  describe("has its keepNames wrapper undone", () => {
+    for (const [what, transpiled, restored] of KEEP_NAMES) {
+      it(`restores ${what}`, () => {
+        expect(extractFunctionBody(`({ $var }) => {${transpiled}}`, "lam.fn")).toBe(restored);
+      });
+    }
+
+    it("Covers #256: the shipped body no longer calls the module-scope helper", () => {
+      for (const [, transpiled] of KEEP_NAMES) {
+        const v = lam.fn(new Function("{ $var }", transpiled) as never, { surface: "s.lambda" });
+        expect(v.value).not.toContain("__name");
+      }
+    });
+
+    it("leaves an anonymous callback alone — it gets no name to keep", () => {
+      // Asserted on the shape rather than byte for byte: a callback carries no
+      // name to keep, so no runner's transform has anything to undo here.
+      const v = lam.fn(({ $var }) => $var.list.map((i: number) => i + 1), { surface: "s.lambda" });
+      expect(v.value).not.toContain("__name");
+      expect(v.value).toMatch(/^return \$var\.list\.map\(\(i[^)]*\) => i \+ 1\);$/);
+    });
+
+    it("does not touch `__name(` inside a string or a comment", () => {
+      const body = 'const s = "__name(x,\\"y\\")"; // __name(a,"b")\nreturn s;';
+      expect(extractFunctionBody(`({ $var }) => {${body}}`, "lam.fn")).toBe(body);
+    });
+  });
+
+  describe("is refused when the helper cannot be undone", () => {
+    it("names the helper, the cause, and the two untranspiled forms", () => {
+      let message = "";
+      try {
+        lam.raw("return __publicField(this, 'x');", { surface: "s.lambda" });
+      } catch (e) {
+        message = (e as Error).message;
+      }
+      expect(message).toContain("`__publicField` is a bundler helper");
+      expect(message).toContain("TRANSPILED");
+      expect(message).toContain("HTTP 200");
+      expect(message).toContain("lam.file");
+      expect(message).toContain("lam.raw");
+    });
+
+    it("refuses every helper a loader is known to emit", () => {
+      for (const helper of ["__async", "__spreadValues", "__decorateClass", "__objRest", "__awaiter", "__toESM"]) {
+        expect(() => lam.raw(`return ${helper}(1);`, { surface: "s.lambda" })).toThrow(/bundler helper/);
+      }
+    });
+
+    it("allows a `__` name the body declares for itself", () => {
+      expect(() => lam.raw("const __tmp = $var.x; return __tmp;", { surface: "s.lambda" })).not.toThrow();
+      expect(() => lam.raw("return $var.list.map((__i) => __i + 1);", { surface: "s.lambda" })).not.toThrow();
+    });
+
+    it("allows a `__` name in object-KEY position", () => {
+      expect(() => lam.raw("return { __meta: $var.x };", { surface: "s.lambda" })).not.toThrow();
+    });
+
+    it("allows __proto__, which is a property name and not a helper", () => {
+      expect(() => lam.raw('return { __proto__: null, v: $var.x };', { surface: "s.lambda" })).not.toThrow();
+      expect(() => lam.raw("return $var.x.__proto__;", { surface: "s.lambda" })).not.toThrow();
+    });
+
+    it("ignores a helper name that only appears in text", () => {
+      expect(() => lam.raw('return "__async is fine here"; ', { surface: "s.lambda" })).not.toThrow();
+    });
+  });
+
+  describe("is refused when a capture key was renamed", () => {
+    // What tsx emits for `(_b, { CURRENCY_SYMBOLS }) => …` in a file that also
+    // does `import { CURRENCY_SYMBOLS } from "./billing-config.js"`: the body's
+    // binding is renamed to keep the two apart, and the prelude — written after
+    // the rename, under the original name — no longer matches it.
+    const RENAMED = 'return ({sym:CURRENCY_SYMBOLS2["gbp"]});';
+
+    it("Covers #256: names the colliding key and what the body reads instead", () => {
+      let message = "";
+      try {
+        lam.raw(RENAMED, { surface: "s.lambda", capture: { CURRENCY_SYMBOLS: { gbp: "£" } } });
+      } catch (e) {
+        message = (e as Error).message;
+      }
+      expect(message).toContain("`CURRENCY_SYMBOLS` collides");
+      expect(message).toContain("`CURRENCY_SYMBOLS2`");
+      expect(message).toContain("HTTP 200");
+    });
+
+    it("does not silently rebind the renamed identifier to the captured value", () => {
+      // Renaming it back would trade a ReferenceError for a plausible wrong
+      // number, which is the failure this guard exists to stop.
+      expect(() =>
+        lam.raw(RENAMED, { surface: "s.lambda", capture: { CURRENCY_SYMBOLS: { gbp: "£" } } }),
+      ).toThrow();
+    });
+
+    it("allows a numbered name the body declares for itself", () => {
+      const v = lam.raw("const foo2 = foo + 1; return foo2;", { surface: "s.lambda", capture: { foo: 1 } });
+      expect(v.value).toContain("const foo = 1;");
+      expect(v.value).toContain("return foo2;");
+    });
+
+    it("allows a numbered name in object-KEY position, which references nothing", () => {
+      // `{ h2: … }` is a property name, not a read of a renamed binding.
+      expect(() => lam.raw("return { h2: $var.x };", { surface: "s.lambda", capture: { h: 1 } })).not.toThrow();
+      // …but the same name USED as a value still reports.
+      expect(() => lam.raw("return { h2: h2 };", { surface: "s.lambda", capture: { h: 1 } })).toThrow(/collides/);
+    });
+
+    it("allows a numbered name that matches no capture key", () => {
+      expect(() => lam.raw("return $var.h2 + other2;", { surface: "s.lambda", capture: { foo: 1 } })).not.toThrow();
+    });
+
+    it("leaves a body with no capture alone", () => {
+      expect(() => lam.raw("return CURRENCY_SYMBOLS2;", { surface: "s.lambda" })).not.toThrow();
+    });
   });
 });
