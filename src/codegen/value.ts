@@ -329,9 +329,88 @@ function decodeFilter(stored: FilterXdo): Candidate | null {
   };
 }
 
+/**
+ * Rebuild the plain-JSON record behind a `{}`-plus-`set` object constant — the
+ * form `c.obj({…})` writes and the editor stores (issue #248). Null when the
+ * chain is anything else (a `set` whose value is a live reference, a filter that
+ * is not `set`, a disabled one), which leaves the generic `withFilters` path to
+ * handle it.
+ */
+function decodeObjSetChain(filters: readonly FilterXdo[]): Record<string, unknown> | null {
+  // Prototype-free while building: a stored `set` path of `__proto__` would
+  // otherwise assign the prototype instead of an own key, and this decoder runs
+  // over workspaces it did not author. Spread back to a plain object at the end.
+  const out = Object.create(null) as Record<string, unknown>;
+  for (const f of filters) {
+    if (f.name !== "set" || f.disabled || f.arg.length !== 2) return null;
+    const [path, member] = f.arg as [TaggedValue, TaggedValue];
+    if (path.tag !== "const" || (path.filters?.length ?? 0) > 0) return null;
+    const decoded = decodeObjMember(member);
+    if (!decoded) return null;
+    const key = parseSetPath(path.value);
+    // `__proto__` has no readable form here at all: in EMITTED source both
+    // `{ __proto__: … }` and `{ "__proto__": … }` set the prototype rather than
+    // a key, so the printed record would re-encode to an object missing it. The
+    // byte check downstream cannot see that — it compares what this function
+    // built, not what the printed source would rebuild — so refuse the candidate
+    // and let the generic `fl.set(c.text("__proto__"), …)` chain carry it.
+    if (key === "__proto__") return null;
+    out[key] = decoded.value;
+  }
+  return { ...out };
+}
+
+/**
+ * A stored `set` path segment back to the literal key it stands for — the
+ * inverse of the encoder's `setPath`. A bare segment IS the key; `["a.b"]` is
+ * the bracket form, whose interior unescapes `\"` and `\\` in one pass so the
+ * two escapes cannot be applied in the wrong order.
+ */
+function parseSetPath(stored: string): string {
+  const bracketed = /^\["(.*)"\]$/s.exec(stored);
+  return bracketed ? bracketed[1]!.replace(/\\(["\\])/g, "$1") : stored;
+}
+
+/** One `set` member back to its JSON value, boxed so `null` is not "no match". */
+function decodeObjMember(m: TaggedValue): { value: unknown } | null {
+  const filters = Array.isArray(m.filters) ? m.filters : [];
+  if (m.tag === "const:obj" && m.value === "{}") {
+    const nested = decodeObjSetChain(filters);
+    return nested ? { value: nested } : null;
+  }
+  if (filters.length > 0) return null;
+  switch (m.tag) {
+    case "const":
+      return { value: m.value };
+    case "const:null":
+      return { value: null };
+    case "const:bool":
+      return { value: m.value === "true" };
+    case "const:int":
+    case "const:decimal":
+      return { value: Number(m.value) };
+    case "const:array":
+      return attempt(() => ({ value: JSON.parse(m.value) as unknown }));
+    default:
+      return null;
+  }
+}
+
 /** Build the readable form of a value, or null when none is provably exact. */
 function decodeValueCandidate(v: TaggedValue): Candidate | null {
   const filters = Array.isArray(v.filters) ? v.filters : [];
+  // A populated object constant, before the generic base-plus-filters path —
+  // which would otherwise spell it as a `withFilters(c.obj(), fl.set(…), …)`
+  // chain that says nothing about the object it builds. Guarded by the same
+  // byte check as every other candidate, so a chain that only looks like one
+  // falls through instead of being re-pointed at a different object.
+  if (v.tag === "const:obj" && v.value === "{}" && filters.length > 0) {
+    const record = decodeObjSetChain(filters);
+    const built = record ? attempt(() => c.obj(record as never)) : null;
+    if (built && record && sameValue(built, v)) {
+      return { expr: call("c.obj", lit(record)), value: built, symbols: ["c"] };
+    }
+  }
   const first = filters[0];
   const base = decodeBase(v, first !== undefined && REGEX_PATTERN_FILTERS.has(first.name));
   if (!base) return null;

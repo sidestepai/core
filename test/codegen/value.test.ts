@@ -167,12 +167,58 @@ describe("decodeValue — tag coverage", () => {
     expect(normalize(c.obj(null))).not.toEqual(normalize(c.obj()));
   });
 
-  it("leaves a populated object constant alone", () => {
-    // The modernization is scoped to genuinely blank values; anything with
-    // content still decodes normally and reports nothing.
+  it("decodes a populated object constant — `{}` plus `set` filters — back to c.obj({…})", () => {
+    // The form `c.obj({…})` writes and the editor stores (issue #248): the
+    // record comes back as a record, not as a withFilters/fl.set chain.
     const ctx = new DecodeContext();
-    expect(roundTrip({ value: '{"a":1}', tag: "const:obj", filters: [] }, ctx)).toContain("c.obj(");
+    const source = roundTrip(c.obj({ a: 1, b: "x", c: { d: true }, e: [1, 2] }), ctx);
+    expect(source.replace(/\s+/g, " ")).toBe(
+      'c.obj({ a: 1, b: "x", c: { d: true, }, e: [ 1, 2, ], })',
+    );
     expect(ctx.report.entries).toEqual([]);
+  });
+
+  it("decodes a bracket-escaped set path back to the literal key it stands for", () => {
+    expect(roundTrip(c.obj({ "a.b": 1 })).replace(/\s+/g, " ")).toBe('c.obj({ "a.b": 1, })');
+    // Every escaped shape the encoder can write is its own inverse — a key that
+    // came back wrong would fail the byte check and fall out to a filter chain,
+    // so assert the readable form itself.
+    for (const key of ["0", "1a", 'q"x', "a\\", 'a\\"b', "items[0]", "sp ace"]) {
+      expect(roundTrip(c.obj({ [key]: 1 }))).toBe(`c.obj({\n  ${JSON.stringify(key)}: 1,\n})`);
+    }
+  });
+
+  it("keeps a stored `__proto__` set path as a filter chain, not an object key", () => {
+    // In emitted source both `{ __proto__: … }` and `{ "__proto__": … }` set the
+    // PROTOTYPE, so a record spelling would re-encode to an object missing the
+    // key. `roundTrip` re-evaluates the source, so it is the assertion here.
+    const source = roundTrip(withFilters(c.obj(), fl.set(c.text("__proto__"), c.text("x"))));
+    expect(source).toContain("withFilters(");
+    // It appears as `set` DATA, never as a key of the emitted record.
+    expect(source).toContain('c.text("__proto__")');
+    expect(source).not.toMatch(/__proto__"?\s*:/);
+  });
+
+  it("keeps a set chain whose member is not a plain constant as a filter chain", () => {
+    // A blank `const:int` member reads as 0 through `Number("")`, so it must not
+    // be flattened into a literal — the byte check is what stops it.
+    const source = roundTrip(withFilters(c.obj(), fl.set(c.text("n"), c.blank("const:int"))));
+    expect(source).toContain("withFilters(");
+  });
+
+  it("keeps a set chain that is not a plain-JSON record as a filter chain", () => {
+    // A `set` carrying a live reference is not something `c.obj` can spell, so
+    // it stays the generic chain rather than being flattened into a literal.
+    const source = roundTrip(withFilters(c.obj(), fl.set(c.text("a"), ref("x"))));
+    expect(source).toContain("withFilters(");
+    expect(source).toContain("fl.set(");
+  });
+
+  it("carries a populated JSON object constant verbatim", () => {
+    // The legacy stored spelling — a populated JSON *string* — is not what any
+    // `c.*` call produces now, so it is emitted verbatim rather than re-pointed
+    // at the `{}`-plus-`set` form, which is different bytes (issue #248).
+    expect(roundTrip({ value: '{"a":1}', tag: "const:obj", filters: [] })).toContain("rawValue");
   });
 
   it("falls back to a literal when a JSON constant would not restringify byte-for-byte", () => {

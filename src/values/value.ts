@@ -126,6 +126,90 @@ function val(value: string, tag: Tag, filters: FilterXdo[] = []): Value {
   return { value, tag, filters };
 }
 
+/** A JSON object (not an array, not null) — the shape that takes `set` filters. */
+function isPlainRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === "object" && x !== null && !Array.isArray(x);
+}
+
+/**
+ * Is this key spellable as a BARE `set` path segment — an identifier the
+ * engine's path reader takes as a literal key and nothing else?
+ *
+ * Anything outside `[A-Za-z_][A-Za-z0-9_]*` gets the bracket form, because the
+ * reader splits on `.` and `[`: `"a.b"` bare would nest (`{a:{b:…}}`) where the
+ * literal key must stay flat. Digits are excluded because a numeric segment is
+ * an INDEX to that reader, not because the bracket form changes that — see the
+ * numeric-key note on {@link c.obj}.
+ */
+const BARE_SET_PATH = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * A `set` path segment for one object key — bare when it can be, otherwise the
+ * engine's own bracket-and-quote escape, `["key"]`, which makes a key holding
+ * any character spellable. Backslash is escaped BEFORE the quote so a key
+ * ending in one cannot escape the closing quote and unterminate the segment.
+ * {@link parseSetPath} in the codegen decoder is the exact inverse.
+ */
+function setPath(key: string): string {
+  if (BARE_SET_PATH.test(key)) return key;
+  return `["${key.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"]`;
+}
+
+/**
+ * Encode one member of a `c.obj` record as the `set` filter's value argument.
+ * Nested records recurse (nested `{}`-plus-`set`, exactly what the editor
+ * writes); arrays stay a JSON `const:array` — that form survives the engine's
+ * tag reader intact, braces and all, because they sit inside the brackets.
+ *
+ * Members a JSON encoder would not carry are matched to what the old
+ * JSON-string form stored, so this is a change of FORM only: a non-finite
+ * number becomes null exactly as `JSON.stringify` writes it (an engine that
+ * read `"NaN"` as a decimal would get a number it cannot parse). An `undefined`
+ * member is dropped one level up, in {@link objSetFilters}.
+ */
+function objMember(m: unknown): Value {
+  if (isPlainRecord(m)) return val("{}", "const:obj", objSetFilters(m));
+  if (Array.isArray(m)) return val(JSON.stringify(m), "const:array");
+  if (m === null) return val("null", "const:null");
+  if (typeof m === "boolean") return val(m ? "true" : "false", "const:bool");
+  if (typeof m === "number") {
+    if (!Number.isFinite(m)) return val("null", "const:null");
+    // A magnitude past the safe-integer range only stringifies in exponent form
+    // ("1e+21"), which is not an integer literal — carry it as a decimal, the
+    // tag whose stored form is a string in the first place.
+    return Number.isInteger(m) && Number.isSafeInteger(m)
+      ? val(String(m), "const:int")
+      : val(String(m), "const:decimal");
+  }
+  return val(String(m), "const");
+}
+
+/**
+ * A populated object constant as one `set` filter per key over an empty `{}`
+ * base — the ONLY populated form the engine can read back (issue #248).
+ *
+ * A statement's stored `{value, tag, filters}` is flattened to a single piped
+ * string (`{}|set(!const "a",!const:int 1)`) before it is evaluated, and the
+ * reader that splits that string back apart ends the value at the first
+ * unquoted `}` or `,` outside brackets. So a populated JSON string —
+ * `{"a":1}` — arrives truncated to `{"a":1`, fails to JSON-decode, and the
+ * request dies with the engine's generic `ERROR_FATAL "Unable to decode."`,
+ * which names neither the statement nor the value. `{}` alone is special-cased
+ * by that reader, and each key's data rides inside a `set(...)` argument where
+ * quoting protects it — which is why this form works and why the editor has
+ * only ever written this one.
+ */
+function objSetFilters(o: Record<string, unknown>): FilterXdo[] {
+  return (
+    Object.entries(o)
+      // An `undefined` member is not a null — `JSON.stringify` DROPS such a key,
+      // and a key present as null is a different value at runtime (an `exists`
+      // check flips). Dropping it keeps this a change of form only.
+      .filter(([, m]) => m !== undefined)
+      .map(([key, m]) => filter("set", val(setPath(key), "const"), objMember(m)))
+  );
+}
+
 /** PCRE modifiers that also exist (and mean the same thing) as JS RegExp flags.
  * A `RegExp`'s `g`/`y`/`d` are JS-only — passing them to PHP `preg_*` raises
  * "Unknown modifier", so they are dropped when deriving flags from a RegExp. */
@@ -326,14 +410,31 @@ export const c = {
    * ⚠ **Prefer `c.obj()`.** The blank form is legacy — no current editor path
    * writes it — and it exists here so a pulled workspace round-trips to the
    * same bytes instead of being quietly re-pointed at `{}`.
+   *
+   * A **populated** object is stored the way the editor stores one: an empty
+   * `{}` base carrying one `set` filter per key (issue #248). It is NOT a
+   * populated JSON string — that form fails the request at runtime, see
+   * {@link objSetFilters}.
+   *
+   * ⚠ **Zero-based numeric keys come back as a LIST**, not an object:
+   * `c.obj({ "0": "a" })` evaluates to `["a"]`. That is the engine's data model
+   * — a numeric key IS an index there, and the same object decoded from JSON
+   * anywhere else behaves identically — not something this encoding introduces.
+   * A non-zero-based numeric key (`{ "2": … }`) survives as a key. Live-verified.
    */
   obj<const T>(o?: (T & RejectValues<T>) | null): Value {
     // Explicit `null` is the blank form, and is NOT the same as no argument:
     // `c.obj()` writes `{}`. Checked before the `??` below, which would
     // otherwise fold the two together.
     if (o === null) return val("", "const:obj");
-    assertPlainJson(o ?? {});
-    return val(JSON.stringify(o ?? {}), "const:obj");
+    const j = (o ?? {}) as unknown;
+    assertPlainJson(j);
+    // Only a RECORD takes the `{}`-plus-`set` form. An array (what `coerceObj`
+    // routes here for a list-valued field) and any bare scalar keep the JSON
+    // string: brackets and quotes shield those from the tag reader that
+    // truncates a bare `}` — see {@link objSetFilters}.
+    if (!isPlainRecord(j)) return val(JSON.stringify(j), "const:obj");
+    return val("{}", "const:obj", objSetFilters(j));
   },
   /**
    * Array constant → JSON-string value with `tag:"const:array"`. Takes **plain

@@ -77,7 +77,7 @@
       {
         "name": "c.obj",
         "signature": "(o?: Json | null) => Value",
-        "description": "Object constant (JSON string) → tag \"const:obj\". No argument = the empty object {} — use this one. Explicit null = the legacy blank form the engine evaluates to null, NOT {}; it exists only so a pulled workspace round-trips, do not author it. Plain JSON literals only — a nested tagged value (inp/ref/auth/c.*) is rejected; for a computed object response use a record of values, not c.obj."
+        "description": "Object constant → tag \"const:obj\". A populated one stores an empty {} carrying one `set` filter per key — the editor's form, and the only populated form the engine reads back (a populated JSON string arrives truncated and fails the request with ERROR_FATAL \"Unable to decode.\"). ⚠ a ZERO-BASED numeric key is an INDEX in the engine's data model, so c.obj({\"0\":\"a\"}) evaluates to the list [\"a\"] (a non-zero-based one like {\"2\":…} survives as a key) — that is the platform, not this encoding. No argument = the empty object {} — use this one. Explicit null = the legacy blank form the engine evaluates to null, NOT {}; it exists only so a pulled workspace round-trips, do not author it. Plain JSON literals only — a nested tagged value (inp/ref/auth/c.*) is rejected; for a computed object response use a record of values, not c.obj."
       },
       {
         "name": "c.array",

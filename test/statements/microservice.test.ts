@@ -10,7 +10,7 @@
 import { describe, it, expect, expectTypeOf } from "vitest";
 import "../../src/index.js"; // register all statements
 import { s } from "../../src/statements/s.js";
-import { inp, ref } from "../../src/values/value.js";
+import { c, inp, ref } from "../../src/values/value.js";
 import { encodeStatement } from "../../src/statements/statement.js";
 import { query } from "../../src/kinds/query.js";
 import { apiGroup } from "../../src/kinds/api-group.js";
@@ -308,11 +308,17 @@ describe("s.microservice.request byte contract (pre-rename capture)", () => {
       ["host", "ex_kind_echo_service:8080", "const"],
       ["path", "/ping", "const"],
       ["method", "POST", "const"],
-      ["params", '{"probe":true}', "const:obj"],
+      // `{}` plus a `set` per key — the populated object form (issue #248);
+      // the keys themselves are asserted below, since `wire` drops filters.
+      ["params", "{}", "const:obj"],
       ["headers", '["X-Probe: 1"]', "const:array"],
       ["timeout", "30", "const:int"],
       ["follow_location", "false", "const:bool"],
     ]);
+    const params = (enc.input as Array<{ name: string } & Record<string, unknown>>).find(
+      (e) => e.name === "params",
+    );
+    expect(params?.filters).toEqual(c.obj({ probe: true }).filters);
   });
 
   it("gate 3 — a raw `name:port` string passes through for instance-level ones", () => {

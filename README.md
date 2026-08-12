@@ -514,10 +514,10 @@ type Post  = InferResponse<typeof getPost>;      // Post | null — a db.get mis
 ```
 
 For a **computed or multi-key object response**, author it as a *record of values* —
-`response: { success: c.bool(true), id: inp("id") }` — **not** `c.obj({ ... })`. `c.obj` builds
-a JSON *constant* by stringifying its argument, so a tagged value nested inside it serializes as
-internal representation the engine can't decode (a runtime 500); nesting one is now a compile
-error that points you at the record form (issue #42). A **nested plain object** in a record
+`response: { success: c.bool(true), id: inp("id") }` — **not** `c.obj({ ... })`. `c.obj` builds a
+*constant*, so a tagged value nested inside it would serialize as internal representation the
+engine can't decode (a runtime 500); nesting one is now a compile error that points you at the
+record form (issue #42). A **nested plain object** in a record
 response (`response: { user: { id: ref("u"), age: 3 } }`) is auto-wrapped for you — no manual
 `obj({ ... })` — and raw literals in a call/agent `input` map coerce too
 (`s.function.run({ fn, input: { max_age_days: 3 } })` — no `c.int(3)`).
