@@ -31,7 +31,7 @@ import { measureCommittedLlms, measureLlms } from "../../scripts/measure-llms.js
  * down after a real reduction. The log is gone because its value was this rule, and
  * the rule is now asserted below rather than narrated.
  */
-const CEILING_TOKENS = 35_750;
+const CEILING_TOKENS = 36_950;
 
 /** The proportional-headroom rule, as a test rather than a comment. */
 const MIN_HEADROOM = 1.02;

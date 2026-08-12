@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { LAMBDA_BINDINGS, LAMBDA_CODE_FILTERS } from "../../src/index.js";
+import { LAMBDA_BINDINGS, LAMBDA_CODE_FILTERS, LAMBDA_MODULE_GLOBALS } from "../../src/index.js";
 import { FILTER_SPECS } from "../../src/values/generated/filters.generated.js";
 
 /**
@@ -46,8 +46,31 @@ describe("llms.txt lambda facts", () => {
 
   it("states the module-syntax and console hazards", () => {
     expect(llms).toMatch(/top-level `import`\/`export` is a syntax error/);
-    expect(llms).toMatch(/dynamic `import\(\)`/);
     expect(llms).toMatch(/request LOG, not stdout/);
+  });
+
+  /**
+   * Covers #265. `llms.txt` used to answer "how do I reach a dependency?" with
+   * dynamic `import()`, full stop. That is true only on an instance that
+   * transpiles the body and resolves the specifier when the `import()` runs; an
+   * instance that BUNDLES the body first resolves every literal specifier ahead
+   * of time against a filesystem none of them are on, and the author gets
+   * `Could not resolve "node:crypto"` back as the VALUE with HTTP 200. So the
+   * one form the doc prescribed was the one that could fail, past the globals
+   * that never do. These assert the doc names the portable route and keeps the
+   * qualifier on the other one.
+   */
+  it("Covers #265: names the preloaded globals as the dependency route", () => {
+    const section = llms.slice(llms.indexOf("## Lambda bodies"), llms.indexOf("## Statements"));
+    expect(section).toMatch(/PRELOADED globals/);
+    for (const g of LAMBDA_MODULE_GLOBALS) expect(section, g).toContain(`\`${g}\``);
+  });
+
+  it("Covers #265: never presents a literal import()/require() specifier as portable", () => {
+    const section = llms.slice(llms.indexOf("## Lambda bodies"), llms.indexOf("## Statements"));
+    expect(section).not.toMatch(/Reach a dependency with dynamic/);
+    expect(section).toMatch(/LITERAL specifier is not\s+portable/);
+    expect(section).toMatch(/Could not resolve/);
   });
 
   it("points at lam.fn as the way to write a body", () => {

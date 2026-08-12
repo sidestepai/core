@@ -1290,7 +1290,14 @@ sources.
     consuming a lambda result numerically, and prefer an authored body, which cannot fail
     that way for a binding reason.
   - The body is a **function body, not a module**: it must `return`, and a top-level
-    `import` is a syntax error. Reach a dependency with dynamic `import()`.
+    `import` is a syntax error. Reach a dependency through the **preloaded globals** —
+    `crypto`, `fetch`, `Buffer`, `axios`, `jose`, `_`, `math`, `moment`, `DateTime`,
+    `uuid` and friends, which need no specifier. A dynamic `import("…")` or `require("…")`
+    with a **literal specifier is not portable**: some instances bundle the body before
+    running it and resolve every literal specifier ahead of time, so `await
+    import("node:crypto")` comes back as the text `Could not resolve "node:crypto"` with
+    HTTP 200; others resolve it at run time and it works
+    ([issue #265](https://github.com/sidestepai/core/issues/265)).
   - `console` output goes to the **request log**, not stdout.
 
   A plain `c.text(...)` body is still accepted and gets the same build-time check — the

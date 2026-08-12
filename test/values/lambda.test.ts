@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { c, fl, lam, LAMBDA_BINDINGS, LAMBDA_GLOBALS, assertLambdaBody } from "../../src/index.js";
+import { c, fl, lam, LAMBDA_BINDINGS, LAMBDA_GLOBALS, LAMBDA_MODULE_GLOBALS, assertLambdaBody } from "../../src/index.js";
 import type { LambdaSurface } from "../../src/index.js";
 
 /**
@@ -35,6 +35,25 @@ describe("the binding table", () => {
       expect(sorted(ours), surface).toEqual(sorted(bindings));
     }
     expect(sorted(Object.keys(LAMBDA_BINDINGS))).toEqual(sorted(Object.keys(probed.contract)));
+  });
+
+  /**
+   * Covers #265. `LAMBDA_MODULE_GLOBALS` is the SDK's answer to "how do I reach
+   * a dependency from a lambda body?", and it is only worth reading because it
+   * needs no specifier — unlike `import("…")`, whose literal specifier resolves
+   * on some instances and, on one that bundles the body first, comes back as
+   * `Could not resolve "…"` in the value slot. A documented global that is not
+   * actually in `globalThis` would send an author right back to `import()`, so
+   * the list is checked against what a body reported from a live engine.
+   */
+  it("documents only globals a live engine reported", () => {
+    const probed = JSON.parse(readFileSync(join(process.cwd(), "vendor/lambda-bindings.json"), "utf8")) as {
+      evidence: Array<{ id: string; value?: unknown }>;
+    };
+    const row = probed.evidence.find((e) => e.id === "s.lambda.globalThis");
+    expect(row, "s.lambda.globalThis evidence").toBeDefined();
+    const live = String(row?.value ?? "").split(",");
+    for (const g of LAMBDA_MODULE_GLOBALS) expect(live, g).toContain(g);
   });
 
   it("names $result — and never $acc — as reduce's accumulator", () => {
@@ -208,21 +227,37 @@ describe("the scan sees code, not text", () => {
 });
 
 describe("module syntax", () => {
-  it("rejects a top-level import and points at dynamic import()", () => {
+  /**
+   * #265: the message used to answer "then how DO I reach a dependency?" with
+   * dynamic `import()`. That works on an instance that transpiles the body and
+   * resolves the specifier at run time, and fails on one that bundles the body
+   * first — where the literal specifier is resolved ahead of time against a
+   * filesystem it is not on, and the author gets `Could not resolve "…"` as the
+   * VALUE with HTTP 200. The preloaded globals need no specifier, so they are
+   * the answer that holds on both.
+   */
+  it("rejects a top-level import and points at the preloaded globals, not import()", () => {
     let message = "";
     try {
       lam.raw('import x from "y";\nreturn x', { surface: "s.lambda" });
     } catch (e) {
       message = (e as Error).message;
     }
-    expect(message).toContain("import()");
     expect(message).toContain("function body");
+    expect(message).toContain("PRELOADED globals");
+    for (const g of LAMBDA_MODULE_GLOBALS) expect(message).toContain(g);
+    // The retracted advice, and the failure it produced.
+    expect(message).not.toMatch(/Reach a dependency with dynamic/);
+    expect(message).toContain('Could not resolve');
   });
 
   it("rejects a top-level export", () => {
     expect(() => lam.raw("export const x = 1;\nreturn x", { surface: "s.lambda" })).toThrow(/export/);
   });
 
+  // Still legal to WRITE: it runs on the instances that resolve at run time, and
+  // refusing it here would break working bodies. It is just not what the SDK
+  // recommends (#265).
   it("allows dynamic import()", () => {
     expect(() => lam.raw('const m = await import("node:path");\nreturn typeof m.join', { surface: "s.lambda" })).not.toThrow();
   });
