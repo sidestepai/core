@@ -1,0 +1,38 @@
+name: Announce release on Slack
+
+on:
+  release:
+    types: [released]
+
+jobs:
+  notify:
+    # `released` already excludes prereleases; the tag check also skips
+    # semver prerelease tags (4.1.0-beta.1) that were published as full releases.
+    if: ${{ !github.event.release.prerelease && !contains(github.event.release.tag_name, '-') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post to Slack
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          REPO: ${{ github.event.repository.full_name }}
+          TAG: ${{ github.event.release.tag_name }}
+          URL: ${{ github.event.release.html_url }}
+          BODY: ${{ github.event.release.body }}
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg repo "$REPO" --arg tag "$TAG" --arg url "$URL" --arg body "$BODY" \
+            '{
+              text: "\($repo) released \($tag)",
+              blocks: (
+                [{ type: "section", text: { type: "mrkdwn",
+                     text: "*<\($url)|\($repo) \($tag)>* released" } }]
+                + (if ($body | length) > 0
+                   then [{ type: "section", text: { type: "mrkdwn",
+                            text: (if ($body | length) > 2800
+                                   then $body[0:2800] + "\n…" else $body end) } }]
+                   else [] end)
+              )
+            }' \
+          | curl -sS --fail-with-body -X POST \
+              -H 'Content-type: application/json' --data @- "$SLACK_WEBHOOK_URL"
