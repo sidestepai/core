@@ -10,6 +10,13 @@ import {
 } from "../../src/emit/init-command.js";
 import {
   coreDep,
+  renderAppTsx,
+  renderButtonTsx,
+  renderCardTsx,
+  renderCnUtil,
+  renderCodegenAppTsx,
+  renderComponentsJson,
+  renderIndexCss,
   renderPackageJson,
   renderReadme,
   renderTsconfig,
@@ -108,6 +115,106 @@ describe("templates (U2)", () => {
     expect(renderViteConfig()).toContain('root: "frontend"');
   });
 
+  it("the @/ alias is declared in BOTH tsconfig and vite (shadcn imports need both)", () => {
+    const ts = JSON.parse(renderTsconfig());
+    expect(ts.compilerOptions.baseUrl).toBe(".");
+    expect(ts.compilerOptions.paths["@/*"]).toEqual(["frontend/src/*"]);
+    // Vite resolves it from the config file's own URL, not from `root`, so the
+    // two halves agree on frontend/src.
+    expect(renderViteConfig()).toContain('"@": fileURLToPath(new URL("./frontend/src"');
+  });
+
+  it("package.json carries shadcn/ui's runtime deps", () => {
+    const pkg = JSON.parse(renderPackageJson({ appName: "my-app", coreVersion: "4.1.38" }));
+    for (const dep of [
+      "class-variance-authority",
+      "clsx",
+      "tailwind-merge",
+      "lucide-react",
+      // The unified primitives package, which is what current shadcn components
+      // import from. The old per-primitive @radix-ui/react-slot is not used.
+      "radix-ui",
+    ]) {
+      expect(pkg.dependencies[dep]).toBeTypeOf("string");
+    }
+    expect(pkg.dependencies["@radix-ui/react-slot"]).toBeUndefined();
+    // shadcn sits on top of Tailwind — it is not a replacement for it.
+    expect(pkg.devDependencies.tailwindcss).toBeTypeOf("string");
+    expect(pkg.devDependencies["@tailwindcss/vite"]).toBeTypeOf("string");
+  });
+
+  it("components.json points the shadcn CLI at this project's layout", () => {
+    const cfg = JSON.parse(renderComponentsJson());
+    expect(cfg.tailwind.css).toBe("frontend/src/index.css");
+    // Tailwind v4: the theme is in CSS, so there is no config file to name.
+    expect(cfg.tailwind.config).toBe("");
+    expect(cfg.tailwind.cssVariables).toBe(true);
+    expect(cfg.tsx).toBe(true);
+    expect(cfg.rsc).toBe(false);
+    // Aliases must match the tsconfig `paths` mapping or `add` writes broken imports.
+    expect(cfg.aliases.ui).toBe("@/components/ui");
+    expect(cfg.aliases.utils).toBe("@/lib/utils");
+  });
+
+  it("index.css declares every color token the shipped components reference", () => {
+    const css = renderIndexCss();
+    expect(css).toContain('@import "tailwindcss"');
+    // Tokens read by button.tsx and card.tsx. A missing one renders as no style
+    // at all rather than as an error, so assert them explicitly.
+    for (const token of [
+      "--primary",
+      "--primary-foreground",
+      "--secondary",
+      "--secondary-foreground",
+      "--accent",
+      "--accent-foreground",
+      "--destructive",
+      "--muted",
+      "--muted-foreground",
+      "--card",
+      "--card-foreground",
+      "--background",
+      "--foreground",
+      "--border",
+      "--ring",
+      "--radius",
+    ]) {
+      expect(css, `${token} missing from :root`).toContain(`${token}:`);
+      expect(css, `${token} not mapped into @theme`).toContain(`var(${token})`);
+    }
+    // Both themes present; dark is opt-in via a `dark` class on <html>.
+    expect(css).toContain(".dark {");
+    expect(css).toContain("@custom-variant dark");
+  });
+
+  it("the shipped components import through the alias and use cn()", () => {
+    for (const src of [renderButtonTsx(), renderCardTsx()]) {
+      expect(src).toContain('from "@/lib/utils"');
+      expect(src).toContain("cn(");
+    }
+    // asChild is what lets the landing page style an <a> as a button.
+    expect(renderButtonTsx()).toContain("asChild");
+    expect(renderButtonTsx()).toContain('from "radix-ui"');
+    expect(renderButtonTsx()).toContain("Slot.Root");
+    expect(renderCnUtil()).toContain("twMerge(clsx(inputs))");
+  });
+
+  it("both landing pages import the components they render", () => {
+    const pages = [
+      renderAppTsx({ appName: "my-app", coreVersion: "4.1.38" }),
+      renderCodegenAppTsx({ appName: "my-app", coreVersion: "4.1.38" }, {
+        source: "workspace",
+        origin: "42",
+      }),
+    ];
+    for (const page of pages) {
+      expect(page).toContain('from "@/components/ui/button"');
+      expect(page).toContain('from "@/components/ui/card"');
+      // No leftover hardcoded palette from the pre-shadcn markup.
+      expect(page).not.toMatch(/bg-gray-|text-gray-/);
+    }
+  });
+
   it("README carries the tsx-from-project-root spot-check note (#145)", () => {
     const md = renderReadme({ appName: "grant-triage", coreVersion: "4.1.1" });
     // The load-bearing kernel: run tsx <file.ts> from inside the project root.
@@ -138,6 +245,17 @@ describe("AI presets (U4)", () => {
       expect(body).toContain("manifest.json");
     }
   });
+  it("each preset points the agent at shadcn/ui instead of hand-rolled UI", () => {
+    for (const body of [renderClaudeMd("app"), renderAgentsMd("app"), renderCursorRules("app")]) {
+      expect(body).toContain("shadcn@latest add");
+      // The alias the components import through, and the one file to rebrand in.
+      expect(body).toContain("@/components/ui/button");
+      expect(body).toContain("frontend/src/index.css");
+      // Semantic tokens over raw palette classes — the mistake to prevent.
+      expect(body).toContain("bg-primary");
+    }
+  });
+
   it("cursor output is valid MDC frontmatter", () => {
     expect(renderCursorRules("app")).toMatch(/^---\n[\s\S]*alwaysApply: true\n---\n/);
   });
@@ -170,6 +288,10 @@ describe("runInitCommand — orchestration (U3)", () => {
     "frontend/src/App.tsx",
     "frontend/src/index.css",
     "frontend/src/lib/api.ts",
+    "components.json",
+    "frontend/src/lib/utils.ts",
+    "frontend/src/components/ui/button.tsx",
+    "frontend/src/components/ui/card.tsx",
   ];
 
   it("scaffolds the full tree into an empty dir, no AI file by default", async () => {

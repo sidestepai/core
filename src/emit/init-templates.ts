@@ -36,7 +36,7 @@ export function coreDep(coreVersion: string): string {
  * example works without a separate `npm i`. Independent release cadence from the
  * CLI, so it's a plain pin; bump it here when auth ships a new minor.
  */
-const AUTH_DEP = "^0.4.0";
+const AUTH_DEP = "^0.5.0";
 
 export function renderPackageJson({ appName, coreVersion }: TemplateVars): string {
   const pkg = {
@@ -55,8 +55,19 @@ export function renderPackageJson({ appName, coreVersion }: TemplateVars): strin
     dependencies: {
       "@sidestep/core": coreDep(coreVersion),
       "@sidestep/auth": AUTH_DEP,
+      // shadcn/ui's runtime surface. `radix-ui` is the unified primitives
+      // package current components import (`Slot.Root` powers `asChild`) — not
+      // the per-primitive `@radix-ui/react-*` packages, which it superseded.
+      // cva types the variants, clsx + tailwind-merge back `cn()`, lucide is
+      // the icon set. Pre-installed so `npx shadcn@latest add <component>`
+      // works without a separate npm i.
+      "class-variance-authority": "^0.7.1",
+      clsx: "^2.1.1",
+      "lucide-react": "^0.475.0",
+      "radix-ui": "^1.6.7",
       react: "^19.1.0",
       "react-dom": "^19.1.0",
+      "tailwind-merge": "^3.0.1",
     },
     devDependencies: {
       "@tailwindcss/vite": "^4.1.5",
@@ -65,6 +76,7 @@ export function renderPackageJson({ appName, coreVersion }: TemplateVars): strin
       "@types/react-dom": "^19.1.0",
       "@vitejs/plugin-react": "^4.3.4",
       tailwindcss: "^4.1.5",
+      "tw-animate-css": "^1.2.4",
       tsx: "^4.19.2",
       typescript: "^5.9.0",
       vite: "^6.1.0",
@@ -89,6 +101,12 @@ export function renderTsconfig(): string {
       resolveJsonModule: true,
       isolatedModules: true,
       types: ["node", "vite/client"],
+      // The `@/*` alias shadcn/ui generates its imports against. It resolves to
+      // the frontend source root, so `@/components/ui/button` and `@/lib/utils`
+      // work from anywhere in the app. Mirrored in vite.config.ts — both halves
+      // are needed (TypeScript resolves types, Vite resolves the bundle).
+      baseUrl: ".",
+      paths: { "@/*": ["frontend/src/*"] },
     },
     // Both halves of the project typecheck together: the sidestep backend and
     // the React frontend that derives its types from the backend's defs.
@@ -98,7 +116,8 @@ export function renderTsconfig(): string {
 }
 
 export function renderViteConfig(): string {
-  return `import { defineConfig } from "vite";
+  return `import { fileURLToPath } from "node:url";
+import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
@@ -109,6 +128,14 @@ export default defineConfig({
   root: "frontend",
   build: { outDir: "dist", emptyOutDir: true },
   plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      // The alias shadcn/ui writes its imports against. Resolved from this file
+      // rather than from Vite's root so it points at frontend/src either way.
+      // Keep in sync with the \`paths\` entry in tsconfig.json.
+      "@": fileURLToPath(new URL("./frontend/src", import.meta.url)),
+    },
+  },
   server: { host: "127.0.0.1", port: 5173 },
 });
 `;
@@ -193,6 +220,27 @@ body — change a def and the frontend types follow.
 > bare \`node file.ts\`, and not from another directory (they mis-resolve the
 > intra-workspace \`.js\` imports and the \`@sidestep/core\` specifier). Or use
 > \`sidestep paths xano/index.ts\` to list every endpoint's verb + path.
+
+## The frontend
+
+React + Vite, styled with [Tailwind CSS](https://tailwindcss.com) v4 and
+[shadcn/ui](https://ui.shadcn.com). shadcn is not a dependency — its components
+are copied into [\`frontend/src/components/ui/\`](frontend/src/components/ui/) and
+owned by this project, so edit them freely. \`Button\` and \`Card\` are already
+there; add more with:
+
+\`\`\`bash
+npx shadcn@latest add dialog input form
+\`\`\`
+
+[\`components.json\`](components.json) is pre-configured, so that works with no
+\`shadcn init\` step. Components import through the \`@/\` alias
+(\`@/components/ui/button\`, \`@/lib/utils\`), which maps to \`frontend/src/\` in both
+\`tsconfig.json\` and \`vite.config.ts\` — change one and change the other.
+
+To rebrand, edit the color tokens at the top of
+[\`frontend/src/index.css\`](frontend/src/index.css). Tailwind v4 has no
+\`tailwind.config.js\`; the theme lives in that stylesheet.
 
 ## Add-ons
 
@@ -457,37 +505,66 @@ request paths and types from the query defs in \`xano/\` rather than hand-typing
 `;
 }
 
+/**
+ * A `<code>` styled with the shadcn token palette, shared by both landing pages
+ * so the two can't drift on the one bit of inline styling they both need.
+ */
+const CODE_CLASS = "bg-muted rounded px-1.5 py-0.5 font-mono text-sm";
+
 /** The landing page for a pulled project — it has a backend already, not a blank one. */
 export function renderCodegenAppTsx({ appName }: TemplateVars, origin: CodegenOrigin): string {
-  return `export default function App() {
+  return `import { ArrowRight } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+
+export default function App() {
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-6 p-8">
-      <h1 className="text-3xl font-bold tracking-tight">${appName}</h1>
-      <p className="text-lg text-gray-600">
-        This project was pulled from ${describeOrigin(origin)}. The backend lives in{" "}
-        <code className="rounded bg-gray-100 px-1.5 py-0.5">xano/</code> as readable
-        TypeScript; this frontend is a starter.
-      </p>
-      <ol className="list-inside list-decimal space-y-2 text-gray-700">
-        <li>
-          Read{" "}
-          <code className="rounded bg-gray-100 px-1.5 py-0.5">xano/README.md</code> — what
-          did and did not translate cleanly on the pull.
-        </li>
-        <li>
-          List the endpoints:{" "}
-          <code className="rounded bg-gray-100 px-1.5 py-0.5">
-            npx sidestep paths xano/index.ts
-          </code>
-          , then wire them up in{" "}
-          <code className="rounded bg-gray-100 px-1.5 py-0.5">frontend/src/lib/api.ts</code>.
-        </li>
-        <li>
-          Ship it:{" "}
-          <code className="rounded bg-gray-100 px-1.5 py-0.5">npm run xano:deploy</code>{" "}
-          (a full replace of an ephemeral env).
-        </li>
-      </ol>
+    <main className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center p-8">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-3xl tracking-tight">${appName}</CardTitle>
+          <CardDescription className="text-base">
+            This project was pulled from ${describeOrigin(origin)}. The backend lives in{" "}
+            <code className="${CODE_CLASS}">xano/</code> as readable TypeScript; this
+            frontend is a starter.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ol className="text-muted-foreground list-inside list-decimal space-y-2">
+            <li>
+              Read <code className="${CODE_CLASS}">xano/README.md</code> — what did and
+              did not translate cleanly on the pull.
+            </li>
+            <li>
+              List the endpoints:{" "}
+              <code className="${CODE_CLASS}">npx sidestep paths xano/index.ts</code>, then
+              wire them up in{" "}
+              <code className="${CODE_CLASS}">frontend/src/lib/api.ts</code>.
+            </li>
+            <li>
+              Ship it: <code className="${CODE_CLASS}">npm run xano:deploy</code> (a full
+              replace of an ephemeral env).
+            </li>
+          </ol>
+        </CardContent>
+        <CardFooter>
+          {/* asChild renders the Button's styles onto the anchor. Components come
+              from shadcn/ui — add more with \`npx shadcn@latest add <name>\`. */}
+          <Button asChild>
+            <a href="https://ui.shadcn.com/docs/components" target="_blank" rel="noreferrer">
+              Browse UI components <ArrowRight />
+            </a>
+          </Button>
+        </CardFooter>
+      </Card>
     </main>
   );
 }
@@ -509,39 +586,381 @@ createRoot(document.getElementById("root")!).render(
 }
 
 export function renderAppTsx({ appName }: TemplateVars): string {
-  return `export default function App() {
+  return `import { ArrowRight } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+
+export default function App() {
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-6 p-8">
-      <h1 className="text-3xl font-bold tracking-tight">${appName}</h1>
-      <p className="text-lg text-gray-600">
-        Your sidestep project is ready. The backend lives in{" "}
-        <code className="rounded bg-gray-100 px-1.5 py-0.5">xano/</code> and this
-        frontend in{" "}
-        <code className="rounded bg-gray-100 px-1.5 py-0.5">frontend/</code>.
-      </p>
-      <ol className="list-inside list-decimal space-y-2 text-gray-700">
-        <li>
-          Author your first table + endpoint in{" "}
-          <code className="rounded bg-gray-100 px-1.5 py-0.5">xano/index.ts</code>{" "}
-          (see <code className="rounded bg-gray-100 px-1.5 py-0.5">xano/EXAMPLE.md</code>).
-        </li>
-        <li>
-          Wire it into the UI from{" "}
-          <code className="rounded bg-gray-100 px-1.5 py-0.5">frontend/src/lib/api.ts</code>.
-        </li>
-        <li>
-          Ship it:{" "}
-          <code className="rounded bg-gray-100 px-1.5 py-0.5">npm run xano:deploy</code>.
-        </li>
-      </ol>
+    <main className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center p-8">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-3xl tracking-tight">${appName}</CardTitle>
+          <CardDescription className="text-base">
+            Your sidestep project is ready. The backend lives in{" "}
+            <code className="${CODE_CLASS}">xano/</code> and this frontend in{" "}
+            <code className="${CODE_CLASS}">frontend/</code>.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ol className="text-muted-foreground list-inside list-decimal space-y-2">
+            <li>
+              Author your first table + endpoint in{" "}
+              <code className="${CODE_CLASS}">xano/index.ts</code> (see{" "}
+              <code className="${CODE_CLASS}">xano/EXAMPLE.md</code>).
+            </li>
+            <li>
+              Wire it into the UI from{" "}
+              <code className="${CODE_CLASS}">frontend/src/lib/api.ts</code>.
+            </li>
+            <li>
+              Ship it: <code className="${CODE_CLASS}">npm run xano:deploy</code>.
+            </li>
+          </ol>
+        </CardContent>
+        <CardFooter>
+          {/* asChild renders the Button's styles onto the anchor. Components come
+              from shadcn/ui — add more with \`npx shadcn@latest add <name>\`. */}
+          <Button asChild>
+            <a href="https://ui.shadcn.com/docs/components" target="_blank" rel="noreferrer">
+              Browse UI components <ArrowRight />
+            </a>
+          </Button>
+        </CardFooter>
+      </Card>
     </main>
   );
 }
 `;
 }
 
+/**
+ * The frontend stylesheet: Tailwind v4 plus the shadcn/ui theme layer.
+ *
+ * shadcn/ui components are Tailwind classes over a fixed set of semantic color
+ * tokens (`bg-primary`, `text-muted-foreground`, `border-input`, …). Those
+ * tokens are declared here as CSS custom properties — light on `:root`, dark
+ * under `.dark` — and mapped into Tailwind's theme with `@theme inline`, which
+ * is how v4 replaces the v3 `tailwind.config.js`. Every component the shadcn CLI
+ * adds later resolves against this same block, so it is the one file to edit
+ * when rebranding.
+ */
 export function renderIndexCss(): string {
   return `@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* Map the tokens below into Tailwind's theme so \`bg-primary\` and friends
+   resolve. Tailwind v4 does this in CSS; there is no tailwind.config.js. */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* Rebrand here: these are the only colors the components know about. */
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+}
+
+/* Applied by adding \`class="dark"\` to <html> — wire that to a toggle if you
+   want one; the scaffold ships light-only. */
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+`;
+}
+
+/**
+ * `components.json` — the shadcn/ui CLI's config, read by
+ * `npx shadcn@latest add <component>` to decide where files land and which
+ * variant to write. Present in the scaffold so the CLI needs no `init` run:
+ * paths point at this project's `frontend/` layout, and the aliases match the
+ * `@/*` mapping in `tsconfig.json` + `vite.config.ts`.
+ */
+export function renderComponentsJson(): string {
+  const config = {
+    $schema: "https://ui.shadcn.com/schema.json",
+    style: "new-york",
+    rsc: false,
+    tsx: true,
+    tailwind: {
+      // v4 has no config file; the theme lives in the stylesheet.
+      config: "",
+      css: "frontend/src/index.css",
+      baseColor: "neutral",
+      cssVariables: true,
+      prefix: "",
+    },
+    aliases: {
+      components: "@/components",
+      utils: "@/lib/utils",
+      ui: "@/components/ui",
+      lib: "@/lib",
+      hooks: "@/hooks",
+    },
+    iconLibrary: "lucide",
+  };
+  return JSON.stringify(config, null, 2) + "\n";
+}
+
+/**
+ * `cn()` — the class merger every shadcn/ui component imports. `clsx` resolves
+ * conditionals; `tailwind-merge` then drops earlier Tailwind classes that a
+ * later one overrides, so a caller's `className` always wins over a component's
+ * defaults instead of colliding with them.
+ */
+export function renderCnUtil(): string {
+  return `import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+`;
+}
+
+/**
+ * `components/ui/button.tsx` — verbatim shadcn/ui (new-york).
+ *
+ * shadcn is not a dependency: components are *copied in* and owned by the
+ * project. This is the file the CLI would write, so \`npx shadcn@latest add
+ * button\` overwrites it with an equivalent one rather than conflicting.
+ */
+export function renderButtonTsx(): string {
+  return `import * as React from "react"
+import { cva, type VariantProps } from "class-variance-authority"
+import { Slot } from "radix-ui"
+
+import { cn } from "@/lib/utils"
+
+const buttonVariants = cva(
+  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-all outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        destructive:
+          "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40",
+        outline:
+          "border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
+        secondary:
+          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        ghost:
+          "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
+        link: "text-primary underline-offset-4 hover:underline",
+      },
+      size: {
+        default: "h-9 px-4 py-2 has-[>svg]:px-3",
+        xs: "h-6 gap-1 rounded-md px-2 text-xs has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3",
+        sm: "h-8 gap-1.5 rounded-md px-3 has-[>svg]:px-2.5",
+        lg: "h-10 rounded-md px-6 has-[>svg]:px-4",
+        icon: "size-9",
+        "icon-xs": "size-6 rounded-md [&_svg:not([class*='size-'])]:size-3",
+        "icon-sm": "size-8",
+        "icon-lg": "size-10",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  }
+)
+
+function Button({
+  className,
+  variant = "default",
+  size = "default",
+  asChild = false,
+  ...props
+}: React.ComponentProps<"button"> &
+  VariantProps<typeof buttonVariants> & {
+    asChild?: boolean
+  }) {
+  const Comp = asChild ? Slot.Root : "button"
+
+  return (
+    <Comp
+      data-slot="button"
+      data-variant={variant}
+      data-size={size}
+      className={cn(buttonVariants({ variant, size, className }))}
+      {...props}
+    />
+  )
+}
+
+export { Button, buttonVariants }
+`;
+}
+
+/** \`components/ui/card.tsx\` — verbatim shadcn/ui (new-york). See {@link renderButtonTsx}. */
+export function renderCardTsx(): string {
+  return `import * as React from "react"
+
+import { cn } from "@/lib/utils"
+
+function Card({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card"
+      className={cn(
+        "flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground shadow-sm",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-header"
+      className={cn(
+        "@container/card-header grid auto-rows-min grid-rows-[auto_auto] items-start gap-2 px-6 has-data-[slot=card-action]:grid-cols-[1fr_auto] [.border-b]:pb-6",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-title"
+      className={cn("leading-none font-semibold", className)}
+      {...props}
+    />
+  )
+}
+
+function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-description"
+      className={cn("text-sm text-muted-foreground", className)}
+      {...props}
+    />
+  )
+}
+
+function CardAction({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-action"
+      className={cn(
+        "col-start-2 row-span-2 row-start-1 self-start justify-self-end",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function CardContent({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-content"
+      className={cn("px-6", className)}
+      {...props}
+    />
+  )
+}
+
+function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-footer"
+      className={cn("flex items-center px-6 [.border-t]:pt-6", className)}
+      {...props}
+    />
+  )
+}
+
+export {
+  Card,
+  CardHeader,
+  CardFooter,
+  CardTitle,
+  CardAction,
+  CardDescription,
+  CardContent,
+}
 `;
 }
 

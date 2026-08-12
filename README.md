@@ -362,7 +362,8 @@ inferred.
 ## 60-second quickstart
 
 The fastest start is `sidestep init`, which scaffolds the whole project — a Vite
-+ React frontend under `frontend/`, a sidestep backend under `xano/`, and the
++ React frontend under `frontend/` (styled with Tailwind v4 and
+[shadcn/ui](https://ui.shadcn.com)), a sidestep backend under `xano/`, and the
 `xano:export`/`xano:deploy` scripts already wired:
 
 ```bash
@@ -376,6 +377,13 @@ npm run dev                        # run the frontend right away
 `--force` (scaffold into a non-empty folder), `--no-install` (skip `npm install`).
 The starter backend is empty but already compiles and deploys — grow it from the
 walkthrough in `xano/EXAMPLE.md`.
+
+The frontend ships `Button` and `Card` in `frontend/src/components/ui/`, plus a
+pre-configured `components.json`, so `npx shadcn@latest add dialog form input`
+works immediately — no `shadcn init` step. shadcn components are copied into your
+repo rather than installed, so you own and edit them directly. Rebrand by editing
+the color tokens at the top of `frontend/src/index.css` (Tailwind v4 keeps the
+theme in CSS — there's no `tailwind.config.js`).
 
 Prefer to wire it by hand? The same loop, from scratch:
 
