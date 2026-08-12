@@ -1270,10 +1270,12 @@ sources.
   ```
 
   Omit `surface` and the check is deferred to wherever the body lands, which is the thing
-  that knows. `lam.file("./lambdas/total.ts")` (from `@sidestep/core/node`) reads a
-  default-exported function of the same shape from its own type-checked module — the
-  deterministic option under a bundler, where a function's own source is whatever the
-  bundler emitted. `lam.raw(code)` is the text escape hatch, guarded identically. The full
+  that knows. `lam.file("./lambdas/total.ts")` reads a default-exported function of the
+  same shape from its own type-checked module — the deterministic option under a bundler,
+  where a function's own source is whatever the bundler emitted. It needs a filesystem, so
+  it ships on the Node entry only: `import { lam } from "@sidestep/core/node"`, whose `lam`
+  carries `fn` and `raw` unchanged. `lam.raw(code)` is the text escape hatch, guarded
+  identically, and works on either entry. The full
   binding table per surface is in `llms.txt` under **Lambda bodies**.
 
   Three things to know, all live-verified against a real engine:

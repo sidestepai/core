@@ -820,9 +820,27 @@ function raw(code: string, opts?: LambdaOptions<Record<string, CaptureValue>>): 
 }
 
 /**
+ * Reading a file needs a filesystem, so `lam.file` lives on the Node entry only
+ * — but the isomorphic `lam` still carries this stub, because the alternative is
+ * `lam.file is not a function` from any position loose enough to reach it (issue
+ * #257). It never touches `node:fs`, so the isomorphic entry stays bundleable.
+ */
+function fileOnNodeEntryOnly(): never {
+  throw new Error(
+    `${PREFIX}.file: this entry has no filesystem. It ships on the Node entry only — ` +
+      `\`import { lam } from "@sidestep/core/node"\` (that \`lam\` carries \`fn\` and \`raw\` too). ` +
+      `In a browser bundle, use \`${PREFIX}.raw(code, { surface })\` with the body as text. (issue #257)`,
+  );
+}
+
+/**
  * Lambda authoring. `lam.fn` for an inline typed body, `lam.raw` for text, and
  * `lam.file` (from `@sidestep/core/node`) for a body big enough to want its own
  * type-checked module. All three produce the same `const:text` {@link Value} and
  * pass the same validation.
+ *
+ * `file` is deliberately absent from the TYPE here so `lam.file` off this entry
+ * is a compile error that names the Node entry; the runtime stub only catches
+ * the calls types didn't.
  */
-export const lam = { fn, raw };
+export const lam: { fn: typeof fn; raw: typeof raw } = Object.assign({ fn, raw }, { file: fileOnNodeEntryOnly });
