@@ -23,6 +23,7 @@ import type { FilterXdo } from "../types/xdo.js";
 import type {
   ElementResult,
   FilterResults,
+  GroupedArrayResult,
   SameArrayResult,
 } from "./generated/filters.generated.js";
 
@@ -63,7 +64,15 @@ export type ApplyFilter<Shape, N extends string> = string extends N
             Shape extends readonly unknown[]
             ? Shape
             : unknown
-          : FilterResults[N]
+          : FilterResults[N] extends GroupedArrayResult
+            ? // A group-by: an object keyed by the argument path, whose every
+              // value is an ARRAY of the elements — one match included. The key
+              // is `string` because JSON object keys are, whatever the grouped
+              // column's own type is.
+              Shape extends readonly (infer E)[]
+              ? Record<string, E[]>
+              : unknown
+            : FilterResults[N]
       : unknown;
 
 /**

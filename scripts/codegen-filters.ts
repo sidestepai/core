@@ -354,6 +354,31 @@ const DESCRIPTION_OVERRIDES: Record<string, string> = {
     "Treats the PIPED TEXT as Xano Expression Engine source, evaluates it, and returns the result. Takes no argument. " +
     "`$var`, `$input`, `$env` and `$auth` resolve inside it; there is no operand binding (`$0` is null) because the " +
     "operand IS the source. For an expression OVER a value, use fl.transform.",
+  index_by:
+    "Groups the piped array into an OBJECT keyed by each item's path — every value is an ARRAY of the items sharing " +
+    "that key, even when only one item does. So a lookup reads `idx[key][0]`, not `idx[key]`; the singular spelling " +
+    "yields null rather than erroring. Items whose path is missing or non-scalar are dropped.",
+};
+
+/**
+ * Results that REPLACE the upstream declaration, for filters whose declared
+ * `result` names the wrong SHAPE (issue #267).
+ *
+ * Same argument as {@link DESCRIPTION_OVERRIDES} one level up: a declaration is
+ * believed only after being run, and where a live run disagrees the run wins.
+ * `index_by` is declared `<T>[]` — an array of the elements it was given — and
+ * live it returns an OBJECT of ARRAYS (`{"7":[row,row],"9":[row]}`). That
+ * declaration is not merely imprecise: `<T>[]` folds to the input array's own
+ * type, so `idx[key].name` type-checks and is `null` at runtime. An honest
+ * record type refuses that spelling where it is written.
+ *
+ * The spelling is TypeScript-shaped rather than a new upstream-style token
+ * because it ships verbatim into `llms.txt`, where it is read as a signature.
+ *
+ * Lives here (not in the vendor JSON) so `--refresh` cannot clobber it.
+ */
+const RESULT_OVERRIDES: Record<string, string> = {
+  index_by: "{ [key: string]: <T>[] }",
 };
 
 /**
@@ -435,9 +460,10 @@ const LAMBDA_SURFACES: Readonly<Record<string, string>> = {
 };
 
 /**
- * Fold the curated descriptions into each affected filter's `description` — an
- * {@link DESCRIPTION_OVERRIDES} entry replaces it, a {@link DESCRIPTION_NOTES}
- * entry appends to it.
+ * Fold the curated text into each affected filter's spec — a
+ * {@link DESCRIPTION_OVERRIDES} entry replaces its `description`, a
+ * {@link DESCRIPTION_NOTES} entry appends to it, and a {@link RESULT_OVERRIDES}
+ * entry replaces its `result`.
  *
  * Done here (rather than only in the emitted JSDoc) so the corrected text rides
  * `FILTER_SPECS` into the manifest and `llms.txt` too — the agent that hit this
@@ -447,16 +473,20 @@ const LAMBDA_SURFACES: Readonly<Record<string, string>> = {
 function withCuratedDescriptions(specs: Record<string, FilterSpec>): Record<string, FilterSpec> {
   const out: Record<string, FilterSpec> = {};
   for (const [name, spec] of Object.entries(specs)) {
+    // A result override replaces the declared shape everywhere the spec is read
+    // — JSDoc, `manifest.json`, `llms.txt`, and the `FilterResults` fold.
+    const result = RESULT_OVERRIDES[name];
+    const base = result !== undefined ? { ...spec, result } : spec;
     // An override REPLACES; a note APPENDS. See {@link DESCRIPTION_OVERRIDES}.
     const override = DESCRIPTION_OVERRIDES[name];
     if (override !== undefined) {
-      out[name] = { ...spec, description: override };
+      out[name] = { ...base, description: override };
       continue;
     }
     const note = DESCRIPTION_NOTES[name];
     out[name] = note
-      ? { ...spec, description: spec.description ? `${spec.description} ${note}` : note }
-      : spec;
+      ? { ...base, description: base.description ? `${base.description} ${note}` : note }
+      : base;
   }
   return out;
 }
@@ -590,6 +620,10 @@ function resultType(result: string | undefined): string | null {
       return "ElementResult";
     case "<T>[]":
       return "SameArrayResult";
+    // The curated record shape (see `RESULT_OVERRIDES`) — a group-by keyed by
+    // the argument path, whose every value is an array of the input's elements.
+    case "{ [key: string]: <T>[] }":
+      return "GroupedArrayResult";
     // `any` (get/set/transform/json_decode/lambda/…) and `json` name a shape no
     // declaration could pin down; absent → `unknown`.
     default:
@@ -800,6 +834,16 @@ export interface SameArrayResult {
   readonly __result: "sameArray";
 }
 
+/**
+ * Marker for a GROUP-BY — an object keyed by the argument path whose every
+ * value is an ARRAY of the elements it was given (\`index_by\`). A single
+ * matching item still arrives wrapped in a one-element array, so a lookup reads
+ * \`idx[key][0]\`.
+ */
+export interface GroupedArrayResult {
+  readonly __result: "groupedArray";
+}
+
 /** Distilled metadata for a filter (from the engine's filter/pipe/aggregate schema + LSP docs). */
 export interface FilterSpec {
   args?: Array<{ name: string; type: string; optional?: boolean; enum?: string[] }>;
@@ -818,13 +862,15 @@ export const FILTER_SPECS: Readonly<Record<string, FilterSpec>> = ${JSON.stringi
  * Each filter's RESULT type, at the type level.
  *
  * Generated from the same \`result\` the specs above carry, so the two cannot
- * drift. Two entries are markers rather than concrete types, mirroring the
- * generic results upstream declares:
+ * drift. Three entries are markers rather than concrete types, mirroring the
+ * generic results the catalog declares:
  *
  *   - {@link ElementResult} (\`<T>\`)   — the ELEMENT of the array it is given
  *     (\`first\`, \`last\`, \`array_pop\`, …)
  *   - {@link SameArrayResult} (\`<T>[]\`) — an array of the same element type
  *     (\`reverse\`, \`unique\`, \`array_slice\`, …)
+ *   - {@link GroupedArrayResult} (\`{ [key: string]: <T>[] }\`) — a group-by
+ *     keyed by the argument path (\`index_by\`)
  *
  * A filter whose result is \`any\` — or one upstream declares nothing for — is
  * absent from this map and folds to \`unknown\`. That is deliberate: \`get\`,

@@ -1,6 +1,6 @@
 /**
  * `fl.index_by` filter (group: array).
- * Create a new array indexed off of the value of each item's path
+ * Groups the piped array into an OBJECT keyed by each item's path — every value is an ARRAY of the items sharing that key, even when only one item does. So a lookup reads `idx[key][0]`, not `idx[key]`; the singular spelling yields null rather than erroring. Items whose path is missing or non-scalar are dropped.
  *
  * Filters attach to a value with `withFilters(value, fl.<name>(...))`.
  */

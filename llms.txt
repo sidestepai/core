@@ -697,7 +697,7 @@ engine change.
 - `fl.icontains(search: text): bool` — case-insensitive; piped value is the subject, the arg is the substring
 - `fl.iends_with(search: text): bool` — case-insensitive; piped value is the subject, the arg is the substring
 - `fl.in(search: <T>): bool`
-- `fl.index_by(path: text): <T>[]`
+- `fl.index_by(path: text): { [key: string]: <T>[] }` — a GROUP-BY: every value is an ARRAY of the items sharing that key, even when only one does, so a lookup reads `idx[key][0]`. Items whose path is missing or non-scalar are dropped
 - `fl.istarts_with(search: text): bool` — case-insensitive; piped value is the subject, the arg is the substring
 - `fl.join(separator: text): text`
 - `fl.jwe_decode(arg1: any)`
