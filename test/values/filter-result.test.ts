@@ -195,6 +195,83 @@ describe("withFilters carries its chain into response inference", () => {
   });
 });
 
+describe("asFilters retypes the statement's bound variable", () => {
+  it("folds the chain over a db.get row", () => {
+    const fn = defineFunction({
+      name: "fr_as_get",
+      stack: [
+        s.db.get({ table: users, fieldValue: c.int(1), as: "u", asFilters: [fl.json_encode()] }),
+      ],
+      response: ref("u"),
+    });
+    expect(fn.name).toBe("fr_as_get");
+    // `Row | null` → json_encode → `string | null`: the null survives the fold.
+    expectTypeOf<InferResponse<typeof fn>>().toEqualTypeOf<string | null>();
+  });
+
+  it("folds a chain over a db.query list", () => {
+    const fn = defineFunction({
+      name: "fr_as_count",
+      stack: [s.db.query({ table: users, as: "rows", asFilters: [fl.count()] })],
+      response: ref("rows"),
+    });
+    expect(fn.name).toBe("fr_as_count");
+    expectTypeOf<InferResponse<typeof fn>>().toEqualTypeOf<number>();
+  });
+
+  it("folds a multi-filter chain down to the element type", () => {
+    const fn = defineFunction({
+      name: "fr_as_chain",
+      stack: [s.db.query({ table: users, as: "rows", asFilters: [fl.reverse(), fl.first()] })],
+      response: ref("rows"),
+    });
+    expect(fn.name).toBe("fr_as_chain");
+    expectTypeOf<InferResponse<typeof fn>>().toEqualTypeOf<InferRow<typeof users>>();
+  });
+
+  it("leaves the shape untouched when no filters are attached", () => {
+    const fn = defineFunction({
+      name: "fr_as_none",
+      stack: [s.db.query({ table: users, as: "rows" })],
+      response: ref("rows"),
+    });
+    expect(fn.name).toBe("fr_as_none");
+    expectTypeOf<InferResponse<typeof fn>>().toEqualTypeOf<InferRow<typeof users>[]>();
+  });
+
+  it("an empty chain is the same type as no chain", () => {
+    const fn = defineFunction({
+      name: "fr_as_empty",
+      stack: [s.db.query({ table: users, as: "rows", asFilters: [] })],
+      response: ref("rows"),
+    });
+    expect(fn.name).toBe("fr_as_empty");
+    expectTypeOf<InferResponse<typeof fn>>().toEqualTypeOf<InferRow<typeof users>[]>();
+  });
+
+  it("reaches non-db branded statements too", () => {
+    const fn = defineFunction({
+      name: "fr_as_req",
+      stack: [s.api.request({ url: c.text("https://x"), as: "resp", asFilters: [fl.json_encode()] })],
+      response: ref("resp"),
+    });
+    expect(fn.name).toBe("fr_as_req");
+    expectTypeOf<InferResponse<typeof fn>>().toEqualTypeOf<string>();
+  });
+
+  it("still bottoms out on an unfoldable filter", () => {
+    const fn = defineFunction({
+      name: "fr_as_unfoldable",
+      stack: [
+        s.db.get({ table: users, fieldValue: c.int(1), as: "u", asFilters: [fl.get(c.text("email"))] }),
+      ],
+      response: ref("u"),
+    });
+    expect(fn.name).toBe("fr_as_unfoldable");
+    expectTypeOf<InferResponse<typeof fn>>().toEqualTypeOf<unknown>();
+  });
+});
+
 describe("the phantom carriers stay off the wire", () => {
   it("a branded filter encodes to the same bytes as before", () => {
     expect(fl.upper()).toEqual({ name: "upper", disabled: false, arg: [] });

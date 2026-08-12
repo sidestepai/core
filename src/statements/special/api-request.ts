@@ -17,6 +17,8 @@
  * `api.request` does (its siblings are lean specs).
  */
 import type { Statement, AsShapeBrand } from "../statement.js";
+import type { FilterXdo } from "../../types/xdo.js";
+import type { ApplyFilters } from "../../values/filter-result.js";
 import type { Value } from "../../values/value.js";
 import { generated } from "../generated/factories.generated.js";
 import type { OutputAuthored } from "../schema-dsl/interpret.js";
@@ -79,9 +81,11 @@ export interface ApiRequestArgs extends HttpRequestFields, StatementAnnotations 
  * flags booleans. A plain-object `params` is a static `const:obj` (no nested
  * tagged values — issue #42); for dynamic params pass a `Value`.
  */
-export function apiRequest<const As extends string = "">(
-  a: ApiRequestArgs & { as?: As } = {},
-): Statement & AsShapeBrand<As, ApiRequestResult> {
+export function apiRequest<const As extends string = "",
+  const Fs extends readonly FilterXdo[] = readonly [],
+>(
+  a: ApiRequestArgs & { as?: As; asFilters?: Fs } = {},
+): Statement & AsShapeBrand<As, ApplyFilters<ApiRequestResult, Fs>> {
   assertSslConsistency("api.request", a);
   return generated.api.request({
     as: a.as,
@@ -90,7 +94,7 @@ export function apiRequest<const As extends string = "">(
     disabled: a.disabled,
     description: a.description,
     output: a.output,
-  }) as Statement & AsShapeBrand<As, ApiRequestResult>;
+  }) as Statement & AsShapeBrand<As, ApplyFilters<ApiRequestResult, Fs>>;
 }
 
 // ── stream.from_request ──────────────────────────────────────────────────────
@@ -128,9 +132,11 @@ export interface WebflowRequestArgs extends HttpRequestFields, StatementAnnotati
  * `webflow.request` — call the Webflow API (`mvp:connect_webflow_api_request`).
  * Like {@link apiRequest} but addressed by `path` (the host is engine-supplied).
  */
-export function webflowRequest<const As extends string = "">(
-  a: WebflowRequestArgs & { as?: As } = {},
-): Statement & AsShapeBrand<As, ApiRequestResult> {
+export function webflowRequest<const As extends string = "",
+  const Fs extends readonly FilterXdo[] = readonly [],
+>(
+  a: WebflowRequestArgs & { as?: As; asFilters?: Fs } = {},
+): Statement & AsShapeBrand<As, ApplyFilters<ApiRequestResult, Fs>> {
   assertSslConsistency("webflow.request", a);
   return generated.webflow.request({
     as: a.as,
@@ -138,5 +144,5 @@ export function webflowRequest<const As extends string = "">(
     ...coerceHttpFields(a),
     disabled: a.disabled,
     description: a.description,
-  }) as Statement & AsShapeBrand<As, ApiRequestResult>;
+  }) as Statement & AsShapeBrand<As, ApplyFilters<ApiRequestResult, Fs>>;
 }

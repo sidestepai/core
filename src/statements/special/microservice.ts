@@ -15,6 +15,8 @@
  * thrown on at build time rather than left to fail at request time.
  */
 import type { Statement, AsShapeBrand } from "../statement.js";
+import type { FilterXdo } from "../../types/xdo.js";
+import type { ApplyFilters } from "../../values/filter-result.js";
 import type { Value } from "../../values/value.js";
 import { generated } from "../generated/factories.generated.js";
 import type { StatementOptions } from "../statement.js";
@@ -214,9 +216,10 @@ const MICROSERVICE_DEFAULTS = {
 export function microserviceRequest<
   const As extends string = "",
   const H extends MicroserviceHost = MicroserviceHost,
+  const Fs extends readonly FilterXdo[] = readonly [],
 >(
-  a: MicroserviceArgs<H> & { as?: As },
-): Statement & AsShapeBrand<As, ApiRequestResult> {
+  a: MicroserviceArgs<H> & { as?: As } & { asFilters?: Fs },
+): Statement & AsShapeBrand<As, ApplyFilters<ApiRequestResult, Fs>> {
   return generated.microservice.request({
     as: a.as,
     host: coerceText(resolveMicroserviceHost(a.host, a.port))!,
@@ -229,5 +232,5 @@ export function microserviceRequest<
     follow_location: coerceBool(a.follow_location ?? MICROSERVICE_DEFAULTS.follow_location)!,
     disabled: a.disabled,
     description: a.description,
-  }) as Statement & AsShapeBrand<As, ApiRequestResult>;
+  }) as Statement & AsShapeBrand<As, ApplyFilters<ApiRequestResult, Fs>>;
 }

@@ -11,9 +11,10 @@
  *
  *   • A statement that binds nothing (`s.precondition`, `s.while`, …) does not
  *     offer the option at all — there would be no result to filter.
- *   • The chain does NOT change the bound variable's declared TypeScript type.
- *     `asFilters: [fl.count()]` on a db read still types as the row, so narrow
- *     it yourself if the filter reshapes the value.
+ *   • The chain RETYPES the bound variable — `asFilters: [fl.count()]` on a db
+ *     read makes it a `number`, not the row. Filters whose result the engine
+ *     declares as `any` (`get`, `set`, `json_decode`) fold to `unknown`, which
+ *     is why `user_email` below is `unknown` rather than `string`.
  *
  * Prefer `asFilters` over a follow-up `s.set_var` when you just want the result
  * in a different shape — it is one step instead of two, and it is what the

@@ -12,6 +12,8 @@
  * `await` is passed through as authored.
  */
 import type { Statement, AsShapeBrand } from "../statement.js";
+import type { FilterXdo } from "../../types/xdo.js";
+import type { ApplyFilters } from "../../values/filter-result.js";
 import { registerStatement } from "../statement.js";
 import type { Value } from "../../values/value.js";
 import { isTaggedValue } from "../../values/value.js";
@@ -118,7 +120,10 @@ export function aiAgentRun<
   const As extends string = "",
   const A extends ObjectRef = ObjectRef,
   R = AgentResultOf<A>,
->(a: AiAgentRunArgs<As, A, R>): Statement & AsShapeBrand<As, AgentRunResult<R>> {
+  const Fs extends readonly FilterXdo[] = readonly [],
+>(
+  a: AiAgentRunArgs<As, A, R> & { asFilters?: Fs },
+): Statement & AsShapeBrand<As, ApplyFilters<AgentRunResult<R>, Fs>> {
   const input: unknown[] = [];
   // `args` accepts a single Value or an object literal of values — a record is
   // built into a dynamic object value (`obj`), so `{ q: inp("q") }` reaches the
@@ -137,7 +142,7 @@ export function aiAgentRun<
   };
   const runtime = encodeAsyncRuntime(a.runtime);
   if (runtime) stmt.runtime = runtime;
-  return annotate(stmt as unknown as Statement & AsShapeBrand<As, AgentRunResult<R>>, a);
+  return annotate(stmt as unknown as Statement & AsShapeBrand<As, ApplyFilters<AgentRunResult<R>, Fs>>, a);
 }
 
 export interface CloudJobArgs extends StatementOptions {

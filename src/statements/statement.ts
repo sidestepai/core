@@ -64,9 +64,10 @@ export interface StatementOptions extends StatementAnnotations {
    * Authored from the same `fl.*` catalog as value filters and applied in
    * order, so `asFilters: [fl.trim(), fl.upper()]` trims and then upper-cases.
    *
-   * The declared TypeScript type of the bound variable does **not** reflect the
-   * filters — `fl.count()` on a db row still types as the row. Modeling filter
-   * return types is separate work.
+   * The bound variable is RETYPED by the chain: `InferResponse` folds each
+   * filter's declared result, so a `db.query` bound through `[fl.count()]` is a
+   * `number`. Filters the engine declares as returning `any` (`get`, `set`,
+   * `json_decode`, …) fold to `unknown` — see `values/filter-result.ts`.
    */
   asFilters?: FilterXdo[];
 }

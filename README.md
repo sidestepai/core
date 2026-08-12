@@ -1063,9 +1063,21 @@ s.set_var("email", inp("raw"), { asFilters: [fl.trim(), fl.lower()] })
 ```
 
 It saves a follow-up `s.set_var` for the common "bind it in a different shape" case. A
-statement that binds nothing does not offer the option. Note that the chain does not change
-the bound variable's declared type — `asFilters: [fl.count()]` on a db read still types as
-the row, so narrow it yourself if the filter reshapes the value.
+statement that binds nothing does not offer the option.
+
+**The chain retypes the value.** `InferResponse` folds each filter's declared result, so a
+filtered binding reports what it actually holds rather than `unknown`:
+
+```ts
+s.db.query({ table: users, as: "rows", asFilters: [fl.count()] })       // rows: number
+s.db.query({ table: users, as: "rows", asFilters: [fl.reverse(), fl.first()] })  // rows: Row
+withFilters(ref("rows"), fl.count())                                    // number
+```
+
+Filters the engine declares as returning `any` — `get`, `set`, `transform`, `json_decode` —
+fold to `unknown`, since no declaration could name their shape. Note this models a filter's
+OUTPUT, not its input: a filter applied to a value it cannot accept returns `null` at
+runtime rather than erroring, and still types as its declared result.
 
 **Fields with a fixed set of values take a bare literal.** Where the engine accepts only
 certain spellings, the field's type is that set, so autocomplete offers them and a typo is a

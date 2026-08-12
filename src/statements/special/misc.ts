@@ -25,6 +25,8 @@
  *       the schema transform (auth_table via !map:dbo:constant → table guid).
  */
 import type { Statement, AsShapeBrand } from "../statement.js";
+import type { FilterXdo } from "../../types/xdo.js";
+import type { ApplyFilters } from "../../values/filter-result.js";
 import { encodeStatement, registerStatement } from "../statement.js";
 import type { Value } from "../../values/value.js";
 import { c, isTaggedValue } from "../../values/value.js";
@@ -383,9 +385,12 @@ export interface CreateAuthTokenArgs<As extends string = string> extends Stateme
  * instead of `unknown` — the token is always a JWT string. The brand is phantom;
  * the emitted statement bytes are unchanged.
  */
-export function createAuthToken<const As extends string = "">(
-  a: CreateAuthTokenArgs<As>,
-): Statement & AsShapeBrand<As, string> {
+export function createAuthToken<
+  const As extends string = "",
+  const Fs extends readonly FilterXdo[] = readonly [],
+>(
+  a: CreateAuthTokenArgs<As> & { asFilters?: Fs },
+): Statement & AsShapeBrand<As, ApplyFilters<string, Fs>> {
   return annotate({
     name: "mvp:create_auth",
     context: {},
@@ -405,7 +410,7 @@ export function createAuthToken<const As extends string = "">(
       ...(a.extras === undefined ? [] : [{ name: "extras", ...vf(a.extras) }]),
       ...(a.expiration === undefined ? [] : [{ name: "expiration", ...vf(a.expiration) }]),
     ],
-  } as unknown as Statement & AsShapeBrand<As, string>, a);
+  } as unknown as Statement & AsShapeBrand<As, ApplyFilters<string, Fs>>, a);
 }
 
 // --- security.create_guid ---------------------------------------------------
@@ -421,15 +426,18 @@ export function createAuthToken<const As extends string = "">(
  *
  * Branded `AsShapeBrand<As, string>` so a `ref("<as>")` traces to `string`.
  */
-export function createGuid<const As extends string = "">(
-  a: { as?: As } & StatementAnnotations = {},
-): Statement & AsShapeBrand<As, string> {
+export function createGuid<
+  const As extends string = "",
+  const Fs extends readonly FilterXdo[] = readonly [],
+>(
+  a: { as?: As } & StatementOptions & { asFilters?: Fs } = {},
+): Statement & AsShapeBrand<As, ApplyFilters<string, Fs>> {
   return annotate({
     name: "mvp:guid",
     context: {},
     as: a.as ?? "",
     input: [],
-  }, a) as unknown as Statement & AsShapeBrand<As, string>;
+  }, a) as unknown as Statement & AsShapeBrand<As, ApplyFilters<string, Fs>>;
 }
 
 // --- expect.to_throw (structural) ------------------------------------------
