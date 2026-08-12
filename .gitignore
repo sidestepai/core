@@ -18,3 +18,6 @@ validate-out/
 scripts/probe-results.json
 scripts/probe-field-methods-results.json
 test/.generated/
+
+# python bytecode from .github/scripts
+__pycache__/

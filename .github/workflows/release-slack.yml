@@ -3,36 +3,56 @@ name: Announce release on Slack
 on:
   release:
     types: [released]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to (re-)announce, e.g. v4.1.40
+        required: true
 
 jobs:
   notify:
     # `released` already excludes prereleases; the tag check also skips
-    # semver prerelease tags (4.1.0-beta.1) that were published as full releases.
-    if: ${{ !github.event.release.prerelease && !contains(github.event.release.tag_name, '-') }}
+    # semver prerelease tags (4.1.0-beta.1) that were published as full
+    # releases. A manual dispatch is explicit intent, so it is never skipped.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (!github.event.release.prerelease && !contains(github.event.release.tag_name, '-'))
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve the release
+        id: rel
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            gh release view "$INPUT_TAG" --repo "${{ github.repository }}" \
+              --json tagName,name,body,url > release.json
+          else
+            jq '.release | {tagName: .tag_name, name: .name, body: .body, url: .html_url}' \
+              "$GITHUB_EVENT_PATH" > release.json
+          fi
+          jq -r '"resolved \(.tagName)"' release.json
+
+      - name: Verify the message builder
+        working-directory: .github/scripts
+        run: python3 test_slack_release_message.py
+
       - name: Post to Slack
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          REPO: ${{ github.event.repository.full_name }}
-          TAG: ${{ github.event.release.tag_name }}
-          URL: ${{ github.event.release.html_url }}
-          BODY: ${{ github.event.release.body }}
+          REPO: ${{ github.repository }}
+          NPM_PACKAGE: "@sidestep/core"
         run: |
           set -euo pipefail
-          jq -n \
-            --arg repo "$REPO" --arg tag "$TAG" --arg url "$URL" --arg body "$BODY" \
-            '{
-              text: "\($repo) released \($tag)",
-              blocks: (
-                [{ type: "section", text: { type: "mrkdwn",
-                     text: "*<\($url)|\($repo) \($tag)>* released" } }]
-                + (if ($body | length) > 0
-                   then [{ type: "section", text: { type: "mrkdwn",
-                            text: (if ($body | length) > 2800
-                                   then $body[0:2800] + "\n…" else $body end) } }]
-                   else [] end)
-              )
-            }' \
-          | curl -sS --fail-with-body -X POST \
-              -H 'Content-type: application/json' --data @- "$SLACK_WEBHOOK_URL"
+          export TAG NAME URL BODY
+          TAG=$(jq -r '.tagName' release.json)
+          NAME=$(jq -r '.name // ""' release.json)
+          URL=$(jq -r '.url' release.json)
+          BODY=$(jq -r '.body // ""' release.json)
+          python3 .github/scripts/slack_release_message.py > payload.json
+          curl -sS --fail-with-body -X POST \
+            -H 'Content-type: application/json' --data @payload.json "$SLACK_WEBHOOK_URL"
