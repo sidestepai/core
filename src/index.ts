@@ -80,6 +80,18 @@ export type { CaughtField } from "./values/value.js";
 export type { Value, RefValue, FilteredValue } from "./values/value.js";
 export { obj } from "./values/obj.js";
 export type { ObjInput, ObjMember } from "./values/obj.js";
+// Lambda authoring: write a JavaScript body as a typed function whose parameters
+// ARE the engine's injected bindings, so `$acc` is a compile error rather than a
+// wrong value at runtime (issue #221). `lam.file` lives on `@sidestep/core/node`.
+export { lam, LAMBDA_BINDINGS, LAMBDA_GLOBALS, assertLambdaBody } from "./values/lambda.js";
+export type {
+  LambdaSurface,
+  LambdaBindings,
+  LambdaOptions,
+  AmbientBindings,
+  IteratingBindings,
+  CaptureValue,
+} from "./values/lambda.js";
 export { fl, FILTER_NAMES } from "./values/generated/filters.generated.js";
 export { setVar, updateVar } from "./statements/set-var.js";
 export { conditional, expr } from "./statements/conditional.js";
