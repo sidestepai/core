@@ -261,17 +261,26 @@ function paramName(raw: string, used: Set<string>): string {
 }
 
 /**
- * Curated pipe-direction notes (issue #22). Several text filters disagree on
- * what the PIPED value means vs the named argument, and getting it backwards
- * silently inverts the check with no type or runtime error — a real
- * correctness/security hazard for a guard. The arg names already encode it
- * (`search` = needle to look for, `subject` = text operated on), but only if you
- * know the convention, so spell it out at the call site. Lives here (not in the
- * vendor JSON) so `--refresh` can't clobber it. See {@link jsdoc}.
+ * Curated notes that APPEND to the upstream description, for filters whose
+ * upstream text is INCOMPLETE — true as far as it goes, silent about the part
+ * that bites. Contrast {@link DESCRIPTION_OVERRIDES}, which replaces text that
+ * is outright false; appending to a false sentence would leave the false
+ * sentence in front of its own correction.
+ *
+ * Lives here (not in the vendor JSON) so `--refresh` can't clobber it. Carries
+ * no issue numbers or file paths: these strings reach `manifest.json` and
+ * `llms.txt`, which `test/manifest/llms-no-opinion.test.ts` keeps free of
+ * dev-process references. See {@link jsdoc}.
  */
-const PIPE_DIRECTION_NOTES: Record<string, string> = {};
+const DESCRIPTION_NOTES: Record<string, string> = {};
+
+// Pipe direction (issue #22). Several text filters disagree on what the PIPED
+// value means vs the named argument, and getting it backwards silently inverts
+// the check with no type or runtime error — a real correctness/security hazard
+// for a guard. The arg names already encode it (`search` = needle to look for,
+// `subject` = text operated on), but only if you know the convention.
 for (const n of ["contains", "icontains", "starts_with", "istarts_with", "ends_with", "iends_with"]) {
-  PIPE_DIRECTION_NOTES[n] = "Direction: the piped value is the subject text; the argument is the substring searched for.";
+  DESCRIPTION_NOTES[n] = "Direction: the piped value is the subject text; the argument is the substring searched for.";
 }
 for (const n of [
   "regex_test",
@@ -282,9 +291,24 @@ for (const n of [
   "regex_get_all_matches",
   "regex_get_first_match",
 ]) {
-  PIPE_DIRECTION_NOTES[n] =
+  DESCRIPTION_NOTES[n] =
     "Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains. Build the pattern with c.regex(...) (delimiter-wrapped); a bare c.text(...) is rejected.";
 }
+
+// The comparator mode is the whole behavior of `fsort`, and the upstream
+// sentence does not mention the `type` argument at all (issue #198). Picking it
+// wrong is SILENT: every unrecognized spelling falls through to `itext`, so the
+// array comes back sorted as case-insensitive text with no error anywhere —
+// which is how "top N by score/distance/recency" returns the right rows in the
+// wrong order. `FILTER_NOTES` already carries this into the lean `llms.txt`
+// catalog; without this note the JSDoc an IDE shows, and `manifest.json`, still
+// say nothing about it.
+DESCRIPTION_NOTES.fsort =
+  'Only `type: "number"` compares NUMERICALLY. "text"/"itext" are case-sensitive/insensitive string ' +
+  'compares, "natural"/"inatural" are the human-readable "a2 < a10" orderings, and the default is ' +
+  '"itext". An unrecognized spelling silently falls through to "itext" rather than erroring, so a ' +
+  'numeric sort MUST spell "number" — anything else returns the right elements in the wrong order. ' +
+  "`path` drills into each element.";
 
 /**
  * Descriptions that REPLACE the upstream one rather than adding to it (issue
@@ -392,13 +416,16 @@ const LAMBDA_SURFACES: Readonly<Record<string, string>> = {
 };
 
 /**
- * Fold the curated pipe-direction notes into each affected filter's
- * `description`. Done here (rather than only in the emitted JSDoc) so the note
- * rides `FILTER_SPECS` into the manifest and `llms.txt` too — the agent that hit
- * this had to open `manifest.json` to disambiguate, so that surface is exactly
- * where the hint belongs. Returns a new specs map; the input is left untouched.
+ * Fold the curated descriptions into each affected filter's `description` — an
+ * {@link DESCRIPTION_OVERRIDES} entry replaces it, a {@link DESCRIPTION_NOTES}
+ * entry appends to it.
+ *
+ * Done here (rather than only in the emitted JSDoc) so the corrected text rides
+ * `FILTER_SPECS` into the manifest and `llms.txt` too — the agent that hit this
+ * had to open `manifest.json` to disambiguate, so that surface is exactly where
+ * the hint belongs. Returns a new specs map; the input is left untouched.
  */
-function withDirectionNotes(specs: Record<string, FilterSpec>): Record<string, FilterSpec> {
+function withCuratedDescriptions(specs: Record<string, FilterSpec>): Record<string, FilterSpec> {
   const out: Record<string, FilterSpec> = {};
   for (const [name, spec] of Object.entries(specs)) {
     // An override REPLACES; a note APPENDS. See {@link DESCRIPTION_OVERRIDES}.
@@ -407,7 +434,7 @@ function withDirectionNotes(specs: Record<string, FilterSpec>): Record<string, F
       out[name] = { ...spec, description: override };
       continue;
     }
-    const note = PIPE_DIRECTION_NOTES[name];
+    const note = DESCRIPTION_NOTES[name];
     out[name] = note
       ? { ...spec, description: spec.description ? `${spec.description} ${note}` : note }
       : spec;
@@ -542,7 +569,7 @@ function withArgEnums(specs: Record<string, FilterSpec>): Record<string, FilterS
 }
 
 function emit(cat: FilterCatalog): string {
-  const specs = withEngineRequired(withArgEnums(withDirectionNotes(cat.specs)));
+  const specs = withEngineRequired(withArgEnums(withCuratedDescriptions(cat.specs)));
   const requiredCounts: Record<string, number> = {};
   for (const name of cat.names) {
     const args = specs[name]?.args;

@@ -1154,6 +1154,17 @@ sources.
 - **A bare scalar works in any `fl.*` argument.** `fl.get("a.b", 0)` encodes identically to
   `fl.get(c.text("a.b"), c.int(0))`; strings, numbers and booleans are all wrapped for you.
   Objects and arrays still need `c.obj`/`c.array`.
+- **Only `fl.fsort({ type: "number" })` sorts numerically.** Every other comparator —
+  including a spelling the engine does not recognize — sorts as case-insensitive text,
+  silently and with no error, so `[2, 10, 1]` comes back `[1, 10, 2]`. A lexicographic sort
+  agrees with a numeric one whenever the values share a digit count, so this looks correct
+  on small data and goes wrong on real data: a "top N by score/distance/recency" endpoint
+  returns the right rows in the wrong order. The union rejects the two plausible wrong
+  spellings (`"decimal"`, `"int"`) outright.
+
+  ```ts
+  withFilters(ref("rows"), fl.fsort({ path: "score", type: "number", asc: true })),
+  ```
 - **`col()` does not resolve to a stored value inside a `db.edit` `row`.** To
   read-modify-write a column — incrementing a counter — `db.get` the row first and pipe its
   bound value through a filter. `col()` evaluates to `null` there, so `fl.add(1)` computes

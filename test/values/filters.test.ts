@@ -485,3 +485,48 @@ describe("fl.transform expression argument (#245)", () => {
     expect(() => filter("transform", c.text("$this"))).toThrow(/issue #245/);
   });
 });
+
+/**
+ * Curated descriptions — the two mechanisms in `scripts/codegen-filters.ts` and
+ * the facts they carry.
+ *
+ * The freshness test above proves the generated file matches a rebuild from the
+ * committed vendor snapshot, which is NOT the same guarantee: deleting a
+ * curated entry changes both sides equally and stays green. These assertions
+ * pin the corrections themselves, so an upstream `--refresh` cannot quietly
+ * restore a description the SDK has established is wrong or incomplete.
+ */
+describe("curated filter descriptions", () => {
+  it("REPLACES a false description rather than appending to it (#245)", () => {
+    const d = FILTER_SPECS.transform?.description ?? "";
+    // The upstream sentence names a binding that does not exist on this path.
+    // Appending a correction after it would leave this text for an agent to
+    // read first, so it must be gone entirely — not merely followed by a fix.
+    expect(d).not.toContain("bound to the $this variable");
+    expect(d).toContain("$0");
+    expect(d).toContain("NOT a JavaScript body");
+  });
+
+  it("APPENDS to a description that is incomplete rather than wrong (#198)", () => {
+    const d = FILTER_SPECS.fsort?.description ?? "";
+    // Upstream's sentence is true, just silent about the argument that matters —
+    // so it is kept, and the comparator trap is added after it.
+    expect(d).toContain("Sort an array of elements");
+    expect(d).toContain('Only `type: "number"` compares NUMERICALLY');
+    expect(d).toContain("silently falls through");
+  });
+
+  it("keeps `to_expr` distinct from `transform` — source vs operand (#245)", () => {
+    const d = FILTER_SPECS.to_expr?.description ?? "";
+    expect(d).toContain("PIPED TEXT");
+    expect(d).toContain("no operand binding");
+  });
+
+  it("carries no dev-process references into the specs the artifacts are built from", () => {
+    // `manifest.json`/`llms.txt` are checked by llms-no-opinion.test.ts; catching
+    // it here names the filter, which that test cannot.
+    for (const [name, spec] of Object.entries(FILTER_SPECS)) {
+      expect(spec.description ?? "", `fl.${name} description`).not.toMatch(/#\d+/);
+    }
+  });
+});

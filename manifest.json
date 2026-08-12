@@ -6892,7 +6892,7 @@
       ],
       "result": "<T>[]",
       "group": "array",
-      "description": "Sort an array of elements with an optional path inside the element"
+      "description": "Sort an array of elements with an optional path inside the element Only `type: \"number\"` compares NUMERICALLY. \"text\"/\"itext\" are case-sensitive/insensitive string compares, \"natural\"/\"inatural\" are the human-readable \"a2 < a10\" orderings, and the default is \"itext\". An unrecognized spelling silently falls through to \"itext\" rather than erroring, so a numeric sort MUST spell \"number\" — anything else returns the right elements in the wrong order. `path` drills into each element."
     },
     {
       "name": "get",
