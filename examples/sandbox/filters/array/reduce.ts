@@ -3,11 +3,14 @@
  * Reduces the array to a single value using the code block to combine each element of the array.
  *
  * Two things this example exists to say (issue #221). The accumulator is
- * `$result` — `lam.fn` makes it a parameter, so autocomplete offers it and
- * `$acc` does not compile. And `initial_value` is REQUIRED: it sits in front of
- * `code`, so omitting it would put the body in the initial-value slot.
+ * `$result` — the body's parameters ARE the bindings, so autocomplete offers it
+ * and `$acc` does not compile. And `initial_value` is REQUIRED: it sits in front
+ * of `code`, so omitting it would put the body in the initial-value slot.
+ *
+ * The surface is implied by the call site: written here, the body is a reduce
+ * body, and nothing has to say so.
  */
-import { defineFunction, s, c, ref, withFilters, fl, lam } from "@sidestep/core";
+import { defineFunction, s, c, ref, withFilters, fl } from "@sidestep/core";
 
 export const filterReduce = defineFunction({
   name: "ex_filter_reduce",
@@ -17,7 +20,7 @@ export const filterReduce = defineFunction({
       withFilters(
         c.array([1, 2, 3, 4]),
         // [1,2,3,4] sums to 10.
-        fl.reduce({ initial_value: 0, code: lam.fn(({ $result, $this }) => $result + $this) }),
+        fl.reduce({ initial_value: 0, code: ({ $result, $this }) => $result + $this }),
       ),
     ),
   ],

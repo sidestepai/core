@@ -10,6 +10,8 @@
  */
 import { filter, c, isTaggedValue } from "../value.js";
 import type { Value } from "../value.js";
+import { LAMBDA_CODE_FILTERS, toLambdaValue } from "../lambda.js";
+import type { LambdaBody } from "../lambda.js";
 import type { FilterXdo } from "../../types/xdo.js";
 
 /** A bare JS literal a filter argument accepts in place of a {@link Value}. */
@@ -52,6 +54,11 @@ const v = (x?: Scalar | Value): Value | undefined => {
 const slotted =
   (name: string, argNames: readonly string[], required: number) =>
   (...args: unknown[]): FilterXdo => {
+    // An inline body resolves against the surface THIS filter runs at — the
+    // call site knows it, so the author does not restate it.
+    const surface = LAMBDA_CODE_FILTERS[name]?.surface;
+    const body = (x: unknown): unknown =>
+      surface === undefined ? x : toLambdaValue(x as Value, surface, `fl.${name}`);
     const first = args[0];
     const isNamed =
       args.length === 1 &&
@@ -60,11 +67,13 @@ const slotted =
       !Array.isArray(first) &&
       !isTaggedValue(first);
     if (!isNamed) {
-      const supplied = args as (Scalar | Value | undefined)[];
+      const supplied = args.map(body) as (Scalar | Value | undefined)[];
       assertArity(name, argNames, required, supplied.filter((a) => a !== undefined).length);
       return filter(name, ...supplied.map(v));
     }
-    const named = first as Record<string, Scalar | Value | undefined>;
+    const named = Object.fromEntries(
+      Object.entries(first as Record<string, unknown>).map(([k, x]) => [k, body(x)]),
+    ) as Record<string, Scalar | Value | undefined>;
     // A hole in the NAMED form has its own message: the positional advice
     // ("use the named form") would be useless to someone already using it.
     const last = argNames.reduce((acc, n, i) => (named[n] !== undefined ? i : acc), -1);
@@ -196,9 +205,9 @@ export const fl = {
   "eq": /** Returns a boolean if both values are equal (group: comparison, result: bool) */ slotted("eq", ["value"], 1) as (((value: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { value: Scalar | Value }) => FilterXdo)),
   "escape": /** Converts special characters into their escaped variants. Ex: for tabs and (group: text, result: text) */ (...args: (Scalar | Value)[]): FilterXdo => filter("escape", ...args.map(v)),
   "even": /** Returns whether or not the value is even (group: comparison, result: bool) */ (...args: (Scalar | Value)[]): FilterXdo => filter("even", ...args.map(v)),
-  "every": /** Checks if all elements in the array pass the test implemented by the provided function. (group: array, result: any[]) */ slotted("every", ["code","timeout"], 1) as (((code: Scalar | Value, timeout?: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { code: Scalar | Value; timeout?: Scalar | Value }) => FilterXdo)),
+  "every": /** Checks if all elements in the array pass the test implemented by the provided function. (group: array, result: any[]) */ slotted("every", ["code","timeout"], 1) as (((code: Scalar | Value | LambdaBody<"every">, timeout?: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { code: Scalar | Value | LambdaBody<"every">; timeout?: Scalar | Value }) => FilterXdo)),
   "exp": /** Returns the exponent of mathematical expression "e" (group: math, result: decimal) */ (...args: (Scalar | Value)[]): FilterXdo => filter("exp", ...args.map(v)),
-  "filter": /** Filters the elements of an array based on the code block returning true to keep the element or false to skip it. (group: array, result: any[]) */ slotted("filter", ["code","timeout"], 1) as (((code: Scalar | Value, timeout?: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { code: Scalar | Value; timeout?: Scalar | Value }) => FilterXdo)),
+  "filter": /** Filters the elements of an array based on the code block returning true to keep the element or false to skip it. (group: array, result: any[]) */ slotted("filter", ["code","timeout"], 1) as (((code: Scalar | Value | LambdaBody<"filter">, timeout?: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { code: Scalar | Value | LambdaBody<"filter">; timeout?: Scalar | Value }) => FilterXdo)),
   "filter_empty": /** Returns a new array with only entries that are not empty ("", null, 0, "0", false, [], {}) (group: array, result: <T>[]) */ slotted("filter_empty", ["path"], 0) as (((path?: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { path?: Scalar | Value }) => FilterXdo)),
   "filter_empty_array": /** Returns a new array with only entries that are not an empty array `[]` (group: array, result: <T>[]) */ slotted("filter_empty_array", ["path"], 0) as (((path?: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { path?: Scalar | Value }) => FilterXdo)),
   "filter_empty_object": /** Returns a new array with only entries that are not an empty object `{}` (group: array, result: <T>[]) */ slotted("filter_empty_object", ["path"], 0) as (((path?: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { path?: Scalar | Value }) => FilterXdo)),
@@ -206,8 +215,8 @@ export const fl = {
   "filter_false": /** Returns a new array with only entries that are not false (group: array, result: <T>[]) */ slotted("filter_false", ["path"], 0) as (((path?: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { path?: Scalar | Value }) => FilterXdo)),
   "filter_null": /** Returns a new array with only entries that are not null (group: array, result: <T>[]) */ slotted("filter_null", ["path"], 0) as (((path?: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { path?: Scalar | Value }) => FilterXdo)),
   "filter_zero": /** Returns a new array with only entries that are not zero (group: array, result: <T>[]) */ slotted("filter_zero", ["path"], 0) as (((path?: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { path?: Scalar | Value }) => FilterXdo)),
-  "find": /** Finds if all elements in the array pass the test implemented by the provided function. (group: array, result: any[]) */ slotted("find", ["code","timeout"], 1) as (((code: Scalar | Value, timeout?: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { code: Scalar | Value; timeout?: Scalar | Value }) => FilterXdo)),
-  "findIndex": /** Finds the index of the first element in the array that passes the test implemented by the provided function. (group: array, result: any[]) */ slotted("findIndex", ["code","timeout"], 1) as (((code: Scalar | Value, timeout?: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { code: Scalar | Value; timeout?: Scalar | Value }) => FilterXdo)),
+  "find": /** Finds if all elements in the array pass the test implemented by the provided function. (group: array, result: any[]) */ slotted("find", ["code","timeout"], 1) as (((code: Scalar | Value | LambdaBody<"find">, timeout?: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { code: Scalar | Value | LambdaBody<"find">; timeout?: Scalar | Value }) => FilterXdo)),
+  "findIndex": /** Finds the index of the first element in the array that passes the test implemented by the provided function. (group: array, result: any[]) */ slotted("findIndex", ["code","timeout"], 1) as (((code: Scalar | Value | LambdaBody<"findIndex">, timeout?: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { code: Scalar | Value | LambdaBody<"findIndex">; timeout?: Scalar | Value }) => FilterXdo)),
   "first": /** Get the first entry of an array (group: array, result: <T>) */ (...args: (Scalar | Value)[]): FilterXdo => filter("first", ...args.map(v)),
   "first_notempty": /** Returns the first value that is not empty - i.e. not ("", null, 0, "0", false, [], {}) (group: manipulation, result: any) */ slotted("first_notempty", ["value"], 1) as (((value: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { value: Scalar | Value }) => FilterXdo)),
   "first_notnull": /** Returns the first value that is not null (group: manipulation, result: any) */ slotted("first_notnull", ["value"], 1) as (((value: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { value: Scalar | Value }) => FilterXdo)),
@@ -243,7 +252,7 @@ export const fl = {
   "json_encode": /** Encodes the value and returns the result as json text (group: transform, result: text) */ (...args: (Scalar | Value)[]): FilterXdo => filter("json_encode", ...args.map(v)),
   "jwe_decode": /** Decodes the JWE token and return the result */ (...args: (Scalar | Value)[]): FilterXdo => filter("jwe_decode", ...args.map(v)),
   "jwe_encode": /** Encodes the value and return the result as a JWE token */ (...args: (Scalar | Value)[]): FilterXdo => filter("jwe_encode", ...args.map(v)),
-  "lambda": /** Business logic using JavaScript. (group: transform, result: any) */ slotted("lambda", ["code","timeout"], 1) as (((code: Scalar | Value, timeout?: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { code: Scalar | Value; timeout?: Scalar | Value }) => FilterXdo)),
+  "lambda": /** Business logic using JavaScript. (group: transform, result: any) */ slotted("lambda", ["code","timeout"], 1) as (((code: Scalar | Value | LambdaBody<"fl.lambda">, timeout?: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { code: Scalar | Value | LambdaBody<"fl.lambda">; timeout?: Scalar | Value }) => FilterXdo)),
   "last": /** Get the last entry of an array (group: array, result: <T>) */ (...args: (Scalar | Value)[]): FilterXdo => filter("last", ...args.map(v)),
   "list_encodings": /** List support character encodings (group: text, result: text[]) */ (...args: (Scalar | Value)[]): FilterXdo => filter("list_encodings", ...args.map(v)),
   "ln": /** Returns the natural logarithm (group: math, result: decimal) */ (...args: (Scalar | Value)[]): FilterXdo => filter("ln", ...args.map(v)),
@@ -253,7 +262,7 @@ export const fl = {
   "lt": /** Returns a boolean if the left value is less than the right value (group: comparison, result: bool) */ slotted("lt", ["value"], 1) as (((value: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { value: Scalar | Value }) => FilterXdo)),
   "lte": /** Returns a boolean if the left value is less than or equal to the right value (group: comparison, result: bool) */ slotted("lte", ["value"], 1) as (((value: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { value: Scalar | Value }) => FilterXdo)),
   "ltrim": /** Trim whitespace or other characters from the left side and return the result (group: text, result: text) */ slotted("ltrim", ["mask"], 0) as (((mask?: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { mask?: Scalar | Value }) => FilterXdo)),
-  "map": /** Creates a new array with the results of calling a provided function on every element in the calling array. (group: array, result: any[]) */ slotted("map", ["code","timeout"], 1) as (((code: Scalar | Value, timeout?: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { code: Scalar | Value; timeout?: Scalar | Value }) => FilterXdo)),
+  "map": /** Creates a new array with the results of calling a provided function on every element in the calling array. (group: array, result: any[]) */ slotted("map", ["code","timeout"], 1) as (((code: Scalar | Value | LambdaBody<"map">, timeout?: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { code: Scalar | Value | LambdaBody<"map">; timeout?: Scalar | Value }) => FilterXdo)),
   "max": /** Returns the max of the values of the array (group: math, result: decimal) */ (...args: (Scalar | Value)[]): FilterXdo => filter("max", ...args.map(v)),
   "md5": /** Returns a MD5 signature representation of the value (group: security, result: text) */ slotted("md5", ["raw"], 0) as (((raw?: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { raw?: Scalar | Value }) => FilterXdo)),
   "min": /** Returns the min of the values of the array (group: math, result: decimal) */ (...args: (Scalar | Value)[]): FilterXdo => filter("min", ...args.map(v)),
@@ -273,7 +282,7 @@ export const fl = {
   "querystring_parse": /** Parses a query string from a URL into its individual key-value pairs. (group: text, result: json) */ (...args: (Scalar | Value)[]): FilterXdo => filter("querystring_parse", ...args.map(v)),
   "rad2deg": /** Convert radians to degrees (group: math, result: decimal) */ (...args: (Scalar | Value)[]): FilterXdo => filter("rad2deg", ...args.map(v)),
   "range": /** Returns array of values between the specified start/stop. (group: array, result: int[]) */ slotted("range", ["start","stop"], 2) as (((start: Scalar | Value, stop: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { start: Scalar | Value; stop: Scalar | Value }) => FilterXdo)),
-  "reduce": /** Reduces the array to a single value using the code block to combine each element of the array. (group: array, result: any[]) */ slotted("reduce", ["initial_value","code","timeout"], 2) as (((initial_value: Scalar | Value, code: Scalar | Value, timeout?: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { initial_value: Scalar | Value; code: Scalar | Value; timeout?: Scalar | Value }) => FilterXdo)),
+  "reduce": /** Reduces the array to a single value using the code block to combine each element of the array. (group: array, result: any[]) */ slotted("reduce", ["initial_value","code","timeout"], 2) as (((initial_value: Scalar | Value, code: Scalar | Value | LambdaBody<"reduce">, timeout?: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { initial_value: Scalar | Value; code: Scalar | Value | LambdaBody<"reduce">; timeout?: Scalar | Value }) => FilterXdo)),
   "regex_match": /** Return the first set of matches performed by a regular expression Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains. Build the pattern with c.regex(...) (delimiter-wrapped); a bare c.text(...) is rejected. (group: text, result: text[]) */ slotted("regex_match", ["subject"], 1) as (((subject: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { subject: Scalar | Value }) => FilterXdo)),
   "regex_match_all": /** Return all matches performed by a regular expression on the Direction: the piped value is the regex PATTERN; the `subject` argument is the text tested against it — reversed vs starts_with/contains. Build the pattern with c.regex(...) (delimiter-wrapped); a bare c.text(...) is rejected. (group: text, result: text[]) */ slotted("regex_match_all", ["subject"], 1) as (((subject: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { subject: Scalar | Value }) => FilterXdo)),
   "regex_quote": /** Update the supplied text value to be properly escaped for regular expressions. (group: text, result: text) */ slotted("regex_quote", ["delimiter"], 0) as (((delimiter?: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { delimiter?: Scalar | Value }) => FilterXdo)),
@@ -294,7 +303,7 @@ export const fl = {
   "sha384": /** Returns a SHA384 signature representation of the value (group: security, result: text) */ slotted("sha384", ["raw"], 0) as (((raw?: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { raw?: Scalar | Value }) => FilterXdo)),
   "sha512": /** Returns a SHA512 signature representation of the value (group: security, result: text) */ slotted("sha512", ["raw"], 0) as (((raw?: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { raw?: Scalar | Value }) => FilterXdo)),
   "sin": /** Calculates the sine of the supplied value in radians (group: math, result: decimal) */ (...args: (Scalar | Value)[]): FilterXdo => filter("sin", ...args.map(v)),
-  "some": /** Checks if at least one element in the array passes the test implemented by the provided function. (group: array, result: any[]) */ slotted("some", ["code","timeout"], 1) as (((code: Scalar | Value, timeout?: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { code: Scalar | Value; timeout?: Scalar | Value }) => FilterXdo)),
+  "some": /** Checks if at least one element in the array passes the test implemented by the provided function. (group: array, result: any[]) */ slotted("some", ["code","timeout"], 1) as (((code: Scalar | Value | LambdaBody<"some">, timeout?: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { code: Scalar | Value | LambdaBody<"some">; timeout?: Scalar | Value }) => FilterXdo)),
   "sort": /** Sort an array of elements with an optional path inside the element */ (...args: (Scalar | Value)[]): FilterXdo => filter("sort", ...args.map(v)),
   "split": /** Splits text into an array of text and returns the result (group: text, result: text[]) */ slotted("split", ["separator"], 1) as (((separator: Scalar | Value, ...rest: (Scalar | Value)[]) => FilterXdo) & ((args: { separator: Scalar | Value }) => FilterXdo)),
   "sprintf": /** formats text with variable substitution (group: text, result: text) */ (...args: (Scalar | Value)[]): FilterXdo => filter("sprintf", ...args.map(v)),

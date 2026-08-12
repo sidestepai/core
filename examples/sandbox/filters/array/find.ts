@@ -4,7 +4,7 @@
  *
  * `$index` is bound alongside `$this`, so a positional test is available too.
  */
-import { defineFunction, s, c, ref, withFilters, fl, lam } from "@sidestep/core";
+import { defineFunction, s, c, ref, withFilters, fl } from "@sidestep/core";
 
 export const filterFind = defineFunction({
   name: "ex_filter_find",
@@ -12,7 +12,7 @@ export const filterFind = defineFunction({
     s.set_var(
       "out",
       // 3 — the first element over 2.
-      withFilters(c.array([1, 2, 3, 4]), fl.find(lam.fn(({ $this }) => $this > 2, { surface: "find" }))),
+      withFilters(c.array([1, 2, 3, 4]), fl.find(({ $this }) => $this > 2)),
     ),
   ],
   response: ref("out"),

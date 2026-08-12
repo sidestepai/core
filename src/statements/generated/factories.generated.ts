@@ -12,6 +12,7 @@ import type { Statement } from "../statement.js";
 import type { Authored, OutputAuthored } from "../schema-dsl/interpret.js";
 import { encodeFromSpec } from "../schema-dsl/interpret.js";
 import type { Value } from "../../values/value.js";
+import type { LambdaBody } from "../../values/lambda.js";
 import type { Condition } from "../conditional.js";
 import { GENERATED_SPECS } from "./specs.generated.js";
 
@@ -202,7 +203,7 @@ export const generated = {
 (a: { expr?: Value; value?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:test_expect_to_start_with", a),
   },
   lambda: /** `mvp:lambda` — fields: as, code, timeout */
-(a: { as?: string; code?: Value; timeout?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:lambda", a),
+(a: { as?: string; code?: Value | LambdaBody<"s.lambda">; timeout?: Value; disabled?: boolean; description?: string } = {}): Statement => fromSpec("mvp:lambda", a),
   math: {
     add: /** `mvp:math_add` — fields: name, value */
 (a: { name?: string; value: Value; disabled?: boolean; description?: string; output?: OutputAuthored }): Statement => fromSpec("mvp:math_add", a),

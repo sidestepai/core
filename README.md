@@ -1162,35 +1162,50 @@ sources.
   name is assigned at import and is not knowable from a `table()` def, so it has to be
   hardcoded after inspecting the deployed table. A typed path requires an engine change
   ([issue #35](https://github.com/sidestepai/core/issues/35)).
-- **A JavaScript body is written with `lam.fn`, not `c.text`.** The lambda statement
-  (`s.lambda`) and eight filters (`fl.map`/`filter`/`some`/`every`/`find`/`findIndex`/
-  `reduce`/`lambda`) run JavaScript against a small, closed set of injected identifiers —
-  and which ones are in scope depends on the surface. `lam.fn` makes those identifiers the
-  function's **parameters**, so your editor supplies them and a wrong name is a compile
-  error rather than a wrong value in production:
+- **A JavaScript body is written as a function, not a `c.text` string.** The lambda
+  statement (`s.lambda`) and eight filters (`fl.map`/`filter`/`some`/`every`/`find`/
+  `findIndex`/`reduce`/`lambda`) run JavaScript against a small, closed set of injected
+  identifiers — and which ones are in scope depends on the surface. Write the body inline
+  and the **surface is implied by where it sits**: the bindings are the function's
+  parameters, typed from the position, so your editor supplies them and a wrong name is a
+  compile error rather than a wrong value in production.
 
   ```ts
   // reduce's accumulator is `$result`. Autocomplete says so; `$acc` does not compile.
-  withFilters(ref("prices"), fl.reduce({ initial_value: 0, code: lam.fn(({ $result, $this }) => $result + $this) })),
+  withFilters(ref("prices"), fl.reduce({ initial_value: 0, code: ({ $result, $this }) => $result + $this })),
 
-  // The statement surface binds ambient state only — no `$this`, no `$parent`.
-  s.lambda({ as: "total", code: lam.fn(({ $var }) => $var.subtotal * 1.2, { surface: "s.lambda" }) }),
+  // A map body, typed as a map body — nothing names the surface.
+  withFilters(ref("prices"), fl.map(({ $this, $index }) => $this * ($index + 1))),
 
+  // The statement surface binds ambient state only: `$this` here is a compile error.
+  s.lambda({ as: "total", code: ({ $var }) => $var.subtotal * 1.2 }),
+  ```
+
+  The parameters are a fiction — only the **body** is sent, and the engine injects the
+  bindings as free identifiers — so destructure them. `(b) => b.$this * 2` would emit
+  `return b.$this * 2` with `b` undefined at runtime, and the SDK refuses it.
+
+  For a body built away from its call site, `lam.*` names the surface explicitly:
+
+  ```ts
+  const rate = 0.2;
   // Nothing from the enclosing scope crosses implicitly — declare what the body needs.
   s.lambda({ as: "vat", code: lam.fn(({ $var }, { rate }) => $var.total * rate, { surface: "s.lambda", capture: { rate } }) }),
   ```
 
-  A body big enough to want its own type-checked module is `lam.file("./lambdas/total.ts")`
-  (from `@sidestep/core/node`), which reads a default-exported function of the same shape.
-  `lam.raw(code)` is the text escape hatch, guarded identically. The full binding table per
-  surface is in `llms.txt` under **Lambda bodies**.
+  Omit `surface` and the check is deferred to wherever the body lands, which is the thing
+  that knows. `lam.file("./lambdas/total.ts")` (from `@sidestep/core/node`) reads a
+  default-exported function of the same shape from its own type-checked module — the
+  deterministic option under a bundler, where a function's own source is whatever the
+  bundler emitted. `lam.raw(code)` is the text escape hatch, guarded identically. The full
+  binding table per surface is in `llms.txt` under **Lambda bodies**.
 
   Three things to know, all live-verified against a real engine:
 
   - A body that **throws does not fail the request** — the engine returns its diagnostic
     text as the value with HTTP 200, so the failure arrives as bad data rather than an
     error. That is engine behavior and not interceptable from an SDK; validate before
-    consuming a lambda result numerically, and prefer a `lam.*` body, which cannot fail
+    consuming a lambda result numerically, and prefer an authored body, which cannot fail
     that way for a binding reason.
   - The body is a **function body, not a module**: it must `return`, and a top-level
     `import` is a syntax error. Reach a dependency with dynamic `import()`.

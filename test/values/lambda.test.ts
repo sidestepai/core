@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { c, lam, LAMBDA_BINDINGS, LAMBDA_GLOBALS, assertLambdaBody } from "../../src/index.js";
+import { c, fl, lam, LAMBDA_BINDINGS, LAMBDA_GLOBALS, assertLambdaBody } from "../../src/index.js";
 import type { LambdaSurface } from "../../src/index.js";
 
 /**
@@ -313,5 +313,69 @@ describe("the guard leaves the body's own $-names alone", () => {
 
   it("still rejects an undeclared binding-shaped name", () => {
     expect(() => lam.raw("const $tmp = 1;\nreturn $tmp + $acc;", { surface: "reduce" })).toThrow(/\$acc/);
+  });
+});
+
+/**
+ * The surface is IMPLIED by where the body is written (issue #221 follow-up).
+ *
+ * Naming a surface at a call site that already knows it is the kind of
+ * restatement this SDK exists to remove: the author knows they are inside
+ * `fl.map`, and so does the type. An inline body is typed contextually from its
+ * position, so the bindings autocomplete and one from another surface is a
+ * compile error — with no `{ surface }` written anywhere.
+ */
+describe("an inline body implies its surface", () => {
+  it("takes a body written straight into a filter", () => {
+    const applied = fl.map(({ $this }) => $this * 2);
+    expect(applied.arg[0]?.tag).toBe("const");
+    expect(String(applied.arg[0]?.value)).toContain("$this");
+  });
+
+  it("encodes identically to the same body through lam.fn", () => {
+    expect(fl.map(({ $this }) => $this * 2)).toEqual(fl.map(lam.fn(({ $this }) => $this * 2, { surface: "map" })));
+  });
+
+  it("takes one in the named argument form too", () => {
+    const named = fl.reduce({ initial_value: 0, code: ({ $result, $this }) => $result + $this });
+    expect(String(named.arg[1]?.value)).toContain("$result");
+  });
+
+  it("checks it against the surface it was written at, not a default", () => {
+    // `$result` reads fine in `reduce` and is undefined in `map`; the position
+    // is what decides, and nothing had to say so.
+    expect(() => fl.reduce({ initial_value: 0, code: ({ $result }) => $result })).not.toThrow();
+    // @ts-expect-error -- $result is not bound in map, and the parameter type says so
+    expect(() => fl.map(({ $result }) => $result)).toThrow(/\$result/);
+  });
+
+  it("refuses a parameter the body then dereferences", () => {
+    let message = "";
+    try {
+      // The parameters are a fiction — only the body is sent — so `b` would be
+      // undefined at runtime and come back as text in the value slot.
+      fl.map((b) => b.$this);
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message).toContain("parameters are not real");
+    expect(message).toContain("DESTRUCTURE");
+  });
+
+  it("allows an unreferenced parameter", () => {
+    expect(() => fl.map((_, { rate }) => rate)).not.toThrow();
+  });
+});
+
+describe("lam.fn without a surface defers to the call site", () => {
+  it("builds without checking, then is checked where it lands", () => {
+    const body = lam.fn(({ $result, $this }) => $result + $this);
+    expect(body.tag).toBe("const");
+    expect(() => fl.reduce({ initial_value: 0, code: body })).not.toThrow();
+    expect(() => fl.map(body)).toThrow(/\$result/);
+  });
+
+  it("still checks at construction when a surface IS named", () => {
+    expect(() => lam.raw("return $result", { surface: "map" })).toThrow(/\$result/);
   });
 });

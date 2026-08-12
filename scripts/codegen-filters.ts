@@ -340,6 +340,25 @@ const ARG_ENUMS: Readonly<Record<string, readonly string[]>> = {
 };
 
 /**
+ * Filter → the lambda surface its `code` argument runs at, so the emitted
+ * signature can type an INLINE body (`fl.map(({ $this }) => …)`) with exactly
+ * that surface's bindings. Mirrors `LAMBDA_CODE_FILTERS` in
+ * `src/values/lambda.ts`, which is what the runtime guard reads; a test asserts
+ * the two agree, and the emitted surface is what makes the author not have to
+ * name one.
+ */
+const LAMBDA_SURFACES: Readonly<Record<string, string>> = {
+  lambda: "fl.lambda",
+  map: "map",
+  filter: "filter",
+  some: "some",
+  every: "every",
+  find: "find",
+  findIndex: "findIndex",
+  reduce: "reduce",
+};
+
+/**
  * Fold the curated pipe-direction notes into each affected filter's
  * `description`. Done here (rather than only in the emitted JSDoc) so the note
  * rides `FILTER_SPECS` into the manifest and `llms.txt` too — the agent that hit
@@ -425,7 +444,13 @@ function argType(name: string, a: FilterArg): string {
   // An enumerated arg narrows the string half of `Scalar` to the exact members;
   // numbers and booleans are dropped from it, since a comparator mode is never
   // one of those.
-  return members ? `${members.map((m) => JSON.stringify(m)).join(" | ")} | Value` : "Scalar | Value";
+  if (members) return `${members.map((m) => JSON.stringify(m)).join(" | ")} | Value`;
+  // A lambda filter's `code` argument also takes the body itself, typed for THIS
+  // filter's surface — so the bindings autocomplete from the call site and a
+  // binding from another surface is a compile error, with no surface named by
+  // hand (issue #221).
+  const surface = a.name === "code" ? LAMBDA_SURFACES[name] : undefined;
+  return surface ? `Scalar | Value | LambdaBody<${JSON.stringify(surface)}>` : "Scalar | Value";
 }
 
 function emitFactory(name: string, spec: FilterSpec | undefined): string {
@@ -488,6 +513,7 @@ function emit(cat: FilterCatalog): string {
   const factories = cat.names.map((n) => emitFactory(n, specs[n])).join("\n");
   const typedCount = cat.names.filter((n) => specs[n]?.args?.length).length;
   const imports = "{ filter, c, isTaggedValue }";
+  const lambdaImports = "{ LAMBDA_CODE_FILTERS, toLambdaValue }";
   const coerceHelper = [
     "",
     "/** A bare JS literal a filter argument accepts in place of a {@link Value}. */",
@@ -530,6 +556,11 @@ function emit(cat: FilterCatalog): string {
     "const slotted =",
     "  (name: string, argNames: readonly string[], required: number) =>",
     "  (...args: unknown[]): FilterXdo => {",
+    "    // An inline body resolves against the surface THIS filter runs at — the",
+    "    // call site knows it, so the author does not restate it.",
+    "    const surface = LAMBDA_CODE_FILTERS[name]?.surface;",
+    "    const body = (x: unknown): unknown =>",
+    "      surface === undefined ? x : toLambdaValue(x as Value, surface, `fl.${name}`);",
     "    const first = args[0];",
     "    const isNamed =",
     "      args.length === 1 &&",
@@ -538,11 +569,13 @@ function emit(cat: FilterCatalog): string {
     "      !Array.isArray(first) &&",
     "      !isTaggedValue(first);",
     "    if (!isNamed) {",
-    "      const supplied = args as (Scalar | Value | undefined)[];",
+    "      const supplied = args.map(body) as (Scalar | Value | undefined)[];",
     "      assertArity(name, argNames, required, supplied.filter((a) => a !== undefined).length);",
     "      return filter(name, ...supplied.map(v));",
     "    }",
-    "    const named = first as Record<string, Scalar | Value | undefined>;",
+    "    const named = Object.fromEntries(",
+    "      Object.entries(first as Record<string, unknown>).map(([k, x]) => [k, body(x)]),",
+    "    ) as Record<string, Scalar | Value | undefined>;",
     "    // A hole in the NAMED form has its own message: the positional advice",
     "    // (\"use the named form\") would be useless to someone already using it.",
     "    const last = argNames.reduce((acc, n, i) => (named[n] !== undefined ? i : acc), -1);",
@@ -588,6 +621,8 @@ function emit(cat: FilterCatalog): string {
  */
 import ${imports} from "../value.js";
 import type { Value } from "../value.js";
+import ${lambdaImports} from "../lambda.js";
+import type { LambdaBody } from "../lambda.js";
 import type { FilterXdo } from "../../types/xdo.js";
 ${coerceHelper}
 /** Distilled metadata for a filter (from the engine's filter/pipe/aggregate schema + LSP docs). */

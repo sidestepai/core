@@ -9,7 +9,7 @@
  * that is a filter binding, and writing it is a build error rather than an
  * undefined at runtime.
  */
-import { defineFunction, ref, s, c, lam } from "@sidestep/core";
+import { defineFunction, ref, s, c } from "@sidestep/core";
 
 export const apiLambda = defineFunction({
   name: "ex_api_lambda",
@@ -18,7 +18,7 @@ export const apiLambda = defineFunction({
     // 144.6 — a stack variable is reached through `$var`, never as a bare `$subtotal`.
     s.lambda({
       as: "result",
-      code: lam.fn(({ $var }) => Math.round($var.subtotal * 1.2 * 100) / 100, { surface: "s.lambda" }),
+      code: ({ $var }) => Math.round($var.subtotal * 1.2 * 100) / 100,
     }),
   ],
   response: ref("result"),

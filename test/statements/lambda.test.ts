@@ -172,3 +172,26 @@ describe("s.lambda", () => {
     expect(STATEMENT_SURFACES.some(([key]) => key === "api.lambda")).toBe(false);
   });
 });
+
+/**
+ * The statement's `code` implies its surface too, and it is the surface with the
+ * FEWEST bindings — which is exactly the one an author is most likely to get
+ * wrong by pasting a filter body into it.
+ */
+describe("s.lambda implies its surface", () => {
+  it("takes a body written straight into the statement", () => {
+    const stmt = s.lambda({ as: "total", code: ({ $var }) => $var.subtotal * 1.2 });
+    expect(JSON.stringify(stmt)).toContain("$var.subtotal");
+  });
+
+  it("encodes identically to the c.text form of the same body", () => {
+    expect(s.lambda({ as: "x", code: ({ $var }) => $var.a })).toEqual(
+      s.lambda({ as: "x", code: c.text("return $var.a;") }),
+    );
+  });
+
+  it("Covers #221: refuses a filter binding written into the statement", () => {
+    // @ts-expect-error -- $this is a filter binding; the statement surface has none
+    expect(() => s.lambda({ as: "x", code: ({ $this }) => $this })).toThrow(/\$this/);
+  });
+});

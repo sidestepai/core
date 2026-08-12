@@ -764,13 +764,26 @@ Other filters (reachable as `fl.<name>`, variadic): abs, acos, acosh, addslashes
 ## Lambda bodies (JavaScript)
 
 The lambda statement (`s.lambda({ as, code, timeout? })`) and eight filters run a
-JavaScript body. **Write the body with `lam.fn`, not `c.text`** — the bindings are
-the function's parameters, so the editor supplies them and a wrong name is a
-compile error instead of a wrong value at runtime:
+JavaScript body. **Write the body as a FUNCTION, not a `c.text` string** — the
+bindings are its parameters, so the editor supplies them and a wrong name is a
+compile error instead of a wrong value at runtime. Write it inline and the surface
+is implied by where it sits; nothing names one:
 
-- `lam.fn(({ $result, $this }) => $result + $this)` — the body; `surface` picks the binding set.
+```ts
+fl.map(({ $this }) => $this * 2)                                   // map's bindings, typed from the position
+fl.reduce({ initial_value: 0, code: ({ $result, $this }) => $result + $this })
+s.lambda({ as: "total", code: ({ $var }) => $var.subtotal * 1.2 })  // ambient only — $this is a compile error
+```
+
+The parameters are a fiction — only the BODY is sent, and the engine injects the
+bindings as free identifiers — so DESTRUCTURE them. `(b) => b.$this` emits
+`return b.$this`, and `b` is undefined at runtime (the SDK refuses it).
+
+For a body built away from its call site:
+
+- `lam.fn(({ $result, $this }) => $result + $this, { surface?, capture? })` — name a `surface` to check it here, or omit it and the call site checks it.
 - `lam.raw("return 1", { surface })` — text, same validation.
-- `lam.file("./lambdas/total.ts")` — a default-exported function in its own type-checked module (`@sidestep/core/node`).
+- `lam.file("./lambdas/total.ts")` — a default-exported function in its own type-checked module (`@sidestep/core/node`), read as text at build time. The deterministic option under a bundler, where a function's source is whatever the bundler emitted.
 
 A body is a FUNCTION BODY: it must `return` its value. Bindings by surface — an
 identifier outside its surface's set is undefined at runtime, and the SDK refuses

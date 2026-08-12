@@ -134,6 +134,20 @@ export const LAMBDA_STATEMENTS: Readonly<Record<string, { readonly field: string
   "mvp:lambda": { field: "code", surface: "s.lambda" },
 };
 
+/**
+ * Resolve an INLINE body in a statement's code field against that statement's
+ * surface, returning the authored args unchanged when there is nothing to
+ * resolve. See {@link toLambdaValue}.
+ */
+export function coerceLambdaFields(
+  storedName: string,
+  authored: Record<string, unknown>,
+): Record<string, unknown> {
+  const site = LAMBDA_STATEMENTS[storedName];
+  if (site === undefined || typeof authored[site.field] !== "function") return authored;
+  return { ...authored, [site.field]: toLambdaValue(authored[site.field] as LambdaBody, site.surface, storedName === "mvp:lambda" ? "s.lambda" : storedName) };
+}
+
 /** Run the body guard on a statement's code field. See {@link assertLambdaFilterArgs}. */
 export function assertLambdaStatement(storedName: string, authored: Record<string, unknown>): void {
   const site = LAMBDA_STATEMENTS[storedName];
@@ -204,6 +218,36 @@ export type LambdaBindings<S extends LambdaSurface = "reduce"> = S extends "redu
         }
       : IteratingBindings;
 
+/**
+ * A lambda body written INLINE at the call site, where the surface is already
+ * known — `fl.map(({ $this }) => $this * 2)`.
+ *
+ * This is the form to reach for. `lam.fn` exists for a body that is shared,
+ * captured, or otherwise built away from where it runs; everywhere else the
+ * call site knows which surface it is, so naming the surface a second time is
+ * something for the SDK to do rather than the author. TypeScript types the
+ * parameter contextually from the position, so `$this` autocompletes inside
+ * `fl.map` and `$result` does not compile there.
+ */
+export type LambdaBody<S extends LambdaSurface = LambdaSurface> = (
+  bindings: LambdaBindings<S>,
+  captured: Record<string, CaptureValue>,
+) => unknown;
+
+/**
+ * Accept either a {@link Value} or an inline {@link LambdaBody} wherever a
+ * lambda body is taken, resolving the function form against the surface the CALL
+ * SITE knows.
+ *
+ * A function reaching a `code` argument can only be an authored body, so this
+ * needs no marker to recognize one — and the surface it validates against is the
+ * one it was written at, not one the author had to restate.
+ */
+export function toLambdaValue<T>(x: T | LambdaBody, surface: LambdaSurface, source: string): T | Value {
+  if (typeof x !== "function") return x;
+  return lambdaValue(extractFunctionBody(String(x), source), { surface }, source);
+}
+
 /** A JSON value a capture entry can carry into the body. */
 export type CaptureValue = string | number | boolean | null | { [k: string]: CaptureValue } | CaptureValue[];
 
@@ -211,10 +255,16 @@ export type CaptureValue = string | number | boolean | null | { [k: string]: Cap
 export interface LambdaOptions<C extends Record<string, CaptureValue> = Record<string, never>> {
   /**
    * Which surface the body will run at, which is what decides the legal
-   * bindings. Defaults to the most permissive set (`reduce`); the statement and
-   * filter factories re-validate with their own exact surface, so a body built
-   * with the default still cannot reach the wire at a surface that would not
-   * bind it.
+   * bindings.
+   *
+   * Omit it and the check is DEFERRED to the call site, which knows the answer:
+   * dropping the body into `fl.map(...)` or `s.lambda({...})` validates it there,
+   * against that surface. Naming it here is for a body built away from its call
+   * site — a shared constant, or one that should fail at its own definition
+   * rather than at its use.
+   *
+   * Better still, write the body inline (`fl.map(({ $this }) => …)`), where the
+   * surface is implied and TypeScript types the bindings from the position.
    */
   surface?: LambdaSurface;
   /**
@@ -269,6 +319,7 @@ export function extractFunctionBody(source: string, caller: string): string {
     if (open === -1 || close <= open) {
       throw new Error(`${caller}: could not find the function body in ${JSON.stringify(src.slice(0, 80))}.`);
     }
+    assertDestructuredParams(src.slice(kw[0].length, open), mask.slice(open + 1, close), caller);
     return dedent(src.slice(open + 1, close).trim());
   }
 
@@ -280,6 +331,7 @@ export function extractFunctionBody(source: string, caller: string): string {
         `A class method or an object shorthand method does not extract; write it as an arrow function.`,
     );
   }
+  assertDestructuredParams(src.slice(0, arrow), mask.slice(arrow + 2), caller);
   const rest = src.slice(arrow + 2).trim();
   const restMask = mask.slice(arrow + 2).trim();
   if (restMask.startsWith("{")) {
@@ -310,6 +362,55 @@ function dedent(body: string): string {
   const common = indents.length ? Math.min(...indents) : 0;
   if (common === 0) return body;
   return [lines[0], ...lines.slice(1).map((l) => l.slice(common))].join("\n");
+}
+
+/**
+ * Refuse a parameter the body then dereferences by name.
+ *
+ * The parameters are a fiction: only the BODY is sent, and the engine injects
+ * the bindings as free identifiers. So `({ $this }) => $this * 2` works —
+ * destructuring names the bindings and disappears — while `(b) => b.$this * 2`
+ * emits `return b.$this * 2;`, and `b` is undefined at runtime. That failure
+ * comes back as diagnostic text in the value slot with HTTP 200, which is the
+ * exact shape of #221, so it is caught here instead.
+ *
+ * An unreferenced parameter is fine (`(_, { rate }) => rate`): nothing that
+ * survives into the body depends on it.
+ */
+function assertDestructuredParams(params: string, bodyMask: string, caller: string): void {
+  const inner = /\(([\s\S]*)\)/.exec(params)?.[1] ?? params;
+  for (const part of splitTopLevel(inner)) {
+    const name = /^\s*(?:\.\.\.)?\s*([A-Za-z_$][A-Za-z0-9_$]*)/.exec(part)?.[1];
+    // A destructuring pattern (`{ … }` / `[ … ]`) has no leading identifier.
+    if (name === undefined) continue;
+    const referenced = new RegExp(`(^|[^A-Za-z0-9_$.])${name.replace(/\$/g, "\\$")}\\b`).test(bodyMask);
+    if (!referenced) continue;
+    throw new Error(
+      `${caller}: the body reads \`${name}\`, but a lambda's parameters are not real — only the BODY is sent, and ` +
+        `the engine injects the bindings as free identifiers. DESTRUCTURE them instead: ` +
+        `\`({ ${name === "b" ? "$this" : name} }) => …\` rather than \`(${name}) => … ${name}.$this …\`. As written, ` +
+        `\`${name}\` is undefined at runtime and the engine returns that failure as text in the value slot. ` +
+        `(issue #221)`,
+    );
+  }
+}
+
+/** Split a parameter list on its top-level commas. */
+function splitTopLevel(text: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "(" || ch === "[" || ch === "{") depth++;
+    else if (ch === ")" || ch === "]" || ch === "}") depth--;
+    else if (ch === "," && depth === 0) {
+      parts.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(text.slice(start));
+  return parts;
 }
 
 /** Index just past the `)` closing the parameter list that opens at or after `from`. */
@@ -672,7 +773,10 @@ export function lambdaValue(
   source: string,
 ): Value {
   const code = capturePrelude(opts?.capture, source) + body;
-  assertLambdaBody(code, opts?.surface ?? "reduce", source);
+  // No surface named: the call site validates, and it is the one that knows.
+  // What comes back is an ordinary `const:text`, so the statement and filter
+  // guards see it exactly as they see a hand-written `c.text(...)`.
+  if (opts?.surface !== undefined) assertLambdaBody(code, opts.surface, source);
   return c.text(code);
 }
 

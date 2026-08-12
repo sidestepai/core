@@ -5,7 +5,7 @@
  * `fl.lambda` runs ONCE over the piped value, which it binds as `$this` —
  * not `$parent`, and not the `$this`-per-element of the array filters.
  */
-import { defineFunction, s, c, ref, withFilters, fl, lam } from "@sidestep/core";
+import { defineFunction, s, c, ref, withFilters, fl } from "@sidestep/core";
 
 export const filterLambda = defineFunction({
   name: "ex_filter_lambda",
@@ -15,7 +15,7 @@ export const filterLambda = defineFunction({
       // "VALUE!" — the piped text, uppercased.
       withFilters(
         c.text("value"),
-        fl.lambda(lam.fn(({ $this }) => `${String($this).toUpperCase()}!`, { surface: "fl.lambda" })),
+        fl.lambda(({ $this }) => `${String($this).toUpperCase()}!`),
       ),
     ),
   ],

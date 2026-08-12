@@ -125,7 +125,7 @@ describe("the lambda examples", () => {
     expect(reduce?.arg[1]?.value).toBe("return $result + $this;");
   });
 
-  it("uses lam.* rather than a bare c.text body in every lambda example", async () => {
+  it("writes every lambda body as a function, never as a bare c.text string", async () => {
     const files = [
       "filters/array/reduce.ts",
       "filters/array/map.ts",
@@ -140,7 +140,10 @@ describe("the lambda examples", () => {
     ];
     for (const file of files) {
       const source = readFileSync(join(import.meta.dirname, "..", "examples/sandbox", file), "utf8");
-      expect(source, file).toMatch(/lam\.(fn|file|raw)\(/);
+      // Either an inline body (the surface implied by the call site) or an
+      // explicit `lam.*` — never a string, which is what taught `$acc`.
+      expect(source, file).toMatch(/lam\.(fn|file|raw)\(|\(\{ \$[a-z]/i);
+      expect(source, file).not.toMatch(/code: c\.text\(|\bfl\.\w+\(c\.text\(/);
     }
   });
 
