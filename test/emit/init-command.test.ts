@@ -7,6 +7,7 @@ import {
   runInitCommand,
   sanitizeAppName,
   resolveAiFlags,
+  projectShellFiles,
 } from "../../src/emit/init-command.js";
 import {
   coreDep,
@@ -113,6 +114,21 @@ describe("templates (U2)", () => {
 
   it("vite config pins root to frontend", () => {
     expect(renderViteConfig()).toContain('root: "frontend"');
+  });
+
+  it("vite loads .env from wherever the scaffold writes .env.example", () => {
+    // Vite defaults `envDir` to `root`, which is frontend/ here — so without an
+    // explicit envDir a `.env.local` placed beside `.env.example` is silently
+    // ignored, XANO_HOST resolves to "", and every call 404s off the dev server.
+    // These two assertions are a pair: they must move together.
+    const shell = projectShellFiles(
+      { appName: "my-app", coreVersion: "4.1.39" },
+      { readme: "", app: "" },
+    );
+    expect(shell.map((f) => f.path)).toContain(".env.example");
+    // Resolved from the config file's own URL — the project root — rather than
+    // from Vite's `root`, so it lands on the same directory as `.env.example`.
+    expect(renderViteConfig()).toContain('envDir: fileURLToPath(new URL(".", import.meta.url))');
   });
 
   it("the @/ alias is declared in BOTH tsconfig and vite (shadcn imports need both)", () => {

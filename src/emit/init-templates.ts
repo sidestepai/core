@@ -126,6 +126,11 @@ import tailwindcss from "@tailwindcss/vite";
 // frontend/dist, which \`npm run xano:deploy\` ships as the static frontend.
 export default defineConfig({
   root: "frontend",
+  // Vite resolves \`.env\` files against \`root\`, which is frontend/ here — but
+  // \`.env.example\` sits at the project root, so that is where anyone will
+  // actually put their \`.env.local\`. Point envDir back at this file's own
+  // directory so VITE_XANO_HOST is picked up in dev.
+  envDir: fileURLToPath(new URL(".", import.meta.url)),
   build: { outDir: "dist", emptyOutDir: true },
   plugins: [react(), tailwindcss()],
   resolve: {
