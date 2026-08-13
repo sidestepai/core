@@ -382,6 +382,11 @@ npm run dev                        # run the frontend right away
 The starter backend is empty but already compiles and deploys — grow it from the
 walkthrough in `xano/EXAMPLE.md`.
 
+To point `npm run dev` at a real backend, copy `.env.example` to `.env.local` — both
+live at the **project root**, next to `vite.config.ts` — and set `VITE_XANO_HOST` to a
+deployed URL. Deployed builds don't need it: `sidestep deploy --static` injects the
+backend URL as `window.XANO_HOST`, which takes precedence.
+
 The frontend ships `Button` and `Card` in `frontend/src/components/ui/`, plus a
 pre-configured `components.json`, so `npx shadcn@latest add dialog form input`
 works immediately — no `shadcn init` step. shadcn components are copied into your
